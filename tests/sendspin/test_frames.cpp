@@ -17,11 +17,11 @@
 
 namespace {
 
-using ac3::sendspin::Dialect;
-using ac3::sendspin::FrameError;
-using ac3::sendspin::kMaxFramePlaintext;
-using ac3::sendspin::Reassembler;
-namespace message_id = ac3::sendspin::message_id;
+using iclforge::sendspin::Dialect;
+using iclforge::sendspin::FrameError;
+using iclforge::sendspin::kMaxFramePlaintext;
+using iclforge::sendspin::Reassembler;
+namespace message_id = iclforge::sendspin::message_id;
 
 std::vector<std::uint8_t> make_message(std::uint8_t id, std::size_t payload_bytes) {
     std::vector<std::uint8_t> message(1 + payload_bytes);
@@ -36,12 +36,12 @@ std::vector<std::vector<std::uint8_t>> split(std::span<const std::uint8_t> messa
                                              Dialect dialect) {
     std::vector<std::vector<std::uint8_t>> frames;
     std::vector<std::uint8_t> frame(kMaxFramePlaintext);
-    const std::size_t count = ac3::sendspin::frame_count(message.size(), dialect);
+    const std::size_t count = iclforge::sendspin::frame_count(message.size(), dialect);
     for (std::size_t i = 0; i < count; ++i) {
-        const std::size_t written = ac3::sendspin::write_frame(message, i, frame, dialect);
+        const std::size_t written = iclforge::sendspin::write_frame(message, i, frame, dialect);
         frames.emplace_back(frame.begin(), frame.begin() + static_cast<std::ptrdiff_t>(written));
     }
-    CHECK(ac3::sendspin::write_frame(message, count, frame, dialect) == 0);
+    CHECK(iclforge::sendspin::write_frame(message, count, frame, dialect) == 0);
     return frames;
 }
 
@@ -83,18 +83,18 @@ std::vector<std::uint8_t> reassemble(Reassembler& reassembler,
 }  // namespace
 
 TEST_CASE("frames: the size limits follow from Noise's 65,535 bytes", "[sendspin][frames]") {
-    CHECK(ac3::sendspin::kMaxFramePlaintext == 65519);
-    CHECK(ac3::sendspin::kMaxFramePayload == 65518);
-    CHECK(ac3::sendspin::frame_count(1, Dialect::kSpecification) == 1);
-    CHECK(ac3::sendspin::frame_count(65519, Dialect::kSpecification) == 1);
-    CHECK(ac3::sendspin::frame_count(65520, Dialect::kSpecification) == 2);
-    CHECK(ac3::sendspin::frame_count(65520, Dialect::kAiosendspin911) == 2);
+    CHECK(iclforge::sendspin::kMaxFramePlaintext == 65519);
+    CHECK(iclforge::sendspin::kMaxFramePayload == 65518);
+    CHECK(iclforge::sendspin::frame_count(1, Dialect::kSpecification) == 1);
+    CHECK(iclforge::sendspin::frame_count(65519, Dialect::kSpecification) == 1);
+    CHECK(iclforge::sendspin::frame_count(65520, Dialect::kSpecification) == 2);
+    CHECK(iclforge::sendspin::frame_count(65520, Dialect::kAiosendspin911) == 2);
     // The specification's first frame carries 65,516 data bytes and later ones
     // 65,517; aiosendspin's 65,517 and 65,518.
-    CHECK(ac3::sendspin::frame_count(1 + 65516 + 65517, Dialect::kSpecification) == 2);
-    CHECK(ac3::sendspin::frame_count(1 + 65516 + 65517 + 1, Dialect::kSpecification) == 3);
-    CHECK(ac3::sendspin::frame_count(1 + 65517 + 65518, Dialect::kAiosendspin911) == 2);
-    CHECK(ac3::sendspin::frame_count(1 + 65517 + 65518 + 1, Dialect::kAiosendspin911) == 3);
+    CHECK(iclforge::sendspin::frame_count(1 + 65516 + 65517, Dialect::kSpecification) == 2);
+    CHECK(iclforge::sendspin::frame_count(1 + 65516 + 65517 + 1, Dialect::kSpecification) == 3);
+    CHECK(iclforge::sendspin::frame_count(1 + 65517 + 65518, Dialect::kAiosendspin911) == 2);
+    CHECK(iclforge::sendspin::frame_count(1 + 65517 + 65518 + 1, Dialect::kAiosendspin911) == 3);
 }
 
 TEST_CASE("frames: a message that fits goes out as itself", "[sendspin][frames]") {

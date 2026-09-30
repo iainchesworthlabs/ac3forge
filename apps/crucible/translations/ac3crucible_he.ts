@@ -154,42 +154,42 @@
         <translation>אין פלט</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="752"/>
+        <location filename="../ui/crucible_controller.cpp" line="753"/>
         <source>This build carries no embedded notices file (:/notices/NOTICES.txt was not compiled in); the NOTICES.txt beside the application and the repository&apos;s LICENSE say what it ships.</source>
         <translation>בנייה זו אינה נושאת קובץ הודעות מוטמע (:/notices/NOTICES.txt לא הודר לתוכה); קובץ NOTICES.txt שליד היישום וקובץ LICENSE שבמאגר אומרים מה היא כוללת.</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="1245"/>
+        <location filename="../ui/crucible_controller.cpp" line="1247"/>
         <source>saved to %1</source>
         <translation>נשמר אל %1</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="1248"/>
+        <location filename="../ui/crucible_controller.cpp" line="1250"/>
         <source>could not write %1: %2</source>
         <translation>לא ניתן היה לכתוב את %1: %2</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="1038"/>
+        <location filename="../ui/crucible_controller.cpp" line="1039"/>
         <source>installing, answer the elevation prompt ...</source>
         <translation>מתקין, יש לענות לבקשת ההרשאות…</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="1053"/>
+        <location filename="../ui/crucible_controller.cpp" line="1054"/>
         <source>removing, answer the elevation prompt ...</source>
         <translation>מסיר, יש לענות לבקשת ההרשאות…</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="1073"/>
+        <location filename="../ui/crucible_controller.cpp" line="1074"/>
         <source>installed</source>
         <translation>הותקן</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="1073"/>
+        <location filename="../ui/crucible_controller.cpp" line="1074"/>
         <source>removed</source>
         <translation>הוסר</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="1077"/>
+        <location filename="../ui/crucible_controller.cpp" line="1078"/>
         <source>%1 failed (exit code %2)</source>
         <translation>%1 נכשל (קוד יציאה %2)</translation>
     </message>

@@ -1430,7 +1430,7 @@ class WormholeShimmer {
 };
 
 // ---------------------------------------------------------------------------
-// The scene: ten named objects in one ac3::oba::ObjectScene, each with its own
+// The scene: ten named objects in one iclforge::oba::ObjectScene, each with its own
 // authored automation - the same type ac3cli's atmos-path reads from a file and
 // the GUI's timeline edits, so this cue sheet could equally have been loaded
 // from JSON rather than written here. Positions are
@@ -1457,7 +1457,7 @@ enum Object : std::size_t {
 // with linear automation - the default, and what this cue sheet was written
 // against. Names come from kObjectNames, keyed by the enum above, so the enum
 // stays the single place an object is introduced.
-ac3::oba::SceneObject make_object(std::vector<ac3::oba::AutomationPoint> automation) {
+iclforge::oba::SceneObject make_object(std::vector<iclforge::oba::AutomationPoint> automation) {
     return {.name = {}, .bed = 0, .automation = std::move(automation)};
 }
 
@@ -1465,8 +1465,8 @@ constexpr std::array<const char*, kObjectCount> kObjectNames{
     "broadcast",  "comet",    "jalopy_engine", "jalopy_radio", "runabout_a",
     "runabout_b", "work_pod", "wormhole_core", "shimmer_l",    "shimmer_r"};
 
-ac3::oba::ObjectScene build_scene() {
-    std::vector<ac3::oba::SceneObject> paths;
+iclforge::oba::ObjectScene build_scene() {
+    std::vector<iclforge::oba::SceneObject> paths;
     paths.reserve(kObjectCount);
 
     // kBroadcast: nailed to the station, far front-centre. Its gain arc IS
@@ -1586,7 +1586,7 @@ ac3::oba::ObjectScene build_scene() {
     for (std::size_t i = 0; i < paths.size(); ++i) {
         paths[i].name = kObjectNames[i];
     }
-    auto scene = ac3::oba::ObjectScene::create(std::move(paths));
+    auto scene = iclforge::oba::ObjectScene::create(std::move(paths));
     if (!scene.has_value()) {
         std::fputs("internal error: bad keyframe table\n", stderr);
         std::exit(1);
@@ -1596,7 +1596,7 @@ ac3::oba::ObjectScene build_scene() {
 
 // Radial velocity toward the listener (room centre), for Doppler. The room
 // is nominally 30 m square and 8 m tall - cinematic, not architectural.
-double listener_distance_m(const ac3::oba::Position& p) {
+double listener_distance_m(const iclforge::oba::Position& p) {
     const double dx = (p.x - 0.5) * 30.0;
     const double dy = (p.y - 0.5) * 30.0;
     const double dz = p.z * 8.0;
@@ -1637,10 +1637,10 @@ bool write_bytes(const std::string& path, std::span<const std::byte> bytes) {
 // 48 kHz, peak-normalized. Linear interpolation is beneath the codec but
 // fine for a source that then goes through a radio.
 std::vector<double> load_music(const std::string& path) {
-    const auto wav = ac3::io::read_wav(path);
+    const auto wav = iclforge::io::read_wav(path);
     if (!wav.has_value()) {
         fmt::printf("error: %s: %s\n", path.c_str(),
-                    std::string{ac3::io::describe(wav.error())}.c_str());
+                    std::string{iclforge::io::describe(wav.error())}.c_str());
         return {};
     }
     const std::size_t frames = wav->frame_count();
@@ -1698,17 +1698,17 @@ int main(int argc, char** argv) {
     // Object metadata competes with the mantissas for the same frame; ten
     // objects want more headroom than atmos_objects.cpp's three.
     // Heap-allocated: AtmosEncoder carries an eac3::AccessUnitEncoder (the
-    // same MDCT scratch/history state as ac3::eac3::FrameEncoder), and two
+    // same MDCT scratch/history state as iclforge::eac3::FrameEncoder), and two
     // of them stack-declared here pushed main() over PREfast's C6262
     // threshold - the same fix applied to FrameEncoder in PR #50.
     constexpr std::uint32_t kBitrateKbps = 640;
-    auto objects_encoder = std::make_unique<ac3::oba::AtmosEncoder>(
-        ac3::oba::AtmosConfig{.bitrate_kbps = kBitrateKbps}, static_cast<int>(kObjectCount));
+    auto objects_encoder = std::make_unique<iclforge::oba::AtmosEncoder>(
+        iclforge::oba::AtmosConfig{.bitrate_kbps = kBitrateKbps}, static_cast<int>(kObjectCount));
     // Same scene with the EMDF container omitted: the fallback for decoders
     // that validate emdf_protection (see ac3/oba/atmos.hpp for why this is
     // objects-or-nothing, never both).
-    auto bed51_encoder = std::make_unique<ac3::oba::AtmosEncoder>(
-        ac3::oba::AtmosConfig{.bitrate_kbps = kBitrateKbps, .emit_object_metadata = false},
+    auto bed51_encoder = std::make_unique<iclforge::oba::AtmosEncoder>(
+        iclforge::oba::AtmosConfig{.bitrate_kbps = kBitrateKbps, .emit_object_metadata = false},
         static_cast<int>(kObjectCount));
 
     const auto scene = build_scene();
@@ -1727,26 +1727,26 @@ int main(int argc, char** argv) {
     WormholeShimmer shimmer_r{0x227E58u};
 
     std::vector<std::vector<float>> essences(kObjectCount,
-                                             std::vector<float>(ac3::kSamplesPerFrame));
+                                             std::vector<float>(iclforge::kSamplesPerFrame));
     std::vector<std::span<const float>> views(kObjectCount);
     // Heap-allocated (PREfast's C6262, alert #66): each is 1536 doubles
     // (12KB), declared once here and reused every frame - the earlier fix
     // for this alert heap-allocated the two AtmosEncoders above but missed
     // these, which turned out to be the larger contributor.
-    std::vector<double> music_scratch(ac3::kSamplesPerFrame, 0.0);
-    std::vector<double> send_scratch(ac3::kSamplesPerFrame, 0.0);
+    std::vector<double> music_scratch(iclforge::kSamplesPerFrame, 0.0);
+    std::vector<double> send_scratch(iclforge::kSamplesPerFrame, 0.0);
 
     const auto total_frames = static_cast<std::uint64_t>(
-        (render_until * kRate + (ac3::kSamplesPerFrame - 1)) / ac3::kSamplesPerFrame);
+        (render_until * kRate + (iclforge::kSamplesPerFrame - 1)) / iclforge::kSamplesPerFrame);
     const auto first_encoded_frame = static_cast<std::uint64_t>(
-        encode_from * kRate / ac3::kSamplesPerFrame);
+        encode_from * kRate / iclforge::kSamplesPerFrame);
 
     std::vector<std::byte> objects_stream;
     std::vector<std::byte> bed51_stream;
     std::vector<std::vector<float>> bed_out(6);
     if (!smoke_test) {
         const auto samples =
-            static_cast<std::size_t>(total_frames) * ac3::kSamplesPerFrame;
+            static_cast<std::size_t>(total_frames) * iclforge::kSamplesPerFrame;
         for (auto& channel : bed_out) {
             channel.reserve(samples);
         }
@@ -1763,14 +1763,14 @@ int main(int argc, char** argv) {
     bool doppler_primed = false;
 
     // Refilled in place each frame by the scene rather than reallocated.
-    std::vector<ac3::oba::ObjectPlacement> placement(kObjectCount);
+    std::vector<iclforge::oba::ObjectPlacement> placement(kObjectCount);
 
     std::size_t next_cue = 0;
     std::uint64_t n0 = 0;
     for (std::uint64_t frame = 0; frame < total_frames; ++frame) {
         const double t_start = static_cast<double>(n0) / kRate;
         const double t_end =
-            static_cast<double>(n0 + ac3::kSamplesPerFrame) / kRate;
+            static_cast<double>(n0 + iclforge::kSamplesPerFrame) / kRate;
         while (next_cue < kCues.size() && kCues[next_cue].t <= t_start) {
             const double t = kCues[next_cue].t;
             fmt::printf("[%d:%04.1f] %s\n", static_cast<int>(t / 60.0),
@@ -1788,7 +1788,7 @@ int main(int argc, char** argv) {
             double factor = 1.0;
             if (doppler_primed) {
                 const double v =
-                    (dist - prev_dist[obj]) / (ac3::kSamplesPerFrame / kRate);
+                    (dist - prev_dist[obj]) / (iclforge::kSamplesPerFrame / kRate);
                 factor = std::clamp(343.0 / (343.0 + v), 0.86, 1.16);
             }
             prev_dist[obj] = dist;
@@ -1805,7 +1805,7 @@ int main(int argc, char** argv) {
         // transmitter. Full radio until the close-up cut at 0:38, opening to
         // nearly clean over 1.5 s; a floor of 0.15 keeps a little PA colour.
         anthem.render(t_start, music_scratch, send_scratch);
-        for (int n = 0; n < ac3::kSamplesPerFrame; ++n) {
+        for (int n = 0; n < iclforge::kSamplesPerFrame; ++n) {
             const auto i = static_cast<std::size_t>(n);
             const double t = t_start + static_cast<double>(n) * kDt;
             double src = music_scratch[i];
@@ -1833,7 +1833,7 @@ int main(int argc, char** argv) {
         // The jalopy's radio never opens up; it stays cheap and fluttery.
         if (t_end > 25.0 && t_start < 41.0) {
             boogie.render(t_start, music_scratch);
-            for (int n = 0; n < ac3::kSamplesPerFrame; ++n) {
+            for (int n = 0; n < iclforge::kSamplesPerFrame; ++n) {
                 const auto i = static_cast<std::size_t>(n);
                 const double t = t_start + static_cast<double>(n) * kDt;
                 essences[kJalopyRadio][i] = static_cast<float>(
@@ -1862,7 +1862,7 @@ int main(int argc, char** argv) {
             shimmer_r.render(t_start, essences[kShimmerR]);
         }
 
-        n0 += ac3::kSamplesPerFrame;
+        n0 += iclforge::kSamplesPerFrame;
         if (frame < first_encoded_frame) {
             continue;
         }
@@ -1909,8 +1909,8 @@ int main(int argc, char** argv) {
     }
 
     // The bed a legacy decoder hears, as a WAV in FL FR FC LFE BL BR order.
-    const auto order = ac3::io::wav_channel_order(ac3::Acmod::k3_2, true);
-    if (!ac3::io::write_wav_f32(prefix + "_bed.wav", bed_out, 48000, order).has_value()) {
+    const auto order = iclforge::io::wav_channel_order(iclforge::Acmod::k3_2, true);
+    if (!iclforge::io::write_wav_f32(prefix + "_bed.wav", bed_out, 48000, order).has_value()) {
         fmt::printf("error: cannot write %s_bed.wav\n", prefix.c_str());
         return 1;
     }
@@ -1936,7 +1936,7 @@ int main(int argc, char** argv) {
             s *= norm;
         }
     }
-    if (!ac3::io::write_wav_f32(prefix + "_stereo.wav", stereo, 48000).has_value()) {
+    if (!iclforge::io::write_wav_f32(prefix + "_stereo.wav", stereo, 48000).has_value()) {
         fmt::printf("error: cannot write %s_stereo.wav\n", prefix.c_str());
         return 1;
     }

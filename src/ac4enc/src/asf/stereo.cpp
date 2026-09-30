@@ -11,7 +11,7 @@
 
 #include "iclforge/ac4core/tables/huffman_codes.hpp"
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 namespace {
 
 // The largest |alpha_q| written. a = +-1 predicts a source panned to one side,
@@ -377,4 +377,4 @@ std::size_t chparam_info_bits(const StereoChoice& choice) {
     return w.bit_position();
 }
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

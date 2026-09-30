@@ -25,7 +25,7 @@
 #include "packets.hpp"
 #include "platform.hpp"
 
-namespace ac3::sendspin::discovery::mdns {
+namespace iclforge::sendspin::discovery::mdns {
 
 namespace {
 
@@ -363,4 +363,4 @@ std::unique_ptr<Browser> browse(std::string service, BrowseListener& listener, O
     return std::make_unique<MdnsBrowser>(std::move(sockets), service, listener);
 }
 
-}  // namespace ac3::sendspin::discovery::mdns
+}  // namespace iclforge::sendspin::discovery::mdns

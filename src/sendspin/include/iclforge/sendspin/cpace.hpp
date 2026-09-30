@@ -21,7 +21,7 @@
 // maps to the identity (a low-order point on the curve or its twist), aborts the
 // run, as do tags that do not verify. K is never exposed.
 
-namespace ac3::sendspin::cpace {
+namespace iclforge::sendspin::cpace {
 
 using crypto::Bytes;
 using crypto::Digest64;
@@ -95,4 +95,4 @@ class Party {
     bool spent_ = false;
 };
 
-}  // namespace ac3::sendspin::cpace
+}  // namespace iclforge::sendspin::cpace

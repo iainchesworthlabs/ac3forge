@@ -40,16 +40,16 @@
 namespace {
 
 namespace fs = std::filesystem;
-namespace m = ac3::sendspin::messages;
-namespace hs = ac3::sendspin::handshake;
-namespace ac = ac3::sendspin::ac3forge;
-namespace testsink = ac3::hearth::testsink;
-namespace websocket = ac3::sendspin::transport::websocket;
-using ac3::sendspin::crypto::Key32;
+namespace m = iclforge::sendspin::messages;
+namespace hs = iclforge::sendspin::handshake;
+namespace ac = iclforge::sendspin::ac3forge;
+namespace testsink = iclforge::hearth::testsink;
+namespace websocket = iclforge::sendspin::transport::websocket;
+using iclforge::sendspin::crypto::Key32;
 using namespace std::chrono_literals;
 
 std::string scratch_pid_suffix() {
-    return ac3::test::platform::process_id();
+    return iclforge::test::platform::process_id();
 }
 
 // A fresh scratch directory for one case.
@@ -115,7 +115,7 @@ class Keys final : public hs::ServerKeyring {
     [[nodiscard]] hs::PskChoice choose(const Key32& /*client_key*/) const override { return choice; }
 };
 
-class Events final : public ac3::sendspin::ServerListener {
+class Events final : public iclforge::sendspin::ServerListener {
    public:
     void on_hello(const m::ClientHello& /*hello*/) override { update([&] { ++hellos; }); }
     void on_state(const m::ClientState& state) override {
@@ -137,7 +137,7 @@ class Events final : public ac3::sendspin::ServerListener {
         update([&] { long_term_psk = psk; });
         return true;
     }
-    void on_pairing_ended(std::optional<ac3::sendspin::pairing_messages::AbortReason> reason) override {
+    void on_pairing_ended(std::optional<iclforge::sendspin::pairing_messages::AbortReason> reason) override {
         update([&] {
             ended = true;
             abort = reason;
@@ -157,7 +157,7 @@ class Events final : public ac3::sendspin::ServerListener {
     bool held_back = false;
     bool code_wanted = false;
     bool ended = false;
-    std::optional<ac3::sendspin::pairing_messages::AbortReason> abort;
+    std::optional<iclforge::sendspin::pairing_messages::AbortReason> abort;
     std::optional<m::GoodbyeReason> goodbye;
     std::optional<Key32> long_term_psk;
 
@@ -175,8 +175,9 @@ class Events final : public ac3::sendspin::ServerListener {
     std::condition_variable changed_;
 };
 
-ac3::sendspin::noise::KeyPair generated() {
-    std::optional<ac3::sendspin::noise::KeyPair> pair = ac3::sendspin::noise::KeyPair::generate();
+iclforge::sendspin::noise::KeyPair generated() {
+    std::optional<iclforge::sendspin::noise::KeyPair> pair =
+        iclforge::sendspin::noise::KeyPair::generate();
     REQUIRE(pair.has_value());
     return *pair;
 }
@@ -196,13 +197,13 @@ testsink::SinkOptions options_in(const fs::path& dir) {
 
 // One server dialled at a sink: its session, its events and the driver that runs them.
 struct Dialled {
-    ac3::sendspin::SteadyClock clock;
+    iclforge::sendspin::SteadyClock clock;
     Keys keys;
     Events events;
-    ac3::sendspin::ServerSession server;
-    std::unique_ptr<ac3::sendspin::SessionDriver> driver;
+    iclforge::sendspin::ServerSession server;
+    std::unique_ptr<iclforge::sendspin::SessionDriver> driver;
 
-    Dialled(const testsink::Sink& sink, const ac3::sendspin::noise::KeyPair& identity,
+    Dialled(const testsink::Sink& sink, const iclforge::sendspin::noise::KeyPair& identity,
             std::optional<hs::PskChoice> choice = std::nullopt)
         : server({.identity = identity, .name = "Edge server", .languages = {}, .max_message_bytes = 1 << 22}, keys,
                  events, clock) {
@@ -211,8 +212,8 @@ struct Dialled {
         }
         auto dialled = websocket::connect("ws://127.0.0.1:" + std::to_string(sink.port()) + "/sendspin");
         REQUIRE(dialled.has_value());
-        driver = std::make_unique<ac3::sendspin::SessionDriver>(
-            std::move(*dialled), ac3::sendspin::DrivenSession{
+        driver = std::make_unique<iclforge::sendspin::SessionDriver>(
+            std::move(*dialled), iclforge::sendspin::DrivenSession{
                                      .receive = [this](const auto& frame) { return server.receive(frame); },
                                      .tick = [this] { return server.tick(); },
                                      .next_tick_us = [this] { return server.next_tick_us(); },
@@ -457,7 +458,7 @@ TEST_CASE("test sink edges: a dynamic code is shown as a QR token or grouped dig
         REQUIRE(log.wait("PAIRING CODE SP:"));
         const auto token = log.code();
         REQUIRE(token.has_value());
-        CHECK(ac3::sendspin::pairing::decode_token(*token).has_value());
+        CHECK(iclforge::sendspin::pairing::decode_token(*token).has_value());
         // The operator gives up on the device.
         (*sink)->cancel_pairing();
         CHECK(log.wait("pairing cancelled"));
@@ -477,7 +478,7 @@ TEST_CASE("test sink edges: a dynamic code is shown as a QR token or grouped dig
         std::erase(wrong, '-');
         wrong[0] = wrong[0] == '0' ? '1' : '0';
         const std::size_t shown_before = log.count("[2] PAIRING CODE ");
-        REQUIRE(server.call([&] { return server.server.enter_code(ac3::sendspin::pairing_flow::Code{wrong}); }));
+        REQUIRE(server.call([&] { return server.server.enter_code(iclforge::sendspin::pairing_flow::Code{wrong}); }));
         // A wrong code costs a round, not the attempt: the sink shows a code again.
         CHECK(eventually([&] { return log.count("[2] PAIRING CODE ") > shown_before; }));
         CHECK_FALSE(log.has("[2] paired with server"));
@@ -510,7 +511,7 @@ TEST_CASE("test sink edges: a static code waits for the operator's window and th
 
     (*sink)->open_window();
     REQUIRE(server.events.wait([&] { return server.events.code_wanted; }));
-    REQUIRE(server.call([&] { return server.server.enter_code(ac3::sendspin::pairing_flow::Code{std::string("13572468")}); }));
+    REQUIRE(server.call([&] { return server.server.enter_code(iclforge::sendspin::pairing_flow::Code{std::string("13572468")}); }));
     REQUIRE(log.wait("paired with server "));
     CHECK(server.events.wait([&] { return server.events.long_term_psk.has_value(); }));
     // Once the attempt is over, a reset of the round limit has nothing to resume.
@@ -525,7 +526,8 @@ TEST_CASE("test sink edges: a server that unpairs is forgotten, and the sink say
     options.unpaired_access = false;
     auto sink = testsink::Sink::start(options, log);
     REQUIRE(sink.has_value());
-    const auto token = ac3::sendspin::pairing::decode_pairing_psk_token((*sink)->pairing_token());
+    const auto token =
+        iclforge::sendspin::pairing::decode_pairing_psk_token((*sink)->pairing_token());
     REQUIRE(token.has_value());
     const auto identity = generated();
     std::optional<Key32> long_term;

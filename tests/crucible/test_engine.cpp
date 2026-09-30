@@ -71,8 +71,8 @@
 // deadlines here are the other kind - a lower bound on stop(), and polls
 // that a slow run only reaches sooner than their limit.
 
-using namespace ac3::crucible;
-using namespace ac3::crucible::testing;
+using namespace iclforge::crucible;
+using namespace iclforge::crucible::testing;
 
 namespace {
 

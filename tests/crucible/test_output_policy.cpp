@@ -9,10 +9,10 @@
 // switching"), including the S1 rule that a bitstream mode is never chosen
 // on the endpoint applications render to.
 
-using ac3::crucible::choose_output;
-using ac3::crucible::EndpointFacts;
-using ac3::crucible::OutputMode;
-using ac3::crucible::OutputPolicyInput;
+using iclforge::crucible::choose_output;
+using iclforge::crucible::EndpointFacts;
+using iclforge::crucible::OutputMode;
+using iclforge::crucible::OutputPolicyInput;
 
 namespace {
 
@@ -203,7 +203,7 @@ TEST_CASE("every output mode describes itself", "[crucible]") {
     for (const auto mode : {OutputMode::kAtmos, OutputMode::kDdPlus51, OutputMode::kDd51,
                             OutputMode::kPcmSurround, OutputMode::kHeadphones, OutputMode::kStereo,
                             OutputMode::kNone}) {
-        CHECK_FALSE(ac3::crucible::describe(mode).empty());
-        CHECK(ac3::crucible::describe(mode) != "unknown output mode");
+        CHECK_FALSE(iclforge::crucible::describe(mode).empty());
+        CHECK(iclforge::crucible::describe(mode) != "unknown output mode");
     }
 }

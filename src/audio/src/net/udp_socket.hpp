@@ -30,7 +30,7 @@
 // Internal - not installed under include/ac3/audio/. Nothing outside
 // live_positions.cpp needs a socket type at all.
 
-namespace ac3::audio {
+namespace iclforge::audio {
 
 enum class UdpSocketError : std::uint8_t {
     kBadAddress,    // bind_address did not parse as an IPv4 dotted-quad
@@ -91,4 +91,4 @@ private:
     std::unique_ptr<Impl> impl_;
 };
 
-}  // namespace ac3::audio
+}  // namespace iclforge::audio

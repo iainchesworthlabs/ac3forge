@@ -60,7 +60,7 @@
 // would be a transient the encoder spends a block switch on - and encodes
 // until every sample taken has come out.
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 class Ac3Transcoder {
 public:
@@ -174,4 +174,4 @@ private:
     std::array<std::array<float, kSamplesPerBlock>, kChannels - 1> history_{};
 };
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

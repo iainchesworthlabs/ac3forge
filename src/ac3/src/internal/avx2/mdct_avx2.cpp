@@ -10,13 +10,13 @@
 #include "iclforge/dsp/detail/fft_kernel.hpp"
 #include "simd_avx2.hpp"
 
-namespace ac3::internal::avx2 {
+namespace iclforge::internal::avx2 {
 
 void apply_analysis_window(std::span<const double, 512> x, std::span<double, 512> windowed) {
     const double* const in = x.data();
     double* const out = windowed.data();
     for (std::size_t n = 0; n < 512; n += 4) {
-        (f64x4::load(in + n) * f64x4::load(&ac3::kAnalysisWindow[n])).store(out + n);
+        (f64x4::load(in + n) * f64x4::load(&iclforge::kAnalysisWindow[n])).store(out + n);
     }
 }
 
@@ -147,7 +147,7 @@ void imdct256_post_twiddle(std::span<const double> cos2, std::span<const double>
 void imdct512_windowed_batch4(std::span<const double> coeffs0, std::span<const double> coeffs1,
                               std::span<const double> coeffs2, std::span<const double> coeffs3,
                               std::span<const double> cos1, std::span<const double> sin1,
-                              const ac3::internal::FftTables<128>& fft, std::span<double> x0,
+                              const iclforge::internal::FftTables<128>& fft, std::span<double> x0,
                               std::span<double> x1, std::span<double> x2, std::span<double> x3) {
     constexpr std::size_t kQuarter = 128;
     constexpr std::size_t kEighth = 64;
@@ -230,7 +230,7 @@ void imdct512_windowed_batch4(std::span<const double> coeffs0, std::span<const d
     // order - each formula is the original evaluated at n and n + 1 - and
     // the transpose after them moves finished values only, so this stays
     // bit-identical to four separate scalar calls.
-    const auto& w = ac3::kAnalysisWindow;
+    const auto& w = iclforge::kAnalysisWindow;
     const auto yr = [&](std::size_t i) { return y_re[i]; };
     const auto yi = [&](std::size_t i) { return y_im[i]; };
     const auto store_run = [&](std::size_t base, f64x4 r0, f64x4 r1, f64x4 r2, f64x4 r3) {
@@ -268,7 +268,7 @@ void mdct512_forward_batch4(std::span<const double> w0, std::span<const double> 
                             std::span<const double> w2, std::span<const double> w3,
                             std::span<const double> pre_re, std::span<const double> pre_im,
                             std::span<const double> post_re, std::span<const double> post_im,
-                            const ac3::internal::FftTables<128>& fft, double scale,
+                            const iclforge::internal::FftTables<128>& fft, double scale,
                             std::span<double> c0, std::span<double> c1, std::span<double> c2,
                             std::span<double> c3) {
     constexpr std::size_t kQ = 128;       // NLen / 4
@@ -362,4 +362,4 @@ void mdct512_forward_batch4(std::span<const double> w0, std::span<const double> 
     }
 }
 
-}  // namespace ac3::internal::avx2
+}  // namespace iclforge::internal::avx2

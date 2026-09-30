@@ -14,7 +14,7 @@
 // with real MSVC for exactly that reason.
 // ---------------------------------------------------------------------------
 
-namespace ac3::internal::cpu {
+namespace iclforge::internal::cpu {
 
 // __builtin_cpu_supports("avx2") already performs both halves of the real
 // question - the CPUID AVX2 leaf bit AND the OS's XSAVE/XGETBV support for
@@ -26,4 +26,4 @@ namespace ac3::internal::cpu {
     return __builtin_cpu_supports("avx2") != 0;
 }
 
-}  // namespace ac3::internal::cpu
+}  // namespace iclforge::internal::cpu

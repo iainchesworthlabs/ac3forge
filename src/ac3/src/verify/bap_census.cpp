@@ -9,7 +9,7 @@
 #include "iclforge/ac3/verify/eac3_mirror.hpp"
 #include "iclforge/ac3/verify/mirror.hpp"
 
-namespace ac3::verify {
+namespace iclforge::verify {
 
 namespace {
 
@@ -118,4 +118,4 @@ std::string BapCensus::to_json() const {
     return out;
 }
 
-}  // namespace ac3::verify
+}  // namespace iclforge::verify

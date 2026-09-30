@@ -58,7 +58,7 @@
 // allocation-free discipline (see its own header comment) is exactly what
 // makes touching it from that thread safe.
 
-namespace ac3::coreaudio {
+namespace iclforge::coreaudio {
 
 // A CFTypeRef owned by scope - CFStringRef (device UID/name) is the only one
 // this backend ever gets back from a property read, but the release call is
@@ -238,7 +238,7 @@ template <typename T>
     return rates;
 }
 
-// The SPEAKER_* bit an AudioChannelLabel names (ac3::audio::speakers.hpp).
+// The SPEAKER_* bit an AudioChannelLabel names (iclforge::audio::speakers.hpp).
 // Apple's own header documents each label's WAVE equivalent, and these are
 // those: the surrounds of a 5.1 ring are kAudioChannelLabel_LeftSurround (WAVE
 // back left), and a 7.1 room's side speakers are the "surround direct" pair.
@@ -571,4 +571,4 @@ private:
     bool disabled_ = false;
 };
 
-}  // namespace ac3::coreaudio
+}  // namespace iclforge::coreaudio

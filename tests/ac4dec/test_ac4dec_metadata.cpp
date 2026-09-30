@@ -21,21 +21,21 @@
 
 namespace {
 
-using ac4::DecodeError;
-using ac4::detail::BitReader;
-using ac4::detail::DrcContext;
-using ac4::detail::DrcFrame;
-using ac4::detail::DrcState;
-using ac4::detail::EmdfPayloads;
-using ac4::detail::FurtherLoudnessInfo;
-using ac4::detail::Metadata;
-using ac4::detail::MetadataState;
-using ac4::detail::ParseResult;
-using ac4::detail::SubstreamContext;
+using iclforge::ac4::DecodeError;
+using iclforge::ac4::detail::BitReader;
+using iclforge::ac4::detail::DrcContext;
+using iclforge::ac4::detail::DrcFrame;
+using iclforge::ac4::detail::DrcState;
+using iclforge::ac4::detail::EmdfPayloads;
+using iclforge::ac4::detail::FurtherLoudnessInfo;
+using iclforge::ac4::detail::Metadata;
+using iclforge::ac4::detail::MetadataState;
+using iclforge::ac4::detail::ParseResult;
+using iclforge::ac4::detail::SubstreamContext;
 using ac4dec_test::BitWriter;
 using ac4dec_test::Recorder;
-namespace ch_mode = ac4::detail::ch_mode;
-namespace tables = ac4::detail::tables;
+namespace ch_mode = iclforge::ac4::detail::ch_mode;
+namespace tables = iclforge::ac4::detail::tables;
 
 // Reads `w` with `parse(reader)`, recording into `rec`, and returns the result
 // with the reader's final position.
@@ -143,7 +143,8 @@ TEST_CASE("metadata reads a sus_ver 0 5.1 substream's dialnorm, loudness and ste
     MetadataState state;
     Metadata out;
     const auto result = read_with(w, rec, end, [&](BitReader& r) {
-        return ac4::detail::parse_metadata(r, context(ch_mode::k5_1, 0, true), state, out);
+        return iclforge::ac4::detail::parse_metadata(r, context(ch_mode::k5_1, 0, true), state,
+                                                     out);
     });
     REQUIRE(result.has_value());
     CHECK(end == w.size());
@@ -222,7 +223,8 @@ TEST_CASE("metadata reads a sus_ver 1 stereo substream's loudness and previous d
     MetadataState state;
     Metadata out;
     const auto result = read_with(w, rec, end, [&](BitReader& r) {
-        return ac4::detail::parse_metadata(r, context(ch_mode::kStereo, 1, true), state, out);
+        return iclforge::ac4::detail::parse_metadata(r, context(ch_mode::kStereo, 1, true), state,
+                                                     out);
     });
     REQUIRE(result.has_value());
     CHECK(end == w.size());
@@ -281,7 +283,7 @@ TEST_CASE("metadata reads the upmix type of each 7.X layout", "[ac4dec][metadata
         MetadataState state;
         Metadata out;
         const auto result = read_with(w, rec, end, [&](BitReader& r) {
-            return ac4::detail::parse_metadata(r, context(c.mode, 1, true), state, out);
+            return iclforge::ac4::detail::parse_metadata(r, context(c.mode, 1, true), state, out);
         });
         REQUIRE(result.has_value());
         CHECK(end == w.size());
@@ -322,7 +324,7 @@ TEST_CASE("metadata reads a sus_ver 0 associated mono substream's scaling and pa
     MetadataState state;
     Metadata out;
     const auto result =
-        read_with(w, rec, end, [&](BitReader& r) { return ac4::detail::parse_metadata(r, ctx, state, out); });
+        read_with(w, rec, end, [&](BitReader& r) { return iclforge::ac4::detail::parse_metadata(r, ctx, state, out); });
     REQUIRE(result.has_value());
     CHECK(end == w.size());
     CHECK(out.basic.dialnorm_bits == 31);
@@ -378,7 +380,7 @@ TEST_CASE("extended_metadata classifies every channel its channel mode holds", "
         MetadataState state;
         Metadata out;
         const auto result = read_with(w, rec, end, [&](BitReader& r) {
-            return ac4::detail::parse_metadata(r, context(c.mode, 1, true), state, out);
+            return iclforge::ac4::detail::parse_metadata(r, context(c.mode, 1, true), state, out);
         });
         REQUIRE(result.has_value());
         CHECK(end == w.size());
@@ -408,7 +410,8 @@ TEST_CASE("metadata fails when tools_metadata_size disagrees with the tools read
     MetadataState state;
     Metadata out;
     const auto result = read_with(w, rec, end, [&](BitReader& r) {
-        return ac4::detail::parse_metadata(r, context(ch_mode::kStereo, 1, true), state, out);
+        return iclforge::ac4::detail::parse_metadata(r, context(ch_mode::kStereo, 1, true), state,
+                                                     out);
     });
     REQUIRE_FALSE(result.has_value());
     CHECK(result.error().error == DecodeError::kInvalidStream);
@@ -437,7 +440,8 @@ TEST_CASE("metadata reads an inline emdf_payloads_substream()", "[ac4dec][metada
     MetadataState state;
     Metadata out;
     const auto result = read_with(w, rec, end, [&](BitReader& r) {
-        return ac4::detail::parse_metadata(r, context(ch_mode::kStereo, 1, true), state, out);
+        return iclforge::ac4::detail::parse_metadata(r, context(ch_mode::kStereo, 1, true), state,
+                                                     out);
     });
     REQUIRE(result.has_value());
     CHECK(end == w.size());
@@ -457,7 +461,8 @@ TEST_CASE("metadata stops with kTruncated when the substream ends inside it", "[
     Metadata out;
     // Two bits of data in one byte: the loudness bits run past the byte.
     const auto result = read_with(w, rec, end, [&](BitReader& r) {
-        return ac4::detail::parse_metadata(r, context(ch_mode::kStereo, 1, true), state, out);
+        return iclforge::ac4::detail::parse_metadata(r, context(ch_mode::kStereo, 1, true), state,
+                                                     out);
     });
     REQUIRE_FALSE(result.has_value());
     CHECK(result.error().error == DecodeError::kTruncated);
@@ -511,7 +516,7 @@ TEST_CASE("further_loudness_info reads every optional field of the full form", "
     std::size_t end = 0;
     FurtherLoudnessInfo info;
     const auto result = read_with(
-        w, rec, end, [&](BitReader& r) { return ac4::detail::parse_further_loudness_info(r, 0, false, info); });
+        w, rec, end, [&](BitReader& r) { return iclforge::ac4::detail::parse_further_loudness_info(r, 0, false, info); });
     REQUIRE(result.has_value());
     CHECK(end == w.size());
     CHECK(info.loudness_version == 5);
@@ -566,7 +571,7 @@ TEST_CASE("further_loudness_info refuses malformed extensions and unterminated b
         std::size_t end = 0;
         FurtherLoudnessInfo info;
         const auto result = read_with(
-            w, rec, end, [&](BitReader& r) { return ac4::detail::parse_further_loudness_info(r, 0, false, info); });
+            w, rec, end, [&](BitReader& r) { return iclforge::ac4::detail::parse_further_loudness_info(r, 0, false, info); });
         REQUIRE_FALSE(result.has_value());
         CHECK(result.error().error == DecodeError::kInvalidStream);
     }
@@ -581,7 +586,7 @@ TEST_CASE("further_loudness_info refuses malformed extensions and unterminated b
         std::size_t end = 0;
         FurtherLoudnessInfo info;
         const auto result = read_with(
-            w, rec, end, [&](BitReader& r) { return ac4::detail::parse_further_loudness_info(r, 1, true, info); });
+            w, rec, end, [&](BitReader& r) { return iclforge::ac4::detail::parse_further_loudness_info(r, 1, true, info); });
         REQUIRE_FALSE(result.has_value());
         CHECK(result.error().error == DecodeError::kTruncated);
         CHECK(rec.count("extensions_bits") == 0);
@@ -599,7 +604,7 @@ TEST_CASE("further_loudness_info refuses malformed extensions and unterminated b
         std::size_t end = 0;
         FurtherLoudnessInfo info;
         const auto result = read_with(
-            w, rec, end, [&](BitReader& r) { return ac4::detail::parse_further_loudness_info(r, 1, true, info); });
+            w, rec, end, [&](BitReader& r) { return iclforge::ac4::detail::parse_further_loudness_info(r, 1, true, info); });
         REQUIRE_FALSE(result.has_value());
         CHECK(result.error().error == DecodeError::kTruncated);
         // One record per zero the data holds, padding included: 13 bits
@@ -611,8 +616,8 @@ TEST_CASE("further_loudness_info refuses malformed extensions and unterminated b
 // --- drc_frame() ------------------------------------------------------------
 
 TEST_CASE("DRC helper tables give each channel mode and frame length its count", "[ac4dec][metadata]") {
-    using ac4::detail::nr_drc_channels;
-    using ac4::detail::nr_drc_subframes;
+    using iclforge::ac4::detail::nr_drc_channels;
+    using iclforge::ac4::detail::nr_drc_subframes;
     const auto channels = [](int mode) { return nr_drc_channels(DrcContext{.ch_mode = mode}); };
     CHECK(channels(ch_mode::kMono) == 1);
     CHECK(channels(ch_mode::kStereo) == 1);
@@ -708,7 +713,7 @@ TEST_CASE("drc_frame reads a configuration of three modes and their gains", "[ac
     DrcState state;
     DrcFrame out;
     const auto result =
-        read_with(w, rec, end, [&](BitReader& r) { return ac4::detail::parse_drc_frame(r, ctx, state, out); });
+        read_with(w, rec, end, [&](BitReader& r) { return iclforge::ac4::detail::parse_drc_frame(r, ctx, state, out); });
     REQUIRE(result.has_value());
     CHECK(end == w.size());
     CHECK(out.drc_config_present);
@@ -761,7 +766,7 @@ TEST_CASE("drc_frame reads a configuration of three modes and their gains", "[ac
         DrcFrame later;
         const DrcContext non_iframe{.b_iframe = false, .ch_mode = ch_mode::k5_1, .frame_len_base = 512};
         const auto again = read_with(next, rec2, end, [&](BitReader& r) {
-            return ac4::detail::parse_drc_frame(r, non_iframe, state, later);
+            return iclforge::ac4::detail::parse_drc_frame(r, non_iframe, state, later);
         });
         REQUIRE(again.has_value());
         CHECK(end == next.size());
@@ -777,14 +782,14 @@ TEST_CASE("drc_frame reads a configuration of three modes and their gains", "[ac
         Recorder rec2;
         DrcFrame none;
         REQUIRE(read_with(off, rec2, end, [&](BitReader& r) {
-                    return ac4::detail::parse_drc_frame(r, ctx, state, none);
+                    return iclforge::ac4::detail::parse_drc_frame(r, ctx, state, none);
                 }).has_value());
         CHECK_FALSE(state.config_valid);
         BitWriter next;
         next.flag(true);
         const DrcContext non_iframe{.b_iframe = false, .ch_mode = ch_mode::k5_1, .frame_len_base = 512};
         const auto missing = read_with(next, rec2, end, [&](BitReader& r) {
-            return ac4::detail::parse_drc_frame(r, non_iframe, state, none);
+            return iclforge::ac4::detail::parse_drc_frame(r, non_iframe, state, none);
         });
         REQUIRE_FALSE(missing.has_value());
         CHECK(missing.error().error == DecodeError::kMissingIFrame);
@@ -829,7 +834,7 @@ TEST_CASE("drc_frame reads a full compression curve", "[ac4dec][metadata]") {
     DrcFrame out;
     const DrcContext ctx{.b_iframe = true, .ch_mode = ch_mode::kStereo, .frame_len_base = 2048};
     const auto result =
-        read_with(w, rec, end, [&](BitReader& r) { return ac4::detail::parse_drc_frame(r, ctx, state, out); });
+        read_with(w, rec, end, [&](BitReader& r) { return iclforge::ac4::detail::parse_drc_frame(r, ctx, state, out); });
     REQUIRE(result.has_value());
     CHECK(end == w.size());
     REQUIRE(state.config.mode[1].curve.has_value());
@@ -870,7 +875,7 @@ TEST_CASE("drc_frame refuses what its syntax cannot follow", "[ac4dec][metadata]
         std::size_t end = 0;
         DrcState state;
         DrcFrame out;
-        return read_with(w, rec, end, [&](BitReader& r) { return ac4::detail::parse_drc_frame(r, ctx, state, out); });
+        return read_with(w, rec, end, [&](BitReader& r) { return iclforge::ac4::detail::parse_drc_frame(r, ctx, state, out); });
     };
     const DrcContext stereo{.b_iframe = true, .ch_mode = ch_mode::kStereo, .frame_len_base = 2048};
 
@@ -976,7 +981,8 @@ TEST_CASE("a sus_ver 0 substream's metadata carries a long drc_frame behind esca
     MetadataState state;
     Metadata out;
     const auto result = read_with(w, rec, end, [&](BitReader& r) {
-        return ac4::detail::parse_metadata(r, context(ch_mode::kStereo, 0, true), state, out);
+        return iclforge::ac4::detail::parse_metadata(r, context(ch_mode::kStereo, 0, true), state,
+                                                     out);
     });
     REQUIRE(result.has_value());
     CHECK(end == w.size());
@@ -1005,7 +1011,7 @@ ParseResult read_metadata(const BitWriter& w, const SubstreamContext& ctx, Metad
                           Recorder& rec) {
     std::size_t end = 0;
     const auto result =
-        read_with(w, rec, end, [&](BitReader& r) { return ac4::detail::parse_metadata(r, ctx, state, out); });
+        read_with(w, rec, end, [&](BitReader& r) { return iclforge::ac4::detail::parse_metadata(r, ctx, state, out); });
     if (result) {
         CHECK(end == w.size());
     }
@@ -1021,7 +1027,7 @@ void put_de_config(BitWriter& w, int method, int max_gain, int channel_config) {
 }  // namespace
 
 TEST_CASE("de_nr_channels follows Table 171", "[ac4dec][metadata]") {
-    using ac4::detail::de_nr_channels;
+    using iclforge::ac4::detail::de_nr_channels;
     CHECK(de_nr_channels(0b000) == 0);
     CHECK(de_nr_channels(0b001) == 1);
     CHECK(de_nr_channels(0b010) == 1);
@@ -1303,7 +1309,8 @@ TEST_CASE("dialog_enhancement fails on a codeword cut short by the end of the su
     Recorder rec;
     std::size_t end = 0;
     const auto result = read_with(w, rec, end, [&](BitReader& r) {
-        return ac4::detail::parse_metadata(r, context(ch_mode::kMono, 1, true), state, out);
+        return iclforge::ac4::detail::parse_metadata(r, context(ch_mode::kMono, 1, true), state,
+                                                     out);
     });
     REQUIRE_FALSE(result.has_value());
     CHECK(result.error().error == DecodeError::kTruncated);
@@ -1356,7 +1363,7 @@ TEST_CASE("emdf_payloads_substream reads each payload configuration", "[ac4dec][
     std::size_t end = 0;
     EmdfPayloads out;
     const auto result =
-        read_with(w, rec, end, [&](BitReader& r) { return ac4::detail::parse_emdf_payloads_substream(r, out); });
+        read_with(w, rec, end, [&](BitReader& r) { return iclforge::ac4::detail::parse_emdf_payloads_substream(r, out); });
     REQUIRE(result.has_value());
     CHECK(end == w.size());
     REQUIRE(out.payloads.size() == 3);
@@ -1392,7 +1399,7 @@ TEST_CASE("emdf_payloads_substream refuses a payload size past the end", "[ac4de
     std::size_t end = 0;
     EmdfPayloads out;
     const auto result =
-        read_with(w, rec, end, [&](BitReader& r) { return ac4::detail::parse_emdf_payloads_substream(r, out); });
+        read_with(w, rec, end, [&](BitReader& r) { return iclforge::ac4::detail::parse_emdf_payloads_substream(r, out); });
     REQUIRE_FALSE(result.has_value());
     CHECK(result.error().error == DecodeError::kTruncated);
     CHECK(rec.count("emdf_payload_byte") == 0);

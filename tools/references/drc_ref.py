@@ -146,7 +146,7 @@ def emit() -> None:
         "#include <array>",
         "#include <cstdint>",
         "",
-        "namespace ac3::golden {",
+        "namespace iclforge::golden {",
         "",
         "// Linear gain of every dynrng word (A/52 section 7.7.1.2).",
         "inline constexpr std::array<double, 256> kDynrngGain = {{",
@@ -183,7 +183,7 @@ def emit() -> None:
     ]
     for db, d, c in cases:
         lines.append(f"    {{{db!r}, 0x{d:02X}, 0x{c:02X}}},")
-    lines += ["}};", "", "}  // namespace ac3::golden", ""]
+    lines += ["}};", "", "}  // namespace iclforge::golden", ""]
 
     OUT.write_text("\n".join(lines), encoding="utf-8")
     print(f"wrote {OUT} ({len(cases)} quantiser cases)")

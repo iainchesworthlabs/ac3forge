@@ -7,7 +7,7 @@
 #include <string>
 #include <string_view>
 
-namespace ac3::audio {
+namespace iclforge::audio {
 
 // WASAPI loopback tap. An audio endpoint arriving, leaving, changing state or
 // becoming the default: the events an application that follows the sink
@@ -87,4 +87,4 @@ private:
     std::unique_ptr<Impl> impl_;
 };
 
-}  // namespace ac3::audio
+}  // namespace iclforge::audio

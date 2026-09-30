@@ -18,8 +18,8 @@
 
 namespace {
 
-using ac3::sendspin::ClockSync;
-namespace m = ac3::sendspin::messages;
+using iclforge::sendspin::ClockSync;
+namespace m = iclforge::sendspin::messages;
 
 // A server clock: offset plus drift, in parts per million, relative to the client's.
 struct ServerClock {

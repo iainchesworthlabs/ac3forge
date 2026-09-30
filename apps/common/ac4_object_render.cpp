@@ -7,11 +7,11 @@
 #include "iclforge/ac3/core/eac3_tables.hpp"
 #include "iclforge/objects/oamd.hpp"
 
-namespace ac3::apps {
+namespace iclforge::apps {
 namespace {
 
-using Location = ac3::eac3::chanmap::Location;
-using S = ac4::Speaker;
+using Location = iclforge::eac3::chanmap::Location;
+using S = iclforge::ac4::Speaker;
 
 // Where each of AC-4's speakers sits among E-AC-3's locations (Table E2.5),
 // which the layout renderer places: the back pair at the rear surrounds, the
@@ -55,32 +55,32 @@ using S = ac4::Speaker;
     return Location::kCentre;
 }
 
-[[nodiscard]] std::vector<S> speakers_for(ac4::DownmixTarget target) {
+[[nodiscard]] std::vector<S> speakers_for(iclforge::ac4::DownmixTarget target) {
     switch (target) {
-        case ac4::DownmixTarget::k7X2:
+        case iclforge::ac4::DownmixTarget::k7X2:
             return {S::kLeft,         S::kRight,         S::kCentre,   S::kLfe,
                     S::kLeftSurround, S::kRightSurround, S::kLeftBack, S::kRightBack,
                     S::kTopSideLeft,  S::kTopSideRight};
-        case ac4::DownmixTarget::k7X0:
+        case iclforge::ac4::DownmixTarget::k7X0:
             return {S::kLeft,         S::kRight,         S::kCentre,   S::kLfe,
                     S::kLeftSurround, S::kRightSurround, S::kLeftBack, S::kRightBack};
-        case ac4::DownmixTarget::k5X4:
+        case iclforge::ac4::DownmixTarget::k5X4:
             return {S::kLeft,         S::kRight,         S::kCentre,       S::kLfe,
                     S::kLeftSurround, S::kRightSurround, S::kTopFrontLeft, S::kTopFrontRight,
                     S::kTopBackLeft,  S::kTopBackRight};
-        case ac4::DownmixTarget::k5X2:
+        case iclforge::ac4::DownmixTarget::k5X2:
             return {S::kLeft,         S::kRight,         S::kCentre,      S::kLfe,
                     S::kLeftSurround, S::kRightSurround, S::kTopSideLeft, S::kTopSideRight};
-        case ac4::DownmixTarget::k5X:
+        case iclforge::ac4::DownmixTarget::k5X:
             return {S::kLeft, S::kRight, S::kCentre, S::kLfe, S::kLeftSurround, S::kRightSurround};
-        case ac4::DownmixTarget::kStereo:
-        case ac4::DownmixTarget::kLoRo:
-        case ac4::DownmixTarget::kLtRt:
+        case iclforge::ac4::DownmixTarget::kStereo:
+        case iclforge::ac4::DownmixTarget::kLoRo:
+        case iclforge::ac4::DownmixTarget::kLtRt:
             return {S::kLeft, S::kRight};
-        case ac4::DownmixTarget::kMono:
+        case iclforge::ac4::DownmixTarget::kMono:
             return {S::kCentre};
-        case ac4::DownmixTarget::kAsCoded:
-        case ac4::DownmixTarget::k7X4:
+        case iclforge::ac4::DownmixTarget::kAsCoded:
+        case iclforge::ac4::DownmixTarget::k7X4:
             break;
     }
     return {S::kLeft,         S::kRight,         S::kCentre,      S::kLfe,
@@ -98,16 +98,17 @@ using S = ac4::Speaker;
         .value_or(render::OutputLayout::stereo());
 }
 
-[[nodiscard]] float linear_gain(const ac4::ObjectProperties& p) {
+[[nodiscard]] float linear_gain(const iclforge::ac4::ObjectProperties& p) {
     return p.active ? static_cast<float>(std::pow(10.0, p.gain_db / 20.0)) : 0.0F;
 }
 
 }  // namespace
 
-Ac4ObjectRenderer::Ac4ObjectRenderer(ac4::DownmixTarget target, std::uint32_t sample_rate_hz)
+Ac4ObjectRenderer::Ac4ObjectRenderer(iclforge::ac4::DownmixTarget target,
+                                     std::uint32_t sample_rate_hz)
     : speakers_(speakers_for(target)), renderer_(output_layout(speakers_), sample_rate_hz) {}
 
-std::span<const ac4::Speaker> Ac4ObjectRenderer::speakers() const noexcept {
+std::span<const iclforge::ac4::Speaker> Ac4ObjectRenderer::speakers() const noexcept {
     return speakers_;
 }
 
@@ -115,10 +116,10 @@ void Ac4ObjectRenderer::reset() {
     tracks_.clear();
 }
 
-Ac4ObjectRenderer::Gains Ac4ObjectRenderer::speaker_gains(ac4::Speaker speaker) {
+Ac4ObjectRenderer::Gains Ac4ObjectRenderer::speaker_gains(iclforge::ac4::Speaker speaker) {
     // The bed as the one channel: the layout renderer's gain from it to each
     // slot, 1 to the slot of its own location where the layout has one.
-    ac3::eac3::chanmap::Layout bed;
+    iclforge::eac3::chanmap::Layout bed;
     bed.items[0] = location_of(speaker);
     bed.count = 1;
     renderer_.set_bed(bed);
@@ -129,13 +130,14 @@ Ac4ObjectRenderer::Gains Ac4ObjectRenderer::speaker_gains(ac4::Speaker speaker) 
     return out;
 }
 
-std::vector<float> Ac4ObjectRenderer::object_gains(const ac4::ObjectProperties& properties) {
-    ac3::oba::DisplayObject object;
+std::vector<float> Ac4ObjectRenderer::object_gains(
+    const iclforge::ac4::ObjectProperties& properties) {
+    iclforge::oba::DisplayObject object;
     object.position = {
         .x = properties.position[0], .y = properties.position[1], .z = properties.position[2]};
     object.gain_db = properties.gain_db;
     object.active = properties.active;
-    renderer_.set_objects(std::span<const ac3::oba::DisplayObject>(&object, 1));
+    renderer_.set_objects(std::span<const iclforge::oba::DisplayObject>(&object, 1));
     std::vector<float> out(speakers_.size());
     for (std::size_t slot = 0; slot < speakers_.size(); ++slot) {
         out[slot] = renderer_.object_gain(0, slot);
@@ -143,10 +145,10 @@ std::vector<float> Ac4ObjectRenderer::object_gains(const ac4::ObjectProperties& 
     return out;
 }
 
-Ac4ObjectRenderer::Gains Ac4ObjectRenderer::gains_of(const ac4::DecodedObject& object,
-                                                     const ac4::ObjectProperties& properties) {
+Ac4ObjectRenderer::Gains Ac4ObjectRenderer::gains_of(
+    const iclforge::ac4::DecodedObject& object, const iclforge::ac4::ObjectProperties& properties) {
     Gains out{};
-    if (object.speaker && (object.kind == ac4::ObjectKind::kBed || object.lfe)) {
+    if (object.speaker && (object.kind == iclforge::ac4::ObjectKind::kBed || object.lfe)) {
         out = speaker_gains(*object.speaker);
         const float gain = linear_gain(properties);
         for (float& g : out) {
@@ -155,7 +157,7 @@ Ac4ObjectRenderer::Gains Ac4ObjectRenderer::gains_of(const ac4::DecodedObject& o
         return out;
     }
     if (object.lfe) {
-        out = speaker_gains(ac4::Speaker::kLfe);
+        out = speaker_gains(iclforge::ac4::Speaker::kLfe);
         const float gain = linear_gain(properties);
         for (float& g : out) {
             g *= gain;
@@ -167,7 +169,7 @@ Ac4ObjectRenderer::Gains Ac4ObjectRenderer::gains_of(const ac4::DecodedObject& o
     return out;
 }
 
-void Ac4ObjectRenderer::render(const ac4::DecodedFrame& frame,
+void Ac4ObjectRenderer::render(const iclforge::ac4::DecodedFrame& frame,
                                std::vector<std::vector<float>>& out) {
     const std::size_t slots = speakers_.size();
     const std::size_t samples = frame.samples;
@@ -199,13 +201,13 @@ void Ac4ObjectRenderer::render(const ac4::DecodedFrame& frame,
         }
     }
     for (std::size_t o = 0; o < frame.objects.size(); ++o) {
-        const ac4::DecodedObject& object = frame.objects[o];
+        const iclforge::ac4::DecodedObject& object = frame.objects[o];
         Track& track = tracks_[o];
         std::size_t u = 0;
         const std::size_t n = std::min(samples, object.samples.size());
         for (std::size_t k = 0; k < n; ++k) {
             while (u < object.updates.size() && object.updates[u].sample <= k) {
-                const ac4::ObjectUpdate& update = object.updates[u++];
+                const iclforge::ac4::ObjectUpdate& update = object.updates[u++];
                 track.target = gains_of(object, update.properties);
                 track.left = std::max(update.ramp_samples, 0);
                 for (std::size_t slot = 0; slot < slots; ++slot) {
@@ -234,4 +236,4 @@ void Ac4ObjectRenderer::render(const ac4::DecodedFrame& frame,
     }
 }
 
-}  // namespace ac3::apps
+}  // namespace iclforge::apps

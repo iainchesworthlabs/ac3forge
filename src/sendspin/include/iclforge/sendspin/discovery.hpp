@@ -13,7 +13,7 @@
 //
 // On a computer the backend is mjansson's mdns (mdns.hpp); a board brings espressif/mdns.
 
-namespace ac3::sendspin::discovery {
+namespace iclforge::sendspin::discovery {
 
 // The service types, without the .local domain.
 inline constexpr std::string_view kPlayerService = "_sendspin._tcp";
@@ -95,4 +95,4 @@ class Browser {
     virtual void refresh() = 0;
 };
 
-}  // namespace ac3::sendspin::discovery
+}  // namespace iclforge::sendspin::discovery

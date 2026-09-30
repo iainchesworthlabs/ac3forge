@@ -7,8 +7,8 @@
 // Registers nothing, deliberately, on the same reasoning as the signing
 // absent/ variant beside it.
 
-namespace ac3::python {
+namespace iclforge::python {
 
 void register_containers(pybind11::module_& /*m*/) {}
 
-}  // namespace ac3::python
+}  // namespace iclforge::python

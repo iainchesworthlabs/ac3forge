@@ -80,7 +80,7 @@
 #include "candidates.hpp"
 #include "device_names.hpp"
 
-namespace ac3::audio {
+namespace iclforge::audio {
 
 namespace {
 
@@ -210,7 +210,7 @@ bool probe(const std::string& name, std::uint32_t carrier) {
     return configure(handle, carrier, /*burst_frames=*/0, /*commit=*/false);
 }
 
-// The SPEAKER_* bit an ALSA channel position names (ac3::audio::speakers.hpp).
+// The SPEAKER_* bit an ALSA channel position names (iclforge::audio::speakers.hpp).
 // 0 for the positions that are not a speaker - SND_CHMAP_NA (a channel to
 // leave alone), MONO, and the two "unknown" values - and for a position
 // WAVEFORMATEXTENSIBLE has no bit for.
@@ -808,4 +808,4 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
     return {};
 }
 
-}  // namespace ac3::audio
+}  // namespace iclforge::audio

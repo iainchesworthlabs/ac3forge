@@ -5,7 +5,7 @@
 
 #include "iclforge/ac4core/tables/sfb_tables.hpp"
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 namespace {
 
 constexpr int kMatselCount = 12;
@@ -203,4 +203,4 @@ ParseResult apply_additional_pair(const SubstreamContext& ctx, const AsfPsyInfo&
     return {};
 }
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

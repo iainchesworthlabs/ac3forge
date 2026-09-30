@@ -4,7 +4,7 @@
 
 #include "network_view.hpp"
 
-// ac3::hearth::to_row()/to_detail() (apps/hearth/engine/network_view.cpp): what
+// iclforge::hearth::to_row()/to_detail() (apps/hearth/engine/network_view.cpp): what
 // the Network page's list row and "THIS SINK" panel show, built from
 // hand-written SinkFacts. Nothing here opens a socket - see
 // tests/hearth/test_network_sinks.cpp for NetworkSinks itself, the way
@@ -15,15 +15,15 @@
 // fixes the exact words (network-pairing.png's "N slots at N-bit, as it
 // reports", "not synchronised until paired").
 
-using ac3::hearth::GroupFacts;
-using ac3::hearth::GroupMemberFacts;
-using ac3::hearth::PairState;
-using ac3::hearth::SinkFacts;
-using ac3::hearth::SinkKind;
-using ac3::hearth::to_detail;
-using ac3::hearth::to_group_detail;
-using ac3::hearth::to_group_row;
-using ac3::hearth::to_row;
+using iclforge::hearth::GroupFacts;
+using iclforge::hearth::GroupMemberFacts;
+using iclforge::hearth::PairState;
+using iclforge::hearth::SinkFacts;
+using iclforge::hearth::SinkKind;
+using iclforge::hearth::to_detail;
+using iclforge::hearth::to_group_detail;
+using iclforge::hearth::to_group_row;
+using iclforge::hearth::to_row;
 
 namespace {
 
@@ -326,8 +326,8 @@ TEST_CASE("network view: an empty group has nothing to report yet", "[hearth][ne
 }
 
 TEST_CASE("network view: the connection in words", "[hearth][network-view]") {
-    using ac3::hearth::link_text;
-    using ac3::hearth::SinkLink;
+    using iclforge::hearth::link_text;
+    using iclforge::hearth::SinkLink;
     SinkFacts facts = hearth_sink();
 
     facts.link = SinkLink::kConnected;
@@ -367,7 +367,7 @@ TEST_CASE("network view: the connection in words", "[hearth][network-view]") {
 }
 
 TEST_CASE("network view: what the page may offer for a sink", "[hearth][network-view]") {
-    using ac3::hearth::SinkLink;
+    using iclforge::hearth::SinkLink;
     SinkFacts paired = hearth_sink();
     paired.link = SinkLink::kIdle;
     auto detail = to_detail(paired);

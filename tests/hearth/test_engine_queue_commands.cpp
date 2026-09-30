@@ -28,16 +28,16 @@ using namespace std::chrono_literals;
 
 namespace {
 
-using ac3::hearth::DiagnosticLog;
-using ac3::hearth::Engine;
-using ac3::hearth::EngineOutputs;
-using ac3::hearth::EngineStatus;
-using ac3::hearth::EngineTiming;
-using ac3::hearth::LoadedItem;
-using ac3::hearth::OpenOutputFormat;
-using ac3::hearth::OutputMode;
-using ac3::hearth::PcmSink;
-using ac3::hearth::QueueItem;
+using iclforge::hearth::DiagnosticLog;
+using iclforge::hearth::Engine;
+using iclforge::hearth::EngineOutputs;
+using iclforge::hearth::EngineStatus;
+using iclforge::hearth::EngineTiming;
+using iclforge::hearth::LoadedItem;
+using iclforge::hearth::OpenOutputFormat;
+using iclforge::hearth::OutputMode;
+using iclforge::hearth::PcmSink;
+using iclforge::hearth::QueueItem;
 
 // A device that opens and takes nothing: enough for an engine that is never asked to play.
 class IdleDevice final : public PcmSink {
@@ -51,7 +51,7 @@ public:
     void close() override { open_ = false; }
     [[nodiscard]] bool is_open() const override { return open_; }
     bool submit(std::span<const std::span<const float>> /*slots*/, std::size_t /*frames*/) override { return false; }
-    [[nodiscard]] std::optional<ac3::audio::MonitorPosition> position() const override { return std::nullopt; }
+    [[nodiscard]] std::optional<iclforge::audio::MonitorPosition> position() const override { return std::nullopt; }
     void flush() override {}
     bool pause() override { return open_; }
     bool resume() override { return open_; }
@@ -71,8 +71,8 @@ std::expected<LoadedItem, std::string> no_files(const std::string& path) {
     return std::unexpected("no such file: " + path);
 }
 
-ac3::render::OutputLayout stereo() {
-    const auto layout = ac3::render::OutputLayout::parse("2.0");
+iclforge::render::OutputLayout stereo() {
+    const auto layout = iclforge::render::OutputLayout::parse("2.0");
     REQUIRE(layout.has_value());
     return *layout;
 }
@@ -246,7 +246,7 @@ TEST_CASE("engine queue commands: an engine that decides its outputs ignores unc
     {
         EngineOutputs outputs;
         outputs.pcm = std::make_unique<IdleDevice>();
-        outputs.endpoints = [](std::uint32_t /*sample_rate*/) { return std::vector<ac3::hearth::EndpointReading>{}; };
+        outputs.endpoints = [](std::uint32_t /*sample_rate*/) { return std::vector<iclforge::hearth::EndpointReading>{}; };
         Engine engine(std::move(outputs), no_files, stereo(), {}, EngineTiming{.period = 1ms, .budget = 4800}, &log);
         engine.set_output_preferences({});  // the defaults it already has: nothing to do
         engine.refresh_outputs();

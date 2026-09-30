@@ -24,7 +24,7 @@
 // dequantisation and the modules' coefficients; A-CPL's core the
 // decorrelators, the transient ducker and the interpolation.
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 // ajcc_data()'s fourteen parameters, in syntax order: alpha1, alpha2, beta1,
 // beta2, dry1 to dry4, wet1 to wet6. The left module takes alpha1, beta1, dry1,
@@ -109,4 +109,4 @@ class AjccStage {
     std::vector<Real> interp_real_;
 };
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

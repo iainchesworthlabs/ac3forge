@@ -28,7 +28,7 @@
 #include "candidates.hpp"
 #include "eld_proc.hpp"
 
-namespace ac3::audio {
+namespace iclforge::audio {
 
 namespace {
 
@@ -81,4 +81,4 @@ std::expected<SinkAudioCapabilities, EdidError> read_sink_capabilities(
     return std::unexpected(EdidError::kDeviceNotFound);
 }
 
-}  // namespace ac3::audio
+}  // namespace iclforge::audio

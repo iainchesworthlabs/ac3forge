@@ -7,7 +7,7 @@
 #include <numbers>
 #include <utility>
 
-namespace ac4::detail::dsp {
+namespace iclforge::ac4::detail::dsp {
 namespace {
 
 // The radices that factor `length`, radix 4 first. Empty, with `ok` false,
@@ -150,4 +150,4 @@ template class Fft<Real>;
 // AC4CORE_ALSO_AT_DOUBLE); Mdct<double>'s own Fft member needs it too.
 AC4CORE_ALSO_AT_DOUBLE(template class Fft<double>;)
 
-}  // namespace ac4::detail::dsp
+}  // namespace iclforge::ac4::detail::dsp

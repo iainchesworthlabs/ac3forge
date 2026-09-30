@@ -7,7 +7,7 @@
 #include "iclforge/ac4core/acpl/acpl.hpp"
 #include "iclforge/ac4core/tables/huffman_tables.hpp"
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 namespace {
 
@@ -207,4 +207,4 @@ const Codebook& acpl_codebook(AcplDataType data_type, int quant_mode,
     return *sets[static_cast<std::size_t>(data_type)][static_cast<std::size_t>(hcb_type)];
 }
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

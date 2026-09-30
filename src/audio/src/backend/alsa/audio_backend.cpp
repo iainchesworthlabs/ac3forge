@@ -15,7 +15,7 @@
 // false. A machine with no sound card at all - a container, a CI runner -
 // enumerates nothing and gets an empty list, not an error.
 
-namespace ac3::audio {
+namespace iclforge::audio {
 
 const AudioBackend& audio_backend() {
     static constexpr AudioBackend kBackend{
@@ -37,4 +37,4 @@ const AudioBackend& audio_backend() {
     return kBackend;
 }
 
-}  // namespace ac3::audio
+}  // namespace iclforge::audio

@@ -7,3 +7,8 @@
 327a76cb61417a2948531846f8ffea2aabbc0e17  # S2: include spellings
 56b8130c844bc28dce6aa76824fb7e27390098c2  # S2: build files and paths in text
 dab28bcf816ceed802a2ec058d825ac96e4bf2b6  # S2: the build of the split libraries
+
+# N1B stage S3, the namespace root: what n1b_names.py gives on its parent, and the lines n1b_reflow.py wrapped
+# after it (the hand-written commit that follows them is not listed)
+37c28148700fe0a1bf5dd8c53f411a5bc3920971  # S3: namespace root ac3 to iclforge
+7859440a8c4daf856d10668905c47cd73e73d4cb  # S3: wrap the lines the namespace pass pushed past 100 columns

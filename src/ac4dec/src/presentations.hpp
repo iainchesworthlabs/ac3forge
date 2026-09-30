@@ -17,7 +17,7 @@
 // dialogue, dialogue enhancement or associated audio), which of them this
 // decoder can decode, and the one it selects for a PresentationChoice.
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 // Part 2 clause 4.8.3.2's substream types, with the dialogue enhancement
 // substream of Tables 53 and 85 beside them.
@@ -142,4 +142,4 @@ class PresentationName {
     std::vector<AlternativeTarget> targets_;
 };
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

@@ -8,7 +8,7 @@
 
 #include "pcm/routing.hpp"
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 namespace {
 
 // Part 2 Table 53: the substream type of each ac4_sgi_specifier() of
@@ -490,13 +490,13 @@ std::optional<std::size_t> select(const Toc& toc, const PresentationChoice& choi
     return by_id ? by_id : (by_index ? by_index : best);
 }
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail
 
-namespace ac4 {
+namespace iclforge::ac4 {
 
 std::optional<std::size_t> select_presentation(const Toc& toc, const PresentationChoice& choice, int level) {
     std::vector<detail::PresentationPlan> plans;
     return detail::select(toc, choice, level, plans);
 }
 
-}  // namespace ac4
+}  // namespace iclforge::ac4

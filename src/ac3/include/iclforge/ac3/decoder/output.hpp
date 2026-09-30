@@ -47,7 +47,7 @@
 // where it belongs. So an RF-mode decode's level is only partly this stage's:
 // the dialnorm normalisation is, the 11 dB above it are the decoders'.
 
-namespace ac3 {
+namespace iclforge {
 
 using base::DownmixTarget;  // ac3/core/downmix_target.hpp
 
@@ -369,4 +369,4 @@ class ICLFORGE_AC3_EXPORT OutputStage {
     double protection_gain_ = 1.0;
 };
 
-}  // namespace ac3
+}  // namespace iclforge

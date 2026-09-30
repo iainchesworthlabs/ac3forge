@@ -17,7 +17,7 @@
 //     peak stopband beyond pi/64        -37.87 dB
 //     single-band isolation             34.83 dB
 
-namespace ac3::dsp {
+namespace iclforge::dsp {
 
 inline constexpr std::size_t kQmfPrototypeTaps = 640;
 
@@ -184,4 +184,4 @@ inline constexpr std::array<double, kQmfPrototypeTaps> kQmfPrototype = {{
      6.91599115839672398e-05,  6.16106648699417912e-05,  5.35117942080666319e-05,  4.54915289497270520e-05,
 }};
 
-}  // namespace ac3::dsp
+}  // namespace iclforge::dsp

@@ -32,7 +32,7 @@
 // forgets records. The settings store is used only under this object's lock,
 // so it must be one that nothing else uses.
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 // A record as the Settings page lists it.
 struct PairingRecordView {
@@ -108,4 +108,4 @@ private:
     std::map<sendspin::crypto::Key32, bool> approvals_;
 };
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

@@ -21,8 +21,8 @@
 // different, equally valid bitstream: the same recipe with float rounding,
 // which moves a transient decision or a quantised coefficient now and then.
 
-namespace ac3::internal {
+namespace iclforge::internal {
 
 using encode_scalar_t = double;
 
-}  // namespace ac3::internal
+}  // namespace iclforge::internal

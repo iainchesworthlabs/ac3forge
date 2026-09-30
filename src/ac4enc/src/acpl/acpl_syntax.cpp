@@ -8,7 +8,7 @@
 #include "iclforge/ac4core/tables/huffman_codes.hpp"
 #include "iclforge/ac4core/tables/huffman_tables.hpp"
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 namespace {
 
 enum class HcbType : std::uint8_t { kF0, kDf, kDt };
@@ -156,4 +156,4 @@ bool acpl_codable(AcplKind kind, int quant_mode, int diff_type, bool first_band,
     return index >= 0 && static_cast<std::size_t>(index) < cb.codes.size();
 }
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

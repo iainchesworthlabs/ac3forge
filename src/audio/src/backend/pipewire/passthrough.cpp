@@ -19,7 +19,7 @@
 // API surface - confirmed against Kodi's own PipeWire passthrough
 // implementation (xbmc PR #22560), which negotiates exactly this way and
 // still hands PipeWire pre-packed IEC 61937 burst bytes as opaque S16
-// carrier data, the same shape ac3::iec61937 already produces for the ALSA
+// carrier data, the same shape iclforge::iec61937 already produces for the ALSA
 // backend.
 //
 // ---------------------------------------------------------------------------
@@ -70,17 +70,17 @@
 #include "iclforge/iec61937/iec61937.hpp"
 #include "pipewire_support.hpp"
 
-namespace ac3::audio {
+namespace iclforge::audio {
 
 namespace {
 
-using ac3::pipewire::Stream;
-using ac3::pipewire::ThreadLoop;
+using iclforge::pipewire::Stream;
+using iclforge::pipewire::ThreadLoop;
 
 // The carrier is a 2-channel 16-bit stream whatever rides inside it - see
-// ac3::pipewire::kCarrierFrameBytes and the ALSA backend's identical
+// iclforge::pipewire::kCarrierFrameBytes and the ALSA backend's identical
 // constant and comment.
-constexpr std::size_t kCarrierFrameBytes = ac3::pipewire::kCarrierFrameBytes;
+constexpr std::size_t kCarrierFrameBytes = iclforge::pipewire::kCarrierFrameBytes;
 
 // A real connection attempt (start()) is allowed longer to settle than a
 // probe made purely to answer an enumerate_render_devices() question -
@@ -197,7 +197,8 @@ bool probe_connect(const std::string& node_id, const spa_pod** params, std::uint
 const spa_pod* build_iec958_pod(spa_pod_builder& builder, BitstreamFormat format,
                                  std::uint32_t carrier) {
     spa_audio_info_iec958 info{};
-    info.codec = ac3::pipewire::iec958_codec_for(format).value_or(SPA_AUDIO_IEC958_CODEC_UNKNOWN);
+    info.codec =
+        iclforge::pipewire::iec958_codec_for(format).value_or(SPA_AUDIO_IEC958_CODEC_UNKNOWN);
     info.rate = carrier;
     return spa_format_audio_iec958_build(&builder, SPA_PARAM_EnumFormat, &info);
 }
@@ -209,7 +210,7 @@ bool probe_iec958(const std::string& node_id, BitstreamFormat format, std::uint3
     // identical call for why.
     spa_pod_builder_init(&builder, pod_buffer.data(), static_cast<std::uint32_t>(pod_buffer.size()));
     const spa_pod* param =
-        build_iec958_pod(builder, format, ac3::pipewire::carrier_rate(format, sample_rate));
+        build_iec958_pod(builder, format, iclforge::pipewire::carrier_rate(format, sample_rate));
     const spa_pod* params[1] = {param};
     return probe_connect(node_id, params, 1, kProbeTimeoutSeconds);
 }
@@ -249,7 +250,7 @@ struct CandidateSink {
     std::uint32_t rate = 0;
 };
 
-// The SPEAKER_* bit one SPA channel name stands for (ac3::audio::speakers.hpp).
+// The SPEAKER_* bit one SPA channel name stands for (iclforge::audio::speakers.hpp).
 // These are the names audio.position carries, and the same ones ALSA's channel
 // maps use; 0 for a name with no WAVEFORMATEXTENSIBLE position, including SPA's
 // "NA" for a channel to leave alone, "MONO" and anything unrecognised.
@@ -313,13 +314,13 @@ std::uint32_t speakers_of_position(std::string_view position, std::uint16_t chan
 
 std::vector<CandidateSink> candidate_sinks() {
     std::vector<CandidateSink> candidates;
-    for (auto& sink : ac3::pipewire::audio_sinks_with_info()) {
+    for (auto& sink : iclforge::pipewire::audio_sinks_with_info()) {
         if (sink.name.empty()) {
             continue;
         }
         CandidateSink candidate{.id = std::move(sink.name), .name = std::move(sink.description)};
-        candidate.codec_ac3 = ac3::pipewire::codec_listed(sink.codecs, "AC3");
-        candidate.codec_eac3 = ac3::pipewire::codec_listed(sink.codecs, "EAC3");
+        candidate.codec_ac3 = iclforge::pipewire::codec_listed(sink.codecs, "AC3");
+        candidate.codec_eac3 = iclforge::pipewire::codec_listed(sink.codecs, "EAC3");
         candidate.channels = sink.channels;
         candidate.speakers = speakers_of_position(sink.position, sink.channels);
         candidate.rate = sink.rate;
@@ -393,7 +394,7 @@ std::expected<std::vector<RenderDeviceInfo>, PassthroughError> enumerate_render_
     }
 
     // No per-node "this is the default" metadata is read here - the same
-    // fallback ac3::audio's PipeWire enumeration and ALSA's own passthrough
+    // fallback iclforge::audio's PipeWire enumeration and ALSA's own passthrough
     // enumeration both use when they cannot resolve one either.
     if (!devices.empty()) {
         devices.front().is_default = true;
@@ -520,7 +521,7 @@ struct PassthroughSink::Impl {
         const auto got = impl.queue->read(std::span{out, byte_count});
         if (got < byte_count) {
             // A gap on the wire, exactly as underrun handling is described
-            // in ac3::audio::PassthroughStats's own documentation - counted,
+            // in iclforge::audio::PassthroughStats's own documentation - counted,
             // not hidden, matching every other backend's discipline.
             std::fill(out + got, out + byte_count, std::byte{0});
             impl.underruns.fetch_add(1, std::memory_order_relaxed);
@@ -550,7 +551,7 @@ struct PassthroughSink::Impl {
         pw_time time{};
         if (pw_stream_get_time_n(impl.stream.get(), &time, sizeof(time)) == 0) {
             impl.counter.report(impl.handed_over,
-                                ac3::pipewire::unplayed_frames(time, impl.carrier_rate));
+                                iclforge::pipewire::unplayed_frames(time, impl.carrier_rate));
         }
     }
 
@@ -718,7 +719,7 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
     if (running()) {
         return std::unexpected(PassthroughError::kAlreadyRunning);
     }
-    if (!ac3::pipewire::iec958_codec_for(format_kind)) {
+    if (!iclforge::pipewire::iec958_codec_for(format_kind)) {
         return std::unexpected(PassthroughError::kUnsupportedFormat);
     }
     // A stream that ended on its own still has its loop and its stream, and
@@ -726,7 +727,7 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
     // order. With nothing started it does nothing.
     stop();
 
-    ac3::pipewire::ensure_initialized();
+    iclforge::pipewire::ensure_initialized();
 
     // Pick the target before touching anything, exactly as the ALSA backend
     // does: an empty id means "the default output", which for a bitstream
@@ -754,7 +755,7 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
         }
     }
 
-    const std::uint32_t carrier = ac3::pipewire::carrier_rate(format_kind, sample_rate);
+    const std::uint32_t carrier = iclforge::pipewire::carrier_rate(format_kind, sample_rate);
     const std::size_t burst_bytes = max_burst_bytes(format_kind);
 
     impl_->loop = ThreadLoop{pw_thread_loop_new("ac3audio-passthrough", nullptr)};
@@ -831,7 +832,7 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
         impl_->loop.reset();
         // PipeWire reports a failed negotiation as a state plus a human-
         // readable string, not an errno the way ALSA does (see this file's
-        // header comment), so - unlike ac3::alsa::open_failure() - this
+        // header comment), so - unlike iclforge::alsa::open_failure() - this
         // cannot reliably tell "codec not enabled" apart from "node busy"
         // from that string alone. kFormatRejected is the more common real
         // cause (see the header comment) and the more actionable one to
@@ -846,4 +847,4 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
     return {};
 }
 
-}  // namespace ac3::audio
+}  // namespace iclforge::audio

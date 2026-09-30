@@ -22,7 +22,7 @@
 // The decoder runs it on its QMF matrices; the encoder runs it to see what a
 // decoder will make of the band it codes.
 
-namespace ac4::detail::aspx {
+namespace iclforge::ac4::detail::aspx {
 
 inline constexpr int kTsOffsetHfadj = 4;  // Pseudocode 86
 
@@ -94,4 +94,4 @@ extern template void prediction_coefficients<Real>(std::span<const dsp::Complex<
                                                    int, std::span<dsp::Complex<Real>>,
                                                    std::span<dsp::Complex<Real>>);
 
-}  // namespace ac4::detail::aspx
+}  // namespace iclforge::ac4::detail::aspx

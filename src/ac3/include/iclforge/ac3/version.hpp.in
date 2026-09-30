@@ -8,7 +8,7 @@
 
 #include "iclforge/ac3/export.hpp"
 
-namespace ac3 {
+namespace iclforge {
 
 // Semantic version (https://semver.org).
 inline constexpr int version_major = @AC3FORGE_VERSION_MAJOR@;
@@ -42,4 +42,4 @@ inline constexpr std::string_view build_target = "@AC3FORGE_BUILD_TARGET@";
 // `--version` output or an About dialog.
 [[nodiscard]] ICLFORGE_AC3_EXPORT std::string version_details();
 
-}  // namespace ac3
+}  // namespace iclforge

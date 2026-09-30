@@ -30,19 +30,19 @@
 
 namespace {
 
-using ac4::DecodeError;
-using ac4::detail::BitReader;
-using ac4::detail::ChparamInfo;
-using ac4::detail::Codebook;
-using ac4::detail::HsfExtHeader;
-using ac4::detail::HsfSfData;
-using ac4::detail::ParseResult;
-using ac4::detail::SfData;
-using ac4::detail::SfInfo;
-using ac4::detail::SubstreamContext;
+using iclforge::ac4::DecodeError;
+using iclforge::ac4::detail::BitReader;
+using iclforge::ac4::detail::ChparamInfo;
+using iclforge::ac4::detail::Codebook;
+using iclforge::ac4::detail::HsfExtHeader;
+using iclforge::ac4::detail::HsfSfData;
+using iclforge::ac4::detail::ParseResult;
+using iclforge::ac4::detail::SfData;
+using iclforge::ac4::detail::SfInfo;
+using iclforge::ac4::detail::SubstreamContext;
 using ac4dec_test::BitWriter;
 using ac4dec_test::Recorder;
-namespace tables = ac4::detail::tables;
+namespace tables = iclforge::ac4::detail::tables;
 
 SubstreamContext context(int frame_len_base) {
     SubstreamContext ctx;
@@ -115,7 +115,7 @@ SfInfo long_info(int max_sfb) {
     w.flag(true);
     w.put(static_cast<std::uint64_t>(max_sfb), 6);
     SfInfo info;
-    REQUIRE(read(w, [&](BitReader& r) { return ac4::detail::parse_sf_info(r, context(2048), 0, false, false, info); })
+    REQUIRE(read(w, [&](BitReader& r) { return iclforge::ac4::detail::parse_sf_info(r, context(2048), 0, false, false, info); })
                 .has_value());
     return info;
 }
@@ -136,7 +136,7 @@ TEST_CASE("sf_info groups the windows of a differently framed short frame", "[ac
     w.put(1, 1);     // scale_factor_grouping_bit
     SfInfo info;
     const SubstreamContext ctx = context(2048);
-    REQUIRE(read(w, [&](BitReader& r) { return ac4::detail::parse_sf_info(r, ctx, 0, false, false, info); })
+    REQUIRE(read(w, [&](BitReader& r) { return iclforge::ac4::detail::parse_sf_info(r, ctx, 0, false, false, info); })
                 .has_value());
     const auto& psy = info.psy;
     CHECK_FALSE(psy.b_long_frame);
@@ -146,10 +146,10 @@ TEST_CASE("sf_info groups the windows of a differently framed short frame", "[ac
     CHECK(psy.num_window_groups == 2);
     CHECK(psy.num_win_in_group[0] == 2);
     CHECK(psy.num_win_in_group[1] == 1);
-    CHECK(ac4::detail::get_transf_length(ctx, psy, 0) == 2);
-    CHECK(ac4::detail::get_transf_length(ctx, psy, 1) == 3);
-    CHECK(ac4::detail::get_max_sfb(ctx, psy, 0, false) == 2);
-    CHECK(ac4::detail::get_max_sfb(ctx, psy, 1, false) == 1);
+    CHECK(iclforge::ac4::detail::get_transf_length(ctx, psy, 0) == 2);
+    CHECK(iclforge::ac4::detail::get_transf_length(ctx, psy, 1) == 3);
+    CHECK(iclforge::ac4::detail::get_max_sfb(ctx, psy, 0, false) == 2);
+    CHECK(iclforge::ac4::detail::get_max_sfb(ctx, psy, 1, false) == 1);
 
     SECTION("its sf_data() has a section list per group, of their own widths") {
         BitWriter d;
@@ -165,7 +165,8 @@ TEST_CASE("sf_info groups the windows of a differently framed short frame", "[ac
         SfData out;
         HsfSfData hsf;
         REQUIRE(read(d, [&](BitReader& r) {
-                    return ac4::detail::parse_sf_data(r, ctx, info, false, nullptr, out, hsf);
+                    return iclforge::ac4::detail::parse_sf_data(r, ctx, info, false, nullptr, out,
+                                                                hsf);
                 }).has_value());
         CHECK(out.sections[0].size() == 1);
         CHECK(out.sections[1].size() == 1);
@@ -182,7 +183,7 @@ TEST_CASE("sf_info groups the windows of a differently framed short frame", "[ac
         c.put(1, 2);         // sap_mode 1
         c.put(0b101, 3);     // ms_used: two bands, then one
         ChparamInfo out;
-        REQUIRE(read(c, [&](BitReader& r) { return ac4::detail::parse_chparam_info(r, ctx, info, out); }).has_value());
+        REQUIRE(read(c, [&](BitReader& r) { return iclforge::ac4::detail::parse_chparam_info(r, ctx, info, out); }).has_value());
         CHECK(out.ms_used[0][0]);
         CHECK_FALSE(out.ms_used[0][1]);
         CHECK(out.ms_used[1][0]);
@@ -196,7 +197,7 @@ TEST_CASE("sf_info groups the windows of a differently framed short frame", "[ac
         c.flag(true);        // delta_code_time
         c.code(tables::kAsfHcbScalefac, 50);  // sap_hcw for group 0 bands 0-1
         ChparamInfo out;
-        REQUIRE(read(c, [&](BitReader& r) { return ac4::detail::parse_chparam_info(r, ctx, info, out); }).has_value());
+        REQUIRE(read(c, [&](BitReader& r) { return iclforge::ac4::detail::parse_chparam_info(r, ctx, info, out); }).has_value());
         CHECK_FALSE(out.sap_coeff_all);
         CHECK(out.sap_coeff_used[0][0]);
         CHECK(out.sap_coeff_used[0][1]);
@@ -214,7 +215,7 @@ TEST_CASE("chparam_info reads SAP coefficients for all bands", "[ac4dec][asf]") 
     c.code(tables::kAsfHcbScalefac, 60);  // bands 0-1
     c.code(tables::kAsfHcbScalefac, 61);  // band 2
     ChparamInfo out;
-    REQUIRE(read(c, [&](BitReader& r) { return ac4::detail::parse_chparam_info(r, context(2048), info, out); })
+    REQUIRE(read(c, [&](BitReader& r) { return iclforge::ac4::detail::parse_chparam_info(r, context(2048), info, out); })
                 .has_value());
     CHECK(out.sap_coeff_all);
     CHECK(out.sap_coeff_used[0][2]);
@@ -234,12 +235,12 @@ TEST_CASE("sf_info reads side-limited and dual max_sfb for both halves of a spli
         w.put(17, 5);    // max_sfb_side[1]: of 1024, 5
         w.put(0, 3);     // Table 109 [1][3]: three grouping bits
         SfInfo info;
-        REQUIRE(read(w, [&](BitReader& r) { return ac4::detail::parse_sf_info(r, ctx, 0, false, true, info); })
+        REQUIRE(read(w, [&](BitReader& r) { return iclforge::ac4::detail::parse_sf_info(r, ctx, 0, false, true, info); })
                     .has_value());
         CHECK(info.psy.max_sfb_side[0] == 9);
         CHECK(info.psy.max_sfb_side[1] == 17);
         CHECK(info.psy.num_window_groups == 5);
-        CHECK(ac4::detail::get_max_sfb(ctx, info.psy, 4, false) == 17);
+        CHECK(iclforge::ac4::detail::get_max_sfb(ctx, info.psy, 4, false) == 17);
     }
     SECTION("dual: max_sfb and max_sfb_side in each half") {
         BitWriter w;
@@ -252,12 +253,12 @@ TEST_CASE("sf_info reads side-limited and dual max_sfb for both halves of a spli
         w.put(21, 6);    // max_sfb_side[1]
         w.put(1, 1);     // Table 109 [3][2]: one grouping bit
         SfInfo info;
-        REQUIRE(read(w, [&](BitReader& r) { return ac4::detail::parse_sf_info(r, ctx, 0, true, false, info); })
+        REQUIRE(read(w, [&](BitReader& r) { return iclforge::ac4::detail::parse_sf_info(r, ctx, 0, true, false, info); })
                     .has_value());
         CHECK(info.psy.max_sfb[1] == 20);
         CHECK(info.psy.max_sfb_side[1] == 21);
-        CHECK(ac4::detail::get_max_sfb(ctx, info.psy, 0, true) == 31);
-        CHECK(ac4::detail::get_max_sfb(ctx, info.psy, 0, false) == 30);
+        CHECK(iclforge::ac4::detail::get_max_sfb(ctx, info.psy, 0, true) == 31);
+        CHECK(iclforge::ac4::detail::get_max_sfb(ctx, info.psy, 0, false) == 30);
     }
     SECTION("a max_sfb past either transform's bands") {
         for (const bool second : {false, true}) {
@@ -274,7 +275,7 @@ TEST_CASE("sf_info reads side-limited and dual max_sfb for both halves of a spli
             w.put(0, 16);
             SfInfo info;
             const auto result =
-                read(w, [&](BitReader& r) { return ac4::detail::parse_sf_info(r, ctx, 0, false, false, info); });
+                read(w, [&](BitReader& r) { return iclforge::ac4::detail::parse_sf_info(r, ctx, 0, false, false, info); });
             REQUIRE_FALSE(result.has_value());
             CHECK(result.error().error == DecodeError::kInvalidStream);
         }
@@ -300,14 +301,14 @@ TEST_CASE("sf_info at the shorter frame lengths reads one transform length", "[a
         }
         SfInfo info;
         const SubstreamContext ctx = context(c.frame_len_base);
-        REQUIRE(read(w, [&](BitReader& r) { return ac4::detail::parse_sf_info(r, ctx, 0, false, false, info); })
+        REQUIRE(read(w, [&](BitReader& r) { return iclforge::ac4::detail::parse_sf_info(r, ctx, 0, false, false, info); })
                     .has_value());
         CHECK_FALSE(info.psy.b_long_frame);
         CHECK(info.psy.single_transf_length);
         CHECK(info.psy.n_grp_bits == c.grouping_bits);
         CHECK(info.psy.num_windows == c.grouping_bits + 1);
         CHECK(info.psy.max_sfb[0] == 1);
-        CHECK(ac4::detail::get_transf_length(ctx, info.psy, 0) == c.transf_length);
+        CHECK(iclforge::ac4::detail::get_transf_length(ctx, info.psy, 0) == c.transf_length);
     }
     SECTION("a transform length past the frame's") {
         BitWriter w;
@@ -315,7 +316,7 @@ TEST_CASE("sf_info at the shorter frame lengths reads one transform length", "[a
         w.put(0, 14);
         SfInfo info;
         const auto result = read(w, [&](BitReader& r) {
-            return ac4::detail::parse_sf_info(r, context(384), 0, false, false, info);
+            return iclforge::ac4::detail::parse_sf_info(r, context(384), 0, false, false, info);
         });
         REQUIRE_FALSE(result.has_value());
         CHECK(result.error().error == DecodeError::kInvalidStream);
@@ -325,14 +326,15 @@ TEST_CASE("sf_info at the shorter frame lengths reads one transform length", "[a
         w.put(0, 16);
         SfInfo info;
         const auto result = read(w, [&](BitReader& r) {
-            return ac4::detail::parse_sf_info(r, context(2048), 1, false, false, info);
+            return iclforge::ac4::detail::parse_sf_info(r, context(2048), 1, false, false, info);
         });
         REQUIRE_FALSE(result.has_value());
         CHECK(result.error().error == DecodeError::kUnsupported);
         SfData data;
         HsfSfData hsf;
         const auto refused = read(w, [&](BitReader& r) {
-            return ac4::detail::parse_sf_data(r, context(2048), info, false, nullptr, data, hsf);
+            return iclforge::ac4::detail::parse_sf_data(r, context(2048), info, false, nullptr,
+                                                        data, hsf);
         });
         REQUIRE_FALSE(refused.has_value());
         CHECK(refused.error().error == DecodeError::kUnsupported);
@@ -344,18 +346,18 @@ TEST_CASE("sf_info_lfe takes the whole frame's transform", "[ac4dec][asf]") {
         BitWriter w;
         w.put(3, 2);
         SfInfo info;
-        REQUIRE(read(w, [&](BitReader& r) { return ac4::detail::parse_sf_info_lfe(r, context(1024), info); })
+        REQUIRE(read(w, [&](BitReader& r) { return iclforge::ac4::detail::parse_sf_info_lfe(r, context(1024), info); })
                     .has_value());
         CHECK(info.is_lfe);
         CHECK(info.psy.max_sfb[0] == 3);
         CHECK(info.psy.transf_length[0] == 3);
-        CHECK(ac4::detail::transform_length_samples(context(1024), info.psy.transf_length[0]) == 1024);
+        CHECK(iclforge::ac4::detail::transform_length_samples(context(1024), info.psy.transf_length[0]) == 1024);
     }
     SECTION("at 384, the whole frame is index 2") {
         BitWriter w;
         w.put(1, 2);
         SfInfo info;
-        REQUIRE(read(w, [&](BitReader& r) { return ac4::detail::parse_sf_info_lfe(r, context(384), info); })
+        REQUIRE(read(w, [&](BitReader& r) { return iclforge::ac4::detail::parse_sf_info_lfe(r, context(384), info); })
                     .has_value());
         CHECK(info.psy.transf_length[0] == 2);
     }
@@ -364,15 +366,15 @@ TEST_CASE("sf_info_lfe takes the whole frame's transform", "[ac4dec][asf]") {
         w.put(0, 8);
         SfInfo info;
         const auto result =
-            read(w, [&](BitReader& r) { return ac4::detail::parse_sf_info_lfe(r, context(1000), info); });
+            read(w, [&](BitReader& r) { return iclforge::ac4::detail::parse_sf_info_lfe(r, context(1000), info); });
         REQUIRE_FALSE(result.has_value());
         CHECK(result.error().error == DecodeError::kInvalidStream);
     }
 }
 
 TEST_CASE("transform lengths and widths follow Tables 103 and 106", "[ac4dec][asf]") {
-    using ac4::detail::n_side_bits;
-    using ac4::detail::transform_length_samples;
+    using iclforge::ac4::detail::n_side_bits;
+    using iclforge::ac4::detail::transform_length_samples;
     CHECK(transform_length_samples(context(2048), 0) == 128);
     CHECK(transform_length_samples(context(2048), 4) == 2048);
     CHECK(transform_length_samples(context(1920), 3) == 960);
@@ -441,7 +443,7 @@ TEST_CASE("sf_data decodes the lines of every spectral codebook", "[ac4dec][asf]
         SfData out;
         HsfSfData hsf;
         REQUIRE(read(w, [&](BitReader& r) {
-                    return ac4::detail::parse_sf_data(r, context(2048), info, false, nullptr, out, hsf);
+                    return iclforge::ac4::detail::parse_sf_data(r, context(2048), info, false, nullptr, out, hsf);
                 }).has_value());
         for (int k = 0; k < lines; ++k) {
             CHECK(out.quant_spec[static_cast<std::size_t>(k)] == pattern[static_cast<std::size_t>(k % dim)]);
@@ -473,7 +475,7 @@ TEST_CASE("sf_data escapes a long section and refuses malformed ones", "[ac4dec]
         SfData out;
         HsfSfData hsf;
         REQUIRE(read(w, [&](BitReader& r) {
-                    return ac4::detail::parse_sf_data(r, context(2048), info, false, nullptr, out, hsf);
+                    return iclforge::ac4::detail::parse_sf_data(r, context(2048), info, false, nullptr, out, hsf);
                 }).has_value());
         REQUIRE(out.sections[0].size() == 1);
         CHECK(out.sections[0][0].end == 40);
@@ -482,7 +484,8 @@ TEST_CASE("sf_data escapes a long section and refuses malformed ones", "[ac4dec]
         SfData out;
         HsfSfData hsf;
         const auto result = read(w, [&](BitReader& r) {
-            return ac4::detail::parse_sf_data(r, context(2048), info, false, nullptr, out, hsf);
+            return iclforge::ac4::detail::parse_sf_data(r, context(2048), info, false, nullptr, out,
+                                                        hsf);
         });
         REQUIRE_FALSE(result.has_value());
         return result.error().error;
@@ -547,7 +550,7 @@ SfInfo short_info_512(int max_sfb) {
     w.put(static_cast<std::uint64_t>(max_sfb), 4);
     w.put(0b111, 3);
     SfInfo info;
-    REQUIRE(read(w, [&](BitReader& r) { return ac4::detail::parse_sf_info(r, context(512), 0, false, false, info); })
+    REQUIRE(read(w, [&](BitReader& r) { return iclforge::ac4::detail::parse_sf_info(r, context(512), 0, false, false, info); })
                 .has_value());
     return info;
 }
@@ -596,12 +599,12 @@ TEST_CASE("sf_data and sf_hsf_data share a section straddling the 48 kHz bands",
     BitReader core_reader(core_bytes, 0, rec);
     BitReader ext_reader(ext_bytes, 1, rec);
     HsfExtHeader header;
-    REQUIRE(ac4::detail::parse_hsf_ext_header(ext_reader, false, header).has_value());
+    REQUIRE(iclforge::ac4::detail::parse_hsf_ext_header(ext_reader, false, header).has_value());
     CHECK(header.max_sfb_ext_hsf[0] == 3);
-    CHECK(ac4::detail::get_max_sfb_hsf(ctx, info.psy, 0, header) == 16);
+    CHECK(iclforge::ac4::detail::get_max_sfb_hsf(ctx, info.psy, 0, header) == 16);
     SfData out;
     HsfSfData hsf;
-    REQUIRE(ac4::detail::parse_sf_data(core_reader, ctx, info, false, &header, out, hsf).has_value());
+    REQUIRE(iclforge::ac4::detail::parse_sf_data(core_reader, ctx, info, false, &header, out, hsf).has_value());
     CHECK(core_reader.position() == core.size());
     CHECK(out.max_sfb[0] == 14);
     CHECK(out.num_sec_lsf[0] == 2);
@@ -616,7 +619,7 @@ TEST_CASE("sf_data and sf_hsf_data share a section straddling the 48 kHz bands",
     CHECK(hsf.sections[0][0].start == 14);
     CHECK(hsf.sections[0][1].start == 15);
 
-    REQUIRE(ac4::detail::parse_sf_hsf_data(ext_reader, info.psy.num_window_groups, out, hsf).has_value());
+    REQUIRE(iclforge::ac4::detail::parse_sf_hsf_data(ext_reader, info.psy.num_window_groups, out, hsf).has_value());
     CHECK(ext_reader.position() == ext.size());
     CHECK(hsf.quant_spec[1] == -1);
     CHECK(hsf.max_quant_idx[0][0] == 1);
@@ -641,7 +644,8 @@ TEST_CASE("the HSF extension at 192 kHz and its limits", "[ac4dec][asf]") {
         SfData out;
         HsfSfData hsf;
         REQUIRE(read(core, [&](BitReader& r) {
-                    return ac4::detail::parse_sf_data(r, ctx, info, false, &header, out, hsf);
+                    return iclforge::ac4::detail::parse_sf_data(r, ctx, info, false, &header, out,
+                                                                hsf);
                 }).has_value());
         CHECK(hsf.start_sfb[0] == 14);
         CHECK(hsf.max_sfb_hsf[0] == 2);
@@ -657,7 +661,7 @@ TEST_CASE("the HSF extension at 192 kHz and its limits", "[ac4dec][asf]") {
         SfData out;
         HsfSfData hsf;
         const auto result = read(core, [&](BitReader& r) {
-            return ac4::detail::parse_sf_data(r, ctx, info, false, &header, out, hsf);
+            return iclforge::ac4::detail::parse_sf_data(r, ctx, info, false, &header, out, hsf);
         });
         REQUIRE_FALSE(result.has_value());
         CHECK(result.error().error == DecodeError::kInvalidStream);
@@ -667,7 +671,7 @@ TEST_CASE("the HSF extension at 192 kHz and its limits", "[ac4dec][asf]") {
         w.put(5, 6);
         w.put(9, 6);
         HsfExtHeader header;
-        REQUIRE(read(w, [&](BitReader& r) { return ac4::detail::parse_hsf_ext_header(r, true, header); }).has_value());
+        REQUIRE(read(w, [&](BitReader& r) { return iclforge::ac4::detail::parse_hsf_ext_header(r, true, header); }).has_value());
         CHECK(header.max_sfb_ext_hsf[0] == 5);
         CHECK(header.max_sfb_ext_hsf[1] == 9);
     }
@@ -753,7 +757,8 @@ TEST_CASE("an ASF codeword the substream ends inside fails as truncated as in ev
     HsfSfData hsf;
     const auto sf_data = [&](const SfInfo& info) {
         return [&out, &hsf, info](BitReader& r) {
-            return ac4::detail::parse_sf_data(r, context(2048), info, false, nullptr, out, hsf);
+            return iclforge::ac4::detail::parse_sf_data(r, context(2048), info, false, nullptr, out,
+                                                        hsf);
         };
     };
     std::size_t start = 0;
@@ -812,7 +817,7 @@ TEST_CASE("an ASF codeword the substream ends inside fails as truncated as in ev
         const SfInfo info = long_info(3);
         ChparamInfo chparam;
         const auto result = read_cut(cut_inside(c, start, bits), [&](BitReader& r) {
-            return ac4::detail::parse_chparam_info(r, context(2048), info, chparam);
+            return iclforge::ac4::detail::parse_chparam_info(r, context(2048), info, chparam);
         });
         REQUIRE_FALSE(result.has_value());
         CHECK(result.error().error == DecodeError::kTruncated);
@@ -848,7 +853,7 @@ TEST_CASE("huff_codeword reports a codeword cut short as truncated in every code
         &tables::kDeHcbAbs0,
         &tables::kDeHcbDiff0,
     };
-    const ac4::detail::CodewordReasons reasons{.truncated = "cut", .invalid = "none"};
+    const iclforge::ac4::detail::CodewordReasons reasons{.truncated = "cut", .invalid = "none"};
     for (const Codebook* book : books) {
         INFO(book->name);
         BitWriter w;
@@ -864,7 +869,7 @@ TEST_CASE("huff_codeword reports a codeword cut short as truncated in every code
         Recorder rec;
         BitReader reader(bytes, 0, rec);
         reader.skip(static_cast<std::size_t>(pad));
-        const auto result = ac4::detail::huff_codeword(reader, *book, "hcw", reasons);
+        const auto result = iclforge::ac4::detail::huff_codeword(reader, *book, "hcw", reasons);
         REQUIRE_FALSE(result.has_value());
         CHECK(result.error().error == DecodeError::kTruncated);
         CHECK(result.error().reason == "cut");
@@ -1022,7 +1027,7 @@ std::pair<int, int> search_decode(std::span<const std::byte> data, std::size_t p
 TEST_CASE("every codebook's shortcut table names only real codewords", "[ac4dec][asf][huffman]") {
     for (const Codebook* book : tables::kAllCodebooks) {
         CAPTURE(book->name);
-        REQUIRE(book->fast.size() == ac4::detail::kHuffFastSize);
+        REQUIRE(book->fast.size() == iclforge::ac4::detail::kHuffFastSize);
         std::size_t filled = 0;
         for (std::size_t v = 0; v < book->fast.size(); ++v) {
             const std::uint16_t entry = book->fast[v];
@@ -1033,10 +1038,10 @@ TEST_CASE("every codebook's shortcut table names only real codewords", "[ac4dec]
             const int length = entry & 15;
             const int index = entry >> 4;
             REQUIRE(length >= 1);
-            REQUIRE(length <= ac4::detail::kHuffFastBits);
+            REQUIRE(length <= iclforge::ac4::detail::kHuffFastBits);
             // The codeword this value begins: its leading `length` bits.
             const auto code = static_cast<std::uint32_t>(
-                v >> static_cast<unsigned>(ac4::detail::kHuffFastBits - length));
+                v >> static_cast<unsigned>(iclforge::ac4::detail::kHuffFastBits - length));
             bool found = false;
             for (const auto& e : book->sorted) {
                 if (e.bits == length && e.code == code && e.index == index) {
@@ -1048,8 +1053,8 @@ TEST_CASE("every codebook's shortcut table names only real codewords", "[ac4dec]
         // Every codeword of kHuffFastBits or fewer fills its share of the table.
         std::size_t expected = 0;
         for (const auto& e : book->sorted) {
-            if (e.bits <= ac4::detail::kHuffFastBits) {
-                expected += std::size_t{1} << (ac4::detail::kHuffFastBits - e.bits);
+            if (e.bits <= iclforge::ac4::detail::kHuffFastBits) {
+                expected += std::size_t{1} << (iclforge::ac4::detail::kHuffFastBits - e.bits);
             }
         }
         CHECK(filled == expected);
@@ -1072,11 +1077,11 @@ TEST_CASE("huff_decode with its shortcut reads every codeword of every codebook"
                 full[i] = static_cast<std::byte>((word >> (56 - 8 * i)) & 0xFFU);
             }
             BitReader whole(full, 0, {});
-            REQUIRE(ac4::detail::huff_decode(whole, *book, "hcw") == entry.index);
+            REQUIRE(iclforge::ac4::detail::huff_decode(whole, *book, "hcw") == entry.index);
             REQUIRE(whole.position() == entry.bits);
             const std::vector<std::byte> cut(full.begin(), full.begin() + (entry.bits + 7) / 8);
             BitReader exact(cut, 0, {});
-            REQUIRE(ac4::detail::huff_decode(exact, *book, "hcw") == entry.index);
+            REQUIRE(iclforge::ac4::detail::huff_decode(exact, *book, "hcw") == entry.index);
             REQUIRE(exact.position() == entry.bits);
             // One bit less than the codeword needs: none found, nothing consumed.
             if (entry.bits % 8 != 0) {
@@ -1084,7 +1089,7 @@ TEST_CASE("huff_decode with its shortcut reads every codeword of every codebook"
             }
             const std::vector<std::byte> shorter(full.begin(), full.begin() + entry.bits / 8 - 1);
             BitReader short_reader(shorter, 0, {});
-            REQUIRE(ac4::detail::huff_decode(short_reader, *book, "hcw") == -1);
+            REQUIRE(iclforge::ac4::detail::huff_decode(short_reader, *book, "hcw") == -1);
             REQUIRE(short_reader.position() == 0);
         }
     }
@@ -1107,7 +1112,7 @@ TEST_CASE(
             reader.seek(pos);
             const std::size_t start = reader.position();
             const auto [index, length] = search_decode(data, start, *book);
-            const int got = ac4::detail::huff_decode(reader, *book, "hcw");
+            const int got = iclforge::ac4::detail::huff_decode(reader, *book, "hcw");
             REQUIRE(got == index);
             REQUIRE(reader.position() == start + static_cast<std::size_t>(length));
         }

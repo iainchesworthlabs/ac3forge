@@ -13,7 +13,7 @@
 #include "ebml_detail.hpp"
 #include "iclforge/matroska/matroska.hpp"
 
-namespace matroska {
+namespace iclforge::matroska {
 
 namespace {
 
@@ -721,4 +721,4 @@ std::expected<void, DemuxError> Reader::push(std::span<const std::byte> chunk,
 
 std::expected<void, DemuxError> Reader::finish() { return finish_verdict(*state_); }
 
-}  // namespace matroska
+}  // namespace iclforge::matroska

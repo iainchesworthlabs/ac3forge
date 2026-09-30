@@ -5,10 +5,10 @@
 #include "iclforge/signing/emdf_atmos_signer.hpp"
 #include "iclforge/signing/signing_key.hpp"
 
-namespace ac3::crucible {
+namespace iclforge::crucible {
 
 struct SigningHook::Impl {
-    ac3::signing::SigningKey key;
+    iclforge::signing::SigningKey key;
 };
 
 SigningHook::SigningHook() : impl_(std::make_unique<Impl>()) {}
@@ -16,12 +16,12 @@ SigningHook::SigningHook() : impl_(std::make_unique<Impl>()) {}
 SigningHook::~SigningHook() = default;
 
 std::string SigningHook::load(std::string_view explicit_path) {
-    auto loaded = ac3::signing::load_signing_key(explicit_path);
+    auto loaded = iclforge::signing::load_signing_key(explicit_path);
     if (!loaded) {
         clear();
         failure_ = loaded.error().kind;
         switch (loaded.error().kind) {
-            case ac3::signing::KeyErrorKind::kAbsent:
+            case iclforge::signing::KeyErrorKind::kAbsent:
                 source_.clear();
                 return "no signing key: objects off, streaming the 5.1 bed only";
             default:
@@ -38,7 +38,7 @@ std::string SigningHook::load(std::string_view explicit_path) {
 }
 
 void SigningHook::clear() {
-    impl_->key = ac3::signing::SigningKey{};
+    impl_->key = iclforge::signing::SigningKey{};
     source_.clear();
     kind_ = Source::kNone;
     failure_.reset();
@@ -52,7 +52,7 @@ bool SigningHook::sign(std::span<std::byte> access_unit) const {
     if (impl_->key.empty()) {
         return false;
     }
-    return ac3::signing::sign_atmos_frame(access_unit, impl_->key);
+    return iclforge::signing::sign_atmos_frame(access_unit, impl_->key);
 }
 
-}  // namespace ac3::crucible
+}  // namespace iclforge::crucible

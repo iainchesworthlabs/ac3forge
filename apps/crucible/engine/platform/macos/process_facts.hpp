@@ -58,7 +58,7 @@
 // that change, the grouping to walk on is the outermost .app bundle
 // (bundle_facts.hpp's app_bundle_path), not the executable name.
 
-namespace ac3::crucible {
+namespace iclforge::crucible {
 
 // The executable behind a pid, or empty when it cannot be read: the process
 // has gone, or it belongs to another user. PROC_PIDPATHINFO_MAXSIZE is the
@@ -214,4 +214,4 @@ private:
     return app;
 }
 
-}  // namespace ac3::crucible
+}  // namespace iclforge::crucible

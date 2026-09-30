@@ -29,7 +29,7 @@
 // stores the difference rather than the reader subtracting one from the
 // other - is a played count that runs backwards or wraps.
 
-namespace ac3::audio {
+namespace iclforge::audio {
 
 class PlaybackCounter {
 public:
@@ -141,4 +141,4 @@ private:
                            .latency_frames = link.latency_frames / by};
 }
 
-}  // namespace ac3::audio
+}  // namespace iclforge::audio

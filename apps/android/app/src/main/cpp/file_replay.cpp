@@ -10,7 +10,7 @@
 // correct" from "is our own encoder's Atmos/JOC output correct" - a real,
 // known-good Dolby-encoded Atmos stream either lights up the receiver's Atmos
 // indicator through this exact same code path, or it doesn't, independent of
-// anything ac3::forge or the quarantine signer did.
+// anything iclforge::ac3 or the quarantine signer did.
 
 #include <jni.h>
 
@@ -51,7 +51,7 @@ std::atomic<bool> g_replay_stop{false};
 // pinning a thread until the process dies.
 constexpr auto kNoProgressTimeout = std::chrono::seconds(5);
 
-// ac3::split_access_units groups syncframes by reading strmtyp from each
+// iclforge::split_access_units groups syncframes by reading strmtyp from each
 // frame's own header - correct for a stream whose independent substream uses
 // bsid 16 (every generation this project's own encoder and, apparently, most
 // test material produces), but strmtyp only lives at that byte position in a
@@ -69,12 +69,12 @@ constexpr auto kNoProgressTimeout = std::chrono::seconds(5);
 // grouping on "does this frame's bsid fall in the E-AC-3 dependent range"
 // instead is deterministic and, empirically, correct throughout this file.
 // Kept local to this diagnostic rather than changed in the shared decoder:
-// ac3::split_access_units is exercised well beyond this one file/tool, and
+// iclforge::split_access_units is exercised well beyond this one file/tool, and
 // this project's own encoder never emits a non-16 leading bsid, so nothing
 // here should risk a broader, less-tested change to that shared code path.
-std::expected<std::vector<std::span<const std::byte>>, ac3::DecodeError> group_by_bsid(
+std::expected<std::vector<std::span<const std::byte>>, iclforge::DecodeError> group_by_bsid(
     std::span<const std::byte> stream) {
-    const auto frames = ac3::split_frames(stream);
+    const auto frames = iclforge::split_frames(stream);
     if (!frames) return std::unexpected(frames.error());
 
     std::vector<std::span<const std::byte>> units;
@@ -82,7 +82,7 @@ std::expected<std::vector<std::span<const std::byte>>, ac3::DecodeError> group_b
     std::size_t offset = 0;
     for (const auto& frame : *frames) {
         const auto bsid = std::to_integer<int>(frame[5]) >> 3;
-        const bool begins_unit = !(bsid >= ac3::eac3::kMinDecodableBsid && bsid <= ac3::eac3::kBsid);
+        const bool begins_unit = !(bsid >= iclforge::eac3::kMinDecodableBsid && bsid <= iclforge::eac3::kBsid);
         if (begins_unit && offset != start) {
             units.push_back(stream.subspan(start, offset - start));
             start = offset;
@@ -127,11 +127,11 @@ bool play_file(const std::string& path) {
     // Always E-AC-3, unlike ac3cli's run_play (which also handles plain
     // .ac3): this diagnostic exists specifically to play real commercial
     // Dolby Atmos/DD+ content (see file header). group_by_bsid, not
-    // ac3::split_access_units - see that function's own comment for why.
+    // iclforge::split_access_units - see that function's own comment for why.
     const auto split = group_by_bsid(stream);
     if (!split) {
         __android_log_print(ANDROID_LOG_ERROR, kLogTag, "%s: frame split failed: %s", path.c_str(),
-                            std::string(ac3::describe(split.error())).c_str());
+                            std::string(iclforge::describe(split.error())).c_str());
         return false;
     }
     if (split->empty()) {
@@ -139,21 +139,21 @@ bool play_file(const std::string& path) {
         return false;
     }
     const auto& units = *split;
-    const std::uint32_t content_rate = ac3::sample_rate_hz(
-        static_cast<ac3::SampleRate>(std::to_integer<std::uint32_t>(units[0][4]) >> 6));
+    const std::uint32_t content_rate = iclforge::sample_rate_hz(
+        static_cast<iclforge::SampleRate>(std::to_integer<std::uint32_t>(units[0][4]) >> 6));
 
-    ac3::audio::PassthroughSink sink;
-    const auto started = sink.start("", content_rate, ac3::audio::BitstreamFormat::kEac3);
+    iclforge::audio::PassthroughSink sink;
+    const auto started = sink.start("", content_rate, iclforge::audio::BitstreamFormat::kEac3);
     if (!started) {
         __android_log_print(ANDROID_LOG_ERROR, kLogTag, "PassthroughSink::start failed: %s",
-                            std::string(ac3::audio::describe(started.error())).c_str());
+                            std::string(iclforge::audio::describe(started.error())).c_str());
         return false;
     }
     __android_log_print(ANDROID_LOG_INFO, kLogTag,
                         "streaming %zu access units from %s (%u Hz, carrier 4x that)",
                         units.size(), path.c_str(), content_rate);
 
-    ac3::iec61937::Eac3BurstPacker eac3_packer;
+    iclforge::iec61937::Eac3BurstPacker eac3_packer;
     for (const auto& unit : units) {
         auto result = eac3_packer.push(unit);
         if (!result) {

@@ -23,8 +23,8 @@
 // support(); a UI that read the missing pid alone would silently drop the
 // full-screen rule instead of explaining why it cannot apply it.
 
-using namespace ac3::crucible;
-using namespace ac3::crucible::testing;
+using namespace iclforge::crucible;
+using namespace iclforge::crucible::testing;
 
 TEST_CASE("every platform service factory returns an object", "[crucible][seams]") {
     REQUIRE(platform_audio_devices() != nullptr);

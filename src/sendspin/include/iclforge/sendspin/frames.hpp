@@ -33,7 +33,7 @@
 // reads (planning/hearth-sendspin-extension.md, C1). A message is reassembled in
 // whichever form its first fragment used; switching form part-way is malformed.
 
-namespace ac3::sendspin {
+namespace iclforge::sendspin {
 
 namespace message_id {
 inline constexpr std::uint8_t kJson = 0;
@@ -117,4 +117,4 @@ class Reassembler {
     bool delivered_ = false;
 };
 
-}  // namespace ac3::sendspin
+}  // namespace iclforge::sendspin

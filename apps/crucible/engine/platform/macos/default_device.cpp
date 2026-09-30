@@ -31,7 +31,7 @@
 // device's UID. coreaudio_support.hpp already has both, so this file is a
 // small forwarder over the library's private header rather than a second copy
 // of the two-call property idiom - the reason the Linux half reuses
-// ac3::pipewire's helpers the same way.
+// iclforge::pipewire's helpers the same way.
 //
 // ---------------------------------------------------------------------------
 // Nothing moves the default here, and that is the point
@@ -93,7 +93,7 @@
 // Settings would be sending them to change something this application has just
 // said it does not need changed.
 
-namespace ac3::crucible {
+namespace iclforge::crucible {
 
 namespace {
 
@@ -107,7 +107,7 @@ class MacosDefaultDevice final : public DefaultDevice {
 public:
     std::vector<RenderEndpoint> endpoints() override {
         std::vector<RenderEndpoint> out;
-        const auto devices = ac3::audio::enumerate_render_devices();
+        const auto devices = iclforge::audio::enumerate_render_devices();
         if (!devices) {
             return out;
         }
@@ -161,4 +161,4 @@ std::shared_ptr<DefaultDevice> platform_default_device() {
     return std::make_shared<MacosDefaultDevice>();
 }
 
-}  // namespace ac3::crucible
+}  // namespace iclforge::crucible

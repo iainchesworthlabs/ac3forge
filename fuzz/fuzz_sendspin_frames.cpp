@@ -10,7 +10,7 @@
 #include "iclforge/sendspin/frames.hpp"
 #include "iclforge/sendspin/stream_roles.hpp"
 
-// ac3::sendspin::Reassembler, parse_player_chunk and parse_burst_chunk
+// iclforge::sendspin::Reassembler, parse_player_chunk and parse_burst_chunk
 // (src/sendspin/src/frames.cpp, chunks.cpp) - everything a decrypted Sendspin
 // frame meets before a session looks at it: fragment reassembly in both the
 // specification's form and aiosendspin 9.1.1's, the two audio chunk parsers,
@@ -30,18 +30,18 @@
 
 namespace {
 
-using ac3::sendspin::Dialect;
-using ac3::sendspin::FrameError;
-using ac3::sendspin::Reassembler;
+using iclforge::sendspin::Dialect;
+using iclforge::sendspin::FrameError;
+using iclforge::sendspin::Reassembler;
 
 [[nodiscard]] bool same(std::span<const std::uint8_t> written, std::span<const std::uint8_t> read) {
     return std::equal(written.begin(), written.end(), read.begin(), read.end());
 }
 
 void inspect_roles(std::span<const std::uint8_t> message) {
-    namespace artwork = ac3::sendspin::artwork;
-    namespace visualizer = ac3::sendspin::visualizer;
-    namespace source = ac3::sendspin::source;
+    namespace artwork = iclforge::sendspin::artwork;
+    namespace visualizer = iclforge::sendspin::visualizer;
+    namespace source = iclforge::sendspin::source;
 
     if (const auto parsed = artwork::parse_message(message)) {
         if (parsed->channel >= artwork::kMaxChannels) {
@@ -92,17 +92,18 @@ void inspect_roles(std::span<const std::uint8_t> message) {
 
 void inspect(std::span<const std::uint8_t> message) {
     for (const Dialect dialect : {Dialect::kSpecification, Dialect::kAiosendspin911}) {
-        if (const auto chunk = ac3::sendspin::parse_player_chunk(message, dialect)) {
-            if (chunk->data.size() + ac3::sendspin::audio_chunk_header_bytes(dialect) !=
+        if (const auto chunk = iclforge::sendspin::parse_player_chunk(message, dialect)) {
+            if (chunk->data.size() + iclforge::sendspin::audio_chunk_header_bytes(dialect) !=
                 message.size()) {
                 std::abort();
             }
         }
     }
-    if (const auto burst = ac3::sendspin::parse_burst_chunk(message)) {
+    if (const auto burst = iclforge::sendspin::parse_burst_chunk(message)) {
         const auto payload = burst->chunk.data;
-        if (payload.size() > ac3::sendspin::max_burst_payload(burst->data_type()) ||
-            burst->pd != ac3::sendspin::burst_length_code(burst->data_type(), payload.size())) {
+        if (payload.size() > iclforge::sendspin::max_burst_payload(burst->data_type()) ||
+            burst->pd !=
+                iclforge::sendspin::burst_length_code(burst->data_type(), payload.size())) {
             std::abort();
         }
     }
@@ -111,7 +112,7 @@ void inspect(std::span<const std::uint8_t> message) {
 
 void round_trip(std::span<const std::uint8_t> input, Dialect dialect) {
     // Past two frames' worth, so a middle fragment exists.
-    const std::size_t target = (2 * ac3::sendspin::kMaxFramePlaintext) + 7;
+    const std::size_t target = (2 * iclforge::sendspin::kMaxFramePlaintext) + 7;
     std::vector<std::uint8_t> message;
     message.reserve(target);
     while (message.size() < target) {
@@ -119,16 +120,16 @@ void round_trip(std::span<const std::uint8_t> input, Dialect dialect) {
         message.insert(message.end(), input.begin(), input.begin() + static_cast<std::ptrdiff_t>(n));
     }
     // A message whose own ID is a fragment ID cannot be sent.
-    if (message[0] <= ac3::sendspin::message_id::kLegacyFragmentLast) {
-        message[0] = ac3::sendspin::message_id::kJson;
+    if (message[0] <= iclforge::sendspin::message_id::kLegacyFragmentLast) {
+        message[0] = iclforge::sendspin::message_id::kJson;
     }
 
-    static std::vector<std::uint8_t> frame(ac3::sendspin::kMaxFramePlaintext);
+    static std::vector<std::uint8_t> frame(iclforge::sendspin::kMaxFramePlaintext);
     Reassembler reassembler(message.size());
-    const std::size_t count = ac3::sendspin::frame_count(message.size(), dialect);
+    const std::size_t count = iclforge::sendspin::frame_count(message.size(), dialect);
     std::span<const std::uint8_t> delivered;
     for (std::size_t i = 0; i < count; ++i) {
-        const std::size_t written = ac3::sendspin::write_frame(message, i, frame, dialect);
+        const std::size_t written = iclforge::sendspin::write_frame(message, i, frame, dialect);
         if (written == 0 || written > frame.size()) {
             std::abort();
         }

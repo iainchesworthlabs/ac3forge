@@ -111,7 +111,7 @@ def main() -> None:
         "",
         "#include <array>",
         "",
-        "namespace ac3::golden {",
+        "namespace iclforge::golden {",
         "",
         fmt_array("kTable733", table, per_line=8),
         fmt_array("kKbdWindow512", window),
@@ -125,7 +125,7 @@ def main() -> None:
         parts.append(fmt_array(name + "Coeffs", coeffs))
         parts.append(fmt_array(name + "Short1Coeffs", short1))
         parts.append(fmt_array(name + "Short2Coeffs", short2))
-    parts.append("}  // namespace ac3::golden")
+    parts.append("}  // namespace iclforge::golden")
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text("\n".join(parts) + "\n", encoding="utf-8", newline="\n")

@@ -41,7 +41,7 @@ constexpr int kFrames = 8;
 // encoder's own priming (MDCT history, the transient detector's first-block
 // suppression, the SNR search's warm start) is behind it, and far enough from
 // the end that the tail of the chain's delay is still inside the stream.
-constexpr int kImpulseAt = 3 * ac3::kSamplesPerFrame + 512;
+constexpr int kImpulseAt = 3 * iclforge::kSamplesPerFrame + 512;
 
 std::vector<float> silence(int samples) {
     return std::vector<float>(static_cast<std::size_t>(samples), 0.0f);
@@ -110,15 +110,17 @@ int best_lag(std::span<const float> in, std::span<const float> out, int max_lag)
 }
 
 // Whole-stream AC-3 round trip of one mono channel.
-std::vector<float> ac3_round_trip(const ac3::EncoderConfig& config, std::span<const float> pcm) {
-    ac3::FrameEncoder encoder{config};
-    ac3::FrameDecoder decoder;
+std::vector<float> ac3_round_trip(const iclforge::EncoderConfig& config,
+                                  std::span<const float> pcm) {
+    iclforge::FrameEncoder encoder{config};
+    iclforge::FrameDecoder decoder;
     std::vector<float> out;
     out.reserve(pcm.size());
-    for (int frame = 0; frame * ac3::kSamplesPerFrame < static_cast<int>(pcm.size()); ++frame) {
+    for (int frame = 0; frame * iclforge::kSamplesPerFrame < static_cast<int>(pcm.size());
+         ++frame) {
         const std::span<const float> block =
-            pcm.subspan(static_cast<std::size_t>(frame) * ac3::kSamplesPerFrame,
-                        static_cast<std::size_t>(ac3::kSamplesPerFrame));
+            pcm.subspan(static_cast<std::size_t>(frame) * iclforge::kSamplesPerFrame,
+                        static_cast<std::size_t>(iclforge::kSamplesPerFrame));
         const std::array<std::span<const float>, 1> channels{block};
         const auto encoded = encoder.encode_frame(channels);
         REQUIRE(encoded.has_value());
@@ -148,15 +150,17 @@ struct Eac3RoundTrip {
     int latency_at_end = 0;
 };
 
-Eac3RoundTrip eac3_round_trip(const ac3::eac3::FrameConfig& config, std::span<const float> pcm) {
-    ac3::eac3::FrameEncoder encoder{config};
-    ac3::Eac3Decoder decoder;
+Eac3RoundTrip eac3_round_trip(const iclforge::eac3::FrameConfig& config,
+                              std::span<const float> pcm) {
+    iclforge::eac3::FrameEncoder encoder{config};
+    iclforge::Eac3Decoder decoder;
     Eac3RoundTrip result;
     result.pcm.reserve(pcm.size());
-    for (int frame = 0; frame * ac3::kSamplesPerFrame < static_cast<int>(pcm.size()); ++frame) {
+    for (int frame = 0; frame * iclforge::kSamplesPerFrame < static_cast<int>(pcm.size());
+         ++frame) {
         const std::span<const float> block =
-            pcm.subspan(static_cast<std::size_t>(frame) * ac3::kSamplesPerFrame,
-                        static_cast<std::size_t>(ac3::kSamplesPerFrame));
+            pcm.subspan(static_cast<std::size_t>(frame) * iclforge::kSamplesPerFrame,
+                        static_cast<std::size_t>(iclforge::kSamplesPerFrame));
         const std::array<std::span<const float>, 1> channels{block};
         const auto encoded = encoder.encode_frame(channels);
         REQUIRE(encoded.has_value());
@@ -186,43 +190,45 @@ Eac3RoundTrip eac3_round_trip(const ac3::eac3::FrameConfig& config, std::span<co
 
 TEST_CASE("AC-3 encode->decode delays the signal by exactly one transform overlap",
           "[latency]") {
-    const int samples = kFrames * ac3::kSamplesPerFrame;
-    const ac3::EncoderConfig config{
-        .bitrate_kbps = 448, .acmod = ac3::Acmod::k1_0, .lfe = false};
+    const int samples = kFrames * iclforge::kSamplesPerFrame;
+    const iclforge::EncoderConfig config{
+        .bitrate_kbps = 448, .acmod = iclforge::Acmod::k1_0, .lfe = false};
 
     SECTION("impulse, located by peak") {
         const auto in = impulse(samples, kImpulseAt);
         const auto out = ac3_round_trip(config, in);
         REQUIRE(out.size() == in.size());
-        REQUIRE(peak_index(out) == kImpulseAt + ac3::kTransformDelaySamples);
+        REQUIRE(peak_index(out) == kImpulseAt + iclforge::kTransformDelaySamples);
     }
 
     SECTION("tone burst, located by cross-correlation") {
         const auto in = burst(samples, kImpulseAt, 1200.0, 48000);
         const auto out = ac3_round_trip(config, in);
-        REQUIRE(best_lag(in, out, 2 * ac3::kSamplesPerFrame) == ac3::kTransformDelaySamples);
+        REQUIRE(best_lag(in, out, 2 * iclforge::kSamplesPerFrame) ==
+                iclforge::kTransformDelaySamples);
     }
 }
 
 TEST_CASE("The AC-3 encoder reports the budget the round trip measures", "[latency]") {
-    const ac3::FrameEncoder encoder{
-        {.bitrate_kbps = 448, .acmod = ac3::Acmod::k1_0, .lfe = false}};
+    const iclforge::FrameEncoder encoder{
+        {.bitrate_kbps = 448, .acmod = iclforge::Acmod::k1_0, .lfe = false}};
     const auto budget = encoder.latency();
 
     // The measured term, checked above.
-    REQUIRE(budget.transform_samples == ac3::kTransformDelaySamples);
+    REQUIRE(budget.transform_samples == iclforge::kTransformDelaySamples);
     // No lookahead: TransientDetector::detect() reads only the 256 new
     // samples of the block it decides, and AC-3 has no §3.7 hold-back.
     REQUIRE(budget.lookahead_samples == 0);
     REQUIRE(budget.holdback_samples == 0);
-    REQUIRE(budget.frame_samples == ac3::kSamplesPerFrame);
-    REQUIRE(encoder.latency_samples() == ac3::kSamplesPerFrame + ac3::kTransformDelaySamples);
-    REQUIRE(ac3::FrameDecoder::latency_samples() == 0);
+    REQUIRE(budget.frame_samples == iclforge::kSamplesPerFrame);
+    REQUIRE(encoder.latency_samples() ==
+            iclforge::kSamplesPerFrame + iclforge::kTransformDelaySamples);
+    REQUIRE(iclforge::FrameDecoder::latency_samples() == 0);
 
     // 1792 samples at 48 kHz. Spelled out so a change to any term has to
     // change a number a reader can check against docs/library/encoding-ac3.md.
     REQUIRE(encoder.latency_samples() == 1792);
-    const double ms = ac3::latency_ms(budget, ac3::SampleRate::k48000);
+    const double ms = iclforge::latency_ms(budget, iclforge::SampleRate::k48000);
     REQUIRE(ms > 37.3);
     REQUIRE(ms < 37.4);
 }
@@ -231,16 +237,16 @@ TEST_CASE("The frame term really is the wait for a whole frame of input", "[late
     // The claim LatencyBudget::frame_samples makes is that nothing comes out
     // of the encoder until a full frame has gone in - so N frames of input
     // produce N frames of output and never N+1, whatever the content.
-    const int samples = kFrames * ac3::kSamplesPerFrame;
+    const int samples = kFrames * iclforge::kSamplesPerFrame;
     const auto in = impulse(samples, kImpulseAt);
-    const auto out = ac3_round_trip({.bitrate_kbps = 448, .acmod = ac3::Acmod::k1_0}, in);
+    const auto out = ac3_round_trip({.bitrate_kbps = 448, .acmod = iclforge::Acmod::k1_0}, in);
     REQUIRE(static_cast<int>(out.size()) == samples);
 }
 
 TEST_CASE("E-AC-3 without transient pre-noise processing has the same budget", "[latency]") {
-    const int samples = kFrames * ac3::kSamplesPerFrame;
-    const ac3::eac3::FrameConfig config{
-        .bitrate_kbps = 448, .acmod = ac3::Acmod::k1_0, .lfe = false};
+    const int samples = kFrames * iclforge::kSamplesPerFrame;
+    const iclforge::eac3::FrameConfig config{
+        .bitrate_kbps = 448, .acmod = iclforge::Acmod::k1_0, .lfe = false};
 
     const auto in = impulse(samples, kImpulseAt);
     const auto trip = eac3_round_trip(config, in);
@@ -248,22 +254,22 @@ TEST_CASE("E-AC-3 without transient pre-noise processing has the same budget", "
     REQUIRE(trip.first_holdback_frame == -1);
     REQUIRE(trip.latency_at_end == 0);
     REQUIRE(static_cast<int>(trip.pcm.size()) == samples);
-    REQUIRE(peak_index(trip.pcm) == kImpulseAt + ac3::kTransformDelaySamples);
+    REQUIRE(peak_index(trip.pcm) == kImpulseAt + iclforge::kTransformDelaySamples);
 
-    const ac3::eac3::FrameEncoder encoder{config};
+    const iclforge::eac3::FrameEncoder encoder{config};
     REQUIRE(encoder.latency().holdback_samples == 0);
     REQUIRE(encoder.latency_samples() == 1792);
 
     const auto burst_in = burst(samples, kImpulseAt, 1200.0, 48000);
     const auto burst_trip = eac3_round_trip(config, burst_in);
-    REQUIRE(best_lag(burst_in, burst_trip.pcm, 2 * ac3::kSamplesPerFrame) ==
-            ac3::kTransformDelaySamples);
+    REQUIRE(best_lag(burst_in, burst_trip.pcm, 2 * iclforge::kSamplesPerFrame) ==
+            iclforge::kTransformDelaySamples);
 }
 
 TEST_CASE("Transient pre-noise processing costs one frame of decoder hold-back", "[latency]") {
-    const int samples = kFrames * ac3::kSamplesPerFrame;
-    ac3::eac3::FrameConfig config{
-        .bitrate_kbps = 448, .acmod = ac3::Acmod::k1_0, .lfe = false};
+    const int samples = kFrames * iclforge::kSamplesPerFrame;
+    iclforge::eac3::FrameConfig config{
+        .bitrate_kbps = 448, .acmod = iclforge::Acmod::k1_0, .lfe = false};
     config.transient_prenoise = true;
 
     // An impulse into silence is exactly the case that block-switches, which
@@ -279,36 +285,36 @@ TEST_CASE("Transient pre-noise processing costs one frame of decoder hold-back",
     // clear and every one of those frames releases immediately. The tool -
     // and with it the hold-back - engages exactly at the frame the impulse
     // lands in, and stays engaged for the rest of the stream.
-    REQUIRE(trip.first_holdback_frame == kImpulseAt / ac3::kSamplesPerFrame);
-    REQUIRE(trip.latency_at_end == ac3::kSamplesPerFrame);
+    REQUIRE(trip.first_holdback_frame == kImpulseAt / iclforge::kSamplesPerFrame);
+    REQUIRE(trip.latency_at_end == iclforge::kSamplesPerFrame);
     // The hold-back is a RELEASE delay, not a sample shift: flush() puts the
     // held frame back at the end of the stream, so the whole stream is still
     // the same length and the impulse is still at the same place in it.
     REQUIRE(static_cast<int>(trip.pcm.size()) == samples);
-    REQUIRE(peak_index(trip.pcm) == kImpulseAt + ac3::kTransformDelaySamples);
+    REQUIRE(peak_index(trip.pcm) == kImpulseAt + iclforge::kTransformDelaySamples);
 
-    const ac3::eac3::FrameEncoder encoder{config};
-    REQUIRE(encoder.latency().holdback_samples == ac3::kSamplesPerFrame);
-    REQUIRE(encoder.latency_samples() == 1792 + ac3::kSamplesPerFrame);
+    const iclforge::eac3::FrameEncoder encoder{config};
+    REQUIRE(encoder.latency().holdback_samples == iclforge::kSamplesPerFrame);
+    REQUIRE(encoder.latency_samples() == 1792 + iclforge::kSamplesPerFrame);
 }
 
 TEST_CASE("An access unit's budget is the worst its substreams impose", "[latency]") {
-    ac3::eac3::AccessUnitConfig config;
-    config.independent = {.bitrate_kbps = 384, .acmod = ac3::Acmod::k3_2, .lfe = true};
-    ac3::eac3::FrameConfig dependent{
-        .bitrate_kbps = 192, .acmod = ac3::Acmod::k2_0, .lfe = false};
-    dependent.strmtyp = ac3::eac3::StreamType::kDependent;
+    iclforge::eac3::AccessUnitConfig config;
+    config.independent = {.bitrate_kbps = 384, .acmod = iclforge::Acmod::k3_2, .lfe = true};
+    iclforge::eac3::FrameConfig dependent{
+        .bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0, .lfe = false};
+    dependent.strmtyp = iclforge::eac3::StreamType::kDependent;
     dependent.chanmap = 0x0180;
     dependent.transient_prenoise = true;
     config.dependents.push_back(dependent);
 
-    const ac3::eac3::AccessUnitEncoder encoder{config};
+    const iclforge::eac3::AccessUnitEncoder encoder{config};
     // The frame and transform terms are shared - every substream codes the
     // same 1536 samples - so only the hold-back can differ, and the unit
     // cannot be assembled until the latest substream has released.
-    REQUIRE(encoder.latency().frame_samples == ac3::kSamplesPerFrame);
-    REQUIRE(encoder.latency().transform_samples == ac3::kTransformDelaySamples);
-    REQUIRE(encoder.latency().holdback_samples == ac3::kSamplesPerFrame);
+    REQUIRE(encoder.latency().frame_samples == iclforge::kSamplesPerFrame);
+    REQUIRE(encoder.latency().transform_samples == iclforge::kTransformDelaySamples);
+    REQUIRE(encoder.latency().holdback_samples == iclforge::kSamplesPerFrame);
 }
 
 TEST_CASE("JOC object reconstruction costs the QMF filterbank's own delay", "[latency]") {
@@ -320,13 +326,13 @@ TEST_CASE("JOC object reconstruction costs the QMF filterbank's own delay", "[la
     // own comment for why an MDCT-domain matrix would leave TDAC aliasing
     // uncancelled). Measured end to end through the real object path.
     constexpr int kObjects = 1;
-    const int samples = kFrames * ac3::kSamplesPerFrame;
+    const int samples = kFrames * iclforge::kSamplesPerFrame;
     const auto in = burst(samples, kImpulseAt, 900.0, 48000);
 
-    ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, kObjects};
-    ac3::Eac3Decoder decoder;
+    iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, kObjects};
+    iclforge::Eac3Decoder decoder;
 
-    const ac3::oba::ObjectPlacement placement{
+    const iclforge::oba::ObjectPlacement placement{
         .position = {.x = 0.5, .y = 0.9, .z = 0.0}, .gain = 1.0};
     // The bed's channels individually depend on where the object was panned,
     // and a near-silent one carries nothing to correlate against - so measure
@@ -335,12 +341,12 @@ TEST_CASE("JOC object reconstruction costs the QMF filterbank's own delay", "[la
     // by whatever the chain delays it, which is the only thing under test.
     std::vector<float> bed_out;
     std::vector<float> object_out;
-    for (int frame = 0; frame * ac3::kSamplesPerFrame < samples; ++frame) {
+    for (int frame = 0; frame * iclforge::kSamplesPerFrame < samples; ++frame) {
         const std::span<const float> block{
-            in.data() + static_cast<std::size_t>(frame) * ac3::kSamplesPerFrame,
-            static_cast<std::size_t>(ac3::kSamplesPerFrame)};
+            in.data() + static_cast<std::size_t>(frame) * iclforge::kSamplesPerFrame,
+            static_cast<std::size_t>(iclforge::kSamplesPerFrame)};
         const std::array<std::span<const float>, 1> objects{block};
-        const std::array<ac3::oba::ObjectPlacement, 1> placements{placement};
+        const std::array<iclforge::oba::ObjectPlacement, 1> placements{placement};
         const auto unit = encoder.encode_frame(objects, placements);
         REQUIRE(unit.has_value());
         const auto decoded = decoder.decode_access_unit(unit->bytes);
@@ -350,9 +356,9 @@ TEST_CASE("JOC object reconstruction costs the QMF filterbank's own delay", "[la
         REQUIRE(!au.channels.empty());
         REQUIRE(au.object_audio.size() == 1);
         const std::size_t base = bed_out.size();
-        bed_out.resize(base + static_cast<std::size_t>(ac3::kSamplesPerFrame), 0.0f);
+        bed_out.resize(base + static_cast<std::size_t>(iclforge::kSamplesPerFrame), 0.0f);
         for (const auto& channel : au.channels) {
-            REQUIRE(channel.size() == static_cast<std::size_t>(ac3::kSamplesPerFrame));
+            REQUIRE(channel.size() == static_cast<std::size_t>(iclforge::kSamplesPerFrame));
             for (std::size_t n = 0; n < channel.size(); ++n) {
                 bed_out[base + n] += channel[n];
             }
@@ -365,35 +371,36 @@ TEST_CASE("JOC object reconstruction costs the QMF filterbank's own delay", "[la
     REQUIRE(peak_index(bed_out) > 0);
     REQUIRE(peak_index(object_out) > 0);
 
-    REQUIRE(best_lag(in, bed_out, 3 * ac3::kSamplesPerFrame) == ac3::kTransformDelaySamples);
-    REQUIRE(best_lag(in, object_out, 3 * ac3::kSamplesPerFrame) ==
-            ac3::kTransformDelaySamples + ac3::dsp::kQmfDelay);
+    REQUIRE(best_lag(in, bed_out, 3 * iclforge::kSamplesPerFrame) ==
+            iclforge::kTransformDelaySamples);
+    REQUIRE(best_lag(in, object_out, 3 * iclforge::kSamplesPerFrame) ==
+            iclforge::kTransformDelaySamples + iclforge::dsp::kQmfDelay);
 
-    REQUIRE(encoder.bed_latency().transform_samples == ac3::kTransformDelaySamples);
+    REQUIRE(encoder.bed_latency().transform_samples == iclforge::kTransformDelaySamples);
     REQUIRE(encoder.latency().transform_samples ==
-            ac3::kTransformDelaySamples + ac3::dsp::kQmfDelay);
-    REQUIRE(encoder.latency_samples() == ac3::kSamplesPerFrame + 832);
+            iclforge::kTransformDelaySamples + iclforge::dsp::kQmfDelay);
+    REQUIRE(encoder.latency_samples() == iclforge::kSamplesPerFrame + 832);
 }
 
 TEST_CASE("An Atmos stream with no container is a plain bed and costs no second transform",
           "[latency]") {
-    ac3::oba::AtmosConfig config{.bitrate_kbps = 448};
+    iclforge::oba::AtmosConfig config{.bitrate_kbps = 448};
     config.emit_object_metadata = false;
-    const ac3::oba::AtmosEncoder encoder{config, 2};
-    REQUIRE(encoder.latency().transform_samples == ac3::kTransformDelaySamples);
+    const iclforge::oba::AtmosEncoder encoder{config, 2};
+    REQUIRE(encoder.latency().transform_samples == iclforge::kTransformDelaySamples);
     REQUIRE(encoder.latency_samples() == encoder.bed_latency().total_samples());
 }
 
 TEST_CASE("latency_ms converts at the coded rate, not a fixed 48 kHz", "[latency]") {
-    const ac3::LatencyBudget budget{};
+    const iclforge::LatencyBudget budget{};
     REQUIRE(budget.total_samples() == 1792);
     // 1792 / 44100 = 40.63 ms; the eight-tenths of a millisecond between this
     // and the 48 kHz figure is exactly what a sync budget would otherwise
     // silently lose.
-    const double at_44k = ac3::latency_ms(budget, ac3::SampleRate::k44100);
+    const double at_44k = iclforge::latency_ms(budget, iclforge::SampleRate::k44100);
     REQUIRE(at_44k > 40.6);
     REQUIRE(at_44k < 40.7);
-    REQUIRE(ac3::latency_ms(budget, ac3::SampleRate::k32000) > 55.9);
+    REQUIRE(iclforge::latency_ms(budget, iclforge::SampleRate::k32000) > 55.9);
 }
 
 // E-AC-3 short syncframes gave the E-AC-3 encoder short syncframes (numblkscod 0-2,
@@ -413,23 +420,23 @@ TEST_CASE("E-AC-3 latency follows the syncframe length", "[latency][eac3]") {
     };
     for (const auto [numblkscod, blocks] : {Case{0, 1}, Case{1, 2}, Case{2, 3}, Case{3, 6}}) {
         CAPTURE(numblkscod, blocks);
-        const ac3::eac3::FrameConfig config{.numblkscod = numblkscod};
-        const auto budget = ac3::eac3::eac3_latency(config);
-        const int expected_frame = blocks * ac3::kSamplesPerBlock;
+        const iclforge::eac3::FrameConfig config{.numblkscod = numblkscod};
+        const auto budget = iclforge::eac3::eac3_latency(config);
+        const int expected_frame = blocks * iclforge::kSamplesPerBlock;
 
         CHECK(budget.frame_samples == expected_frame);
         // The encoder agrees with the free function - a caller can price a
         // configuration before building one, which is why both exist.
-        ac3::eac3::FrameEncoder encoder{config};
-        CHECK(encoder.latency_samples() == expected_frame + ac3::kTransformDelaySamples);
+        iclforge::eac3::FrameEncoder encoder{config};
+        CHECK(encoder.latency_samples() == expected_frame + iclforge::kTransformDelaySamples);
         // And it really is shorter: a one-block frame is 5.3 ms of frame term
         // against six blocks' 32 ms, which is the entire reason to ask for it.
-        CHECK(budget.frame_samples * 6 == ac3::kSamplesPerFrame * blocks);
+        CHECK(budget.frame_samples * 6 == iclforge::kSamplesPerFrame * blocks);
     }
 
     // §3.7's hold-back does not: a correction's reach is 1528 samples however
     // long the syncframes are, so the decoder holds 1536 samples back - six
     // one-block syncframes, one six-block one.
-    const ac3::eac3::FrameConfig held{.numblkscod = 0, .transient_prenoise = true};
-    CHECK(ac3::eac3::eac3_latency(held).holdback_samples == ac3::kSamplesPerFrame);
+    const iclforge::eac3::FrameConfig held{.numblkscod = 0, .transient_prenoise = true};
+    CHECK(iclforge::eac3::eac3_latency(held).holdback_samples == iclforge::kSamplesPerFrame);
 }

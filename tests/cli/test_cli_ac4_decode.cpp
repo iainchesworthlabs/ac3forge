@@ -28,7 +28,7 @@
 #include "iclforge/ac4/ac4.hpp"
 
 namespace fs = std::filesystem;
-using ac3::test::kSanitized;
+using iclforge::test::kSanitized;
 
 namespace {
 
@@ -36,7 +36,7 @@ namespace {
 // tests/cli/test_cli_containers.cpp, whose shapes these copy).
 fs::path scratch_dir() {
     auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} /
-               ("cli_ac4_decode_" + ac3::test::platform::process_id());
+               ("cli_ac4_decode_" + iclforge::test::platform::process_id());
     fs::create_directories(dir);
     return dir;
 }
@@ -44,7 +44,7 @@ fs::path scratch_dir() {
 int run_cli(const std::string& args, const fs::path& log) {
     const std::string command =
         "\"" + std::string(AC3CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
-    return ac3::test::platform::run_shell(command);
+    return iclforge::test::platform::run_shell(command);
 }
 
 std::string read_log(const fs::path& log) {
@@ -81,7 +81,7 @@ fs::path decoded_stream(const fs::path& stream, std::size_t frames, const fs::pa
                                   std::istreambuf_iterator<char>{}};
     std::vector<std::byte> bytes(chars.size());
     std::ranges::transform(chars, bytes.begin(), [](char c) { return static_cast<std::byte>(c); });
-    const ac4::ScanResult scan = ac4::scan(bytes);
+    const iclforge::ac4::ScanResult scan = iclforge::ac4::scan(bytes);
     REQUIRE(scan.frames.size() > frames);
     std::ofstream out{prefix, std::ios::binary};
     REQUIRE(out.is_open());
@@ -98,12 +98,12 @@ double energy(const std::vector<float>& x) {
 }
 
 // Decodes `in` with `options` into a WAV and reads it back.
-ac3::io::WavData decode(const fs::path& in, const std::string& options, const fs::path& log) {
+iclforge::io::WavData decode(const fs::path& in, const std::string& options, const fs::path& log) {
     const auto wav = scratch_dir() / "ac4_option.wav";
     fs::remove(wav);
     INFO(options);
     REQUIRE(run_cli("decode " + quoted(in) + " " + quoted(wav) + " " + options, log) == 0);
-    auto decoded = ac3::io::read_wav(wav.string());
+    auto decoded = iclforge::io::read_wav(wav.string());
     REQUIRE(decoded.has_value());
     return std::move(*decoded);
 }
@@ -238,7 +238,7 @@ TEST_CASE("decode folds AC-4 by each downmix with the LFE and without it", "[cli
             0.3 * std::sin(2.0 * std::numbers::pi * 60.0 * static_cast<double>(n) / 48000.0));
     }
     const auto wav_in = dir / "ac4_lfe_in.wav";
-    REQUIRE(ac3::io::write_wav_f32(wav_in.string(), input, 48000).has_value());
+    REQUIRE(iclforge::io::write_wav_f32(wav_in.string(), input, 48000).has_value());
     const auto lfe_stream = dir / "ac4_lfe.ac4";
     REQUIRE(run_cli("ac4-encode " + quoted(wav_in) + " " + quoted(lfe_stream) + " 384 lfemix=-4.5",
                     log) == 0);

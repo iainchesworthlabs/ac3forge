@@ -8,7 +8,7 @@
 #include <optional>
 #include <string>
 
-namespace ac3::signing {
+namespace iclforge::signing {
 namespace {
 
 // A key sits in freed heap after use unless scrubbed. std::fill on a soon-to-be
@@ -267,4 +267,4 @@ std::expected<SigningKey, KeyLoadError> load_signing_key(std::string_view explic
     return std::unexpected(KeyLoadError{KeyErrorKind::kAbsent, "no signing key provided"});
 }
 
-}  // namespace ac3::signing
+}  // namespace iclforge::signing

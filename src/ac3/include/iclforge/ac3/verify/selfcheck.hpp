@@ -23,7 +23,7 @@
 // EncoderConfig now carries is null unless something like this class sets it,
 // and a null trace means one predictable branch per block and no allocation.
 
-namespace ac3::verify {
+namespace iclforge::verify {
 
 // One frame, plus what the check found out about it.
 struct CheckedFrame {
@@ -88,4 +88,4 @@ class ICLFORGE_AC3_EXPORT MirrorEncoder {
     std::uint64_t frame_index_ = 0;
 };
 
-}  // namespace ac3::verify
+}  // namespace iclforge::verify

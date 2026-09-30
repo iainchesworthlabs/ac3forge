@@ -12,7 +12,7 @@
 
 #include "ebml_detail.hpp"
 
-namespace matroska {
+namespace iclforge::matroska {
 
 namespace {
 
@@ -128,7 +128,7 @@ void put_master_unknown_size(Bytes& out, std::uint32_t id) {
 }
 
 // Same as build_info, minus Duration: a caller writing incrementally (see
-// matroska::Writer) does not know the session's length until it decides to
+// iclforge::matroska::Writer) does not know the session's length until it decides to
 // stop, so there is nothing honest to put there yet. Kept as its own
 // function rather than a bool on build_info - every existing caller of that
 // one DOES know its duration, and a parameter only one of two callers would
@@ -346,4 +346,4 @@ std::expected<std::vector<std::byte>, MuxError> mux(
     return mux(track, views, options);
 }
 
-}  // namespace matroska
+}  // namespace iclforge::matroska

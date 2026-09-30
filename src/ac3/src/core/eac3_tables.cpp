@@ -12,7 +12,7 @@
 // eac3_tables.hpp for what each piece is for; this file is where the
 // combinatorics that only make sense as ordinary (non-constexpr) code live.
 
-namespace ac3::eac3::chanmap {
+namespace iclforge::eac3::chanmap {
 
 namespace {
 
@@ -149,4 +149,4 @@ std::expected<ChannelPlan, AllocationError> allocate(std::uint16_t locations) {
     return plan;
 }
 
-}  // namespace ac3::eac3::chanmap
+}  // namespace iclforge::eac3::chanmap

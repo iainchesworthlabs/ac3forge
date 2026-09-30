@@ -1,4 +1,4 @@
-// ac3::hearth::SinkFirmware against a stand-in board on 127.0.0.1: the
+// iclforge::hearth::SinkFirmware against a stand-in board on 127.0.0.1: the
 // requests it makes, and how it follows a board through an update's restart
 // and trial to each way one can end. The stand-in answers GET /firmware with
 // the board's own renderer (ac3forge/firmware_status.hpp), so the client
@@ -32,14 +32,14 @@
 #include "sink_firmware_images.hpp"
 #include "sink_firmware_view.hpp"
 
-using ac3::hearth::SinkFirmware;
-using ac3::hearth::UpdateOutcome;
+using iclforge::hearth::SinkFirmware;
+using iclforge::hearth::UpdateOutcome;
 using sink_firmware_test::ImageSpec;
 using namespace std::chrono_literals;
 
 namespace {
 
-constexpr ac3::hearth::SinkFirmwareTiming kFast{
+constexpr iclforge::hearth::SinkFirmwareTiming kFast{
     .poll = 50ms,
     .wait_poll = 50ms,
     .wait = 10s,
@@ -164,7 +164,8 @@ class FakeBoard {
                     return;
                 }
                 const std::vector<std::uint8_t> bytes(received.begin(), received.end());
-                ac3::hearth::ReadFirmwareFile read = ac3::hearth::read_firmware_file(bytes);
+                iclforge::hearth::ReadFirmwareFile read =
+                    iclforge::hearth::read_firmware_file(bytes);
                 uploaded_ = std::move(read.file);
                 uploaded_image_sha256_ = uploaded_ ? uploaded_->image_sha256 : std::string();
                 status_.mode = "flash";
@@ -336,7 +337,7 @@ class FakeBoard {
     std::string host_;
     std::string digest_;
     std::string body_;
-    std::optional<ac3::hearth::FirmwareFile> uploaded_;
+    std::optional<iclforge::hearth::FirmwareFile> uploaded_;
     std::string uploaded_image_sha256_;
 
     httplib::Server server_;
@@ -344,11 +345,11 @@ class FakeBoard {
     std::thread thread_;
 };
 
-ac3::hearth::FirmwareFile update_file() {
+iclforge::hearth::FirmwareFile update_file() {
     ImageSpec spec;
     spec.elf_seed = 40;
     spec.version = "v0.11.0";
-    ac3::hearth::ReadFirmwareFile read = ac3::hearth::read_firmware_file(sink_firmware_test::make_image(spec));
+    iclforge::hearth::ReadFirmwareFile read = iclforge::hearth::read_firmware_file(sink_firmware_test::make_image(spec));
     REQUIRE(read.file.has_value());
     return std::move(*read.file);
 }
@@ -356,13 +357,13 @@ ac3::hearth::FirmwareFile update_file() {
 // Too large for the sockets' buffers to take all of before a connection
 // closed under it resets: the client is still sending when it finds out, as
 // a client sending to a board is. The stand-in's slot is made room for it.
-ac3::hearth::FirmwareFile large_update_file(FakeBoard& board) {
+iclforge::hearth::FirmwareFile large_update_file(FakeBoard& board) {
     board.change([](ac3forge::FirmwareStatus& status) { status.slot_bytes = 16 * 1024 * 1024; });
     ImageSpec spec;
     spec.elf_seed = 40;
     spec.version = "v0.11.0";
     spec.segment_bytes = 8'000'000;
-    ac3::hearth::ReadFirmwareFile read = ac3::hearth::read_firmware_file(sink_firmware_test::make_image(spec));
+    iclforge::hearth::ReadFirmwareFile read = iclforge::hearth::read_firmware_file(sink_firmware_test::make_image(spec));
     REQUIRE(read.file.has_value());
     return std::move(*read.file);
 }
@@ -412,7 +413,7 @@ TEST_CASE("sink firmware board: an update is sent with its digest and followed u
           "[hearth][sink-firmware]") {
     FakeBoard board;
     SinkFirmware firmware("127.0.0.1", board.port(), kFast);
-    const ac3::hearth::FirmwareFile file = update_file();
+    const iclforge::hearth::FirmwareFile file = update_file();
     REQUIRE(firmware.start_update(file));
     CHECK_FALSE(firmware.start_update(file));  // one at a time
     CHECK(firmware.busy());
@@ -428,7 +429,8 @@ TEST_CASE("sink firmware board: an update is sent with its digest and followed u
 
     CHECK(board.uploads() == 1);
     CHECK(board.body() == std::string(file.data.begin(), file.data.end()));
-    CHECK(board.digest() == "sha-256=:" + ac3::sendspin::base64::encode(file.file_sha256) + ":");
+    CHECK(board.digest() ==
+          "sha-256=:" + iclforge::sendspin::base64::encode(file.file_sha256) + ":");
     CHECK(board.host() == "127.0.0.1:" + std::to_string(board.port()));
     CHECK(eventually([&] { return !firmware.busy(); }));
     CHECK(board.mode_requests() == 0);
@@ -497,7 +499,7 @@ TEST_CASE("sink firmware board: an upload whose answer was lost leaves flash mod
     // The board's answer never comes: the upload's wait for it runs out
     // first.
     board.delay_answer(5s);
-    ac3::hearth::SinkFirmwareTiming timing = kFast;
+    iclforge::hearth::SinkFirmwareTiming timing = kFast;
     timing.upload_answer = 1s;
     SinkFirmware firmware("127.0.0.1", board.port(), timing);
     SECTION("the board refused the image and waits in flash mode: it is told to leave") {
@@ -525,7 +527,7 @@ TEST_CASE("sink firmware board: an upload whose answer was lost leaves flash mod
 TEST_CASE("sink firmware board: an upload that broke off is sent again, and the second one goes through",
           "[hearth][sink-firmware]") {
     FakeBoard board;
-    const ac3::hearth::FirmwareFile file = large_update_file(board);
+    const iclforge::hearth::FirmwareFile file = large_update_file(board);
     SECTION("the board never started it: its connection was reset before the board read any of it") {
         board.drop_uploads(1, nullptr);
     }
@@ -550,7 +552,7 @@ TEST_CASE("sink firmware board: an upload that broke off is sent again, and the 
 TEST_CASE("sink firmware board: an upload the board gave up for another reason is not sent again",
           "[hearth][sink-firmware]") {
     FakeBoard board;
-    const ac3::hearth::FirmwareFile file = large_update_file(board);
+    const iclforge::hearth::FirmwareFile file = large_update_file(board);
     board.drop_uploads(1, gave_up("failed", "writing the slot failed after 4096 bytes"));
     SinkFirmware firmware("127.0.0.1", board.port(), kFast);
     REQUIRE(firmware.start_update(file));
@@ -571,7 +573,7 @@ TEST_CASE("sink firmware board: an upload the board gave up for another reason i
 
 TEST_CASE("sink firmware board: a second break ends the update, with no third try", "[hearth][sink-firmware]") {
     FakeBoard board;
-    const ac3::hearth::FirmwareFile file = large_update_file(board);
+    const iclforge::hearth::FirmwareFile file = large_update_file(board);
     std::string said;
     int left = 0;
     SECTION("the board gave it up both times, and is told to leave flash mode") {
@@ -600,7 +602,7 @@ TEST_CASE("sink firmware board: a board that never decides is reported when the 
           "[hearth][sink-firmware]") {
     FakeBoard board;
     board.after_upload(FakeBoard::AfterUpload::kStayInFlashMode);
-    ac3::hearth::SinkFirmwareTiming timing = kFast;
+    iclforge::hearth::SinkFirmwareTiming timing = kFast;
     timing.wait = 1s;
     SinkFirmware firmware("127.0.0.1", board.port(), timing);
     REQUIRE(firmware.start_update(update_file()));
@@ -659,7 +661,7 @@ TEST_CASE("sink firmware live: an image goes onto a real board and is accepted",
     }
     std::ifstream in(path, std::ios::binary);
     REQUIRE(in.good());
-    ac3::hearth::ReadFirmwareFile read = ac3::hearth::read_firmware_file(
+    iclforge::hearth::ReadFirmwareFile read = iclforge::hearth::read_firmware_file(
         std::vector<std::uint8_t>(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()));
     INFO(read.why);
     REQUIRE(read.file.has_value());
@@ -668,14 +670,14 @@ TEST_CASE("sink firmware live: an image goes onto a real board and is accepted",
     firmware.set_watching(true);
     REQUIRE(eventually([&] { return firmware.snapshot().firmware.has_value(); }, 30s));
     const auto print_panel = [&](const char* when) {
-        const ac3::hearth::FirmwarePanel panel = ac3::hearth::to_firmware_panel(firmware.snapshot(), "");
+        const iclforge::hearth::FirmwarePanel panel = iclforge::hearth::to_firmware_panel(firmware.snapshot(), "");
         std::printf("--- %s\n  running      %s\n  other        %s\n  last update  %s\n  last crash   %s\n", when,
                     panel.running_text.c_str(), panel.other_text.c_str(), panel.last_update_text.c_str(),
                     panel.crash_text.empty() ? "none" : panel.crash_text.c_str());
         std::fflush(stdout);
     };
     print_panel("before");
-    const ac3::hearth::FirmwareCandidate candidate = ac3::hearth::to_candidate(*read.file, firmware.snapshot());
+    const iclforge::hearth::FirmwareCandidate candidate = iclforge::hearth::to_candidate(*read.file, firmware.snapshot());
     std::printf("image: %s%s%s\n", candidate.text.c_str(), candidate.refusal.empty() ? "" : "; refused: ",
                 candidate.refusal.c_str());
     REQUIRE(candidate.refusal.empty());
@@ -689,7 +691,7 @@ TEST_CASE("sink firmware live: an image goes onto a real board and is accepted",
             if (!update) {
                 return false;
             }
-            const ac3::hearth::FirmwarePanel panel = ac3::hearth::to_firmware_panel(firmware.snapshot(), "");
+            const iclforge::hearth::FirmwarePanel panel = iclforge::hearth::to_firmware_panel(firmware.snapshot(), "");
             const std::string now =
                 update->stage == "sending" ? update->stage : (panel.updating ? panel.progress_text : update->text);
             if (now != said) {

@@ -23,7 +23,7 @@
 #include "iclforge/audio/playback_counter.hpp"
 #include "iclforge/audio/ring_buffer.hpp"
 
-namespace ac3::audio {
+namespace iclforge::audio {
 
 namespace {
 
@@ -461,4 +461,4 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& /*device
     return {};
 }
 
-}  // namespace ac3::audio
+}  // namespace iclforge::audio

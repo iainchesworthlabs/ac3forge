@@ -40,26 +40,26 @@
 
 namespace {
 
-namespace m = ac3::sendspin::messages;
-namespace hs = ac3::sendspin::handshake;
-namespace flow = ac3::sendspin::pairing_flow;
-namespace websocket = ac3::sendspin::transport::websocket;
-using ac3::sendspin::DrivenSession;
-using ac3::sendspin::PlayerConfig;
-using ac3::sendspin::PlayerListener;
-using ac3::sendspin::PlayerSession;
-using ac3::sendspin::ServerConfig;
-using ac3::sendspin::ServerListener;
-using ac3::sendspin::ServerSession;
-using ac3::sendspin::SessionDriver;
-using ac3::sendspin::SessionOutput;
-using ac3::sendspin::SteadyClock;
-using ac3::sendspin::crypto::Digest32;
-using ac3::sendspin::crypto::Key32;
-using ac3::sendspin::pairing_messages::AbortReason;
-using ac3::sendspin::transport::Connection;
-using ac3::sendspin::transport::Frame;
-using ac3::sendspin::transport::FrameKind;
+namespace m = iclforge::sendspin::messages;
+namespace hs = iclforge::sendspin::handshake;
+namespace flow = iclforge::sendspin::pairing_flow;
+namespace websocket = iclforge::sendspin::transport::websocket;
+using iclforge::sendspin::DrivenSession;
+using iclforge::sendspin::PlayerConfig;
+using iclforge::sendspin::PlayerListener;
+using iclforge::sendspin::PlayerSession;
+using iclforge::sendspin::ServerConfig;
+using iclforge::sendspin::ServerListener;
+using iclforge::sendspin::ServerSession;
+using iclforge::sendspin::SessionDriver;
+using iclforge::sendspin::SessionOutput;
+using iclforge::sendspin::SteadyClock;
+using iclforge::sendspin::crypto::Digest32;
+using iclforge::sendspin::crypto::Key32;
+using iclforge::sendspin::pairing_messages::AbortReason;
+using iclforge::sendspin::transport::Connection;
+using iclforge::sendspin::transport::Frame;
+using iclforge::sendspin::transport::FrameKind;
 using namespace std::chrono_literals;
 
 // What the sessions' listeners record, and the test waits on. Listeners run on the drivers'
@@ -177,12 +177,13 @@ struct ServerSide final : ServerListener {
 
 Key32 random_key() {
     Key32 key{};
-    REQUIRE(ac3::sendspin::crypto::random_bytes(key));
+    REQUIRE(iclforge::sendspin::crypto::random_bytes(key));
     return key;
 }
 
-ac3::sendspin::noise::KeyPair generated() {
-    std::optional<ac3::sendspin::noise::KeyPair> pair = ac3::sendspin::noise::KeyPair::generate();
+iclforge::sendspin::noise::KeyPair generated() {
+    std::optional<iclforge::sendspin::noise::KeyPair> pair =
+        iclforge::sendspin::noise::KeyPair::generate();
     REQUIRE(pair.has_value());
     return *pair;
 }
@@ -339,7 +340,7 @@ SessionOutput binary_frames(std::size_t count, std::size_t bytes) {
 }  // namespace
 
 TEST_CASE("session driver: frames in order, ticks when due, and a session's close", "[sendspin][driver]") {
-    auto [near, far] = ac3::sendspin::transport::memory_pair();
+    auto [near, far] = iclforge::sendspin::transport::memory_pair();
     Events events;
     int ticks = 0;
     // An echo: a one-byte frame back for each one-byte frame, holding the byte plus one, then a

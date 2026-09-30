@@ -1,4 +1,4 @@
-// ac4::Encoder's immersive layouts end to end (planning/ac4.md, phase E8): 5.1.4
+// iclforge::ac4::Encoder's immersive layouts end to end (planning/ac4.md, phase E8): 5.1.4
 // and 5.0.4 in the immersive element of ETSI TS 103 190-2 V1.3.1 clause 6.2.4,
 // as DEE writes it, in SCPL, ASPX_SCPL and ASPX_ACPL_2 by the rate, and the
 // experimental 7.1.4 with the back pair and ASPX_ACPL_1. Each stream reads back
@@ -29,8 +29,8 @@
 
 namespace {
 
-using ac3::test::kSanitized;
-using ac4::Speaker;
+using iclforge::test::kSanitized;
+using iclforge::ac4::Speaker;
 
 // The decoder's delay at frame_rate_index 13 (d_pcm, the QMF banks' 577
 // samples and six QMF slots) and the encoder's, a frame and a half.
@@ -82,18 +82,19 @@ std::vector<std::vector<float>> tones(const std::vector<Channel>& channels) {
 }
 
 struct Encoded {
-    std::vector<ac4::EncodedFrame> frames;
-    std::vector<ac4::SyntaxRecord> trace;
-    ac4::CodecMode mode = ac4::CodecMode::kAuto;
+    std::vector<iclforge::ac4::EncodedFrame> frames;
+    std::vector<iclforge::ac4::SyntaxRecord> trace;
+    iclforge::ac4::CodecMode mode = iclforge::ac4::CodecMode::kAuto;
 };
 
-Encoded encode(const ac4::EncoderConfig& base, const std::vector<std::vector<float>>& input) {
+Encoded encode(const iclforge::ac4::EncoderConfig& base,
+               const std::vector<std::vector<float>>& input) {
     Encoded out;
-    ac4::EncoderConfig config = base;
-    const auto sink = [&out](const ac4::SyntaxRecord& r) { out.trace.push_back(r); };
+    iclforge::ac4::EncoderConfig config = base;
+    const auto sink = [&out](const iclforge::ac4::SyntaxRecord& r) { out.trace.push_back(r); };
     config.trace = sink;
-    auto encoder = ac4::Encoder::create(config);
-    INFO(ac4::Encoder::refusal_reason(base));
+    auto encoder = iclforge::ac4::Encoder::create(config);
+    INFO(iclforge::ac4::Encoder::refusal_reason(base));
     REQUIRE(encoder.has_value());
     out.mode = encoder->codec_mode();
     std::vector<std::span<const float>> views;
@@ -114,19 +115,20 @@ struct Decoded {
     std::vector<std::vector<float>> channels;
 };
 
-Decoded decode(const std::vector<ac4::EncodedFrame>& frames, ac4::DecodingMode mode,
-               ac4::DownmixTarget target = ac4::DownmixTarget::kAsCoded) {
-    ac4::DecoderConfig config;
+Decoded decode(const std::vector<iclforge::ac4::EncodedFrame>& frames,
+               iclforge::ac4::DecodingMode mode,
+               iclforge::ac4::DownmixTarget target = iclforge::ac4::DownmixTarget::kAsCoded) {
+    iclforge::ac4::DecoderConfig config;
     config.decoding = mode;
     config.output.downmix = target;
-    ac4::Decoder decoder(config);
+    iclforge::ac4::Decoder decoder(config);
     Decoded out;
-    for (const ac4::EncodedFrame& frame : frames) {
+    for (const iclforge::ac4::EncodedFrame& frame : frames) {
         const auto decoded = decoder.decode(frame.raw_ac4_frame);
         INFO(decoder.refusal_reason());
         REQUIRE(decoded.has_value());
         REQUIRE(decoded->has_value());
-        const ac4::DecodedFrame& pcm = **decoded;
+        const iclforge::ac4::DecodedFrame& pcm = **decoded;
         out.speakers = pcm.speakers;
         out.channels.resize(pcm.channels.size());
         for (std::size_t c = 0; c < pcm.channels.size(); ++c) {
@@ -140,15 +142,15 @@ Decoded decode(const std::vector<ac4::EncodedFrame>& frames, ac4::DecodingMode m
 // Every substream of every frame reads to its end, and the decoder's trace is
 // the encoder's, record for record.
 void check_frames_read_back(const Encoded& encoded) {
-    std::vector<ac4::SyntaxRecord> read;
-    const auto sink = [&read](const ac4::SyntaxRecord& r) { read.push_back(r); };
-    ac4::DecoderConfig config;
+    std::vector<iclforge::ac4::SyntaxRecord> read;
+    const auto sink = [&read](const iclforge::ac4::SyntaxRecord& r) { read.push_back(r); };
+    iclforge::ac4::DecoderConfig config;
     config.syntax = sink;
-    ac4::Decoder decoder(config);
-    for (const ac4::EncodedFrame& frame : encoded.frames) {
+    iclforge::ac4::Decoder decoder(config);
+    for (const iclforge::ac4::EncodedFrame& frame : encoded.frames) {
         const auto report = decoder.parse(frame.raw_ac4_frame);
         REQUIRE(report.has_value());
-        for (const ac4::SubstreamReport& substream : report->substreams) {
+        for (const iclforge::ac4::SubstreamReport& substream : report->substreams) {
             CAPTURE(substream.index, substream.refused_reason);
             REQUIRE_FALSE(substream.refused.has_value());
             CHECK(substream.bits_read == substream.size_bits);
@@ -172,7 +174,7 @@ void check_frames_read_back(const Encoded& encoded) {
 std::size_t count_records(const Encoded& encoded, std::string_view name, std::uint64_t value) {
     return static_cast<std::size_t>(std::ranges::count_if(
         encoded.trace,
-        [&](const ac4::SyntaxRecord& r) { return r.name == name && r.value == value; }));
+        [&](const iclforge::ac4::SyntaxRecord& r) { return r.name == name && r.value == value; }));
 }
 
 // The amplitude of x's component at `hz` over the decoded output after the
@@ -270,15 +272,15 @@ TEST_CASE(
     // 197), where a tone near a subband's edge would reach the next band too.
     struct Case {
         int kbps;
-        ac4::CodecMode mode;
+        iclforge::ac4::CodecMode mode;
         std::uint64_t code;
     };
-    for (const Case c :
-         {Case{768, ac4::CodecMode::kScpl, 0}, Case{512, ac4::CodecMode::kAspxScpl, 1},
-          Case{256, ac4::CodecMode::kAspxAcpl2, 3}}) {
+    for (const Case c : {Case{768, iclforge::ac4::CodecMode::kScpl, 0},
+                         Case{512, iclforge::ac4::CodecMode::kAspxScpl, 1},
+                         Case{256, iclforge::ac4::CodecMode::kAspxAcpl2, 3}}) {
         CAPTURE(c.kbps);
         std::vector<Channel> channels = layout(true, false);
-        if (c.mode == ac4::CodecMode::kAspxAcpl2) {
+        if (c.mode == iclforge::ac4::CodecMode::kAspxAcpl2) {
             channels[6].hz = 1310.0;  // Tfl, subband 3
             channels[7].hz = 1690.0;  // Tfr, subband 4
             channels[8].hz = 2060.0;  // Tbl, subband 5
@@ -293,8 +295,8 @@ TEST_CASE(
         CHECK(count_records(encoded, "2ch_mode", 0) == encoded.frames.size());
         CHECK(count_records(encoded, "b_use_sap_add_ch", 0) == encoded.frames.size());
         check_frames_read_back(encoded);
-        const Decoded full = decode(encoded.frames, ac4::DecodingMode::kFull);
-        if (c.mode == ac4::CodecMode::kAspxAcpl2) {
+        const Decoded full = decode(encoded.frames, iclforge::ac4::DecodingMode::kFull);
+        if (c.mode == iclforge::ac4::CodecMode::kAspxAcpl2) {
             // A-CPL makes each top pair of its sum, which it keeps exactly
             // (Pseudocode 2: Tfl + Tbl = 2 sqrt 2 F''), and puts each tone on its
             // own channel of the pair.
@@ -322,7 +324,7 @@ TEST_CASE(
         } else {
             check_routing(channels, full);
         }
-        check_core(channels, decode(encoded.frames, ac4::DecodingMode::kCore));
+        check_core(channels, decode(encoded.frames, iclforge::ac4::DecodingMode::kCore));
     }
 }
 
@@ -331,18 +333,18 @@ TEST_CASE("5.0.4, and 7.1.4 with the back pair, put each channel's tone on its o
     SECTION("5.0.4 in ASPX_SCPL") {
         const std::vector<Channel> channels = layout(false, false);
         const Encoded encoded = encode({.channels = 9, .bitrate_kbps = 512}, tones(channels));
-        CHECK(encoded.mode == ac4::CodecMode::kAspxScpl);
+        CHECK(encoded.mode == iclforge::ac4::CodecMode::kAspxScpl);
         check_frames_read_back(encoded);
-        check_routing(channels, decode(encoded.frames, ac4::DecodingMode::kFull));
+        check_routing(channels, decode(encoded.frames, iclforge::ac4::DecodingMode::kFull));
     }
     SECTION("7.1.4 in SCPL, experimental") {
         const std::vector<Channel> channels = layout(true, true);
         const Encoded encoded =
             encode({.channels = 12, .bitrate_kbps = 1024, .experimental = {.back_pair = true}},
                    tones(channels));
-        CHECK(encoded.mode == ac4::CodecMode::kScpl);
+        CHECK(encoded.mode == iclforge::ac4::CodecMode::kScpl);
         check_frames_read_back(encoded);
-        check_routing(channels, decode(encoded.frames, ac4::DecodingMode::kFull));
+        check_routing(channels, decode(encoded.frames, iclforge::ac4::DecodingMode::kFull));
     }
     SECTION("5.1.4 in ASPX_ACPL_1, experimental") {
         // The differences below acpl_qmf_band, 3 kHz, above every tone: the
@@ -350,13 +352,13 @@ TEST_CASE("5.0.4, and 7.1.4 with the back pair, put each channel's tone on its o
         const std::vector<Channel> channels = layout(true, false);
         const Encoded encoded = encode({.channels = 10,
                                         .bitrate_kbps = 320,
-                                        .codec_mode = ac4::CodecMode::kAspxAcpl1,
+                                        .codec_mode = iclforge::ac4::CodecMode::kAspxAcpl1,
                                         .experimental = {.acpl = true}},
                                        tones(channels));
-        CHECK(encoded.mode == ac4::CodecMode::kAspxAcpl1);
+        CHECK(encoded.mode == iclforge::ac4::CodecMode::kAspxAcpl1);
         CHECK(count_records(encoded, "immersive_codec_mode_code", 2) == encoded.frames.size());
         check_frames_read_back(encoded);
-        check_routing(channels, decode(encoded.frames, ac4::DecodingMode::kFull));
+        check_routing(channels, decode(encoded.frames, iclforge::ac4::DecodingMode::kFull));
     }
 }
 
@@ -397,20 +399,20 @@ TEST_CASE("A-JCC puts each channel's tone on its own channel, in full and core d
         set_tones(channels);
         const Encoded encoded = encode({.channels = backs ? 12 : 10,
                                         .bitrate_kbps = 256,
-                                        .codec_mode = ac4::CodecMode::kAspxAjcc,
+                                        .codec_mode = iclforge::ac4::CodecMode::kAspxAjcc,
                                         .experimental = {.back_pair = backs, .ajcc = true}},
                                        tones(channels));
-        CHECK(encoded.mode == ac4::CodecMode::kAspxAjcc);
+        CHECK(encoded.mode == iclforge::ac4::CodecMode::kAspxAjcc);
         // Table 73's one-bit code, 5CH_DYNAMIC's core and ajcc_data() with
         // ajcc_core_mode 0 in every frame.
         const std::size_t frames = encoded.frames.size();
-        CHECK(std::ranges::count_if(encoded.trace, [](const ac4::SyntaxRecord& r) {
+        CHECK(std::ranges::count_if(encoded.trace, [](const iclforge::ac4::SyntaxRecord& r) {
                   return r.name == "immersive_codec_mode_code" && r.bits == 1 && r.value == 1;
               }) == static_cast<std::ptrdiff_t>(frames));
         CHECK(count_records(encoded, "ajcc_core_mode", 0) == frames);
         CHECK(count_records(encoded, "b_use_sap_add_ch", 0) == 0);
         check_frames_read_back(encoded);
-        const Decoded full = decode(encoded.frames, ac4::DecodingMode::kFull);
+        const Decoded full = decode(encoded.frames, iclforge::ac4::DecodingMode::kFull);
         REQUIRE(full.speakers.size() == channels.size());
         for (const Channel& own : channels) {
             CAPTURE(own.hz);
@@ -424,7 +426,7 @@ TEST_CASE("A-JCC puts each channel's tone on its own channel, in full and core d
                 }
             }
         }
-        const Decoded core = decode(encoded.frames, ac4::DecodingMode::kCore);
+        const Decoded core = decode(encoded.frames, iclforge::ac4::DecodingMode::kCore);
         for (const Channel& c : channels) {
             CAPTURE(c.hz);
             Speaker where = c.speaker;
@@ -466,22 +468,22 @@ TEST_CASE("the immersive layouts' table of contents, levels and MP4 description"
         bool backs;
         int ch_mode;
         int md_compat;
-        ac4::CodecMode mode;
+        iclforge::ac4::CodecMode mode;
     };
-    for (const Case c : {Case{10, 192, false, 12, 2, ac4::CodecMode::kAspxAcpl2},
-                         Case{10, 448, false, 12, 2, ac4::CodecMode::kAspxAcpl2},
-                         Case{10, 512, false, 12, 2, ac4::CodecMode::kAspxScpl},
-                         Case{10, 768, false, 12, 2, ac4::CodecMode::kScpl},
-                         Case{9, 512, false, 11, 2, ac4::CodecMode::kAspxScpl},
-                         Case{12, 768, true, 12, 3, ac4::CodecMode::kAspxScpl}}) {
+    for (const Case c : {Case{10, 192, false, 12, 2, iclforge::ac4::CodecMode::kAspxAcpl2},
+                         Case{10, 448, false, 12, 2, iclforge::ac4::CodecMode::kAspxAcpl2},
+                         Case{10, 512, false, 12, 2, iclforge::ac4::CodecMode::kAspxScpl},
+                         Case{10, 768, false, 12, 2, iclforge::ac4::CodecMode::kScpl},
+                         Case{9, 512, false, 11, 2, iclforge::ac4::CodecMode::kAspxScpl},
+                         Case{12, 768, true, 12, 3, iclforge::ac4::CodecMode::kAspxScpl}}) {
         CAPTURE(c.channels, c.kbps);
-        const ac4::EncoderConfig config{
+        const iclforge::ac4::EncoderConfig config{
             .channels = c.channels, .bitrate_kbps = c.kbps, .experimental = {.back_pair = c.backs}};
-        auto encoder = ac4::Encoder::create(config);
-        INFO(ac4::Encoder::refusal_reason(config));
+        auto encoder = iclforge::ac4::Encoder::create(config);
+        INFO(iclforge::ac4::Encoder::refusal_reason(config));
         REQUIRE(encoder.has_value());
         CHECK(encoder->codec_mode() == c.mode);
-        const ac4::Toc& toc = encoder->toc();
+        const iclforge::ac4::Toc& toc = encoder->toc();
         const auto& chan = toc.substream_groups.at(0).substreams.at(0).chan;
         REQUIRE(chan.has_value());
         CHECK(chan->ch_mode == c.ch_mode);
@@ -496,7 +498,7 @@ TEST_CASE("the immersive layouts' table of contents, levels and MP4 description"
         REQUIRE(toc.presentations_v1.size() == 1);
         CHECK(toc.presentations_v1.front().md_compat == c.md_compat);
         CHECK(toc.presentations_v1.front().immersive_audio_indicator == true);
-        CHECK_FALSE(ac4::build_dac4(toc).empty());
+        CHECK_FALSE(iclforge::ac4::build_dac4(toc).empty());
     }
 }
 
@@ -508,7 +510,7 @@ TEST_CASE("the height downmix sends DEE's custom downmix data, which the rendere
     // kFrontAndSurround Tfl to L and Tbl to Ls. The tones are mid-subband, in
     // A-CPL parameter bands of their own, as ASPX_ACPL_2 needs to part them.
     struct Case {
-        ac4::HeightDownmix mode;
+        iclforge::ac4::HeightDownmix mode;
         double gain_db;
         Speaker front_to;
         Speaker back_to;
@@ -519,31 +521,32 @@ TEST_CASE("the height downmix sends DEE's custom downmix data, which the rendere
     input[6] = tone(kTfl, kSamples);
     input[8] = tone(kTbl, kSamples);
     for (const Case c :
-         {Case{ac4::HeightDownmix::kFront, -6.0, Speaker::kLeft, Speaker::kLeft},
-          Case{ac4::HeightDownmix::kSurround, -4.5, Speaker::kLeftSurround, Speaker::kLeftSurround},
-          Case{ac4::HeightDownmix::kFrontAndSurround, -9.0, Speaker::kLeft,
+         {Case{iclforge::ac4::HeightDownmix::kFront, -6.0, Speaker::kLeft, Speaker::kLeft},
+          Case{iclforge::ac4::HeightDownmix::kSurround, -4.5, Speaker::kLeftSurround,
+               Speaker::kLeftSurround},
+          Case{iclforge::ac4::HeightDownmix::kFrontAndSurround, -9.0, Speaker::kLeft,
                Speaker::kLeftSurround}}) {
         // Under the sanitizers, front-and-surround alone: it sends the top
         // front pair to the front and the top back pair not, both branches.
-        if (kSanitized && c.mode != ac4::HeightDownmix::kFrontAndSurround) {
+        if (kSanitized && c.mode != iclforge::ac4::HeightDownmix::kFrontAndSurround) {
             continue;
         }
         CAPTURE(static_cast<int>(c.mode), c.gain_db);
-        const Encoded encoded =
-            encode({.channels = 10,
-                    .bitrate_kbps = 256,
-                    .iframe_interval = 6,
-                    .downmix = ac4::DownmixConfig{.height = c.mode, .height_db = c.gain_db}},
-                   input);
+        const Encoded encoded = encode(
+            {.channels = 10,
+             .bitrate_kbps = 256,
+             .iframe_interval = 6,
+             .downmix = iclforge::ac4::DownmixConfig{.height = c.mode, .height_db = c.gain_db}},
+            input);
         // In I-frames alone, as DEE sends it: one configuration, 5.X.0.
         const std::size_t iframes = static_cast<std::size_t>(std::ranges::count_if(
-            encoded.frames, [](const ac4::EncodedFrame& f) { return f.iframe; }));
+            encoded.frames, [](const iclforge::ac4::EncodedFrame& f) { return f.iframe; }));
         CHECK(count_records(encoded, "b_cdmx_data_present", 1) == iframes);
         CHECK(count_records(encoded, "b_cdmx_data_present", 0) == encoded.frames.size() - iframes);
         CHECK(count_records(encoded, "out_ch_config", 0) == iframes);
         check_frames_read_back(encoded);
-        const Decoded five =
-            decode(encoded.frames, ac4::DecodingMode::kFull, ac4::DownmixTarget::k5X);
+        const Decoded five = decode(encoded.frames, iclforge::ac4::DecodingMode::kFull,
+                                    iclforge::ac4::DownmixTarget::k5X);
         CHECK(std::abs(db(level(five.channels[index_of(five, c.front_to)], kTfl)) - c.gain_db) <
               0.3);
         CHECK(std::abs(db(level(five.channels[index_of(five, c.back_to)], kTbl)) - c.gain_db) <
@@ -555,7 +558,7 @@ TEST_CASE("the encoder refuses the immersive configurations it does not write",
           "[ac4enc][encoder][immersive]") {
     struct Case {
         const char* name;
-        ac4::EncoderConfig config;
+        iclforge::ac4::EncoderConfig config;
         std::string_view says;
     };
     const std::vector<Case> cases = {
@@ -563,32 +566,33 @@ TEST_CASE("the encoder refuses the immersive configurations it does not write",
          {.channels = 12, .bitrate_kbps = 768},
          "back_pair"},
         {"SCPL for 5.1",
-         {.channels = 6, .bitrate_kbps = 768, .codec_mode = ac4::CodecMode::kScpl},
+         {.channels = 6, .bitrate_kbps = 768, .codec_mode = iclforge::ac4::CodecMode::kScpl},
          "immersive element alone"},
         {"ASPX_ACPL_3 for 5.1.4",
-         {.channels = 10, .bitrate_kbps = 256, .codec_mode = ac4::CodecMode::kAspxAcpl3},
+         {.channels = 10, .bitrate_kbps = 256, .codec_mode = iclforge::ac4::CodecMode::kAspxAcpl3},
          "immersive layouts do not take"},
         {"ASPX_ACPL_1 without experimental.acpl",
-         {.channels = 10, .bitrate_kbps = 256, .codec_mode = ac4::CodecMode::kAspxAcpl1},
+         {.channels = 10, .bitrate_kbps = 256, .codec_mode = iclforge::ac4::CodecMode::kAspxAcpl1},
          "experimental.acpl"},
         {"ASPX_AJCC without experimental.ajcc",
-         {.channels = 10, .bitrate_kbps = 256, .codec_mode = ac4::CodecMode::kAspxAjcc},
+         {.channels = 10, .bitrate_kbps = 256, .codec_mode = iclforge::ac4::CodecMode::kAspxAjcc},
          "experimental.ajcc"},
         {"ASPX_AJCC for 5.1",
          {.channels = 6,
           .bitrate_kbps = 256,
-          .codec_mode = ac4::CodecMode::kAspxAjcc,
+          .codec_mode = iclforge::ac4::CodecMode::kAspxAjcc,
           .experimental = {.ajcc = true}},
          "immersive element alone"},
         {"a height downmix for 5.1",
          {.channels = 6,
           .bitrate_kbps = 384,
-          .downmix = ac4::DownmixConfig{.height = ac4::HeightDownmix::kFront}},
+          .downmix = iclforge::ac4::DownmixConfig{.height = iclforge::ac4::HeightDownmix::kFront}},
          "height downmix"},
         {"a height gain off Table 129",
          {.channels = 10,
           .bitrate_kbps = 512,
-          .downmix = ac4::DownmixConfig{.height = ac4::HeightDownmix::kFront, .height_db = -2.0}},
+          .downmix = iclforge::ac4::DownmixConfig{.height = iclforge::ac4::HeightDownmix::kFront,
+                                                  .height_db = -2.0}},
          "height downmix"},
         {"the coding configurations for 5.1.4",
          {.channels = 10, .bitrate_kbps = 512, .experimental = {.coding_configs = true}},
@@ -596,14 +600,14 @@ TEST_CASE("the encoder refuses the immersive configurations it does not write",
         {"DRC gains per group for 5.1.4",
          {.channels = 10,
           .bitrate_kbps = 512,
-          .drc = ac4::DrcConfig{.modes = {{.id = 0, .gains_config = 1}}},
+          .drc = iclforge::ac4::DrcConfig{.modes = {{.id = 0, .gains_config = 1}}},
           .experimental = {.drc_gains = true}},
          "immersive presentation"},
     };
     for (const Case& c : cases) {
         CAPTURE(c.name);
-        CHECK_FALSE(ac4::Encoder::create(c.config).has_value());
-        const std::string_view reason = ac4::Encoder::refusal_reason(c.config);
+        CHECK_FALSE(iclforge::ac4::Encoder::create(c.config).has_value());
+        const std::string_view reason = iclforge::ac4::Encoder::refusal_reason(c.config);
         CAPTURE(reason);
         CHECK(reason.find(c.says) != std::string_view::npos);
     }

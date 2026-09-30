@@ -18,7 +18,7 @@
 
 #include "iclforge/signing/export.hpp"
 
-namespace ac3::signing {
+namespace iclforge::signing {
 
 // Owns the key bytes and zeroizes them on destruction, so a supplied key does
 // not linger in freed heap after signing finishes. Copyable/movable; every
@@ -86,4 +86,4 @@ struct KeyLoadError {
 [[nodiscard]] AC3SIGNING_EXPORT std::expected<SigningKey, KeyLoadError> load_signing_key(
     std::string_view explicit_path);
 
-}  // namespace ac3::signing
+}  // namespace iclforge::signing

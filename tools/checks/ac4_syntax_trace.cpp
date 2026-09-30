@@ -52,34 +52,34 @@ namespace {
 
 namespace fs = std::filesystem;
 
-const char* kind_name(ac4::SubstreamReport::Kind kind) {
+const char* kind_name(iclforge::ac4::SubstreamReport::Kind kind) {
     switch (kind) {
-        case ac4::SubstreamReport::Kind::kAudio:
+        case iclforge::ac4::SubstreamReport::Kind::kAudio:
             return "audio";
-        case ac4::SubstreamReport::Kind::kPresentation:
+        case iclforge::ac4::SubstreamReport::Kind::kPresentation:
             return "presentation";
-        case ac4::SubstreamReport::Kind::kEmdfPayloads:
+        case iclforge::ac4::SubstreamReport::Kind::kEmdfPayloads:
             return "emdf_payloads";
-        case ac4::SubstreamReport::Kind::kHsfExt:
+        case iclforge::ac4::SubstreamReport::Kind::kHsfExt:
             return "hsf_ext";
-        case ac4::SubstreamReport::Kind::kOamd:
+        case iclforge::ac4::SubstreamReport::Kind::kOamd:
             return "oamd";
         default:
             return "other";
     }
 }
 
-const char* error_name(ac4::DecodeError error) {
+const char* error_name(iclforge::ac4::DecodeError error) {
     switch (error) {
-        case ac4::DecodeError::kTruncated:
+        case iclforge::ac4::DecodeError::kTruncated:
             return "truncated";
-        case ac4::DecodeError::kInvalidToc:
+        case iclforge::ac4::DecodeError::kInvalidToc:
             return "invalid_toc";
-        case ac4::DecodeError::kInvalidStream:
+        case iclforge::ac4::DecodeError::kInvalidStream:
             return "invalid_stream";
-        case ac4::DecodeError::kUnsupported:
+        case iclforge::ac4::DecodeError::kUnsupported:
             return "unsupported";
-        case ac4::DecodeError::kMissingIFrame:
+        case iclforge::ac4::DecodeError::kMissingIFrame:
             return "missing_iframe";
     }
     return "unknown";
@@ -98,20 +98,20 @@ std::vector<std::byte> read_file(const fs::path& path) {
 void trace(const fs::path& path, const fs::path& out_dir, bool last_frame_only) {
     const std::vector<std::byte> bytes = read_file(path);
     std::ofstream out(out_dir / (path.stem().string() + ".cpp.tsv"), std::ios::binary);
-    const ac4::ScanResult scan = ac4::scan(bytes);
+    const iclforge::ac4::ScanResult scan = iclforge::ac4::scan(bytes);
     const int first_written = last_frame_only ? static_cast<int>(scan.frames.size()) - 1 : 0;
     int frame_index = 0;
-    const auto sink = [&](const ac4::SyntaxRecord& r) {
+    const auto sink = [&](const iclforge::ac4::SyntaxRecord& r) {
         if (frame_index < first_written) {
             return;
         }
         out << "R\t" << frame_index << '\t' << r.substream << '\t' << r.bit_offset << '\t' << r.bits << '\t'
             << r.value << '\t' << r.name << '\n';
     };
-    ac4::DecoderConfig config;
+    iclforge::ac4::DecoderConfig config;
     config.syntax = sink;
-    ac4::Decoder decoder(config);
-    for (const ac4::SyncFrame& frame : scan.frames) {
+    iclforge::ac4::Decoder decoder(config);
+    for (const iclforge::ac4::SyncFrame& frame : scan.frames) {
         const auto report = decoder.parse(frame.raw_ac4_frame);
         if (frame_index < first_written) {
             ++frame_index;
@@ -119,9 +119,9 @@ void trace(const fs::path& path, const fs::path& out_dir, bool last_frame_only) 
         }
         // The substream layout the table of contents gives, so that a
         // disagreement there is told apart from one in a substream's syntax.
-        if (const auto raw = ac4::parse_raw_frame(frame.raw_ac4_frame)) {
+        if (const auto raw = iclforge::ac4::parse_raw_frame(frame.raw_ac4_frame)) {
             out << "T\t" << frame_index;
-            for (const ac4::Substream& s : raw->substreams) {
+            for (const iclforge::ac4::Substream& s : raw->substreams) {
                 out << '\t' << s.offset << ':' << s.size;
             }
             out << '\n';
@@ -129,7 +129,7 @@ void trace(const fs::path& path, const fs::path& out_dir, bool last_frame_only) 
         if (!report) {
             out << "F\t" << frame_index << '\t' << error_name(report.error()) << '\n';
         } else {
-            for (const ac4::SubstreamReport& s : report->substreams) {
+            for (const iclforge::ac4::SubstreamReport& s : report->substreams) {
                 out << "S\t" << frame_index << '\t' << s.index << '\t' << kind_name(s.kind) << '\t';
                 if (s.refused) {
                     out << error_name(*s.refused) << '\t' << s.refused_reason << '\n';

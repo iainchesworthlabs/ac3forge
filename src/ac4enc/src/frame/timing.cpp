@@ -3,7 +3,7 @@
 #include <array>
 #include <cstddef>
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 namespace {
 
 // By frame_rate_index, 0 to 13, at 48 kHz: Table 83's frame length, Table
@@ -52,4 +52,4 @@ std::optional<FrameTiming> frame_timing(int frame_rate_index, int sample_rate_hz
     return t;
 }
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

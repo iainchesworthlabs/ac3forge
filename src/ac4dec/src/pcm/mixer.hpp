@@ -22,7 +22,7 @@
 // divided by the number of substreams (src/ac4dec/ERRATA.md, "The mixer's
 // sum").
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 // The most substreams a presentation mixes into its main audio; the rest of a
 // larger one are left out (ERRATA, "Where the substreams are mixed").
@@ -105,4 +105,4 @@ class MixStage {
     std::vector<double> gains_;
 };
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

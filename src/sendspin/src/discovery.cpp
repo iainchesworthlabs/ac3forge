@@ -5,7 +5,7 @@
 #include <string>
 #include <string_view>
 
-namespace ac3::sendspin::discovery {
+namespace iclforge::sendspin::discovery {
 
 std::optional<std::string> Service::txt_value(std::string_view key) const {
     const auto found = std::find_if(txt.begin(), txt.end(), [key](const TxtEntry& entry) { return entry.key == key; });
@@ -26,4 +26,4 @@ std::optional<std::string> Service::url() const {
     return "ws://" + addresses.front() + ":" + std::to_string(port) + path;
 }
 
-}  // namespace ac3::sendspin::discovery
+}  // namespace iclforge::sendspin::discovery

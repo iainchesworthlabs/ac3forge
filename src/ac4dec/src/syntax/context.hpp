@@ -13,7 +13,7 @@
 // What a substream's syntax needs from outside the substream, and the result
 // type every syntax function returns.
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 // A refusal or a failure, with the reason a report carries. `reason` is
 // always a string literal.
@@ -40,7 +40,7 @@ using ParseResult = std::expected<void, SyntaxError>;
 // Part 1 Tables 83 and 84: frame_len_base from the frame rate index and the
 // sample rate, 0 when the pair is one neither table defines. Index 13 is the
 // only one Table 84 gives 44.1 kHz, so every other index there is reserved and
-// has no frame length to read a substream with - which is what ac4::
+// has no frame length to read a substream with - which is what iclforge::ac4::
 // samples_per_frame() says about the same pair. One helper for both the audio
 // substreams and the presentation substream: deriving it twice let a 44.1 kHz
 // frame be read with two different frame lengths at once.
@@ -113,7 +113,7 @@ inline constexpr int k22_2 = 15;
 enum class AudioCoding : std::uint8_t { kChannel, kAjoc, kObjects };
 
 // Everything the table of contents says about one ac4_substream() that its
-// syntax depends on. Filled by the decoder from ac4::Toc before the substream
+// syntax depends on. Filled by the decoder from iclforge::ac4::Toc before the substream
 // is read.
 struct SubstreamContext {
     int bitstream_version = 2;
@@ -168,4 +168,4 @@ struct SubstreamContext {
     }
 };
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

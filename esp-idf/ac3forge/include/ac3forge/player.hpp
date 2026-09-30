@@ -27,7 +27,7 @@
 //
 // The shape, and the reason for it. A fetch task on one core reads the source
 // into a ring; a decode task on the other drains the ring through
-// ac3::io::AccessUnitAccumulator, decodes each access unit a block at a time
+// iclforge::io::AccessUnitAccumulator, decodes each access unit a block at a time
 // (decode_access_unit_by_block: 256 samples of every channel, and the objects
 // beside them when there are any), renders each block onto the configured
 // speaker layout (ac3/render/render.hpp) and writes it to the sink. The sink
@@ -54,8 +54,8 @@
 // syncframe goes to FrameDecoder itself.
 //
 // And AC-4, when the component is built with CONFIG_AC3FORGE_AC4 (its Kconfig):
-// a stream that opens with an AC-4 sync word is read by ac4::SyncFrameSplitter
-// and ac4::Decoder in place of the accumulator and the two above, once for the
+// a stream that opens with an AC-4 sync word is read by iclforge::ac4::SyncFrameSplitter
+// and iclforge::ac4::Decoder in place of the accumulator and the two above, once for the
 // whole play, and its blocks go through the same renderer and sink. Everything
 // that is AC-4's alone is behind that switch, in this header and in player.cpp
 // (src/ac4_bridge.hpp has the rest), so a build without it is what it was.
@@ -76,9 +76,9 @@ class ByteSource {
 };
 
 // Where decoded audio goes. One BLOCK per call: one planar span of float per
-// slot of the configured ac3::render::OutputLayout, in slot order, each ac3::kSamplesPerBlock
-// samples long or fewer, nominally in [-1, 1). Called from the decode task
-// only, six times per frame at 48 kHz.
+// slot of the configured iclforge::render::OutputLayout, in slot order, each
+// iclforge::kSamplesPerBlock samples long or fewer, nominally in [-1, 1). Called from the decode
+// task only, six times per frame at 48 kHz.
 //
 // Planar float rather than interleaved integers because the sample format is
 // the sink's business: standard I2S wants two slots of 16 or 32 bits, a TDM bus
@@ -96,11 +96,11 @@ class PcmSink {
 struct PlayerConfig {
     // The speakers, one per output slot - ac3/render/layout.hpp. What the sink is
     // handed is one span per slot of this, whatever the stream was coded as.
-    ac3::render::OutputLayout layout = ac3::render::OutputLayout::stereo();
+    iclforge::render::OutputLayout layout = iclforge::render::OutputLayout::stereo();
     // Which §7.8 fold a two-speaker layout gets: kLoRo, or kLtRt for a Dolby
     // Surround decoder downstream. A one-speaker layout folds to mono; every
     // other layout is rendered as coded (see `objects`) and this is unused.
-    ac3::DownmixTarget stereo_fold = ac3::DownmixTarget::kLoRo;
+    iclforge::DownmixTarget stereo_fold = iclforge::DownmixTarget::kLoRo;
     // Whether to reconstruct a stream's object layer and place the objects on
     // the speakers by their own positions, or play the bed (the objects' 5.1
     // fold, which is the complete mix for a stereo or 5.1 room). Costs this
@@ -109,14 +109,14 @@ struct PlayerConfig {
     // (ac3/decoder/serving.hpp): kAuto reconstructs exactly when the layout has
     // height speakers, kAlways for any rendered layout, kNever plays the bed,
     // and a layout that folds never reconstructs.
-    using Objects = ac3::render::ObjectsPolicy;
+    using Objects = iclforge::render::ObjectsPolicy;
     Objects objects = Objects::kAuto;
 
     // The decoder's own knobs: operating mode, DRC, the JOC domain, the
     // programme. Its `output.target` and `skip_object_reconstruction` are
     // decided by the player from `layout` and `objects` above, whatever is set
     // here.
-    ac3::DecoderConfig decoder{.output = {.mode = ac3::OperatingMode::kLine}};
+    iclforge::DecoderConfig decoder{.output = {.mode = iclforge::OperatingMode::kLine}};
 
     // The ring between fetch and decode, in bytes of bitstream. 32 KB is
     // 0.57 s at 448 kbit/s. Preferably in PSRAM where the part has it - a
@@ -209,7 +209,7 @@ struct StreamInfo {
     // location, comma-separated in the decoder's order ("Ch1,Ch2" for dual
     // mono); `silent` names the layout's speakers this play has sent nothing
     // to so far, and is empty when every one has had something.
-    std::array<char, ac3::render::OutputLayout::kTextBytes> layout{};
+    std::array<char, iclforge::render::OutputLayout::kTextBytes> layout{};
     const char* render = "";
     std::array<char, 96> coded{};
     std::array<char, 160> silent{};

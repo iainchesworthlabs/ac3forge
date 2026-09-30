@@ -11,7 +11,7 @@
 #include "iclforge/ac4core/dsp/kbd.hpp"
 #include "iclforge/ac4core/dsp/resampler_vector.hpp"
 
-namespace ac4::detail::dsp {
+namespace iclforge::ac4::detail::dsp {
 
 template <typename Coefficient>
 BasicResamplerFilter<Coefficient>::BasicResamplerFilter(int up, int down) {
@@ -182,4 +182,4 @@ template class Resampler<Real>;
 AC4CORE_ALSO_AT_DOUBLE(template class BasicResamplerFilter<double>;)
 AC4CORE_ALSO_AT_DOUBLE(template class Resampler<double>;)
 
-}  // namespace ac4::detail::dsp
+}  // namespace iclforge::ac4::detail::dsp

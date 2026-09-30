@@ -50,18 +50,19 @@ constexpr double kCommentaryTone = 300.0;
 // programme's identifying tone and is checked for level rather than pitch.
 constexpr double kLfeTone = 60.0;
 
-ac3::eac3::FrameConfig bed(std::uint32_t kbps, int dialnorm) {
-    return {.bitrate_kbps = kbps, .acmod = ac3::Acmod::k3_2, .lfe = true, .dialnorm = dialnorm};
+iclforge::eac3::FrameConfig bed(std::uint32_t kbps, int dialnorm) {
+    return {
+        .bitrate_kbps = kbps, .acmod = iclforge::Acmod::k3_2, .lfe = true, .dialnorm = dialnorm};
 }
 
 // I0 5.1 at dialnorm 27, I1 mono at dialnorm 20 - two different levels,
 // because a commentary or description track is levelled independently of the
 // mix it plays against and nothing here may quietly share one measurement.
-ac3::eac3::AccessUnitConfig two_programme_config() {
-    ac3::eac3::AccessUnitConfig config;
+iclforge::eac3::AccessUnitConfig two_programme_config() {
+    iclforge::eac3::AccessUnitConfig config;
     config.independent = bed(448, 27);
     config.additional.push_back(
-        {.independent = {.bitrate_kbps = 96, .acmod = ac3::Acmod::k1_0, .dialnorm = 20}});
+        {.independent = {.bitrate_kbps = 96, .acmod = iclforge::Acmod::k1_0, .dialnorm = 20}});
     return config;
 }
 
@@ -78,9 +79,9 @@ void fill_tone(std::vector<float>& dest, double hz, std::uint64_t n0) {
 // One elementary stream carrying `frames` access units of every programme in
 // `config`. Each programme's channels all carry that programme's own tone, so
 // the two are distinguishable channel by channel after decoding.
-std::vector<std::byte> encode(const ac3::eac3::AccessUnitConfig& config, int frames,
+std::vector<std::byte> encode(const iclforge::eac3::AccessUnitConfig& config, int frames,
                               std::span<const double> tone_per_programme) {
-    ac3::eac3::AccessUnitEncoder encoder{config};
+    iclforge::eac3::AccessUnitEncoder encoder{config};
     const auto nchans = static_cast<std::size_t>(encoder.channel_count());
     REQUIRE(nchans > 0);
 
@@ -89,10 +90,10 @@ std::vector<std::byte> encode(const ac3::eac3::AccessUnitConfig& config, int fra
     // encode_access_unit takes its spans in.
     std::vector<double> tone;
     tone.reserve(nchans);
-    const auto append = [&](const ac3::eac3::ProgrammeConfig& programme, double hz) {
-        const auto take = [&](const ac3::eac3::FrameConfig& sub) {
+    const auto append = [&](const iclforge::eac3::ProgrammeConfig& programme, double hz) {
+        const auto take = [&](const iclforge::eac3::FrameConfig& sub) {
             tone.insert(tone.end(),
-                        static_cast<std::size_t>(ac3::fullbw_channel_count(sub.acmod)), hz);
+                        static_cast<std::size_t>(iclforge::fullbw_channel_count(sub.acmod)), hz);
             if (sub.lfe) {
                 tone.push_back(kLfeTone);
             }
@@ -108,7 +109,7 @@ std::vector<std::byte> encode(const ac3::eac3::AccessUnitConfig& config, int fra
     }
     REQUIRE(tone.size() == nchans);
 
-    std::vector<std::vector<float>> block(nchans, std::vector<float>(ac3::kSamplesPerFrame));
+    std::vector<std::vector<float>> block(nchans, std::vector<float>(iclforge::kSamplesPerFrame));
     std::vector<std::span<const float>> views(nchans);
     std::vector<std::byte> stream;
     std::uint64_t n0 = 0;
@@ -117,7 +118,7 @@ std::vector<std::byte> encode(const ac3::eac3::AccessUnitConfig& config, int fra
             fill_tone(block[ch], tone[ch], n0);
             views[ch] = block[ch];
         }
-        n0 += ac3::kSamplesPerFrame;
+        n0 += iclforge::kSamplesPerFrame;
         const auto unit = encoder.encode_access_unit(views);
         REQUIRE(unit.has_value());
         stream.insert(stream.end(), unit->bytes.begin(), unit->bytes.end());
@@ -163,7 +164,7 @@ double dominant_freq_hz(const std::vector<float>& x) {
 
 struct Decoded {
     std::vector<std::vector<float>> channels;
-    ac3::eac3::chanmap::Layout layout;
+    iclforge::eac3::chanmap::Layout layout;
     int dialnorm = 0;
     int programme = -1;
     int units = 0;
@@ -175,7 +176,7 @@ struct Decoded {
 // or let the decoder skip, and both must give the same audio.
 Decoded decode_programme(std::span<const std::span<const std::byte>> units,
                          std::optional<int> select) {
-    ac3::Eac3Decoder decoder{{.programme = select}};
+    iclforge::Eac3Decoder decoder{{.programme = select}};
     Decoded out;
     for (const auto& unit : units) {
         const auto decoded = decoder.decode_access_unit(unit);
@@ -210,32 +211,32 @@ TEST_CASE("a second independent substream is a second programme, not more frames
     const auto stream = encode(two_programme_config(), kFrames, tones);
 
     SECTION("the framing enumerates both programmes and keeps their units apart") {
-        const auto ids = ac3::programme_ids(stream);
+        const auto ids = iclforge::programme_ids(stream);
         REQUIRE(ids.has_value());
         REQUIRE(*ids == std::vector<int>{0, 1});
 
         // Unfiltered: every unit of both programmes, interleaved one frame
         // period at a time. This is the count that used to be mistaken for
         // one programme running at twice the frame rate.
-        const auto all = ac3::split_access_units(stream);
+        const auto all = iclforge::split_access_units(stream);
         REQUIRE(all.has_value());
         CHECK(all->size() == static_cast<std::size_t>(kFrames) * 2);
 
         for (const int id : *ids) {
             CAPTURE(id);
-            const auto own = ac3::split_access_units(stream, id);
+            const auto own = iclforge::split_access_units(stream, id);
             REQUIRE(own.has_value());
             CHECK(own->size() == static_cast<std::size_t>(kFrames));
         }
         // Asking for a programme the stream does not carry is an empty
         // answer, not an error - that is how a caller finds out.
-        const auto missing = ac3::split_access_units(stream, 5);
+        const auto missing = iclforge::split_access_units(stream, 5);
         REQUIRE(missing.has_value());
         CHECK(missing->empty());
     }
 
     SECTION("each programme decodes to its own audio, at its own dialnorm") {
-        const auto all = ac3::split_access_units(stream);
+        const auto all = iclforge::split_access_units(stream);
         REQUIRE(all.has_value());
 
         const auto main = decode_programme(*all, 0);
@@ -262,10 +263,10 @@ TEST_CASE("a second independent substream is a second programme, not more frames
         // main programme's tone - so a decode that had let the commentary's
         // frames through would show 300 Hz somewhere here.
         for (int ch = 0; ch < main.layout.count; ++ch) {
-            CAPTURE(ch, ac3::eac3::chanmap::name(main.layout[ch]));
+            CAPTURE(ch, iclforge::eac3::chanmap::name(main.layout[ch]));
             const auto& channel = main.channels[static_cast<std::size_t>(ch)];
             const double want =
-                main.layout[ch] == ac3::eac3::chanmap::Location::kLfe ? kLfeTone : kMainTone;
+                main.layout[ch] == iclforge::eac3::chanmap::Location::kLfe ? kLfeTone : kMainTone;
             CHECK(std::abs(dominant_freq_hz(channel) - want) < 10.0);
         }
         CHECK(std::abs(dominant_freq_hz(commentary.channels[0]) - kCommentaryTone) < 10.0);
@@ -274,8 +275,8 @@ TEST_CASE("a second independent substream is a second programme, not more frames
     SECTION("pre-filtered framing and decoder-side selection agree") {
         for (const int id : {0, 1}) {
             CAPTURE(id);
-            const auto all = ac3::split_access_units(stream);
-            const auto own = ac3::split_access_units(stream, id);
+            const auto all = iclforge::split_access_units(stream);
+            const auto own = iclforge::split_access_units(stream, id);
             REQUIRE(all.has_value());
             REQUIRE(own.has_value());
             // Same audio whether the caller filtered the units itself or
@@ -291,19 +292,19 @@ TEST_CASE("a second independent substream is a second programme, not more frames
     }
 
     SECTION("scan describes each programme on its own terms") {
-        const auto scanned = ac3::io::scan(stream);
+        const auto scanned = iclforge::io::scan(stream);
         REQUIRE(scanned.has_value());
         REQUIRE(scanned->programmes.size() == 2);
 
         CHECK(scanned->programmes[0].substreamid == 0);
-        CHECK(scanned->programmes[0].acmod == ac3::Acmod::k3_2);
+        CHECK(scanned->programmes[0].acmod == iclforge::Acmod::k3_2);
         CHECK(scanned->programmes[0].lfe);
         CHECK(scanned->programmes[0].channels == 6);
         CHECK(scanned->programmes[0].access_units.size() ==
               static_cast<std::size_t>(kFrames));
 
         CHECK(scanned->programmes[1].substreamid == 1);
-        CHECK(scanned->programmes[1].acmod == ac3::Acmod::k1_0);
+        CHECK(scanned->programmes[1].acmod == iclforge::Acmod::k1_0);
         CHECK_FALSE(scanned->programmes[1].lfe);
         CHECK(scanned->programmes[1].channels == 1);
         CHECK(scanned->programmes[1].access_units.size() ==
@@ -332,7 +333,7 @@ TEST_CASE("a second independent substream is a second programme, not more frames
         // The scalar summary is the FIRST programme's, and access_units is
         // its units alone - never both programmes' spliced together, which is
         // what a muxer would otherwise write into one track.
-        CHECK(scanned->acmod == ac3::Acmod::k3_2);
+        CHECK(scanned->acmod == iclforge::Acmod::k3_2);
         CHECK(scanned->channels == 6);
         CHECK(scanned->access_units.size() == static_cast<std::size_t>(kFrames));
         CHECK(scanned->access_units.front().data() ==
@@ -340,9 +341,9 @@ TEST_CASE("a second independent substream is a second programme, not more frames
     }
 
     SECTION("the dec3 box describes the programme the track would carry") {
-        const auto scanned = ac3::io::scan(stream);
+        const auto scanned = iclforge::io::scan(stream);
         REQUIRE(scanned.has_value());
-        const auto box = ac3::io::build_codec_config_box(*scanned);
+        const auto box = iclforge::io::build_codec_config_box(*scanned);
         REQUIRE(box.size() >= 4);
         // §F.6: data_rate(13) then num_ind_sub(3), counting one less than the
         // substreams. ONE, because a container track carries one programme
@@ -359,10 +360,10 @@ TEST_CASE("a second independent substream is a second programme, not more frames
         // And the box is byte-for-byte the shape a single-programme stream of
         // that same first programme produces: the second programme changes
         // nothing a track carrying only the first should declare.
-        const auto single = ac3::io::scan(
+        const auto single = iclforge::io::scan(
             encode({.independent = bed(448, 27)}, 2, std::array<double, 1>{kMainTone}));
         REQUIRE(single.has_value());
-        CHECK(box == ac3::io::build_codec_config_box(*single));
+        CHECK(box == iclforge::io::build_codec_config_box(*single));
     }
 }
 
@@ -373,13 +374,13 @@ TEST_CASE("all eight independent substreams work, and a ninth is refused",
     // claims to support actually holds at its edge, which nothing had
     // exercised before - kMaxProgrammes (eac3_frame.cpp) lived only behind a
     // guard no test had ever reached.
-    ac3::eac3::AccessUnitConfig config;
+    iclforge::eac3::AccessUnitConfig config;
     config.independent = bed(448, 31);
     constexpr std::array<double, 8> tones{kMainTone, 200.0, 400.0,  600.0,
                                           800.0,    1000.0, 1200.0, 1400.0};
     for (int i = 1; i < 8; ++i) {
         config.additional.push_back({.independent = {.bitrate_kbps = 64,
-                                                      .acmod = ac3::Acmod::k1_0,
+                                                      .acmod = iclforge::Acmod::k1_0,
                                                       .dialnorm = 20 + i}});
     }
     REQUIRE(config.additional.size() == 7);
@@ -387,11 +388,11 @@ TEST_CASE("all eight independent substreams work, and a ninth is refused",
     constexpr int kFrames = 3;
     const auto stream = encode(config, kFrames, tones);
 
-    const auto ids = ac3::programme_ids(stream);
+    const auto ids = iclforge::programme_ids(stream);
     REQUIRE(ids.has_value());
     CHECK(*ids == std::vector<int>{0, 1, 2, 3, 4, 5, 6, 7});
 
-    const auto all = ac3::split_access_units(stream);
+    const auto all = iclforge::split_access_units(stream);
     REQUIRE(all.has_value());
     CHECK(all->size() == static_cast<std::size_t>(kFrames) * 8);
 
@@ -401,7 +402,7 @@ TEST_CASE("all eight independent substreams work, and a ninth is refused",
     // smallest interesting case.
     for (int id = 0; id < 8; ++id) {
         CAPTURE(id);
-        const auto own = ac3::split_access_units(stream, id);
+        const auto own = iclforge::split_access_units(stream, id);
         REQUIRE(own.has_value());
         REQUIRE(own->size() == static_cast<std::size_t>(kFrames));
         const auto decoded = decode_programme(*own, std::nullopt);
@@ -418,7 +419,7 @@ TEST_CASE("all eight independent substreams work, and a ninth is refused",
         }
     }
 
-    const auto scanned = ac3::io::scan(stream);
+    const auto scanned = iclforge::io::scan(stream);
     REQUIRE(scanned.has_value());
     REQUIRE(scanned->programmes.size() == 8);
 
@@ -426,17 +427,17 @@ TEST_CASE("all eight independent substreams work, and a ninth is refused",
     // eighth - §E2.3.1.2 has no substream id past 7 to give it.
     auto nine = config;
     nine.additional.push_back(
-        {.independent = {.bitrate_kbps = 64, .acmod = ac3::Acmod::k1_0, .dialnorm = 29}});
+        {.independent = {.bitrate_kbps = 64, .acmod = iclforge::Acmod::k1_0, .dialnorm = 29}});
     REQUIRE(nine.additional.size() == 8);
-    const auto refused = ac3::eac3::build_silent_access_unit(nine);
+    const auto refused = iclforge::eac3::build_silent_access_unit(nine);
     REQUIRE_FALSE(refused.has_value());
-    CHECK(refused.error() == ac3::FrameError::kInvalidSubstream);
+    CHECK(refused.error() == iclforge::FrameError::kInvalidSubstream);
 
     // AccessUnitEncoder's own constructor cannot fail (see ac3cli's
     // eac3_config_accepted, which exists for exactly this reason) - a
     // rejected config leaves it holding no substreams, which is how a
     // caller finds out before attempting a frame.
-    ac3::eac3::AccessUnitEncoder nine_encoder{nine};
+    iclforge::eac3::AccessUnitEncoder nine_encoder{nine};
     CHECK(nine_encoder.channel_count() == 0);
 }
 
@@ -446,12 +447,12 @@ TEST_CASE("a single-programme stream is unchanged by the programme layer",
     const auto stream =
         encode({.independent = bed(448, 31)}, kFrames, std::array<double, 1>{kMainTone});
 
-    const auto ids = ac3::programme_ids(stream);
+    const auto ids = iclforge::programme_ids(stream);
     REQUIRE(ids.has_value());
     CHECK(*ids == std::vector<int>{0});
 
-    const auto all = ac3::split_access_units(stream);
-    const auto own = ac3::split_access_units(stream, 0);
+    const auto all = iclforge::split_access_units(stream);
+    const auto own = iclforge::split_access_units(stream, 0);
     REQUIRE(all.has_value());
     REQUIRE(own.has_value());
     CHECK(all->size() == static_cast<std::size_t>(kFrames));
@@ -462,7 +463,7 @@ TEST_CASE("a single-programme stream is unchanged by the programme layer",
         CHECK((*own)[i].size() == (*all)[i].size());
     }
 
-    const auto scanned = ac3::io::scan(stream);
+    const auto scanned = iclforge::io::scan(stream);
     REQUIRE(scanned.has_value());
     REQUIRE(scanned->programmes.size() == 1);
     CHECK(scanned->programmes[0].substreamid == 0);
@@ -484,10 +485,10 @@ TEST_CASE("an AC-3 stream reports one programme whatever crc1 happens to hold",
     // the time and swallows runs of frames into one group - so the framing
     // gates on each frame's own bsid instead, and every AC-3 frame is its own
     // access unit of the one programme AC-3 can have.
-    ac3::EncoderConfig config{.bitrate_kbps = 192, .acmod = ac3::Acmod::k2_0};
-    ac3::FrameEncoder encoder{config};
+    iclforge::EncoderConfig config{.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0};
+    iclforge::FrameEncoder encoder{config};
     constexpr int kFrames = 24;
-    std::vector<std::vector<float>> block(2, std::vector<float>(ac3::kSamplesPerFrame));
+    std::vector<std::vector<float>> block(2, std::vector<float>(iclforge::kSamplesPerFrame));
     std::vector<std::span<const float>> views(2);
     std::vector<std::byte> stream;
     std::uint64_t n0 = 0;
@@ -496,21 +497,21 @@ TEST_CASE("an AC-3 stream reports one programme whatever crc1 happens to hold",
             fill_tone(block[ch], kMainTone, n0);
             views[ch] = block[ch];
         }
-        n0 += ac3::kSamplesPerFrame;
+        n0 += iclforge::kSamplesPerFrame;
         const auto frame = encoder.encode_frame(views);
         REQUIRE(frame.has_value());
         stream.insert(stream.end(), frame->begin(), frame->end());
     }
 
-    const auto ids = ac3::programme_ids(stream);
+    const auto ids = iclforge::programme_ids(stream);
     REQUIRE(ids.has_value());
     CHECK(*ids == std::vector<int>{0});
 
-    const auto units = ac3::split_access_units(stream);
+    const auto units = iclforge::split_access_units(stream);
     REQUIRE(units.has_value());
     CHECK(units->size() == static_cast<std::size_t>(kFrames));
 
-    const auto scanned = ac3::io::scan(stream);
+    const auto scanned = iclforge::io::scan(stream);
     REQUIRE(scanned.has_value());
     REQUIRE(scanned->programmes.size() == 1);
     CHECK(scanned->programmes[0].substreamid == 0);
@@ -533,10 +534,10 @@ TEST_CASE("selecting a programme decodes an AC-3 stream whatever crc1 happens to
     // failed on it outright while `probe`, which does not take this path,
     // read the whole file. A plain AC-3 stream reproduces it without needing
     // the dependent - the lead frame is all the selection step looks at.
-    ac3::EncoderConfig config{.bitrate_kbps = 192, .acmod = ac3::Acmod::k2_0};
-    ac3::FrameEncoder encoder{config};
+    iclforge::EncoderConfig config{.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0};
+    iclforge::FrameEncoder encoder{config};
     constexpr int kFrames = 24;
-    std::vector<std::vector<float>> block(2, std::vector<float>(ac3::kSamplesPerFrame));
+    std::vector<std::vector<float>> block(2, std::vector<float>(iclforge::kSamplesPerFrame));
     std::vector<std::span<const float>> views(2);
     std::vector<std::byte> stream;
     std::uint64_t n0 = 0;
@@ -545,13 +546,13 @@ TEST_CASE("selecting a programme decodes an AC-3 stream whatever crc1 happens to
             fill_tone(block[ch], kMainTone, n0);
             views[ch] = block[ch];
         }
-        n0 += ac3::kSamplesPerFrame;
+        n0 += iclforge::kSamplesPerFrame;
         const auto frame = encoder.encode_frame(views);
         REQUIRE(frame.has_value());
         stream.insert(stream.end(), frame->begin(), frame->end());
     }
 
-    const auto units = ac3::split_access_units(stream);
+    const auto units = iclforge::split_access_units(stream);
     REQUIRE(units.has_value());
     REQUIRE(units->size() == static_cast<std::size_t>(kFrames));
 
@@ -585,7 +586,7 @@ TEST_CASE("selecting a programme decodes an AC-3 stream whatever crc1 happens to
 
     // AC-3 has no substream layer, so there is no programme 1 to select: every
     // unit is skipped, and skipping is not an error.
-    ac3::Eac3Decoder other{{.programme = 1}};
+    iclforge::Eac3Decoder other{{.programme = 1}};
     for (const auto& unit : *units) {
         const auto decoded = other.decode_access_unit(unit);
         REQUIRE(decoded.has_value());

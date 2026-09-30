@@ -31,7 +31,7 @@
 // switch stops the old sink and starts the new one; the encoder upstream
 // never notices.
 
-namespace ac3::crucible {
+namespace iclforge::crucible {
 
 struct OutputStageConfig {
     // Where endpoints and sinks come from; null means WASAPI.
@@ -76,7 +76,7 @@ struct OutputStatus {
 // LFE). The DD 5.1 leg reads the bed; the bypass path reads all of it.
 struct RawFrame {
     std::span<const std::span<const float>> objects;
-    std::span<const ac3::oba::ObjectPlacement> placements;
+    std::span<const iclforge::oba::ObjectPlacement> placements;
     std::span<const std::span<const float>> bed;
 };
 
@@ -126,4 +126,4 @@ private:
     OutputStatus status_;
 };
 
-}  // namespace ac3::crucible
+}  // namespace iclforge::crucible

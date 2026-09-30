@@ -21,7 +21,7 @@
 // exactly. pow(m, 4.0 / 3.0) is not that value: 4.0 / 3.0 is 4/3 less 7.4e-17,
 // which moves the result by up to 6.7e-16 relative at 8 191.
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 inline constexpr std::size_t kMaxQuant = 8191;
 inline constexpr std::size_t kPow43Entries = kMaxQuant + 1;
@@ -106,4 +106,4 @@ template <typename Real>
 inline constexpr std::array<Real, kPow43Entries> kPow43 =
     join_pow43<Real>(std::make_index_sequence<kPow43Entries / kPow43Block>{});
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

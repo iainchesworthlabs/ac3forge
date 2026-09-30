@@ -6,7 +6,7 @@
 #include <string_view>
 #include <vector>
 
-namespace ac3::crucible::ui {
+namespace iclforge::crucible::ui {
 
 // The freedesktop side of the Linux application icon: which .desktop entry
 // a running process belongs to, and what that entry's Icon= is. Qt-free and
@@ -80,4 +80,4 @@ struct AppIdentity {
 // absolute path is returned unchanged.
 [[nodiscard]] std::string_view icon_name_without_extension(std::string_view icon);
 
-}  // namespace ac3::crucible::ui
+}  // namespace iclforge::crucible::ui

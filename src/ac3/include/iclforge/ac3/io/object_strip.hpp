@@ -33,7 +33,7 @@
 // a stream carries objects or omits the container entirely, never an empty
 // one (docs/concepts/atmos-joc.md), and that is what this implements.
 //
-// This is the inverse of ac3::signing's in-place EMDF rewrite and, like it,
+// This is the inverse of iclforge::signing's in-place EMDF rewrite and, like it,
 // needs no key: taking a container out is not authenticating one. A stripped
 // frame simply has nothing left for a decoder's authenticity gate to check.
 //
@@ -53,7 +53,7 @@
 // forward recompute over the finished frame rather than anything that has to
 // be solved for.
 
-namespace ac3::io {
+namespace iclforge::io {
 
 enum class StripError : std::uint8_t {
     kEmpty,       // nothing to read
@@ -95,4 +95,4 @@ struct StrippedStream {
 [[nodiscard]] ICLFORGE_AC3_EXPORT std::expected<StrippedStream, StripError> strip_objects(
     std::span<const std::byte> stream);
 
-}  // namespace ac3::io
+}  // namespace iclforge::io

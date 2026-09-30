@@ -154,42 +154,42 @@
         <translation>קיין אַרויסגאַנג</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="752"/>
+        <location filename="../ui/crucible_controller.cpp" line="753"/>
         <source>This build carries no embedded notices file (:/notices/NOTICES.txt was not compiled in); the NOTICES.txt beside the application and the repository&apos;s LICENSE say what it ships.</source>
         <translation>דער דאָזיקער בוי טראָגט נישט קיין אײַנגעבויטע נאָטיצן־טעקע (:/notices/NOTICES.txt איז נישט אַרײַנקאָמפּילירט געוואָרן); די NOTICES.txt לעבן דער אַפּליקאַציע און דער LICENSE פֿון דעם רעפּאָזיטאָריע זאָגן וואָס עס קומט מיט.</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="1245"/>
+        <location filename="../ui/crucible_controller.cpp" line="1247"/>
         <source>saved to %1</source>
         <translation>אָפּגעהיט אין %1</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="1248"/>
+        <location filename="../ui/crucible_controller.cpp" line="1250"/>
         <source>could not write %1: %2</source>
         <translation>האָט נישט געקענט שרײַבן %1: %2</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="1038"/>
+        <location filename="../ui/crucible_controller.cpp" line="1039"/>
         <source>installing, answer the elevation prompt ...</source>
         <translation>אינסטאַלירט, ענטפֿערט אויפֿן דערהייבונג-פֿרעג…</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="1053"/>
+        <location filename="../ui/crucible_controller.cpp" line="1054"/>
         <source>removing, answer the elevation prompt ...</source>
         <translation>נעמט אַראָפּ, ענטפֿערט אויפֿן דערהייבונג-פֿרעג…</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="1073"/>
+        <location filename="../ui/crucible_controller.cpp" line="1074"/>
         <source>installed</source>
         <translation>אינסטאַלירט</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="1073"/>
+        <location filename="../ui/crucible_controller.cpp" line="1074"/>
         <source>removed</source>
         <translation>אַראָפּגענומען</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="1077"/>
+        <location filename="../ui/crucible_controller.cpp" line="1078"/>
         <source>%1 failed (exit code %2)</source>
         <translation>%1 האָט דורכגעפֿאַלן (אַרויסגאַנג-קאָד %2)</translation>
     </message>

@@ -31,16 +31,16 @@
 
 namespace {
 
-using ac4::SyntaxRecord;
-using ac4::detail::AspxChannelFields;
-using ac4::detail::AspxConfigFields;
-using ac4::detail::AspxCounts;
-using ac4::detail::AspxEnvelopeFields;
-using ac4::detail::AspxIntervalClass;
-using ac4::detail::BitReader;
-using ac4::detail::BitWriter;
+using iclforge::ac4::SyntaxRecord;
+using iclforge::ac4::detail::AspxChannelFields;
+using iclforge::ac4::detail::AspxConfigFields;
+using iclforge::ac4::detail::AspxCounts;
+using iclforge::ac4::detail::AspxEnvelopeFields;
+using iclforge::ac4::detail::AspxIntervalClass;
+using iclforge::ac4::detail::BitReader;
+using iclforge::ac4::detail::BitWriter;
 
-// A trace kept here. ac4::SyntaxSink refers to its callable without owning
+// A trace kept here. iclforge::ac4::SyntaxSink refers to its callable without owning
 // it, so the callable is a member, alive as long as the recording.
 struct Recording {
     std::vector<SyntaxRecord> records;
@@ -48,7 +48,7 @@ struct Recording {
     Recording() = default;
     Recording(const Recording&) = delete;
     Recording& operator=(const Recording&) = delete;
-    [[nodiscard]] ac4::SyntaxSink sink() { return ac4::SyntaxSink(push); }
+    [[nodiscard]] iclforge::ac4::SyntaxSink sink() { return iclforge::ac4::SyntaxSink(push); }
 };
 
 void require_same(std::span<const SyntaxRecord> written, std::span<const SyntaxRecord> read) {
@@ -82,7 +82,7 @@ AspxEnvelopeFields envelope(Lcg& rng, std::size_t count, int delta_dir, bool sig
         for (std::size_t i = 0; i < count; ++i) {
             e.values[i] = i == 0 && delta_dir == 0 ? rng.below(12) : rng.below(9) - 4;
         }
-        if (ac4::detail::aspx_envelope_codable(signal, quant_mode, balance, e)) {
+        if (iclforge::ac4::detail::aspx_envelope_codable(signal, quant_mode, balance, e)) {
             return e;
         }
     }
@@ -91,18 +91,18 @@ AspxEnvelopeFields envelope(Lcg& rng, std::size_t count, int delta_dir, bool sig
 }
 
 AspxCounts counts_for(const AspxConfigFields& config, int xover) {
-    ac4::detail::aspx::SubbandGroups groups;
-    const ac4::detail::aspx::FrequencyConfig frequency{.master_freq_scale = config.master_freq_scale,
+    iclforge::ac4::detail::aspx::SubbandGroups groups;
+    const iclforge::ac4::detail::aspx::FrequencyConfig frequency{.master_freq_scale = config.master_freq_scale,
                                                        .start_freq = config.start_freq,
                                                        .stop_freq = config.stop_freq,
                                                        .noise_sbg = config.noise_sbg,
                                                        .xover_subband_offset = xover};
-    REQUIRE(ac4::detail::aspx::derive_subband_groups(frequency, groups) ==
-            ac4::detail::aspx::GroupsError::kNone);
+    REQUIRE(iclforge::ac4::detail::aspx::derive_subband_groups(frequency, groups) ==
+            iclforge::ac4::detail::aspx::GroupsError::kNone);
     return AspxCounts{.num_sbg_sig_highres = groups.num_sbg_sig_highres,
                       .num_sbg_sig_lowres = groups.num_sbg_sig_lowres,
                       .num_sbg_noise = groups.num_sbg_noise,
-                      .num_aspx_timeslots = ac4::detail::kAspxTimeslots};
+                      .num_aspx_timeslots = iclforge::ac4::detail::kAspxTimeslots};
 }
 
 // One channel's fields for a framing, with values its codebooks hold. The
@@ -118,7 +118,7 @@ AspxChannelFields channel(Lcg& rng, const AspxConfigFields& config, const AspxCo
         c.qmode_env = one_fixfix ? 0 : config.quant_mode_env;
     }
     // In an I-frame a variable start is var_bord_left.
-    const std::vector<int> borders = ac4::detail::interval_borders(c.framing, c.framing.var_bord_left);
+    const std::vector<int> borders = iclforge::ac4::detail::interval_borders(c.framing, c.framing.var_bord_left);
     c.envelope_freq_res.clear();
     for (int env = 0; env < num_env; ++env) {
         int high = 1;
@@ -132,7 +132,9 @@ AspxChannelFields channel(Lcg& rng, const AspxConfigFields& config, const AspxCo
                 high = 0;
                 break;
             case 2:
-                high = ac4::detail::envelope_high_res(borders, env, c.framing.tsg_ptr) ? 1 : 0;
+                high = iclforge::ac4::detail::envelope_high_res(borders, env, c.framing.tsg_ptr)
+                           ? 1
+                           : 0;
                 break;
             default:
                 high = 1;
@@ -178,37 +180,37 @@ void round_trip(const AspxConfigFields& config, bool iframe, int xover, bool bal
     Recording written;
     BitWriter w(0, written.sink());
     const AspxCounts counts = counts_for(config, xover);
-    ac4::detail::write_aspx_config(w, config);
+    iclforge::ac4::detail::write_aspx_config(w, config);
     if (channels.size() == 1) {
-        ac4::detail::write_aspx_data_1ch(w, iframe, xover, config, counts, channels[0]);
+        iclforge::ac4::detail::write_aspx_data_1ch(w, iframe, xover, config, counts, channels[0]);
     } else {
-        ac4::detail::write_aspx_data_2ch(w, iframe, xover, config, counts, balance, {channels[0], channels[1]});
+        iclforge::ac4::detail::write_aspx_data_2ch(w, iframe, xover, config, counts, balance, {channels[0], channels[1]});
     }
     Recording read;
     BitReader r(w.bytes(), 0, read.sink());
-    ac4::detail::AspxConfig parsed{};
-    REQUIRE(ac4::detail::parse_aspx_config(r, parsed));
+    iclforge::ac4::detail::AspxConfig parsed{};
+    REQUIRE(iclforge::ac4::detail::parse_aspx_config(r, parsed));
     CHECK(parsed.quant_mode_env == config.quant_mode_env);
     CHECK(parsed.start_freq == config.start_freq);
     CHECK(parsed.stop_freq == config.stop_freq);
     CHECK(parsed.master_freq_scale == config.master_freq_scale);
     CHECK(parsed.noise_sbg == config.noise_sbg);
     CHECK(parsed.freq_res_mode == config.freq_res_mode);
-    ac4::detail::SubstreamContext ctx;
+    iclforge::ac4::detail::SubstreamContext ctx;
     ctx.b_iframe = iframe;
-    ctx.ch_mode = channels.size() == 1 ? ac4::detail::ch_mode::kMono : ac4::detail::ch_mode::kStereo;
-    ac4::detail::AspxElementState state;
+    ctx.ch_mode = channels.size() == 1 ? iclforge::ac4::detail::ch_mode::kMono : iclforge::ac4::detail::ch_mode::kStereo;
+    iclforge::ac4::detail::AspxElementState state;
     state.have_xover_subband_offset = !iframe;
     state.xover_subband_offset = static_cast<std::uint8_t>(xover);
     if (channels.size() == 1) {
-        ac4::detail::AspxData1ch data;
-        const auto ok = ac4::detail::parse_aspx_data_1ch(r, ctx, parsed, state, data);
+        iclforge::ac4::detail::AspxData1ch data;
+        const auto ok = iclforge::ac4::detail::parse_aspx_data_1ch(r, ctx, parsed, state, data);
         INFO((ok ? std::string_view{} : ok.error().reason));
         REQUIRE(ok);
         CHECK(data.channel.framing.num_env == channels[0].framing.num_env());
     } else {
-        ac4::detail::AspxData2ch data;
-        const auto ok = ac4::detail::parse_aspx_data_2ch(r, ctx, parsed, state, data);
+        iclforge::ac4::detail::AspxData2ch data;
+        const auto ok = iclforge::ac4::detail::parse_aspx_data_2ch(r, ctx, parsed, state, data);
         INFO((ok ? std::string_view{} : ok.error().reason));
         REQUIRE(ok);
         CHECK(data.balance == balance);
@@ -361,12 +363,12 @@ TEST_CASE("the encoder's interval borders, resolutions and noise borders are the
                                   f.framing.int_class == AspxIntervalClass::kFixVar
                               ? 0
                               : f.framing.var_bord_left;
-        const std::vector<int> borders = ac4::detail::interval_borders(f.framing, start);
+        const std::vector<int> borders = iclforge::ac4::detail::interval_borders(f.framing, start);
         CAPTURE(static_cast<int>(f.framing.int_class), start, borders);
         BitWriter w;
-        ac4::detail::write_aspx_data_1ch(w, true, 0, config, counts, f);
+        iclforge::ac4::detail::write_aspx_data_1ch(w, true, 0, config, counts, f);
         BitReader r(w.bytes(), 0, {});
-        ac4::detail::AspxConfig parsed_config{};
+        iclforge::ac4::detail::AspxConfig parsed_config{};
         parsed_config.valid = true;
         parsed_config.quant_mode_env = static_cast<std::uint8_t>(config.quant_mode_env);
         parsed_config.start_freq = static_cast<std::uint8_t>(config.start_freq);
@@ -374,22 +376,22 @@ TEST_CASE("the encoder's interval borders, resolutions and noise borders are the
         parsed_config.master_freq_scale = static_cast<std::uint8_t>(config.master_freq_scale);
         parsed_config.noise_sbg = static_cast<std::uint8_t>(config.noise_sbg);
         parsed_config.freq_res_mode = static_cast<std::uint8_t>(config.freq_res_mode);
-        ac4::detail::SubstreamContext ctx;
+        iclforge::ac4::detail::SubstreamContext ctx;
         ctx.b_iframe = true;
-        ctx.ch_mode = ac4::detail::ch_mode::kMono;
-        ac4::detail::AspxElementState state;
-        ac4::detail::AspxData1ch data;
-        REQUIRE(ac4::detail::parse_aspx_data_1ch(r, ctx, parsed_config, state, data));
-        const ac4::detail::AspxFraming& parsed = data.channel.framing;
+        ctx.ch_mode = iclforge::ac4::detail::ch_mode::kMono;
+        iclforge::ac4::detail::AspxElementState state;
+        iclforge::ac4::detail::AspxData1ch data;
+        REQUIRE(iclforge::ac4::detail::parse_aspx_data_1ch(r, ctx, parsed_config, state, data));
+        const iclforge::ac4::detail::AspxFraming& parsed = data.channel.framing;
         REQUIRE(static_cast<int>(parsed.num_env) + 1 == static_cast<int>(borders.size()));
         for (std::size_t i = 0; i < borders.size(); ++i) {
             CHECK(parsed.atsg_sig[i] == borders[i]);
         }
         for (int env = 0; env < parsed.num_env; ++env) {
             CHECK((parsed.atsg_freqres[static_cast<std::size_t>(env)] != 0) ==
-                  ac4::detail::envelope_high_res(borders, env, f.framing.tsg_ptr));
+                  iclforge::ac4::detail::envelope_high_res(borders, env, f.framing.tsg_ptr));
         }
-        const std::vector<int> noise = ac4::detail::noise_borders(f.framing, borders);
+        const std::vector<int> noise = iclforge::ac4::detail::noise_borders(f.framing, borders);
         REQUIRE(static_cast<int>(parsed.num_noise) + 1 == static_cast<int>(noise.size()));
         for (std::size_t i = 0; i < noise.size(); ++i) {
             CHECK(parsed.atsg_noise[i] == noise[i]);
@@ -405,9 +407,10 @@ TEST_CASE("the A-SPX data a frame falls back to cost more where its interval sta
     // an I-frame sends the border too. create() sizes the frame that holds
     // nothing more with both: at the lowest rates the second costs 2 bits a
     // channel more, and in stereo at 8 kbps that is past its 42-byte frame.
-    const std::optional<ac4::detail::AspxSetup> setup = ac4::detail::aspx_setup_for(8.0, 48000);
+    const std::optional<iclforge::ac4::detail::AspxSetup> setup =
+        iclforge::ac4::detail::aspx_setup_for(8.0, 48000);
     REQUIRE(setup.has_value());
-    const ac4::detail::AspxChannelEncoder encoder(*setup);
+    const iclforge::ac4::detail::AspxChannelEncoder encoder(*setup);
     const AspxChannelFields fixed = encoder.fallback(true, true);
     const AspxChannelFields varied = encoder.fallback(true, true, 1);
     CHECK(fixed.framing.int_class == AspxIntervalClass::kFixFix);
@@ -416,10 +419,10 @@ TEST_CASE("the A-SPX data a frame falls back to cost more where its interval sta
     const auto bits = [&](const AspxChannelFields& f, int channels) {
         BitWriter w;
         if (channels == 1) {
-            ac4::detail::write_aspx_data_1ch(w, true, 0, setup->config, setup->counts, f);
+            iclforge::ac4::detail::write_aspx_data_1ch(w, true, 0, setup->config, setup->counts, f);
         } else {
-            ac4::detail::write_aspx_data_2ch(w, true, 0, setup->config, setup->counts, false,
-                                             {f, f});
+            iclforge::ac4::detail::write_aspx_data_2ch(w, true, 0, setup->config, setup->counts,
+                                                       false, {f, f});
         }
         return w.bit_position();
     };
@@ -427,7 +430,8 @@ TEST_CASE("the A-SPX data a frame falls back to cost more where its interval sta
     CHECK(bits(varied, 2) > bits(fixed, 2));
 }
 TEST_CASE("companding_control() in its three forms reads back through the channel element", "[ac4enc][aspx]") {
-    const std::optional<ac4::detail::AspxSetup> setup = ac4::detail::aspx_setup_for(32.0, 48000);
+    const std::optional<iclforge::ac4::detail::AspxSetup> setup =
+        iclforge::ac4::detail::aspx_setup_for(32.0, 48000);
     REQUIRE(setup.has_value());
     Lcg rng;
     for (const int channels : {1, 2}) {
@@ -438,7 +442,7 @@ TEST_CASE("companding_control() in its three forms reads back through the channe
                         continue;
                     }
                     CAPTURE(channels, sync, on, average);
-                    ac4::detail::AspxElement element;
+                    iclforge::ac4::detail::AspxElement element;
                     element.companding.num_chan = channels;
                     element.companding.sync_flag = sync;
                     element.companding.compand_on = {(on & 1) != 0, (on & 2) != 0};
@@ -451,7 +455,7 @@ TEST_CASE("companding_control() in its three forms reads back through the channe
                     Recording written;
                     BitWriter w(0, written.sink());
                     w.write(channels == 2 ? 2U : 1U, 1, channels == 2 ? "stereo_codec_mode" : "mono_codec_mode");
-                    ac4::detail::write_aspx_head(w, true, *setup, element);
+                    iclforge::ac4::detail::write_aspx_head(w, true, *setup, element);
                     if (channels == 2) {
                         w.write(1, 0, "b_enable_mdct_stereo_proc");
                     }
@@ -465,16 +469,17 @@ TEST_CASE("companding_control() in its three forms reads back through the channe
                         w.write(8, 0, "reference_scale_factor");
                         w.write(1, 0, "b_snf_data_exists");
                     }
-                    ac4::detail::write_aspx_tail(w, true, *setup, element);
+                    iclforge::ac4::detail::write_aspx_tail(w, true, *setup, element);
 
                     Recording read;
                     BitReader r(w.bytes(), 0, read.sink());
-                    ac4::detail::SubstreamContext ctx;
+                    iclforge::ac4::detail::SubstreamContext ctx;
                     ctx.b_iframe = true;
-                    ctx.ch_mode = channels == 2 ? ac4::detail::ch_mode::kStereo : ac4::detail::ch_mode::kMono;
-                    ac4::detail::ChannelElementState state;
-                    ac4::detail::ChannelElement parsed;
-                    const auto ok = ac4::detail::parse_audio_data_chan(r, ctx, state, parsed);
+                    ctx.ch_mode = channels == 2 ? iclforge::ac4::detail::ch_mode::kStereo : iclforge::ac4::detail::ch_mode::kMono;
+                    iclforge::ac4::detail::ChannelElementState state;
+                    iclforge::ac4::detail::ChannelElement parsed;
+                    const auto ok =
+                        iclforge::ac4::detail::parse_audio_data_chan(r, ctx, state, parsed);
                     INFO((ok ? std::string_view{} : ok.error().reason));
                     REQUIRE(ok);
                     REQUIRE(parsed.companding.has_value());
@@ -499,7 +504,7 @@ TEST_CASE("the encoder's A-SPX configurations are DEE's", "[ac4enc][aspx]") {
                           Row{72.0, 36, false}}) {
         CAPTURE(row.kbps);
         for (const int rate : {48000, 44100}) {
-            const auto setup = ac4::detail::aspx_setup_for(row.kbps, rate);
+            const auto setup = iclforge::ac4::detail::aspx_setup_for(row.kbps, rate);
             REQUIRE(setup.has_value());
             CHECK(setup->groups.sbx == row.sbx);
             CHECK(setup->companding == row.companding);
@@ -507,7 +512,7 @@ TEST_CASE("the encoder's A-SPX configurations are DEE's", "[ac4enc][aspx]") {
             CHECK(setup->patches.num_sbg_patches > 0);
         }
     }
-    CHECK_FALSE(ac4::detail::aspx_setup_for(48.0, 32000).has_value());
+    CHECK_FALSE(iclforge::ac4::detail::aspx_setup_for(48.0, 32000).has_value());
 
     // The 5.X and 7.X elements, as DEE's 5.1 streams have them: subband 32
     // from 192 kbps (38.4 a channel), and with aspx_xover_subband_offset 1
@@ -521,7 +526,7 @@ TEST_CASE("the encoder's A-SPX configurations are DEE's", "[ac4enc][aspx]") {
                                    Multichannel{51.2, 34, 1}, Multichannel{76.0, 34, 1}}) {
         CAPTURE(row.kbps);
         for (const int rate : {48000, 44100}) {
-            const auto setup = ac4::detail::aspx_setup_for(row.kbps, rate, true);
+            const auto setup = iclforge::ac4::detail::aspx_setup_for(row.kbps, rate, true);
             REQUIRE(setup.has_value());
             CHECK(setup->groups.sbx == row.sbx);
             CHECK(setup->xover_subband_offset == row.xover);
@@ -535,9 +540,9 @@ TEST_CASE("the QMF front end's compressed low band is the signal again after the
     // A tone below the crossover whose level steps by 30 dB: compressed, the
     // steps shrink to alpha of their size in dB, and expanded as the decoder
     // expands they come back.
-    const auto setup = ac4::detail::aspx_setup_for(24.0, 48000);
+    const auto setup = iclforge::ac4::detail::aspx_setup_for(24.0, 48000);
     REQUIRE(setup.has_value());
-    ac4::detail::AspxChannelEncoder channel(*setup);
+    iclforge::ac4::detail::AspxChannelEncoder channel(*setup);
     const std::size_t slots = 400;
     std::vector<double> signal(slots * 64);
     for (std::size_t n = 0; n < signal.size(); ++n) {
@@ -547,7 +552,8 @@ TEST_CASE("the QMF front end's compressed low band is the signal again after the
     std::array<double, 64> chunk{};
     for (std::size_t g = 0; g < slots; ++g) {
         for (std::size_t i = 0; i < 64; ++i) {
-            const long long s = static_cast<long long>(64 * g + i) - ac4::detail::kAnalysisLead;
+            const long long s =
+                static_cast<long long>(64 * g + i) - iclforge::ac4::detail::kAnalysisLead;
             chunk[i] = s >= 0 && static_cast<std::size_t>(s) < signal.size() ? signal[static_cast<std::size_t>(s)] : 0.0;
         }
         channel.push_slot(chunk);

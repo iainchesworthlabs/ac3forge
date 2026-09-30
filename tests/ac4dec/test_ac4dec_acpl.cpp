@@ -23,18 +23,18 @@
 
 namespace {
 
-using ac4::Speaker;
-using ac4::detail::AcplData1ch;
-using ac4::detail::AcplDataType;
-using ac4::detail::AcplFrameValues;
-using ac4::detail::AcplParams;
-using ac4::detail::AcplQuantHistory;
-using ac4::detail::ChannelElement;
-using ac4::detail::ElementKind;
-using ac4::detail::QmfValue;
-using ac4::detail::Real;
+using iclforge::ac4::Speaker;
+using iclforge::ac4::detail::AcplData1ch;
+using iclforge::ac4::detail::AcplDataType;
+using iclforge::ac4::detail::AcplFrameValues;
+using iclforge::ac4::detail::AcplParams;
+using iclforge::ac4::detail::AcplQuantHistory;
+using iclforge::ac4::detail::ChannelElement;
+using iclforge::ac4::detail::ElementKind;
+using iclforge::ac4::detail::QmfValue;
+using iclforge::ac4::detail::Real;
 using Catch::Approx;
-namespace codec_mode = ac4::detail::codec_mode;
+namespace codec_mode = iclforge::ac4::detail::codec_mode;
 
 constexpr int kSlots = 32;
 constexpr std::size_t kValues = static_cast<std::size_t>(kSlots) * 64;
@@ -70,11 +70,11 @@ ChannelElement pair_element(const AcplData1ch& data) {
 
 std::vector<QmfValue> matrix(double scale) {
     std::vector<QmfValue> out(kValues);
-    const auto s = static_cast<ac4::detail::Real>(scale);
+    const auto s = static_cast<iclforge::ac4::detail::Real>(scale);
     for (std::size_t i = 0; i < kValues; ++i) {
         const double angle = 0.37 * static_cast<double>(i);
-        out[i] = s * QmfValue(static_cast<ac4::detail::Real>(std::cos(angle)),
-                              static_cast<ac4::detail::Real>(std::sin(angle)));
+        out[i] = s * QmfValue(static_cast<iclforge::ac4::detail::Real>(std::cos(angle)),
+                              static_cast<iclforge::ac4::detail::Real>(std::sin(angle)));
     }
     return out;
 }
@@ -91,7 +91,7 @@ TEST_CASE("acpl_values decodes alpha and beta along frequency, then along time f
     data.beta1 = params(AcplDataType::kBeta, 7, 2, 8, false, 0);      // beta_q 2 at ibeta 8: 0.1375
     AcplQuantHistory history;
     AcplFrameValues values;
-    REQUIRE(ac4::detail::acpl_values(pair_element(data), history, values));
+    REQUIRE(iclforge::ac4::detail::acpl_values(pair_element(data), history, values));
     REQUIRE(values.module_count == 1);
     for (std::size_t pb = 0; pb < 7; ++pb) {
         CHECK(values.modules[0].alpha[0][pb] == 1.0);
@@ -100,17 +100,17 @@ TEST_CASE("acpl_values decodes alpha and beta along frequency, then along time f
     // The next frame adds 1 to every alpha_q along time: 25, 1.059375, ibeta 7.
     data.alpha1 = params(AcplDataType::kAlpha, 7, 0, 0, true, 33);
     data.beta1 = params(AcplDataType::kBeta, 7, 0, 0, true, 8);
-    REQUIRE(ac4::detail::acpl_values(pair_element(data), history, values));
+    REQUIRE(iclforge::ac4::detail::acpl_values(pair_element(data), history, values));
     CHECK(values.modules[0].alpha[0][6] == 1.059375);
     CHECK(values.modules[0].beta[0][6] == 0.1619922);
     // Eight more steps of 1 leave the table (32 is its last value).
     for (int step = 0; step < 7; ++step) {
-        REQUIRE(ac4::detail::acpl_values(pair_element(data), history, values));
+        REQUIRE(iclforge::ac4::detail::acpl_values(pair_element(data), history, values));
     }
     CHECK(values.modules[0].alpha[0][0] == 2.0);
-    const auto refused = ac4::detail::acpl_values(pair_element(data), history, values);
+    const auto refused = iclforge::ac4::detail::acpl_values(pair_element(data), history, values);
     REQUIRE_FALSE(refused);
-    CHECK(refused.error().error == ac4::DecodeError::kInvalidStream);
+    CHECK(refused.error().error == iclforge::ac4::DecodeError::kInvalidStream);
 }
 
 TEST_CASE("acpl_values leaves the bands below acpl_param_band at 0", "[ac4dec][acpl]") {
@@ -131,7 +131,7 @@ TEST_CASE("acpl_values leaves the bands below acpl_param_band at 0", "[ac4dec][a
     e.codec_mode = codec_mode::kAspxAcpl1;
     AcplQuantHistory history;
     AcplFrameValues values;
-    REQUIRE(ac4::detail::acpl_values(e, history, values));
+    REQUIRE(iclforge::ac4::detail::acpl_values(e, history, values));
     CHECK(values.modules[0].qmf_band == 4);
     CHECK(values.modules[0].alpha[0][3] == 0.0);
     CHECK(values.modules[0].alpha[0][4] == -1.0);
@@ -139,7 +139,7 @@ TEST_CASE("acpl_values leaves the bands below acpl_param_band at 0", "[ac4dec][a
 }
 
 TEST_CASE("acpl_values dequantises acpl_data_2ch()'s beta3 and gammas by their steps", "[ac4dec][acpl]") {
-    ac4::detail::AcplData2ch data;
+    iclforge::ac4::detail::AcplData2ch data;
     data.framing.num_param_sets = 1;
     data.num_bands = 9;
     for (auto& alpha : data.alpha) {
@@ -159,7 +159,7 @@ TEST_CASE("acpl_values dequantises acpl_data_2ch()'s beta3 and gammas by their s
     e.acpl_2ch = data;
     AcplQuantHistory history;
     AcplFrameValues values;
-    REQUIRE(ac4::detail::acpl_values(e, history, values));
+    REQUIRE(iclforge::ac4::detail::acpl_values(e, history, values));
     REQUIRE(values.coupling.has_value());
     CHECK(values.coupling->beta3[0][8] == 1.5);
     for (std::size_t k = 0; k < 6; ++k) {
@@ -170,7 +170,7 @@ TEST_CASE("acpl_values dequantises acpl_data_2ch()'s beta3 and gammas by their s
 TEST_CASE("steep interpolation switches a pair between its outputs at each set's time slot", "[ac4dec][acpl]") {
     // ASPX_ACPL_2 with two parameter sets: alpha 1 from slot 8 and -1 from
     // slot 20, beta 0; acpl_param_prev 0 (alpha 0) before slot 8.
-    ac4::detail::AcplModuleValues module;
+    iclforge::ac4::detail::AcplModuleValues module;
     module.framing = {.steep = true, .num_param_sets = 2, .param_timeslot = {8, 20}};
     module.num_bands = 15;
     for (std::size_t pb = 0; pb < 15; ++pb) {
@@ -185,8 +185,8 @@ TEST_CASE("steep interpolation switches a pair between its outputs at each set's
     std::vector<QmfValue> right(kValues);
     const std::array<Speaker, 2> speakers = {Speaker::kLeft, Speaker::kRight};
     const std::array<std::vector<QmfValue>*, 2> matrices = {&left, &right};
-    ac4::detail::AcplStage stage;
-    stage.apply(ac4::detail::ch_mode::kStereo, false, ElementKind::kPair, codec_mode::kAspxAcpl2, values, kSlots,
+    iclforge::ac4::detail::AcplStage stage;
+    stage.apply(iclforge::ac4::detail::ch_mode::kStereo, false, ElementKind::kPair, codec_mode::kAspxAcpl2, values, kSlots,
                 {.speakers = speakers, .matrices = matrices});
     for (std::size_t ts = 0; ts < static_cast<std::size_t>(kSlots); ++ts) {
         for (const std::size_t sb : {0U, 30U, 63U}) {
@@ -211,7 +211,7 @@ TEST_CASE("ASPX_ACPL_3 makes the centre of gamma5 and gamma6", "[ac4dec][acpl]")
     // (Pseudocode 118's ACplModule2() on (z4, z5) and its sqrt 2), and the
     // other four channels 0. Two frames, so that the second has no ramp from
     // acpl_param_prev.
-    ac4::detail::AcplCouplingValues coupling;
+    iclforge::ac4::detail::AcplCouplingValues coupling;
     coupling.num_bands = 7;
     for (std::size_t pb = 0; pb < 7; ++pb) {
         coupling.gamma[4][0][pb] = 0.5;
@@ -221,7 +221,7 @@ TEST_CASE("ASPX_ACPL_3 makes the centre of gamma5 and gamma6", "[ac4dec][acpl]")
     values.coupling = coupling;
     const std::array<Speaker, 5> speakers = {Speaker::kLeft, Speaker::kRight, Speaker::kCentre,
                                              Speaker::kLeftSurround, Speaker::kRightSurround};
-    ac4::detail::AcplStage stage;
+    iclforge::ac4::detail::AcplStage stage;
     const auto gain =
         static_cast<Real>(std::numbers::sqrt2 * (1.0 + std::numbers::sqrt2) * 0.5);
     for (int frame = 0; frame < 2; ++frame) {
@@ -233,7 +233,7 @@ TEST_CASE("ASPX_ACPL_3 makes the centre of gamma5 and gamma6", "[ac4dec][acpl]")
         std::vector<QmfValue> ls(kValues);
         std::vector<QmfValue> rs(kValues);
         const std::array<std::vector<QmfValue>*, 5> matrices = {&l, &r, &c, &ls, &rs};
-        stage.apply(ac4::detail::ch_mode::k5_0, false, ElementKind::k5X, codec_mode::kAspxAcpl3, values, kSlots,
+        stage.apply(iclforge::ac4::detail::ch_mode::k5_0, false, ElementKind::k5X, codec_mode::kAspxAcpl3, values, kSlots,
                     {.speakers = speakers, .matrices = matrices});
         if (frame == 0) {
             continue;

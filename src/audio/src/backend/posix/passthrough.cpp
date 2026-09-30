@@ -5,12 +5,12 @@
 // with kNoBackend rather than the API disappearing - callers keep compiling,
 // and get told no instead of getting nothing.
 //
-// Ask ac3::audio::audio_backend() BEFORE calling any of this if the answer
+// Ask iclforge::audio::audio_backend() BEFORE calling any of this if the answer
 // wants to be a sentence rather than an error code; see
 // platform/posix/audio_backend.cpp for why there is no backend here, and what
 // to reach for instead.
 
-namespace ac3::audio {
+namespace iclforge::audio {
 
 std::string_view describe(PassthroughError error) {
     switch (error) {
@@ -59,4 +59,4 @@ std::expected<void, PassthroughError> PassthroughSink::resume() {
 }
 bool PassthroughSink::paused() const { return false; }
 
-}  // namespace ac3::audio
+}  // namespace iclforge::audio

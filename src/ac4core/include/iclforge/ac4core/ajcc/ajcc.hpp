@@ -21,7 +21,7 @@
 // The decoder runs these on its QMF matrices after A-SPX; a matrix of slots is
 // laid out as the QMF banks' (dsp/qmf.hpp): value [ts * 64 + sb].
 
-namespace ac4::detail::ajcc {
+namespace iclforge::ac4::detail::ajcc {
 
 inline constexpr int kSubbands = acpl::kSubbands;
 inline constexpr int kMaxParamBands = acpl::kMaxParamBands;
@@ -122,4 +122,4 @@ extern template void accumulate<Real>(std::span<const Real>,
                                       std::span<dsp::Complex<Real>>, int) noexcept;
 extern template class PreModification<Real>;
 
-}  // namespace ac4::detail::ajcc
+}  // namespace iclforge::ac4::detail::ajcc

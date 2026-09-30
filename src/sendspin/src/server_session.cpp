@@ -30,7 +30,7 @@
 #include "iclforge/sendspin/stream_roles.hpp"
 #include "iclforge/sendspin/transport.hpp"
 
-namespace ac3::sendspin {
+namespace iclforge::sendspin {
 
 namespace {
 
@@ -1327,4 +1327,4 @@ SessionOutput ServerSession::tick() {
     return {};
 }
 
-}  // namespace ac3::sendspin
+}  // namespace iclforge::sendspin

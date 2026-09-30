@@ -34,7 +34,7 @@
 // application at the point they tap it, so `needed` is false, `present` is
 // meaningless, and the UI shows the tap's consent state instead.
 
-namespace ac3::crucible {
+namespace iclforge::crucible {
 
 struct SilentDeviceState {
     // False on a platform that silences at the tap instead (macOS). When
@@ -126,4 +126,4 @@ public:
     [[nodiscard]] virtual DeviceActionStatus action_status() = 0;
 };
 
-}  // namespace ac3::crucible
+}  // namespace iclforge::crucible

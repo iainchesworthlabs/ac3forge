@@ -6,7 +6,7 @@
 #include <numbers>
 #include <span>
 
-namespace ac3::dsp {
+namespace iclforge::dsp {
 
 void Biquad::set_coefficients(double b0, double b1, double b2, double a1, double a2) {
     b0_ = b0;
@@ -110,4 +110,4 @@ void LfeLowpass::reset() {
     stage2_.reset();
 }
 
-}  // namespace ac3::dsp
+}  // namespace iclforge::dsp

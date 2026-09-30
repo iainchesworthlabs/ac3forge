@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cstddef>
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 namespace {
 
 using S = Speaker;
@@ -795,4 +795,4 @@ std::vector<Speaker> companded_speakers(int ch_mode, int codec_mode) {
     return {};
 }
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

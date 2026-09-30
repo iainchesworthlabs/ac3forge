@@ -1,6 +1,6 @@
 #include "iclforge/ac4core/tables/huffman_codes.hpp"
 
-namespace ac4::detail::tables {
+namespace iclforge::ac4::detail::tables {
 
 // Table A.1, ASF_HCB_SCALEFAC.
 constinit const std::array<HuffCode, 121> kAsfHcbScalefacCodes = {{
@@ -1157,4 +1157,4 @@ constinit const std::array<std::span<const HuffCode>, 12> kAsfSpectrumCodes = {{
     kAsfHcb7Codes, kAsfHcb8Codes, kAsfHcb9Codes, kAsfHcb10Codes, kAsfHcb11Codes,
 }};
 
-}  // namespace ac4::detail::tables
+}  // namespace iclforge::ac4::detail::tables

@@ -23,7 +23,7 @@
 #include "encode.hpp"
 
 // ac4-encode with objects=<scene>, experimental: the WAV file's channels as
-// the objects of one object substream (ac4::ObjectsConfig), in the library's
+// the objects of one object substream (iclforge::ac4::ObjectsConfig), in the library's
 // own terms, which the applications' scene readers of phase I5 will give it.
 // The scene file is text, one directive a line, '#' starting a comment:
 //
@@ -60,8 +60,8 @@ namespace {
     return value;
 }
 
-[[nodiscard]] std::optional<ac4::BedChannel> bed_channel(std::string_view name) {
-    using ac4::BedChannel;
+[[nodiscard]] std::optional<iclforge::ac4::BedChannel> bed_channel(std::string_view name) {
+    using iclforge::ac4::BedChannel;
     constexpr std::array<std::pair<std::string_view, BedChannel>, 15> kNames = {{
         {"L", BedChannel::kLeft},
         {"R", BedChannel::kRight},
@@ -88,13 +88,13 @@ namespace {
 }
 
 struct Scene {
-    ac4::ObjectsConfig objects;
-    std::vector<ac4::ObjectMetadataUpdate> updates;
+    iclforge::ac4::ObjectsConfig objects;
+    std::vector<iclforge::ac4::ObjectMetadataUpdate> updates;
 };
 
 // A position and an optional gain from `tokens` from `first`, into `p`.
 [[nodiscard]] bool read_position(std::span<const std::string> tokens, std::size_t first,
-                                 ac4::ObjectProperties& p) {
+                                 iclforge::ac4::ObjectProperties& p) {
     if (tokens.size() < first + 3 || tokens.size() > first + 4) {
         return false;
     }
@@ -150,12 +150,12 @@ struct Scene {
         bool ok = false;
         if (t[0] == "coding" && t.size() == 2) {
             ok = t[1] == "ajoc" || t[1] == "direct";
-            scene.objects.coding = t[1] == "direct" ? ac4::ObjectCoding::kDirect : ac4::ObjectCoding::kAjoc;
+            scene.objects.coding = t[1] == "direct" ? iclforge::ac4::ObjectCoding::kDirect : iclforge::ac4::ObjectCoding::kAjoc;
         } else if (t[0] == "downmix" && t.size() == 2) {
             ok = t[1] == "computed" || t[1] == "5.0" || t[1] == "5.1";
-            scene.objects.downmix = t[1] == "5.0"   ? ac4::AjocDownmix::kStatic50
-                                    : t[1] == "5.1" ? ac4::AjocDownmix::kStatic51
-                                                    : ac4::AjocDownmix::kComputed;
+            scene.objects.downmix = t[1] == "5.0"   ? iclforge::ac4::AjocDownmix::kStatic50
+                                    : t[1] == "5.1" ? iclforge::ac4::AjocDownmix::kStatic51
+                                                    : iclforge::ac4::AjocDownmix::kComputed;
         } else if (t[0] == "downmix-signals" && t.size() == 2) {
             const std::optional<long long> n = integer(t[1]);
             ok = n.has_value() && *n > 0 && *n < 64;
@@ -165,7 +165,7 @@ struct Scene {
             scene.objects.decorrelation = t[1] == "on";
         } else if (t[0] == "object" && t.size() >= 3) {
             if (const std::optional<std::size_t> c = channel_of(1)) {
-                ac4::ObjectConfig& o = scene.objects.objects[*c];
+                iclforge::ac4::ObjectConfig& o = scene.objects.objects[*c];
                 if (t[2] == "dynamic") {
                     ok = read_position(t, 3, o.properties);
                 } else if (t[2] == "bed" && (t.size() == 4 || t.size() == 5)) {
@@ -183,7 +183,7 @@ struct Scene {
             const std::optional<long long> sample = integer(t[2]);
             const std::optional<long long> ramp = integer(t[3]);
             if (c && sample && ramp && *sample >= 0 && *ramp >= 0 && *ramp <= 2048) {
-                ac4::ObjectMetadataUpdate u;
+                iclforge::ac4::ObjectMetadataUpdate u;
                 u.object = static_cast<int>(*c);
                 u.sample = *sample;
                 u.ramp_samples = static_cast<int>(*ramp);
@@ -207,14 +207,14 @@ int run_ac4_encode_objects(std::string_view in_path, std::string_view out_path,
     const Options::Ac4Encode& opts = meta.ac4enc;
     auto wav = read_wav_arg(in_path);
     if (!wav.has_value()) {
-        fmt::println(stderr, "error: {}: {}", in_path, ac3::io::describe(wav.error()));
+        fmt::println(stderr, "error: {}: {}", in_path, iclforge::io::describe(wav.error()));
         return kExitInput;
     }
     const std::optional<Scene> scene = read_scene(meta.ac4_objects_path, wav->channels.size());
     if (!scene) {
         return kExitUsage;
     }
-    ac4::EncoderConfig config;
+    iclforge::ac4::EncoderConfig config;
     config.sample_rate_hz = static_cast<int>(wav->sample_rate);
     config.frame_rate_index = opts.frame_rate_index;
     config.bitrate_kbps = static_cast<int>(bitrate);
@@ -224,11 +224,11 @@ int run_ac4_encode_objects(std::string_view in_path, std::string_view out_path,
         config.iframe_interval = *opts.iframe_interval;
     }
     config.experimental.objects = meta.ac4_experimental_objects;
-    ac4::SubstreamConfig substream;
+    iclforge::ac4::SubstreamConfig substream;
     substream.objects = scene->objects;
-    substream.codec_mode = meta.ac4_codec_mode == "simple" ? ac4::CodecMode::kSimple
-                           : meta.ac4_codec_mode == "aspx" ? ac4::CodecMode::kAspx
-                                                           : ac4::CodecMode::kAuto;
+    substream.codec_mode = meta.ac4_codec_mode == "simple" ? iclforge::ac4::CodecMode::kSimple
+                           : meta.ac4_codec_mode == "aspx" ? iclforge::ac4::CodecMode::kAspx
+                                                           : iclforge::ac4::CodecMode::kAuto;
     config.substreams = {substream};
 
     // syntax-trace=, as ac4-encode writes it. A frame's records start with
@@ -243,7 +243,8 @@ int run_ac4_encode_objects(std::string_view in_path, std::string_view out_path,
             fmt::println(stderr, "error: cannot open {} for writing", meta.syntax_trace_path);
             return kExitOutput;
         }
-        config.trace = [&trace_file, &trace_frame, &first_substream](const ac4::SyntaxRecord& r) {
+        config.trace = [&trace_file, &trace_frame,
+                        &first_substream](const iclforge::ac4::SyntaxRecord& r) {
             if (first_substream < 0) {
                 first_substream = r.substream;
             }
@@ -254,27 +255,27 @@ int run_ac4_encode_objects(std::string_view in_path, std::string_view out_path,
                        << r.bits << '\t' << r.value << '\t' << r.name << '\n';
         };
     }
-    auto encoder = ac4::Encoder::create(config);
+    auto encoder = iclforge::ac4::Encoder::create(config);
     if (!encoder.has_value()) {
         fmt::println(stderr, "error: the encoder refuses {} (ac3cli help ac4-encode)",
-                     ac4::Encoder::refusal_reason(config));
+                     iclforge::ac4::Encoder::refusal_reason(config));
         return kExitUsage;
     }
     std::vector<std::span<const float>> views(wav->channels.begin(), wav->channels.end());
     auto frames = encoder->encode(views, scene->updates);
     if (!frames.has_value()) {
-        fmt::println(stderr, "error: {}: {}", in_path, ac4::describe(frames.error()));
+        fmt::println(stderr, "error: {}: {}", in_path, iclforge::ac4::describe(frames.error()));
         return kExitInput;
     }
     auto rest = encoder->flush();
     if (!rest.has_value()) {
-        fmt::println(stderr, "error: {}", ac4::describe(rest.error()));
+        fmt::println(stderr, "error: {}", iclforge::ac4::describe(rest.error()));
         return kExitInput;
     }
     frames->insert(frames->end(), rest->begin(), rest->end());
     std::vector<std::vector<std::byte>> bytes;
-    for (const ac4::EncodedFrame& frame : *frames) {
-        bytes.push_back(ac4::sync_frame(frame.raw_ac4_frame, opts.crc.value_or(true)));
+    for (const iclforge::ac4::EncodedFrame& frame : *frames) {
+        bytes.push_back(iclforge::ac4::sync_frame(frame.raw_ac4_frame, opts.crc.value_or(true)));
     }
     if (!write_frames(out_path, bytes)) {
         return kExitOutput;

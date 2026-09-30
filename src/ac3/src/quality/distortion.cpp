@@ -19,7 +19,7 @@
 // std::min cannot deduce one type from the two. See
 // src/encoder/bandwidth.cpp for where a bare-metal build of the encoder first
 // hit it.
-namespace ac3::quality {
+namespace iclforge::quality {
 
 namespace {
 
@@ -209,4 +209,4 @@ void band_snr_db(const BandNoise& measured, std::span<double> out) {
     }
 }
 
-}  // namespace ac3::quality
+}  // namespace iclforge::quality

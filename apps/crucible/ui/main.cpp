@@ -98,7 +98,7 @@ void forward_to_diagnostics(QtMsgType type, const QMessageLogContext& context, c
                             : type == QtWarningMsg  ? "warning: "
                             : type == QtCriticalMsg ? "critical: "
                                                     : "fatal: ";
-        ac3::crucible::process_diagnostics().note(level + message.toStdString());
+        iclforge::crucible::process_diagnostics().note(level + message.toStdString());
     }
     if (g_previous_handler != nullptr) {
         g_previous_handler(type, context, message);
@@ -140,7 +140,7 @@ int main(int argc, char** argv) {
     QApplication app(argc, argv);
     // The ring exists from here, so its clock starts with the window and
     // every later message lands in it.
-    ac3::crucible::process_diagnostics().note("ac3crucible started");
+    iclforge::crucible::process_diagnostics().note("ac3crucible started");
     g_previous_handler = qInstallMessageHandler(forward_to_diagnostics);
     QGuiApplication::setApplicationName(QStringLiteral("Crucible"));
     QGuiApplication::setOrganizationName(QStringLiteral("ac3forge"));
@@ -217,7 +217,7 @@ int main(int argc, char** argv) {
 
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &app,
                      [] { QCoreApplication::exit(1); }, Qt::QueuedConnection);
-    engine.addImageProvider(QStringLiteral("appicon"), new ac3::crucible::ui::AppIconProvider);
+    engine.addImageProvider(QStringLiteral("appicon"), new iclforge::crucible::ui::AppIconProvider);
     engine.loadFromModule("Ac3ForgeCrucible", "Main");
     if (engine.rootObjects().isEmpty()) {
         return 1;
@@ -294,7 +294,7 @@ int main(int argc, char** argv) {
                 bool done = eq < 0 || xyz.size() != 3;  // malformed: drop it
                 if (!done) {
                     for (QObject* object : controller->apps()) {
-                        auto* entry = qobject_cast<ac3::crucible::ui::AppEntry*>(object);
+                        auto* entry = qobject_cast<iclforge::crucible::ui::AppEntry*>(object);
                         if (entry != nullptr && entry->name().compare(spec.left(eq), Qt::CaseInsensitive) == 0) {
                             const int app = entry->app();
                             if (split) {

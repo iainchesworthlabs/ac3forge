@@ -26,14 +26,14 @@
 // acmod bed - the overwhelmingly common case, and the one that must not
 // change by so much as a bit.
 //
-// Shared between ac3::OutputStage's rendered-layout fold (decoder/output.cpp,
+// Shared between iclforge::OutputStage's rendered-layout fold (decoder/output.cpp,
 // a decoder rendering a wide programme for a listener) and
-// ac3::eac3::AccessUnitEncoder's whole-programme §7.7.2 peak measurement
+// iclforge::eac3::AccessUnitEncoder's whole-programme §7.7.2 peak measurement
 // (encoder/eac3_frame.cpp, an encoder deciding what ceiling to promise for
 // one) - one definition of which seat a location falls into is what keeps an
 // encoder's promise and a decoder's protection describing the same fold.
 
-namespace ac3::eac3::seat {
+namespace iclforge::eac3::seat {
 
 enum class Seat : std::uint8_t { kLeft, kCentre, kRight, kLeftSurround, kRightSurround, kLfe };
 
@@ -103,4 +103,4 @@ struct SeatMix {
     return surrounds ? Acmod::k2_2 : Acmod::k2_0;
 }
 
-}  // namespace ac3::eac3::seat
+}  // namespace iclforge::eac3::seat

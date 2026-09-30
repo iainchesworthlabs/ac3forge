@@ -30,7 +30,7 @@
 // A stream can also be BOTH at once, which is what kAc3CoreEac3Extension
 // below is for - see its own comment.
 
-namespace ac3::io {
+namespace iclforge::io {
 
 enum class StreamKind : std::uint8_t {
     kAc3,   // bsid <= 10
@@ -326,7 +326,7 @@ struct ScannedStream {
     std::optional<int> oba_complexity_index = std::nullopt;
 
     // The service granularity below exists for the MPEG-TS PMT descriptors
-    // (see mpegts::ServiceInfo): both the DVB AC3/enhanced_AC-3 descriptors
+    // (see iclforge::mpegts::ServiceInfo): both the DVB AC3/enhanced_AC-3 descriptors
     // (ETSI EN 300 468 Annex D.3/D.5) and the ATSC AC-3/E-AC-3 audio
     // descriptors (A/52:2018 Annex A Table A4.1, Annex G Table G.1) carry
     // optional identification fields whose values come from exactly these
@@ -373,7 +373,7 @@ struct ScannedStream {
     // The stream's rendered channel LOCATIONS as one ATSC A/52-2018 Table
     // E2.5 custom-channel-map word: bit 0 (Left) in the most significant bit
     // through bit 15 (LFE) in the least, six of the sixteen naming a PAIR
-    // rather than one channel (see ac3::eac3::chanmap). `channels` above is
+    // rather than one channel (see iclforge::eac3::chanmap). `channels` above is
     // this word's channel count and nothing more - the scan already unions
     // the independent substream's acmod/lfeon with every dependent's own
     // chanmap to compute it (§E3.8.2), so keeping the word itself costs
@@ -384,12 +384,12 @@ struct ScannedStream {
     // expressed in the same vocabulary. 1+1 (dual mono) has no Table E2.5
     // location at all - Ch1/Ch2 are independent programmes rather than
     // directions - and stands in as Left|Right there, the same placeholder
-    // ac3::eac3::chanmap::acmod_map() already uses for the channel count's
+    // iclforge::eac3::chanmap::acmod_map() already uses for the channel count's
     // sake.
     //
     // Describes the FIRST programme, same as every other scalar field above.
     //
-    // Written for ac3::io::dash_channel_configuration() (ac3/io/dec3.hpp),
+    // Written for iclforge::io::dash_channel_configuration() (ac3/io/dec3.hpp),
     // whose DASH AudioChannelConfiguration @value IS this word in hex.
     std::uint16_t channel_map = 0;
 };
@@ -401,17 +401,17 @@ struct ScannedStream {
 //
 // Where access unit i starts and how long it lasts. Every container writer in
 // this project computes this privately from a samples_per_frame it was handed
-// (mp4::AudioTrack, mpegts::AudioTrack, matroska::AudioTrack all take one),
-// which is correct only while every access unit is the same length - true of
-// everything this project's own encoders produce and not true in general, and
-// in any case not something a caller could ask about before this existed.
+// (iclforge::mp4::AudioTrack, iclforge::mpegts::AudioTrack, iclforge::matroska::AudioTrack all take
+// one), which is correct only while every access unit is the same length - true of everything this
+// project's own encoders produce and not true in general, and in any case not something a caller
+// could ask about before this existed.
 //
 // The arithmetic is deliberately integer: a frame duration is very often not
 // a whole number of ticks in whatever timescale a container uses (1536
 // samples at 44.1 kHz is 34.83 ms), so a running sum of per-frame increments
 // drifts. Every value below is computed from the ABSOLUTE sample position, so
 // the error against the true time never exceeds one tick however long the
-// stream runs - the same rule mpegts::/matroska:: already follow internally.
+// stream runs - the same rule iclforge::mpegts::/iclforge::matroska:: already follow internally.
 //
 // All of it works over the FIRST programme's own `access_units`/
 // `access_unit_samples` (ScannedStream's own convention), same as the scalar
@@ -475,10 +475,11 @@ struct AccessUnitTiming {
 
 // The one length every access unit shares, or nothing when they differ. This
 // is exactly the question a fixed-duration container track can answer and a
-// variable one cannot: mp4::AudioTrack/mpegts::AudioTrack/matroska::AudioTrack
-// each hold a single samples_per_frame, so a stream this returns nothing for
-// cannot be described to them without per-sample durations they do not model.
+// variable one cannot:
+// iclforge::mp4::AudioTrack/iclforge::mpegts::AudioTrack/iclforge::matroska::AudioTrack each hold a
+// single samples_per_frame, so a stream this returns nothing for cannot be described to them
+// without per-sample durations they do not model.
 [[nodiscard]] ICLFORGE_AC3_EXPORT std::optional<std::uint32_t> uniform_access_unit_samples(
     const ScannedStream& stream);
 
-}  // namespace ac3::io
+}  // namespace iclforge::io

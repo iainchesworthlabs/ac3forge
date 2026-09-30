@@ -7,7 +7,7 @@
 // loopback exists from Windows 10 build 20348 on - so unlike the other
 // backends' constexpr tables this one is computed once, at first use.
 
-namespace ac3::audio {
+namespace iclforge::audio {
 
 const AudioBackend& audio_backend() {
     static const AudioBackend kBackend = [] {
@@ -31,4 +31,4 @@ const AudioBackend& audio_backend() {
     return kBackend;
 }
 
-}  // namespace ac3::audio
+}  // namespace iclforge::audio

@@ -11,13 +11,13 @@
 // pre-echo a low-bit-rate transient leaves ahead of it with a synthesized
 // copy of the (clean) audio already decoded just before that pre-echo.
 //
-// This is unrelated to enhanced coupling (ac3::eac3::ecpl_*) and to block
-// switching (ac3::TransientDetector) - both are encoder-side or transform-
+// This is unrelated to enhanced coupling (iclforge::eac3::ecpl_*) and to block
+// switching (iclforge::TransientDetector) - both are encoder-side or transform-
 // domain tools; this one runs entirely after IMDCT, on the time-domain
 // output, and is signaled per full-bandwidth channel by the decoder's own
 // transproce/chintransproc/transprocloc/transproclen fields.
 
-namespace ac3 {
+namespace iclforge {
 
 // TC1/TC2 in the spec's own naming: the two synthesis-buffer/cross-fade
 // system constants used throughout §3.7.2's pseudocode.
@@ -95,4 +95,4 @@ struct TransientPrenoiseRange {
 // integer arithmetic here too.
 ICLFORGE_AC3_EXPORT void apply_transient_prenoise(std::span<float> pcm, int transloc, int translen);
 
-}  // namespace ac3
+}  // namespace iclforge

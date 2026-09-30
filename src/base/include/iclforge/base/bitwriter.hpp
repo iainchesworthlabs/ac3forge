@@ -7,7 +7,7 @@
 #include <utility>
 #include <vector>
 
-namespace ac3 {
+namespace iclforge {
 
 // MSB-first bit packer for AC-3 syntax elements. A/52 §5.1: fields are packed
 // into the bit stream most-significant-bit first, in syntax order.
@@ -73,4 +73,4 @@ private:
     int pending_ = 0;
 };
 
-}  // namespace ac3
+}  // namespace iclforge

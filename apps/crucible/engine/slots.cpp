@@ -2,10 +2,10 @@
 
 #include <algorithm>
 
-namespace ac3::crucible {
+namespace iclforge::crucible {
 
-ac3::oba::ObjectPlacement bed_placement(BedChannel channel) {
-    ac3::oba::ObjectPlacement placement;
+iclforge::oba::ObjectPlacement bed_placement(BedChannel channel) {
+    iclforge::oba::ObjectPlacement placement;
     switch (channel) {
         case BedChannel::kL: placement.position = {0.0, 0.0, 0.0}; break;
         case BedChannel::kR: placement.position = {1.0, 0.0, 0.0}; break;
@@ -158,4 +158,4 @@ int SlotAllocator::free_positioned_slots() const {
     return static_cast<int>(std::ranges::count(taken_, false));
 }
 
-}  // namespace ac3::crucible
+}  // namespace iclforge::crucible

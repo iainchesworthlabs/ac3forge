@@ -15,7 +15,7 @@
 #include "iclforge/ac3/core/tables.hpp"
 #include "iclforge/objects/emdf.hpp"
 
-namespace ac3::emdf {
+namespace iclforge::emdf {
 
 namespace {
 
@@ -449,7 +449,7 @@ FrameLayout walk_frame(std::span<const std::byte> frame) {
     // resends the strategy (spxstre) if it actually changed, so a block that
     // says "reuse" needs last block's values still in scope. Every helper
     // reused here (spx_begin_subbnd, group_bands, kDefaultSpxBandStructure,
-    // ...) is this project's own clean-room ac3::eac3 code, the same
+    // ...) is this project's own clean-room iclforge::eac3 code, the same
     // functions eac3_decoder.cpp itself calls to decode real spx content.
     // This mirrors that decoder's parse exactly, just discarding the
     // coordinate values once their bit width is known, since a map only needs
@@ -737,7 +737,7 @@ FrameLayout walk_frame(std::span<const std::byte> frame) {
             // undefined, and on an EMPTY `e` it manufactures a span with a
             // null data pointer and a non-zero size, which
             // compute_bit_allocation then dereferences (the defect
-            // ac3::signing::emdf_atmos_signer.cpp's own tally hit first -
+            // iclforge::signing::emdf_atmos_signer.cpp's own tally hit first -
             // signing-verify fuzz walk, fuzz_signing_verify - before this walk existed;
             // ported here since verify_atmos_stream now runs through it).
             // Disagreement here means the bit walk has already lost sync, so
@@ -865,4 +865,4 @@ FrameLayout walk_frame(std::span<const std::byte> frame) {
     return out;
 }
 
-}  // namespace ac3::emdf
+}  // namespace iclforge::emdf

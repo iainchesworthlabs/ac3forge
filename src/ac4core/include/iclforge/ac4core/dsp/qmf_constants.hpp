@@ -16,7 +16,7 @@
 // of two rounded twiddle factors is never used where one angle will do. Scale
 // factors that are powers of two (the 1 / 2 and 1 / 128 below) are exact.
 
-namespace ac4::detail::dsp::qmf {
+namespace iclforge::ac4::detail::dsp::qmf {
 
 // cos(pi * units / 256) for any integer `units`.
 [[nodiscard]] constexpr double cos_units(long long units) noexcept {
@@ -105,4 +105,4 @@ template <typename Real>
 template <typename Real>
 inline constexpr Constants<Real> kConstants = make_constants<Real>();
 
-}  // namespace ac4::detail::dsp::qmf
+}  // namespace iclforge::ac4::detail::dsp::qmf

@@ -26,7 +26,7 @@
 #include "iclforge/objects/oamd.hpp"
 #include "iclforge/render/spatial.hpp"
 
-namespace ac3::oba {
+namespace iclforge::oba {
 
 namespace {
 
@@ -238,7 +238,7 @@ void qmf_band_energy(std::span<const float> signal, std::span<const std::uint8_t
 }
 
 // Every private data member, following the same pimpl pattern as
-// ac3::io::WavStreamReader/Writer and ac3::FrameEncoder.
+// iclforge::io::WavStreamReader/Writer and iclforge::FrameEncoder.
 struct AtmosEncoder::Impl {
     AtmosConfig config_;
     int objects_ = 0;
@@ -309,7 +309,7 @@ struct AtmosEncoder::Impl {
                               // complexity index - the object count, bed included.
                               // Only when the container is actually emitted: this
                               // marker is what a reader keys "this stream has an
-                              // object layer" off (ac3::io::scan, the dec3 box's
+                              // object layer" off (iclforge::io::scan, the dec3 box's
                               // Atmos extension, HLS CHANNELS=.../JOC, FFmpeg's
                               // "Dolby Digital Plus + Dolby Atmos" profile), so
                               // writing it into a bed51 stream would advertise
@@ -808,4 +808,4 @@ std::expected<eac3::AccessUnit, FrameError> AtmosEncoder::encode_bed_frame(
     return unit;
 }
 
-}  // namespace ac3::oba
+}  // namespace iclforge::oba

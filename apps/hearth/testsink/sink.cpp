@@ -40,7 +40,7 @@
 #include "store.hpp"
 #include "wav_output.hpp"
 
-namespace ac3::hearth::testsink {
+namespace iclforge::hearth::testsink {
 
 namespace {
 
@@ -762,4 +762,4 @@ void Sink::log(std::string_view text) {
     log_->line(text);
 }
 
-}  // namespace ac3::hearth::testsink
+}  // namespace iclforge::hearth::testsink

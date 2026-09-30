@@ -25,7 +25,7 @@
 // is not "is this band small" - it always is - but "is this band audible",
 // which is a question A/52's own psychoacoustic model already answers.
 
-namespace ac3::encoder {
+namespace iclforge::encoder {
 
 // §7.1.3: how many mantissas a chbwcod codes.
 [[nodiscard]] constexpr int endmant_for_chbwcod(int chbwcod) { return ((chbwcod + 12) * 3) + 37; }
@@ -136,4 +136,4 @@ inline constexpr int kContentNarrowingCeiling = 128;
 // 18 frames (0.58 s).
 inline constexpr int kMaxNarrowStep = 2;
 
-}  // namespace ac3::encoder
+}  // namespace iclforge::encoder

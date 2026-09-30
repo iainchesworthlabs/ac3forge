@@ -89,6 +89,9 @@
       // a shared library does not export, which the static build cannot see, so it runs
       // in the nightly run.
       "shared_libs": true,
+      // 120, not the 90 the other legs get: the first run after a stage that rewrites most
+      // sources starts with a cold compiler cache, and with the shared-libs pass it ran out.
+      "timeout_minutes": 120,
       "deep_only": ["shared_libs"]
     },
     {

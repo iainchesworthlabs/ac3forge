@@ -6,7 +6,7 @@
 #include <cstddef>
 #include <numbers>
 
-namespace ac4::detail::dsp {
+namespace iclforge::ac4::detail::dsp {
 namespace {
 
 struct AlphaRow {
@@ -87,4 +87,4 @@ std::vector<double> kbd_left(int length, double alpha) {
     return window;
 }
 
-}  // namespace ac4::detail::dsp
+}  // namespace iclforge::ac4::detail::dsp

@@ -3,7 +3,7 @@
 #include <cmath>
 #include <numbers>
 
-namespace ac4::detail::dsp {
+namespace iclforge::ac4::detail::dsp {
 namespace {
 
 // xcos1[k] + j xsin1[k] = -cos(2 pi (8k + 1) / 16N) - j sin(2 pi (8k + 1) / 16N),
@@ -13,7 +13,7 @@ std::vector<Complex> pre_twiddles(std::size_t length) {
     // Named Scalar, not Real: AC4CORE_ALSO_AT_DOUBLE (this target's CMakeLists.txt)
     // explicitly instantiates Mdct/Imdct<double> alongside <Real> in a float
     // build, and MSVC's /W4 flags a local alias named Real that resolves to a
-    // different type than the enclosing ac4::detail::Real as hiding it
+    // different type than the enclosing iclforge::ac4::detail::Real as hiding it
     // (C4459), which -WX then makes an error.
     using Scalar = typename Complex::value_type;
     std::vector<Complex> twiddle(length / 2);
@@ -127,4 +127,4 @@ AC4CORE_ALSO_AT_DOUBLE(
     template class Imdct<double>;
     template class Mdct<double>;)
 
-}  // namespace ac4::detail::dsp
+}  // namespace iclforge::ac4::detail::dsp

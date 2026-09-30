@@ -27,7 +27,7 @@
 // reach it - and because most callers (a single WAV onto a named layout)
 // never need it: they stay on the automatic route().
 
-namespace ac3::plan {
+namespace iclforge::plan {
 
 // Where one source channel goes. A closed set: every assigned channel is
 // exactly one of these, and an unassigned channel is worth naming rather
@@ -74,7 +74,7 @@ struct Destination {
 
 // A loaded source's shape, independent of where its samples come from - a
 // WAV file and a capture device both reduce to this. Deliberately not
-// ac3::io::WavData: assignment has no file-I/O dependency.
+// iclforge::io::WavData: assignment has no file-I/O dependency.
 struct SourceShape {
     std::size_t channels = 0;
     std::string label;  // "orbit51.wav" / "Scarlett 18i20" - error text only
@@ -203,4 +203,4 @@ inline constexpr std::string_view kAssignmentSyntax =
 [[nodiscard]] ICLFORGE_AC3_EXPORT std::string format_assignment(std::span<const SourceShape> sources,
                                                              const Assignment& assignment);
 
-}  // namespace ac3::plan
+}  // namespace iclforge::plan

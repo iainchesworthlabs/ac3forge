@@ -50,7 +50,7 @@
 // is the reason this file is worth reading; there is nothing else to it.
 // docs/crucible/design/promotion.md carries the measurements and the report.
 
-namespace ac3::crucible::ui {
+namespace iclforge::crucible::ui {
 
 bool tray_is_published() { return QSystemTrayIcon::isSystemTrayAvailable(); }
 
@@ -60,4 +60,4 @@ QString tray_absent_reason() {
                : QObject::tr("This desktop has no system tray, so closing the window quits.");
 }
 
-}  // namespace ac3::crucible::ui
+}  // namespace iclforge::crucible::ui

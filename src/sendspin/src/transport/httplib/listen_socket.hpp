@@ -2,7 +2,7 @@
 
 #include <httplib.h>
 
-namespace ac3::sendspin::transport::websocket {
+namespace iclforge::sendspin::transport::websocket {
 
 // The options a Listener's socket is bound with, in place of cpp-httplib's defaults. Those set
 // SO_REUSEPORT where the platform has it and SO_REUSEADDR elsewhere, and either lets a second
@@ -13,4 +13,4 @@ namespace ac3::sendspin::transport::websocket {
 // second bind fails.
 void set_listening_socket_options(::socket_t socket);
 
-}  // namespace ac3::sendspin::transport::websocket
+}  // namespace iclforge::sendspin::transport::websocket

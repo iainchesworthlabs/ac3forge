@@ -55,7 +55,7 @@
 // out of this header entirely and live in an anonymous namespace inside support.cpp instead,
 // preserving the original "internal unless something else needs it" default.
 //
-// Everything about layouts, coding tools and metadata itself lives in ac3::plan, so the GUI
+// Everything about layouts, coding tools and metadata itself lives in iclforge::plan, so the GUI
 // cannot mean something different by "514" or by "all" than this does. What is here is argument
 // shape, validation and printing - Options carries plan::Metadata verbatim rather than a second,
 // CLI-specific copy of the same fields.
@@ -108,7 +108,7 @@ struct PositionSourceSpec {
 };
 
 // Everything a command accepts after its positional arguments, in any order.
-// The metadata group is ac3::plan::Metadata verbatim; drc_scale is decode-
+// The metadata group is iclforge::plan::Metadata verbatim; drc_scale is decode-
 // side local, because nothing an encoder is configured with corresponds to
 // it; sources/map_spec describe routing rather than metadata, but share this
 // same trailing-options surface (parse_options) the way dialnorm2= already
@@ -133,9 +133,9 @@ struct Options {
     std::string syntax_trace_path;
     // 'ac4-encode' only: codec-mode=, "auto" (or empty), "simple", "aspx",
     // "aspx-acpl-1", "aspx-acpl-2", "aspx-acpl-3", "scpl", "aspx-scpl" or
-    // "aspx-ajcc" (ac4::CodecMode), and experimental=, the experimental tools
+    // "aspx-ajcc" (iclforge::ac4::CodecMode), and experimental=, the experimental tools
     // asked for, with the 7.X element's additional pair as "back", "wide" or
-    // "top-front" (ac4::AdditionalPair), or empty.
+    // "top-front" (iclforge::ac4::AdditionalPair), or empty.
     std::string ac4_codec_mode;
     bool ac4_experimental_balance = false;
     bool ac4_experimental_varvar = false;
@@ -152,43 +152,43 @@ struct Options {
     bool ac4_experimental_objects = false;
     std::string ac4_objects_path;
     // 'atmos-adm'/'atmos-iab' with codec=ac4 only: coding=, "ajoc" (default) or "direct"
-    // (ac4::ObjectCoding) - the same choice 'ac4-encode objects=<scene>' makes with the scene
-    // file's own "coding" directive.
-    std::optional<ac4::ObjectCoding> ac4_atmos_coding;
+    // (iclforge::ac4::ObjectCoding) - the same choice 'ac4-encode objects=<scene>' makes with the
+    // scene file's own "coding" directive.
+    std::optional<iclforge::ac4::ObjectCoding> ac4_atmos_coding;
     // 'decode' of AC-4 only: output-level=, the level in dBFS the stream's
-    // dialnorm is taken to (ac4::OutputConfig::output_level_dbfs), unset to
+    // dialnorm is taken to (iclforge::ac4::OutputConfig::output_level_dbfs), unset to
     // leave the coded level; and the DRC decoder mode drcmode= names there,
     // "off", "default", "home-theatre", "flat-panel-tv", "portable-speakers"
-    // or "portable-headphones" (ac4::DrcMode), empty for the default.
+    // or "portable-headphones" (iclforge::ac4::DrcMode), empty for the default.
     std::optional<double> ac4_output_level;
     std::string ac4_drc_mode;
     // 'decode' of AC-4 only: dialogue-enhancement=, G_DE in dB, 0 to 12
-    // (ac4::OutputConfig::dialogue_enhancement_db).
+    // (iclforge::ac4::OutputConfig::dialogue_enhancement_db).
     double ac4_dialogue_enhancement = 0.0;
-    // 'decode' of AC-4 only: decoding=core, core decoding (ac4::DecodingMode);
+    // 'decode' of AC-4 only: decoding=core, core decoding (iclforge::ac4::DecodingMode);
     // full decoding by default.
     bool ac4_core_decoding = false;
     // 'decode' of AC-4 only: speakers=, the layout Part 2's renderer takes an
     // immersive element to, "5.1", "5.1.2", "5.1.4", "7.1", "7.1.2" or
-    // "7.1.4" (ac4::DownmixTarget), empty for the source's own; a fold that
+    // "7.1.4" (iclforge::ac4::DownmixTarget), empty for the source's own; a fold that
     // channels= or downmix= asks for wins.
     std::string ac4_speakers;
-    // 'decode' of AC-4 only: which presentation (ac4::PresentationChoice):
+    // 'decode' of AC-4 only: which presentation (iclforge::ac4::PresentationChoice):
     // presentation=, a position in the table of contents; presentation-id=,
     // a presentation_id; language=, a BCP 47 tag; associated=, the associated
     // audio service, as a Table 91 content_classifier and its Table 92
     // refinement. And the mix: dialogue-gain= and associated-gain=, g_dialog
-    // and g_assoc in dB (ac4::OutputConfig::dialogue_gain_db and
+    // and g_assoc in dB (iclforge::ac4::OutputConfig::dialogue_gain_db and
     // associated_gain_db).
     std::optional<std::size_t> ac4_presentation;
     std::optional<int> ac4_presentation_id;
     std::string ac4_language;
     std::optional<int> ac4_associated;
-    ac4::AssociatedType ac4_associated_type = ac4::AssociatedType::kAny;
+    iclforge::ac4::AssociatedType ac4_associated_type = iclforge::ac4::AssociatedType::kAny;
     double ac4_dialogue_gain = 0.0;
     double ac4_associated_gain = 0.0;
     // 'decode' of AC-4 only: whether a downmix takes the LFE, as AC-4 does
-    // unless mix-lfe=off (ac4::OutputConfig::mix_lfe); headphones, a listener
+    // unless mix-lfe=off (iclforge::ac4::OutputConfig::mix_lfe); headphones, a listener
     // on headphones, which takes the portable headphones DRC mode where the
     // output level falls in the portable range and prefers a pre-virtualized
     // presentation (OutputConfig::headphones, PresentationChoice::headphones);
@@ -207,24 +207,24 @@ struct Options {
     std::vector<std::string> eac3_decode_tokens;
     std::vector<std::string> ac4_decode_tokens;
     // 'ac4-encode' only: the frame rate, rate mode, I-frames and metadata
-    // (ac4::EncoderConfig) as its options set them; print_meta_usage says
+    // (iclforge::ac4::EncoderConfig) as its options set them; print_meta_usage says
     // what each takes. Where a key other commands also read (dialnorm=, drc=,
     // the mix levels, lfemix=, dmixmod=) means something else in AC-4, or
     // takes values AC-4 alone has, ac4-encode reads it into here instead.
     struct Ac4Encode {
         int frame_rate_index = 13;                           // frame-rate=
-        ac4::RateMode rate_mode = ac4::RateMode::kConstant;  // rate-mode=
+        iclforge::ac4::RateMode rate_mode = iclforge::ac4::RateMode::kConstant;  // rate-mode=
         std::optional<int> iframe_interval;                  // iframe-interval=
         std::vector<std::int64_t> iframes;                   // iframes=
         std::optional<double> fragment_seconds;              // fragment=
         // dialnorm=: 0 to 31.75 dB below full scale, in steps of 0.25 dB;
         // dialnorm=auto is plan::Metadata's measure_dialnorm.
         std::optional<double> dialnorm_db;
-        std::optional<ac4::LoudnessPractice> loudness;  // loudness=
+        std::optional<iclforge::ac4::LoudnessPractice> loudness;  // loudness=
         // drc=, and a profile of its own for any of Table 161's modes 0 to 3
         // (drc-home-theatre= and the rest); experimental=drc-gains-N.
-        std::optional<ac4::DrcProfile> drc;
-        std::array<std::optional<ac4::DrcProfile>, 4> drc_modes{};
+        std::optional<iclforge::ac4::DrcProfile> drc;
+        std::array<std::optional<iclforge::ac4::DrcProfile>, 4> drc_modes{};
         std::optional<int> drc_gains;
         // The downmix values, in dB: cmixlev= and lorocmixlev= alike set the
         // Lo/Ro centre gain, surmixlev= and lorosurmixlev= its surround gain.
@@ -233,18 +233,18 @@ struct Options {
         std::optional<double> ltrt_centre_db;
         std::optional<double> ltrt_surround_db;
         std::optional<double> lfe_db;                            // lfemix=
-        std::optional<ac4::PreferredDownmix> preferred_downmix;  // dmixmod=
+        std::optional<iclforge::ac4::PreferredDownmix> preferred_downmix;  // dmixmod=
         std::optional<double> loro_correction_db;                // loro-correction=
         std::optional<double> ltrt_correction_db;                // ltrt-correction=
         // An immersive layout's downmix to 5.X: height-downmix= (front,
         // surround or front-and-surround, where the top pairs go) and
         // height-gain= (0, -1.5, -3, -4.5, -6, -9, -12 dB or off).
-        std::optional<ac4::HeightDownmix> height_downmix;
+        std::optional<iclforge::ac4::HeightDownmix> height_downmix;
         std::optional<double> height_db;
         // crc=on|off: whether a raw stream's sync frames carry Part 2 Annex
         // G's CRC (sync word 0xAC41), which they do unless crc=off.
         std::optional<bool> crc;
-        // A substream's dialogue enhancement (ac4::DialogueConfig):
+        // A substream's dialogue enhancement (iclforge::ac4::DialogueConfig):
         // dialogue-channels= (any of l, r and c), dialogue-stem=,
         // dialogue-method=, dialogue-max-gain= and dialogue-hybrid= (the
         // waveform's share, 0 to 1, which a dialogue enhancement substream
@@ -253,13 +253,14 @@ struct Options {
         struct Dialogue {
             std::optional<std::string> channels{};
             std::string stem{};
-            ac4::DialogueMethod method = ac4::DialogueMethod::kChannelIndependent;
+            iclforge::ac4::DialogueMethod method =
+                iclforge::ac4::DialogueMethod::kChannelIndependent;
             int max_gain_db = 9;
             std::optional<double> hybrid_share{};
         };
         // Substreams, from 1, the first being the positional input:
         // substreamN= (N from 2) names another input WAV, whose channel count
-        // is its layout, and substreamN-<key>= sets what ac4::SubstreamConfig
+        // is its layout, and substreamN-<key>= sets what iclforge::ac4::SubstreamConfig
         // takes of substream N. Substream 1's dialogue enhancement and codec
         // mode are the bare dialogue-...= and codec-mode= keys, which its
         // substream1-... spellings set too.
@@ -267,19 +268,19 @@ struct Options {
             std::string path{};                               // substreamN=
             std::optional<int> bitrate_kbps{};                // -bitrate=
             std::string codec_mode{};                         // -codec-mode=, as codec-mode=
-            std::optional<ac4::ContentClassifier> content{};  // -content=
+            std::optional<iclforge::ac4::ContentClassifier> content{};  // -content=
             std::string language{};                           // -language=
             std::optional<int> enhances{};                    // -enhances=, a substream from 1
             Dialogue dialogue{};                              // -dialogue-...=
             std::optional<int> max_dialogue_gain_db{};        // -max-dialogue-gain=
             std::vector<double> pan_degrees{};                // -pan=
-            std::vector<ac4::EmdfPayload> emdf{};             // -emdf=, one a token
+            std::vector<iclforge::ac4::EmdfPayload> emdf{};             // -emdf=, one a token
             bool named = false;                               // any substreamN token
         };
         std::vector<Substream> substreams{Substream{}};  // [N - 1]
         // Presentations, from 1: presentationN= lists the substreams it plays,
         // from 1, in Table 53's order, and presentationN-<key>= sets what
-        // ac4::PresentationConfig takes of presentation N.
+        // iclforge::ac4::PresentationConfig takes of presentation N.
         struct Presentation {
             std::vector<int> substreams{};        // presentationN=
             std::optional<int> config{};          // -config=, Table 53
@@ -296,7 +297,7 @@ struct Options {
             std::optional<double> main_centre_db{};
             std::optional<double> main_front_db{};
             std::optional<double> associated_pan{};
-            std::vector<ac4::EmdfPayload> emdf{};  // -emdf=, one a token
+            std::vector<iclforge::ac4::EmdfPayload> emdf{};  // -emdf=, one a token
             bool named = false;                    // any presentationN token
         };
         std::vector<Presentation> presentations{};  // [N - 1]
@@ -306,7 +307,7 @@ struct Options {
     // Every field defaults off, so a plain invocation still writes the coded
     // channels untouched - see channels=/downmix=/drcmode= in
     // print_meta_usage. Set straight into DecoderConfig::output.
-    ac3::OutputConfig output{};
+    iclforge::OutputConfig output{};
     // Each src= occurrence, in order given - additional input sources beyond
     // the primary positional argument. encode/eac3-encode only; empty unless
     // multi-source input is in play.
@@ -337,11 +338,11 @@ struct Options {
     // mean.
     std::optional<std::string> detail;
     // 'qc' only: which delivery gate(s) to check the measurement against -
-    // one of ac3::meta::kQcPresetNames, or "all" to check every preset.
+    // one of iclforge::meta::kQcPresetNames, or "all" to check every preset.
     // Unset (measure-only, no gate) is the default - a plain
     // 'ac3cli qc <file>' just reports the numbers, no pass/fail verdict.
     std::optional<std::string> qc_preset;
-    ac3::plan::Metadata p{};
+    iclforge::plan::Metadata p{};
     // Atmos object signing (atmos/atmos-path/atmos-encode). Off unless the
     // operator both asks (sign-objects) and provides a key - either
     // signing-key=<path> here, or the AC3FORGE_SIGNING_KEY[_FILE] env vars
@@ -366,10 +367,10 @@ struct Options {
     // registry's descriptor can read off the bitstream because they describe
     // how services in a multiplex RELATE, not what one elementary stream
     // contains. Unset omits the field rather than inventing a number - see
-    // mpegts::ServiceInfo::mainid.
+    // iclforge::mpegts::ServiceInfo::mainid.
     std::optional<int> mainid = std::nullopt;
     std::optional<int> asvc = std::nullopt;
-    // 'eac3-encode' only: run ac3::verify's E-AC-3 encoder/decoder mirror
+    // 'eac3-encode' only: run iclforge::verify's E-AC-3 encoder/decoder mirror
     // self-check (ac3/verify/eac3_selfcheck.hpp) over every access unit this
     // command emits, and refuse the run on the first disagreement. Off by
     // default like every bare token here, and deliberately so: it decodes
@@ -380,7 +381,7 @@ struct Options {
     // by anything at all (docs/verification.md).
     bool verify = false;
     // 'live' only: a second ("slave") capture device index, same numbering
-    // ac3::audio::enumerate_devices()/'devices' uses and the capture_device
+    // iclforge::audio::enumerate_devices()/'devices' uses and the capture_device
     // positional already reads. Unset means the classic single-device
     // session, unchanged from before this option existed.
     std::optional<int> capture2 = std::nullopt;
@@ -397,7 +398,7 @@ struct Options {
     RecordingSink::Container container = RecordingSink::Container::kElementary;
     // container=fmp4 only: how many of the most recent media segments the
     // HLS playlist and DASH MPD list - a rolling live window
-    // (mp4::FragmentOptions::playlist_window_segments). 0, the default,
+    // (iclforge::mp4::FragmentOptions::playlist_window_segments). 0, the default,
     // lists every segment, which is what a session whose directory will be
     // served whole afterwards wants; a real origin deleting segments behind
     // itself sets its own depth here.
@@ -409,10 +410,10 @@ struct Options {
     // answer. Wide layouts on record/live are wide-layout record/live paths - the GUI has
     // always done them.
     std::string take_layout;
-    std::optional<ac3::plan::Codec> take_codec;
+    std::optional<iclforge::plan::Codec> take_codec;
     // 'record'/'live' only: how long the capture device may deliver nothing
     // before the session stops as a failure rather than sitting there
-    // reading "running" (ac3::audio::SilenceWatchdog, the same class and the
+    // reading "running" (iclforge::audio::SilenceWatchdog, the same class and the
     // same 3 s default the GUI's live session uses). 0 disables it, for a
     // device that legitimately goes quiet for longer than that.
     std::chrono::milliseconds watchdog{3000};
@@ -495,7 +496,7 @@ struct Options {
     // not silently pick the worse one. mode=reference has nothing to add
     // either - the default is already §6.6.6's own domain - so mode= stays
     // exactly the two transform switches it has always been.
-    ac3::oba::joc::Domain joc_domain = ac3::oba::joc::Domain::kQmf;
+    iclforge::oba::joc::Domain joc_domain = iclforge::oba::joc::Domain::kQmf;
     // 'bed-only' on decode: DecoderConfig::skip_object_reconstruction. Render
     // the 5.1 bed an Atmos stream carries and do not reconstruct its objects.
     // Not a quality option - the bed is bit-identical either way - but a memory
@@ -519,14 +520,14 @@ struct Options {
     // by a tonality/masking model first. Off by default, like the library
     // config it feeds - it costs encode time, and this project does not turn
     // a decision knob on without the numbers. AC-3 encodes only.
-    ac3::quality::Criterion search = ac3::quality::Criterion::kNone;
+    iclforge::quality::Criterion search = iclforge::quality::Criterion::kNone;
     // §7.2.2.4 fast gain, Table 7.11 - the OTHER axis search= moves, offered
     // here as a pin for the runs that want one code held across a whole
     // encode rather than chosen per frame (plan::Tools::fgaincod, reaching
     // EncoderConfig::fgaincod and eac3::FrameConfig::fgaincod). -1 is
     // 'auto', which means different things to the two codecs and
     // deliberately so: AC-3 hangs fgaincod off an element it already sends
-    // every block, so auto follows ac3::rate_adaptive_fgaincod()'s measured
+    // every block, so auto follows iclforge::rate_adaptive_fgaincod()'s measured
     // curve for free; E-AC-3's baie does not carry fgaincod at all, so auto
     // leaves Table E1.4's implied 0x4 and writes no element. Pinning 0..7
     // makes E-AC-3 pay for the per-block fgaincode element in all six
@@ -570,12 +571,12 @@ struct Options {
     bool downmix_auto = false;
     // 'decode'/'monitor' only: §7.10 error concealment. Off by default, so a
     // damaged frame is still reported rather than papered over.
-    ac3::ConcealmentPolicy concealment = ac3::ConcealmentPolicy::kNone;
+    iclforge::ConcealmentPolicy concealment = iclforge::ConcealmentPolicy::kNone;
     // 'transcode' only: the OUTPUT codec, when out_path's own suffix cannot
     // say (stdout, or a file named something other than .ac3/.ec3). Unset
     // means "take it from the suffix", which is what every ordinary
     // invocation does.
-    std::optional<ac3::plan::Codec> codec = std::nullopt;
+    std::optional<iclforge::plan::Codec> codec = std::nullopt;
     // Whether dialnorm=/dialnorm2= appeared on the command line at all, as
     // opposed to `p.dialnorm` merely holding its default of 31. Only
     // 'transcode' reads these, and only because its default is to PRESERVE
@@ -607,7 +608,7 @@ struct Options {
     std::optional<int> programme;
     // 'eac3-encode': further programmes to author into the same stream, each
     // its own independent substream (§E2.3.1.2's I1-I7) - up to
-    // ac3::eac3::kMaxProgrammes - 1 of them, so index 0 is I1 (the CLI's
+    // iclforge::eac3::kMaxProgrammes - 1 of them, so index 0 is I1 (the CLI's
     // programme2=) and the last is I7 (programme8=). An entry with no `path`
     // is unused. §E2.3.1.2 assigns substreamid sequentially with no gaps, so
     // neither can the CLI: run_eac3_encode refuses a later slot with a path
@@ -636,9 +637,9 @@ struct Options {
         // support.cpp for exactly which of the primary's keys generalize
         // here and which do not (the five 1+1-only fields and AC-3's own
         // Annex D fields - an extra programme is always E-AC-3).
-        ac3::plan::Metadata meta{};
+        iclforge::plan::Metadata meta{};
     };
-    std::array<ExtraProgramme, ac3::eac3::kMaxProgrammes - 1> extra_programmes{};
+    std::array<ExtraProgramme, iclforge::eac3::kMaxProgrammes - 1> extra_programmes{};
     // 'qc' only: which soundfield to meter. false (layout=bed, the default)
     // measures the independent substream's own Table 5.8 bed through
     // BS.1770 Annex 1's basic algorithm - what this command has always
@@ -651,7 +652,7 @@ struct Options {
     // the named advanced sound system layout and metered through BS.1770-5
     // Annex 4, instead of (or as well as - the two are independent switches)
     // the channel-based measurement layout= above selects. See run_qc.
-    std::optional<ac3::plan::LayoutId> qc_objects_layout;
+    std::optional<iclforge::plan::LayoutId> qc_objects_layout;
 };
 
 // Returns false and prints the offending token on anything unrecognised: a
@@ -689,7 +690,7 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
 // standalone loudness command); every dialnorm=auto/dialnorm2=auto encode
 // path passes status_stream(out) instead, the same convention
 // print_channel_summary and print_routing use.
-std::optional<int> finish_measurement(const ac3::meta::LoudnessMeter& meter,
+std::optional<int> finish_measurement(const iclforge::meta::LoudnessMeter& meter,
                                       std::string_view programme, std::string_view field,
                                       FILE* out = stdout);
 
@@ -700,24 +701,24 @@ std::optional<int> finish_measurement(const ac3::meta::LoudnessMeter& meter,
 // blend of two different things rather than either programme's own level;
 // callers route dual mono through measured_dialnorm_channel on each
 // programme's own channel alone instead.
-std::optional<int> measured_dialnorm(const ac3::io::WavData& wav, ac3::SampleRate rate,
-                                     ac3::Acmod acmod, bool lfe, FILE* out = stdout);
+std::optional<int> measured_dialnorm(const iclforge::io::WavData& wav, iclforge::SampleRate rate,
+                                     iclforge::Acmod acmod, bool lfe, FILE* out = stdout);
 
 // Same measurement, for one dual-mono programme's own channel alone - never a
 // programme's worth of BS.1770 surround weighting, since a 1+1 channel is not
 // part of a soundfield. `programme`/`field` are finish_measurement's own
 // labels above - "Ch1"/"dialnorm" or "Ch2"/"dialnorm2", the two programmes
 // sharing this one function since the measurement itself does not differ.
-std::optional<int> measured_dialnorm_channel(std::span<const float> channel, ac3::SampleRate rate,
-                                             std::string_view programme, std::string_view field,
-                                             FILE* out = stdout);
+std::optional<int> measured_dialnorm_channel(std::span<const float> channel,
+                                             iclforge::SampleRate rate, std::string_view programme,
+                                             std::string_view field, FILE* out = stdout);
 
 // Dual mono's Ch1/Ch2 arrive as either one two-channel file or two mono ones;
 // this settles which shape `wav` is in and merges a second file's channel in
 // when there is one, so everything downstream sees a plain two-channel source
 // the same way it always has - `plan::route`'s own 1+1 handling only ever
 // looks at the channel count, never how many files it came from.
-bool prepare_dual_mono_source(ac3::io::WavData& wav, std::string_view layout,
+bool prepare_dual_mono_source(iclforge::io::WavData& wav, std::string_view layout,
                               std::string_view in2_path);
 
 // The conventional Unix "-" file argument: a lone dash means stdin for an
@@ -751,7 +752,7 @@ FILE* status_stream(std::string_view out_path);
 // or nowhere under quiet.
 FILE* status_stream();
 
-// The programme ids ac3::programme_ids() found, as "0, 1" - what every
+// The programme ids iclforge::programme_ids() found, as "0, 1" - what every
 // command that takes programme= prints when a stream turns out to carry more
 // than one, and what it lists back when the id asked for is not among them.
 std::string format_programme_ids(std::span<const int> ids);
@@ -759,7 +760,7 @@ std::string format_programme_ids(std::span<const int> ids);
 // The programme a command should work on: `wanted` when the stream carries it,
 // else the first one it does carry; a message on stderr and std::nullopt when
 // `wanted` names a programme that is not there. `ids` is what
-// ac3::programme_ids() returned and must not be empty. Shared by decode, qc
+// iclforge::programme_ids() returned and must not be empty. Shared by decode, qc
 // and levels so all three answer a bad programme= the same way.
 std::optional<int> choose_programme(std::span<const int> ids, std::optional<int> wanted);
 
@@ -767,11 +768,11 @@ std::optional<int> choose_programme(std::span<const int> ids, std::optional<int>
 // downmix=auto settled into a concrete fold. §D3.1.1's automatic Lt/Rt-or-
 // Lo/Ro choice is made once, from the first dmixmod (and its acmod) the
 // programme's independent substream sends (`meta.programme`'s, or the
-// stream's first programme's) - ac3::automatic_stereo_target() holds the
+// stream's first programme's) - iclforge::automatic_stereo_target() holds the
 // rule, including what a reserved or absent dmixmod gets and which acmods
 // Table D2.2 leaves the field meaning nothing at - and the choice is reported
 // on `status`. Without downmix=auto this returns `meta.output` untouched.
-[[nodiscard]] ac3::OutputConfig resolve_output(const Options& meta,
+[[nodiscard]] iclforge::OutputConfig resolve_output(const Options& meta,
                                                std::span<const std::byte> stream, FILE* status);
 
 // fmt::println with a "nowhere" destination: a no-op when `out` is nullptr
@@ -913,7 +914,7 @@ class EncodedStreamSink {
 // Interleaves `channels` (one vector per decoded channel, AC-3/E-AC-3 coded
 // order) into WAV/Windows speaker order for playback, reading order[i] as
 // which channels[] entry belongs at interleaved position i - the same
-// permutation ac3::io::write_wav_f32 and plan::wav_order/wav_channel_order
+// permutation iclforge::io::write_wav_f32 and plan::wav_order/wav_channel_order
 // already produce for exactly this AC-3-order-vs-WAV-order reconciliation
 // (see ac3/io/wav.hpp).
 std::vector<float> interleave_reordered(std::span<const std::vector<float>> channels,
@@ -924,7 +925,7 @@ std::vector<std::byte> read_all(std::string_view path);
 // The elementary stream at `in_path`: `in_path`'s own bytes verbatim if it is
 // already one, or (container readers (mkv/mp4/ts)) the first AC-3/E-AC-3 track demuxed out of a
 // recognised Matroska/MP4/MPEG-TS container, via apps/common/
-// container_input.hpp's ac3::apps::elementary_stream_from_bytes - the same
+// container_input.hpp's iclforge::apps::elementary_stream_from_bytes - the same
 // three readers `ac3cli demux` already streams through, run here in their
 // batch/zero-copy form since every caller has the file resident anyway.
 // `decode`, `qc`, `levels`, `play` and `monitor` all used to call
@@ -940,10 +941,10 @@ std::vector<std::byte> read_all(std::string_view path);
 // was.
 [[nodiscard]] std::vector<std::byte> read_elementary_stream(std::string_view in_path);
 
-// Wraps ac3::io::read_wav to honor the "-" stdin convention (is_stdio_path
+// Wraps iclforge::io::read_wav to honor the "-" stdin convention (is_stdio_path
 // above): "-" reads the WAV from stdin, binary mode set first, instead of
 // opening a file with that literal name.
-std::expected<ac3::io::WavData, ac3::io::WavError> read_wav_arg(std::string_view path);
+std::expected<iclforge::io::WavData, iclforge::io::WavError> read_wav_arg(std::string_view path);
 
 // Streams planar float channels into a WAV as they decode, so the decoded
 // programme never sits in memory whole (it used to: ~69 MB per minute of
@@ -969,7 +970,7 @@ class PlanarWavSink {
 
     // Finalize; reports whether the write side stayed healthy. Unequal
     // residue across slots (never produced by a healthy stream) is dropped.
-    [[nodiscard]] std::expected<void, ac3::io::WavError> close();
+    [[nodiscard]] std::expected<void, iclforge::io::WavError> close();
 
     // The decode failed part-way: close and remove whatever was written, so
     // a failed run leaves no output file - exactly like the whole-buffer
@@ -983,7 +984,7 @@ class PlanarWavSink {
     bool stdio_ = false;
     bool open_ = false;
     std::uint32_t sample_rate_ = 0;
-    ac3::io::WavStreamWriter writer_;
+    iclforge::io::WavStreamWriter writer_;
     std::vector<std::vector<float>> slots_;
     std::vector<std::size_t> consumed_;
     std::vector<std::size_t> order_;
@@ -1022,7 +1023,7 @@ class Pcm16RawWavSink {
 };
 
 // ---------------------------------------------------------------------------
-// Level reporting. Every number comes from ac3::analysis, so a level reads
+// Level reporting. Every number comes from iclforge::analysis, so a level reads
 // the same here as on the GUI's meters; only the drawing is local.
 // ---------------------------------------------------------------------------
 
@@ -1039,13 +1040,13 @@ std::string meter_bar(double db, int width);
 // atmos-encode/decode), which redirect it to stderr so this human-readable
 // report doesn't land in the middle of the binary stream those commands may
 // be writing to the very same stdout - see status_stream()'s own comment.
-void print_channel_summary(const ac3::analysis::LevelMeter& meter, FILE* out = stdout);
+void print_channel_summary(const iclforge::analysis::LevelMeter& meter, FILE* out = stdout);
 
 // One line, rewritten in place. A carriage return rather than ANSI cursor
 // moves, so it behaves the same in a bare console as in a terminal that
 // speaks escape sequences. Every field is fixed width, so the line never
 // leaves fragments of a longer previous line behind.
-void print_live_meter(const ac3::analysis::LevelMeter& meter, double seconds);
+void print_live_meter(const iclforge::analysis::LevelMeter& meter, double seconds);
 
 // Sets `plan`'s channels from `name` and writes a human-readable label for
 // it into `label`, reporting a bad token against the set the codec can
@@ -1053,18 +1054,18 @@ void print_live_meter(const ac3::analysis::LevelMeter& meter, double seconds);
 // wrong) or false on anything neither a named layout nor a channel list
 // accepts. Tried in that order: a name recognised by parse_layout wins, so a
 // custom list can never shadow one of the seven presets.
-bool resolve_layout(std::string_view name, ac3::plan::Codec codec, ac3::plan::Plan& plan,
+bool resolve_layout(std::string_view name, iclforge::plan::Codec codec, iclforge::plan::Plan& plan,
                     std::string& label);
 
 // The bed's LFE is not an object, so it never goes through JOC reconstruction
 // - but a decoded programme's dynamic objects did, and that costs
-// ac3::oba::joc::reconstruction_delay(domain) samples the LFE does not pay
+// iclforge::oba::joc::reconstruction_delay(domain) samples the LFE does not pay
 // (docs/library/decoding.md, "Atmos objects lag the bed"). Any command that
 // submits or meters a decoded unit's object_audio beside that same unit's
 // undelayed bed LFE - 'spatial', 'qc objects=' - has to hold the LFE back by
 // that many samples first, or it reaches the room/meter that far ahead of the
 // objects beside it. A plain FIFO rather than a fixed-size ring: a decoded
-// access unit's sample count is not always ac3::kSamplesPerFrame (a short
+// access unit's sample count is not always iclforge::kSamplesPerFrame (a short
 // E-AC-3 frame, or the last, partial one).
 class LfeDelayLine {
 public:
@@ -1099,7 +1100,7 @@ private:
 // layout needs the dependent substreams only E-AC-3 has, the same
 // plan::carries() answer plan::derive_codec would give for a file encode.
 struct TakePlan {
-    ac3::plan::Plan plan;
+    iclforge::plan::Plan plan;
     std::string label;
     bool eac3 = false;
     // What the encoder is fed: bed plus every dependent substream's channels.
@@ -1107,7 +1108,7 @@ struct TakePlan {
     // What a decoder renders from them - fewer than coded_channels wherever a
     // dependent REPLACES a bed channel (7.1 renders 8 speakers from 10 coded).
     // The container and the monitor both want this one: 'mkv'/'ts' scanning
-    // the same finished stream count the channels it renders (ac3::io::scan),
+    // the same finished stream count the channels it renders (iclforge::io::scan),
     // so a streamed take must declare the same number the after-the-fact wrap
     // would, and MonitorSink is fed the decoder's own rendered channels.
     int rendered_channels = 0;
@@ -1116,7 +1117,7 @@ struct TakePlan {
 // nullopt with the reason already printed: a bad layout name, a layout the
 // forced codec cannot carry, or a bitrate that codec has no frame size for.
 std::optional<TakePlan> resolve_take_plan(const Options& meta, std::uint32_t bitrate,
-                                          ac3::SampleRate rate);
+                                          iclforge::SampleRate rate);
 
 class TakeEncoder;
 
@@ -1132,14 +1133,15 @@ RecordingSink::Config take_sink_config(const Options& meta, const TakePlan& take
 
 // Which of Table 162's profiles a drc= curve is: plan::Metadata keeps the
 // curve (meta::profile()), where AC-4 names the profile (drc_eac3_profile).
-[[nodiscard]] std::optional<ac3::meta::ProfileId> profile_id_of(const ac3::meta::Profile& profile);
-[[nodiscard]] ac4::DrcProfile ac4_profile_of(ac3::meta::ProfileId id);
+[[nodiscard]] std::optional<iclforge::meta::ProfileId> profile_id_of(
+    const iclforge::meta::Profile& profile);
+[[nodiscard]] iclforge::ac4::DrcProfile ac4_profile_of(iclforge::meta::ProfileId id);
 
 // The AC-4 encoder configuration a plan asks for: its coded channels, rate
 // and bitrate, its dialnorm in whole dB, and the DRC profile drc= names as
 // drc_eac3_profile; AC-4's defaults for the rest (frame rate index 13, an
 // I-frame every 24 frames, the codec mode the rate selects).
-[[nodiscard]] ac4::EncoderConfig ac4_config_for(const ac3::plan::Plan& plan);
+[[nodiscard]] iclforge::ac4::EncoderConfig ac4_config_for(const iclforge::plan::Plan& plan);
 
 // The encode half of a record or live take, and of a transcode: the plan's
 // encoder, AC-3, E-AC-3 or AC-4, a frame of its coded channels in, what that
@@ -1167,12 +1169,12 @@ class TakeEncoder {
     // The encoder `plan` asks for, and for AC-4 `ac4` in place of
     // ac4_config_for(plan) where given (its channels, rate and bitrate taken
     // from the plan all the same). Empty where it opens, else why not.
-    [[nodiscard]] std::string open(const ac3::plan::Plan& plan,
-                                   std::optional<ac4::EncoderConfig> ac4 = std::nullopt);
+    [[nodiscard]] std::string open(const iclforge::plan::Plan& plan,
+                                   std::optional<iclforge::ac4::EncoderConfig> ac4 = std::nullopt);
     [[nodiscard]] std::size_t coded_channels() const { return coded_channels_; }
 
     // A frame of the plan's coded channels (plan::coded_channels' order),
-    // each ac3::kSamplesPerFrame long, `samples` of them the programme's: AC-4
+    // each iclforge::kSamplesPerFrame long, `samples` of them the programme's: AC-4
     // codes those alone, AC-3 and E-AC-3 the frame whole. The units it
     // completes, or why the encoder refused it.
     [[nodiscard]] std::expected<std::vector<Unit>, std::string> encode(
@@ -1183,17 +1185,18 @@ class TakeEncoder {
 
     // AC-4's table of contents, which describes the stream to a container;
     // null for AC-3 and E-AC-3.
-    [[nodiscard]] const ac4::Toc* ac4_toc() const;
+    [[nodiscard]] const iclforge::ac4::Toc* ac4_toc() const;
     // The largest sync frame the AC-4 encoder writes at its rate, 0 for AC-3
     // and E-AC-3.
     [[nodiscard]] std::size_t ac4_max_frame_bytes() const { return ac4_max_frame_bytes_; }
 
    private:
-    [[nodiscard]] std::vector<Unit> ac4_units(const std::vector<ac4::EncodedFrame>& frames) const;
+    [[nodiscard]] std::vector<Unit> ac4_units(
+        const std::vector<iclforge::ac4::EncodedFrame>& frames) const;
 
-    std::unique_ptr<ac3::FrameEncoder> ac3_;
-    std::unique_ptr<ac3::eac3::AccessUnitEncoder> eac3_;
-    std::unique_ptr<ac4::Encoder> ac4_;
+    std::unique_ptr<iclforge::FrameEncoder> ac3_;
+    std::unique_ptr<iclforge::eac3::AccessUnitEncoder> eac3_;
+    std::unique_ptr<iclforge::ac4::Encoder> ac4_;
     // The coded channel each of the AC-4 encoder's inputs takes, and the
     // views handed to it.
     std::vector<std::size_t> ac4_order_{};
@@ -1207,8 +1210,8 @@ class TakeEncoder {
 // and by the GUI, so that the objects a given map= produces are the same
 // objects every way - a GUI assignment reproduced headlessly has to reproduce.
 // They live in apps/common/ac4_objects_core.hpp, where the GUI reaches them.
-using ac3::apps::object_slots_from_assignment;
-using ac3::apps::ObjectSlot;
+using iclforge::apps::object_slots_from_assignment;
+using iclforge::apps::ObjectSlot;
 
 // What a "wrote N frames to <path>" line says about the container it went
 // into - " (Matroska)", " (MPEG-TS)", " (IEC 61937 WAV carrier)", or nothing
@@ -1220,42 +1223,44 @@ std::string_view container_note(RecordingSink::Container container);
 // because every encode path asks the same question. Classic AC-3 has only
 // A/52 Table 5.6's three rates; E-AC-3 additionally accepts the three Annex E
 // fscod2 half rates (24/22.05/16 kHz), which have no AC-3 counterpart at all.
-std::optional<ac3::SampleRate> wav_sample_rate(std::uint32_t hz, std::string_view codec, bool eac3);
+std::optional<iclforge::SampleRate> wav_sample_rate(std::uint32_t hz, std::string_view codec,
+                                                    bool eac3);
 
 // A source's channels routed onto a plan's coded channels, or a diagnosis.
-std::optional<ac3::plan::Routing> routing_or_error(const ac3::plan::Plan& p, std::size_t channels);
+std::optional<iclforge::plan::Routing> routing_or_error(const iclforge::plan::Plan& p,
+                                                        std::size_t channels);
 
 // --- AC-4 ----------------------------------------------------------------------
 
 // Whether `bytes` opens with an AC-4 sync word (apps/common/ac4_sync_word.hpp):
 // how every command that reads a stream decides which decoder reads it.
-using ac3::apps::is_ac4_stream;
+using iclforge::apps::is_ac4_stream;
 
-// The ac4::DecoderConfig AC-4's decode options ask for, which decode, monitor
+// The iclforge::ac4::DecoderConfig AC-4's decode options ask for, which decode, monitor
 // and play read alike: the presentation presentation=, presentation-id=,
 // language=, associated= and headphones choose at the level md-compat= claims,
 // mixed at dialogue-gain= and associated-gain=; the output level and DRC decoder
 // mode of output-level= and drcmode=, dialogue-enhancement=, the layout
 // channels= and downmix= ask for and mix-lfe=; and conceal='s policy.
-[[nodiscard]] ac4::DecoderConfig ac4_decoder_config(const Options& meta);
+[[nodiscard]] iclforge::ac4::DecoderConfig ac4_decoder_config(const Options& meta);
 
 // The same presentation, mixed the same way, as the stream codes it: no output
 // level and so no DRC, no dialogue enhancement and no downmix. What qc, levels
 // and loudness measure, and what transcode re-encodes, since a transcoder to
 // AC-3 or E-AC-3 applies no DRC (ETSI TS 103 190-1 clause 5.7.9.4).
-[[nodiscard]] ac4::DecoderConfig ac4_coded_config(const Options& meta);
+[[nodiscard]] iclforge::ac4::DecoderConfig ac4_coded_config(const Options& meta);
 
 // What an AC-4 decode's output processing does to the decoded channels, in
 // words, for a status line.
-[[nodiscard]] std::string ac4_processing(const ac4::OutputConfig& output);
+[[nodiscard]] std::string ac4_processing(const iclforge::ac4::OutputConfig& output);
 
 // The channels the presentation `config` selects comes out in as coded, read
 // off the first of `frames` that selects one, without decoding any audio: what
 // a command sizes an output for, or decides a fold by, before the first frame
 // decodes. Nothing where no frame selects a presentation, or the decoder does
 // not turn the one selected into PCM.
-[[nodiscard]] std::optional<std::vector<ac4::Speaker>> ac4_presentation_speakers(
-    std::span<const ac4::SyncFrame> frames, const ac4::DecoderConfig& config);
+[[nodiscard]] std::optional<std::vector<iclforge::ac4::Speaker>> ac4_presentation_speakers(
+    std::span<const iclforge::ac4::SyncFrame> frames, const iclforge::ac4::DecoderConfig& config);
 
 // Checks EMDF object signatures on a stream about to be decoded/monitored,
 // when the operator asked for it (verify-objects) and supplied a key. Reads
@@ -1272,7 +1277,7 @@ using ac3::apps::is_ac4_stream;
 // either/or" stance - never a silent partial pass. The summary line goes to
 // `status`, the caller's status stream: nowhere under quiet, and stderr when
 // a "-" output owns stdout (see status_stream above).
-std::optional<ac3::signing::VerifySummary> apply_object_verification(
+std::optional<iclforge::signing::VerifySummary> apply_object_verification(
     std::span<const std::byte> stream, const Options& meta, FILE* status);
 
 // The object layer (TS 103 420's OAMD) an E-AC-3 decode found, reported the
@@ -1284,7 +1289,8 @@ std::optional<ac3::signing::VerifySummary> apply_object_verification(
 // ended by `joc_note`, the caller's word on what became of the JOC audio. A
 // trim element, skipped elements and more than one update block per frame
 // each add a line. Every line goes to `status` (see status_stream above).
-void print_object_summary(FILE* status, const std::optional<ac3::oba::DecodedProgram>& metadata,
+void print_object_summary(FILE* status,
+                          const std::optional<iclforge::oba::DecodedProgram>& metadata,
                           std::string_view joc_note);
 
 }  // namespace ac3cli

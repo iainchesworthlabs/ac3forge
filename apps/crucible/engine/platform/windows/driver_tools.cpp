@@ -17,7 +17,7 @@
 #include <utility>
 #include <vector>
 
-namespace ac3::crucible {
+namespace iclforge::crucible {
 
 namespace {
 
@@ -349,4 +349,4 @@ std::shared_ptr<VirtualDevice> platform_virtual_device() {
     return std::make_shared<WindowsVirtualDevice>();
 }
 
-}  // namespace ac3::crucible
+}  // namespace iclforge::crucible

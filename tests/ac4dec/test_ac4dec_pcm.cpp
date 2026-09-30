@@ -1,4 +1,4 @@
-// ac4::Decoder::decode() and the reconstruction behind it (src/ac4dec/src/pcm):
+// iclforge::ac4::Decoder::decode() and the reconstruction behind it (src/ac4dec/src/pcm):
 // the noise fill's random number generator against the text's own closed
 // form, and the committed DEE streams decoded to PCM - each channel's tone on
 // its own channel in stereo, 5.1 and 5.1.4, the LFE's included, in full and
@@ -39,14 +39,14 @@
 namespace {
 
 namespace fs = std::filesystem;
-using ac3::test::kSanitized;
+using iclforge::test::kSanitized;
 
 // align_tracks()'s and apply_stereo()'s own test below moves values of a
 // few thousand through Real (possibly float); this holds them within a
 // tolerance scaled to that magnitude and Real's own epsilon, not to
 // double's exactness.
 const double kTolerance =
-    3000.0 * 1e4 * static_cast<double>(std::numeric_limits<ac4::detail::Real>::epsilon());
+    3000.0 * 1e4 * static_cast<double>(std::numeric_limits<iclforge::ac4::detail::Real>::epsilon());
 
 // The frames of a DEE leg a test decodes: every one, or under the sanitizers
 // the first 72, three seconds. Past the half second tone_levels() and
@@ -68,31 +68,32 @@ std::vector<std::byte> read_stream(const std::string& leg) {
 }
 
 struct Decoded {
-    std::vector<ac4::Speaker> speakers;
+    std::vector<iclforge::ac4::Speaker> speakers;
     std::vector<std::vector<float>> channels;
     int sample_rate_hz = 0;
     std::size_t frames = 0;
 };
 
 // The leg's first `frames` frames decoded, or all of them.
-Decoded decode_all(const std::string& leg, ac4::DecodingMode decoding = ac4::DecodingMode::kFull,
-                   ac4::DownmixTarget target = ac4::DownmixTarget::kAsCoded,
+Decoded decode_all(const std::string& leg,
+                   iclforge::ac4::DecodingMode decoding = iclforge::ac4::DecodingMode::kFull,
+                   iclforge::ac4::DownmixTarget target = iclforge::ac4::DownmixTarget::kAsCoded,
                    std::size_t frames = kAllFrames) {
     const std::vector<std::byte> stream = read_stream(leg);
-    const ac4::ScanResult scan = ac4::scan(stream);
+    const iclforge::ac4::ScanResult scan = iclforge::ac4::scan(stream);
     REQUIRE_FALSE(scan.frames.empty());
-    ac4::DecoderConfig config;
+    iclforge::ac4::DecoderConfig config;
     config.decoding = decoding;
     config.output.downmix = target;
-    ac4::Decoder decoder(config);
+    iclforge::ac4::Decoder decoder(config);
     Decoded out;
-    for (const ac4::SyncFrame& frame :
+    for (const iclforge::ac4::SyncFrame& frame :
          std::span(scan.frames).first(std::min(frames, scan.frames.size()))) {
         const auto decoded = decoder.decode(frame.raw_ac4_frame);
         INFO(decoder.refusal_reason());
         REQUIRE(decoded.has_value());
         REQUIRE(decoded->has_value());
-        const ac4::DecodedFrame& pcm = **decoded;
+        const iclforge::ac4::DecodedFrame& pcm = **decoded;
         if (out.frames == 0) {
             out.speakers = pcm.speakers;
             out.sample_rate_hz = pcm.sample_rate_hz;
@@ -126,13 +127,13 @@ double tone_power(std::span<const float> samples, double hz, int sample_rate_hz)
 
 // Each QMF subband's mean energy over `samples` (Part 1 5.7.3's analysis).
 std::vector<double> subband_energy(std::span<const float> samples) {
-    ac4::detail::dsp::QmfAnalysis<double> analysis;
+    iclforge::ac4::detail::dsp::QmfAnalysis<double> analysis;
     const std::size_t slots = samples.size() / 64;
     std::vector<double> pcm(slots * 64);
     for (std::size_t n = 0; n < pcm.size(); ++n) {
         pcm[n] = static_cast<double>(samples[n]);
     }
-    std::vector<ac4::detail::dsp::Complex<double>> q(pcm.size());
+    std::vector<iclforge::ac4::detail::dsp::Complex<double>> q(pcm.size());
     analysis.process(pcm, q);
     std::vector<double> energy(64, 0.0);
     for (std::size_t ts = 0; ts < slots; ++ts) {
@@ -149,38 +150,41 @@ TEST_CASE("Pseudocode 24's reset lands where stepping Pseudocode 57's increments
     // Pseudocode 55's state, stepped 255 * (sequence_counter % 256) times
     // with `x = x++` read as an increment, is Pseudocode 24's closed form for
     // every counter; ERRATA.md, "x = x++ in Pseudocode 57".
-    ac4::detail::RandGenState stepped;
+    iclforge::ac4::detail::RandGenState stepped;
     std::size_t steps = 0;
     for (int counter = 0; counter < 256; ++counter) {
         CAPTURE(counter);
         const std::size_t target = 255U * static_cast<std::size_t>(counter);
         while (steps < target) {
-            ac4::detail::advance(stepped);
+            iclforge::ac4::detail::advance(stepped);
             ++steps;
         }
-        const ac4::detail::RandGenState reset = ac4::detail::reset_rand_gen_state_snf(counter);
+        const iclforge::ac4::detail::RandGenState reset =
+            iclforge::ac4::detail::reset_rand_gen_state_snf(counter);
         CHECK(reset.offset_a == stepped.offset_a);
         CHECK(reset.offset_b == stepped.offset_b);
         CHECK(reset.state_idx == stepped.state_idx);
         CHECK(reset.current_idx == stepped.current_idx);
         // sequence_counter is ten bits; the reset repeats every 256.
-        const ac4::detail::RandGenState again = ac4::detail::reset_rand_gen_state_snf(counter + 256);
+        const iclforge::ac4::detail::RandGenState again = iclforge::ac4::detail::reset_rand_gen_state_snf(counter + 256);
         CHECK(again.state_idx == reset.state_idx);
         CHECK(again.current_idx == reset.current_idx);
     }
 }
 
 TEST_CASE("GetRandomNoiseValue adds two table entries and then steps", "[ac4dec][pcm]") {
-    ac4::detail::RandGenState state = ac4::detail::reset_rand_gen_state_snf(0);
+    iclforge::ac4::detail::RandGenState state = iclforge::ac4::detail::reset_rand_gen_state_snf(0);
     // Pseudocode 55's state: current 0, state 1.
-    CHECK(ac4::detail::get_random_noise_value(state) ==
-          ac4::detail::tables::kRandomNoiseTable[0] + ac4::detail::tables::kRandomNoiseTable[1]);
+    CHECK(iclforge::ac4::detail::get_random_noise_value(state) ==
+          iclforge::ac4::detail::tables::kRandomNoiseTable[0] +
+              iclforge::ac4::detail::tables::kRandomNoiseTable[1]);
     // After one step: offset_a 1, state_idx 1 + 1 + 0 + 1 = 3, current_idx 1.
     CHECK(state.offset_a == 1);
     CHECK(state.state_idx == 3);
     CHECK(state.current_idx == 1);
-    CHECK(ac4::detail::get_random_noise_value(state) ==
-          ac4::detail::tables::kRandomNoiseTable[1] + ac4::detail::tables::kRandomNoiseTable[3]);
+    CHECK(iclforge::ac4::detail::get_random_noise_value(state) ==
+          iclforge::ac4::detail::tables::kRandomNoiseTable[1] +
+              iclforge::ac4::detail::tables::kRandomNoiseTable[3]);
 }
 
 TEST_CASE("a pair with b_dual_maxsfb is laid out alike before its stereo processing",
@@ -189,37 +193,38 @@ TEST_CASE("a pair with b_dual_maxsfb is laid out alike before its stereo process
     // sends 10 and 8 bands, the second 4 and 6. Each line holds its group,
     // band and place: 1000 (track) + 100 g + the line's index in its band's
     // run.
-    ac4::detail::SubstreamContext ctx;
-    ac4::detail::AsfPsyInfo psy;
+    iclforge::ac4::detail::SubstreamContext ctx;
+    iclforge::ac4::detail::AsfPsyInfo psy;
     psy.b_long_frame = false;
     psy.transf_length = {3, 3};
     psy.num_windows = 2;
     psy.num_window_groups = 2;
     psy.window_to_group = {0, 1};
     psy.num_win_in_group = {1, 1};
-    const std::span<const std::uint16_t> offsets = ac4::detail::tables::sfb_offsets_48(1024);
+    const std::span<const std::uint16_t> offsets =
+        iclforge::ac4::detail::tables::sfb_offsets_48(1024);
     REQUIRE(offsets.size() > 11);
-    ac4::detail::SfData first;
-    ac4::detail::SfData second;
+    iclforge::ac4::detail::SfData first;
+    iclforge::ac4::detail::SfData second;
     first.max_sfb = {10, 8};
     second.max_sfb = {4, 6};
-    const auto lines_of = [&](const ac4::detail::SfData& data, double track) {
-        std::vector<ac4::detail::Real> lines;
+    const auto lines_of = [&](const iclforge::ac4::detail::SfData& data, double track) {
+        std::vector<iclforge::ac4::detail::Real> lines;
         for (int g = 0; g < 2; ++g) {
             for (int sfb = 0; sfb < data.max_sfb[static_cast<std::size_t>(g)]; ++sfb) {
                 const auto si = static_cast<std::size_t>(sfb);
                 for (int k = offsets[si]; k < offsets[si + 1]; ++k) {
-                    lines.push_back(static_cast<ac4::detail::Real>(1000.0 * track + 100.0 * g +
-                                                                   (k - offsets[si]) + 0.01 * sfb));
+                    lines.push_back(static_cast<iclforge::ac4::detail::Real>(
+                        1000.0 * track + 100.0 * g + (k - offsets[si]) + 0.01 * sfb));
                 }
             }
         }
         return lines;
     };
-    std::vector<ac4::detail::Real> track0 = lines_of(first, 1.0);
-    std::vector<ac4::detail::Real> track1 = lines_of(second, 2.0);
-    ac4::detail::SfData common;
-    ac4::detail::align_tracks(ctx, psy, first, second, track0, track1, common);
+    std::vector<iclforge::ac4::detail::Real> track0 = lines_of(first, 1.0);
+    std::vector<iclforge::ac4::detail::Real> track1 = lines_of(second, 2.0);
+    iclforge::ac4::detail::SfData common;
+    iclforge::ac4::detail::align_tracks(ctx, psy, first, second, track0, track1, common);
     CHECK(common.max_sfb[0] == 10);
     CHECK(common.max_sfb[1] == 8);
     REQUIRE(track0.size() == static_cast<std::size_t>(offsets[10] + offsets[8]));
@@ -244,13 +249,13 @@ TEST_CASE("a pair with b_dual_maxsfb is laid out alike before its stereo process
 
     // M/S over the first track's bands: in the bands the second leaves out,
     // both outputs are the first track's lines.
-    ac4::detail::SfInfo info;
+    iclforge::ac4::detail::SfInfo info;
     info.psy = psy;
-    ac4::detail::StereoParameters parameters;
+    iclforge::ac4::detail::StereoParameters parameters;
     for (auto& group : parameters.abcd) {
         group.fill({1.0, 1.0, 1.0, -1.0});
     }
-    ac4::detail::apply_stereo(info, common, parameters, track0, track1);
+    iclforge::ac4::detail::apply_stereo(info, common, parameters, track0, track1);
     const std::size_t sixth = common.sect_sfb_offset[0][6];
     CHECK(std::abs(static_cast<double>(track0[sixth]) - (1000.0 + 0.01 * 6)) < kTolerance);
     CHECK(std::abs(static_cast<double>(track1[sixth]) - (1000.0 + 0.01 * 6)) < kTolerance);
@@ -263,7 +268,7 @@ TEST_CASE("a pair with b_dual_maxsfb is laid out alike before its stereo process
 
 TEST_CASE("a SIMPLE stereo stream decodes each tone to its own channel", "[ac4dec][pcm]") {
     const Decoded decoded = decode_all("ac4-20-tones-192");
-    REQUIRE(decoded.speakers == std::vector<ac4::Speaker>{ac4::Speaker::kLeft, ac4::Speaker::kRight});
+    REQUIRE(decoded.speakers == std::vector<iclforge::ac4::Speaker>{iclforge::ac4::Speaker::kLeft, iclforge::ac4::Speaker::kRight});
     CHECK(decoded.sample_rate_hz == 48000);
     for (const auto& channel : decoded.channels) {
         CHECK(channel.size() == decoded.frames * 2048);
@@ -309,7 +314,7 @@ TEST_CASE("an ASPX stereo stream decodes every frame with its high band rebuilt"
     // kHz) to 55 from the waveform-coded band below. Its source speech has
     // content up to 16 kHz, 10 to 25 dB under the 7.5 to 11 kHz band.
     const Decoded decoded = decode_all("ac4-20-speech-128");
-    REQUIRE(decoded.speakers == std::vector<ac4::Speaker>{ac4::Speaker::kLeft, ac4::Speaker::kRight});
+    REQUIRE(decoded.speakers == std::vector<iclforge::ac4::Speaker>{iclforge::ac4::Speaker::kLeft, iclforge::ac4::Speaker::kRight});
     for (const auto& channel : decoded.channels) {
         REQUIRE(channel.size() == decoded.frames * 2048);
         const std::vector<double> energy = subband_energy(channel);
@@ -331,9 +336,9 @@ TEST_CASE("an ASPX stereo stream decodes every frame with its high band rebuilt"
 TEST_CASE("a SIMPLE 5.1 stream decodes each tone to its own channel, the LFE's included", "[ac4dec][pcm]") {
     // tones_51: L R C LFE Ls Rs at 331, 457, 613, 47, 787 and 953 Hz, each at
     // -20 dBFS (gen_ac4_baseline.py's TONE_HZ).
-    const Decoded decoded = decode_all("ac4-51-tones-384", ac4::DecodingMode::kFull,
-                                       ac4::DownmixTarget::kAsCoded, kLegFrames);
-    using S = ac4::Speaker;
+    const Decoded decoded = decode_all("ac4-51-tones-384", iclforge::ac4::DecodingMode::kFull,
+                                       iclforge::ac4::DownmixTarget::kAsCoded, kLegFrames);
+    using S = iclforge::ac4::Speaker;
     REQUIRE(decoded.speakers ==
             std::vector<S>{S::kLeft, S::kRight, S::kCentre, S::kLfe, S::kLeftSurround, S::kRightSurround});
     constexpr std::array<double, 6> kTone = {331.0, 457.0, 613.0, 47.0, 787.0, 953.0};
@@ -365,16 +370,18 @@ namespace {
 // decode() gives as coded, is 5.1.4.
 constexpr std::array<double, 10> kTones514 = {331.0, 457.0,  613.0,  47.0,   787.0,
                                               953.0, 1117.0, 1289.0, 1453.0, 1621.0};
-constexpr std::array<ac4::Speaker, 10> kTone514Speakers = {
-    ac4::Speaker::kLeft,         ac4::Speaker::kRight,         ac4::Speaker::kCentre,
-    ac4::Speaker::kLfe,          ac4::Speaker::kLeftSurround,  ac4::Speaker::kRightSurround,
-    ac4::Speaker::kTopFrontLeft, ac4::Speaker::kTopFrontRight, ac4::Speaker::kTopBackLeft,
-    ac4::Speaker::kTopBackRight};
-const std::vector<ac4::Speaker> k514 = {ac4::Speaker::kLeft,         ac4::Speaker::kRight,
-                                        ac4::Speaker::kCentre,       ac4::Speaker::kLfe,
-                                        ac4::Speaker::kLeftSurround, ac4::Speaker::kRightSurround,
-                                        ac4::Speaker::kTopFrontLeft, ac4::Speaker::kTopFrontRight,
-                                        ac4::Speaker::kTopBackLeft,  ac4::Speaker::kTopBackRight};
+constexpr std::array<iclforge::ac4::Speaker, 10> kTone514Speakers = {
+    iclforge::ac4::Speaker::kLeft,         iclforge::ac4::Speaker::kRight,
+    iclforge::ac4::Speaker::kCentre,       iclforge::ac4::Speaker::kLfe,
+    iclforge::ac4::Speaker::kLeftSurround, iclforge::ac4::Speaker::kRightSurround,
+    iclforge::ac4::Speaker::kTopFrontLeft, iclforge::ac4::Speaker::kTopFrontRight,
+    iclforge::ac4::Speaker::kTopBackLeft,  iclforge::ac4::Speaker::kTopBackRight};
+const std::vector<iclforge::ac4::Speaker> k514 = {
+    iclforge::ac4::Speaker::kLeft,         iclforge::ac4::Speaker::kRight,
+    iclforge::ac4::Speaker::kCentre,       iclforge::ac4::Speaker::kLfe,
+    iclforge::ac4::Speaker::kLeftSurround, iclforge::ac4::Speaker::kRightSurround,
+    iclforge::ac4::Speaker::kTopFrontLeft, iclforge::ac4::Speaker::kTopFrontRight,
+    iclforge::ac4::Speaker::kTopBackLeft,  iclforge::ac4::Speaker::kTopBackRight};
 
 // Each tone's level in each channel, in dB relative to -20 dBFS, past the
 // first and last half second: [channel][tone].
@@ -393,7 +400,7 @@ std::vector<std::array<double, 10>> tone_levels(const Decoded& decoded) {
     return out;
 }
 
-std::size_t channel_of(const Decoded& decoded, ac4::Speaker speaker) {
+std::size_t channel_of(const Decoded& decoded, iclforge::ac4::Speaker speaker) {
     const auto it = std::ranges::find(decoded.speakers, speaker);
     REQUIRE(it != decoded.speakers.end());
     return static_cast<std::size_t>(it - decoded.speakers.begin());
@@ -403,11 +410,11 @@ std::size_t channel_of(const Decoded& decoded, ac4::Speaker speaker) {
 
 TEST_CASE("the immersive element's SCPL and ASPX_SCPL streams decode each tone to its own channel",
           "[ac4dec][pcm][immersive]") {
-    using S = ac4::Speaker;
+    using S = iclforge::ac4::Speaker;
     for (const char* leg : {"ac4-514-tones-768", "ac4-514-tones-512"}) {
         CAPTURE(leg);
-        const Decoded decoded =
-            decode_all(leg, ac4::DecodingMode::kFull, ac4::DownmixTarget::kAsCoded, kLegFrames);
+        const Decoded decoded = decode_all(leg, iclforge::ac4::DecodingMode::kFull,
+                                           iclforge::ac4::DownmixTarget::kAsCoded, kLegFrames);
         REQUIRE(decoded.speakers == k514);
         const auto levels = tone_levels(decoded);
         for (std::size_t t = 0; t < kTones514.size(); ++t) {
@@ -428,8 +435,8 @@ TEST_CASE("the immersive element's SCPL and ASPX_SCPL streams decode each tone t
         if (kSanitized && std::string_view{leg} != "ac4-514-tones-768") {
             continue;
         }
-        const Decoded wide =
-            decode_all(leg, ac4::DecodingMode::kFull, ac4::DownmixTarget::k7X4, kLegFrames);
+        const Decoded wide = decode_all(leg, iclforge::ac4::DecodingMode::kFull,
+                                        iclforge::ac4::DownmixTarget::k7X4, kLegFrames);
         REQUIRE(wide.speakers.size() == 12);
         for (const S back : {S::kLeftBack, S::kRightBack}) {
             for (const float x : wide.channels[channel_of(wide, back)]) {
@@ -448,9 +455,9 @@ TEST_CASE("the immersive element's ASPX_ACPL_2 stream makes its top pairs by A-C
     // Tfl and Tbl, Tfr and Tbr of them with its parameters: each top tone
     // keeps its level across its pair and is loudest in its own channel, and
     // stays out of every other channel. The rest are coded as in SCPL.
-    using S = ac4::Speaker;
-    const Decoded decoded = decode_all("ac4-514-tones-256", ac4::DecodingMode::kFull,
-                                       ac4::DownmixTarget::kAsCoded, kLegFrames);
+    using S = iclforge::ac4::Speaker;
+    const Decoded decoded = decode_all("ac4-514-tones-256", iclforge::ac4::DecodingMode::kFull,
+                                       iclforge::ac4::DownmixTarget::kAsCoded, kLegFrames);
     REQUIRE(decoded.speakers == k514);
     const auto levels = tone_levels(decoded);
     const auto power = [](double db) { return std::pow(10.0, db / 10.0); };
@@ -487,12 +494,12 @@ TEST_CASE("core decoding gives the immersive element's 5.X.2 core at the core ga
     // Then Table 45, with Table 130's gains (the streams send no custom
     // downmix data): Ls and Rs +3 dB, the source having no backs, which puts
     // their tones back at 0 dB, and Tsl and Tsr at gain_t1 + 3 dB, 0 dB.
-    using S = ac4::Speaker;
+    using S = iclforge::ac4::Speaker;
     const double down = 20.0 * std::log10(std::numbers::sqrt2 / 2.0);
     for (const char* leg : {"ac4-514-tones-768", "ac4-514-tones-512", "ac4-514-tones-256"}) {
         CAPTURE(leg);
-        const Decoded decoded =
-            decode_all(leg, ac4::DecodingMode::kCore, ac4::DownmixTarget::kAsCoded, kLegFrames);
+        const Decoded decoded = decode_all(leg, iclforge::ac4::DecodingMode::kCore,
+                                           iclforge::ac4::DownmixTarget::kAsCoded, kLegFrames);
         REQUIRE(decoded.speakers == std::vector<S>{S::kLeft, S::kRight, S::kCentre, S::kLfe,
                                                    S::kLeftSurround, S::kRightSurround,
                                                    S::kTopSideLeft, S::kTopSideRight});
@@ -554,10 +561,10 @@ std::vector<std::array<std::complex<double>, 10>> tone_phasors(const Decoded& de
 
 // A channel of a render as a mix of the channels decoded as coded.
 struct Term {
-    ac4::Speaker from;
+    iclforge::ac4::Speaker from;
     double weight;
 };
-using Mixes = std::vector<std::pair<ac4::Speaker, std::vector<Term>>>;
+using Mixes = std::vector<std::pair<iclforge::ac4::Speaker, std::vector<Term>>>;
 
 }  // namespace
 
@@ -575,7 +582,7 @@ TEST_CASE(
     // (gain_t2b + 3 dB) / (gain_t1 + 3 dB), 0 dB. Their stereo coefficients,
     // loro_centre_mixgain and loro_surround_mixgain 4, are -3 dB each (Tables
     // 149 and 149a), and they send no loudness correction.
-    using S = ac4::Speaker;
+    using S = iclforge::ac4::Speaker;
     const double m3 = std::pow(10.0, -3.0 / 20.0);
     const auto db = [](std::complex<double> x) {
         return 20.0 * std::log10(std::abs(x) / 0.1 + 1e-30);
@@ -588,15 +595,16 @@ TEST_CASE(
     // leaves 60 dB under the other's level.
     const std::size_t frames = kSanitized ? 48 : kAllFrames;
     for (const char* leg : {"ac4-514-tones-768", "ac4-514-tones-512", "ac4-514-tones-256"}) {
-        for (const ac4::DecodingMode decoding :
-             {ac4::DecodingMode::kFull, ac4::DecodingMode::kCore}) {
-            const bool core = decoding == ac4::DecodingMode::kCore;
+        for (const iclforge::ac4::DecodingMode decoding :
+             {iclforge::ac4::DecodingMode::kFull, iclforge::ac4::DecodingMode::kCore}) {
+            const bool core = decoding == iclforge::ac4::DecodingMode::kCore;
             if (kSanitized &&
                 std::string_view{leg} != (core ? "ac4-514-tones-256" : "ac4-514-tones-512")) {
                 continue;
             }
             CAPTURE(leg, core);
-            const Decoded coded = decode_all(leg, decoding, ac4::DownmixTarget::kAsCoded, frames);
+            const Decoded coded =
+                decode_all(leg, decoding, iclforge::ac4::DownmixTarget::kAsCoded, frames);
             const auto in = tone_phasors(coded);
             const Mixes five = {
                 {S::kLeft, {{S::kLeft, 1.0}}},
@@ -627,14 +635,15 @@ TEST_CASE(
             };
             const Mixes two = {{S::kLeft, lo_ro(S::kLeft, S::kLeftSurround)},
                                {S::kRight, lo_ro(S::kRight, S::kRightSurround)}};
-            for (const auto& [target, mixes] : {std::pair{ac4::DownmixTarget::k5X, five},
-                                                std::pair{ac4::DownmixTarget::kLoRo, two}}) {
-                CAPTURE(ac4::describe(target));
+            for (const auto& [target, mixes] :
+                 {std::pair{iclforge::ac4::DownmixTarget::k5X, five},
+                  std::pair{iclforge::ac4::DownmixTarget::kLoRo, two}}) {
+                CAPTURE(iclforge::ac4::describe(target));
                 const Decoded rendered = decode_all(leg, decoding, target, frames);
                 REQUIRE(rendered.speakers.size() == mixes.size());
                 const auto out = tone_phasors(rendered);
                 for (const auto& [speaker, terms] : mixes) {
-                    CAPTURE(ac4::describe(speaker));
+                    CAPTURE(iclforge::ac4::describe(speaker));
                     const std::size_t o = channel_of(rendered, speaker);
                     for (std::size_t t = 0; t < kTones514.size(); ++t) {
                         CAPTURE(t);
@@ -651,7 +660,7 @@ TEST_CASE(
                     }
                 }
                 if (std::string_view{leg} != "ac4-514-tones-256" &&
-                    target == ac4::DownmixTarget::k5X) {
+                    target == iclforge::ac4::DownmixTarget::k5X) {
                     // Where the tops are coded channel by channel, each tone
                     // where the matrix sends it at the level it gives: its own
                     // channel at 0 dB, and each top tone in its side at -3 dB.
@@ -680,8 +689,8 @@ TEST_CASE("an ASPX 5.1 stream rebuilds the high band of every channel but the LF
     // pairs (L, R) and (Ls, Rs) and in C (Part 1 Table 213). The source music
     // is 25 to 40 dB quieter from 12 to 16 kHz than from 7.5 to 11.25 kHz; its
     // LFE is low-passed at 120 Hz.
-    const Decoded decoded = decode_all("ac4-51-music-192", ac4::DecodingMode::kFull,
-                                       ac4::DownmixTarget::kAsCoded, kLegFrames);
+    const Decoded decoded = decode_all("ac4-51-music-192", iclforge::ac4::DecodingMode::kFull,
+                                       iclforge::ac4::DownmixTarget::kAsCoded, kLegFrames);
     REQUIRE(decoded.channels.size() == 6);
     for (std::size_t c = 0; c < 6; ++c) {
         CAPTURE(c);
@@ -724,20 +733,20 @@ TEST_CASE("decode takes the IMS streams' frame rates through the sample rate con
     for (const Leg& leg : kLegs) {
         CAPTURE(leg.name);
         const std::vector<std::byte> stream = read_stream(leg.name);
-        const ac4::ScanResult scan = ac4::scan(stream);
+        const iclforge::ac4::ScanResult scan = iclforge::ac4::scan(stream);
         REQUIRE_FALSE(scan.frames.empty());
-        const auto first = ac4::parse_raw_frame(scan.frames.front().raw_ac4_frame);
+        const auto first = iclforge::ac4::parse_raw_frame(scan.frames.front().raw_ac4_frame);
         REQUIRE(first.has_value());
         REQUIRE(first->toc.frame_rate_index == leg.frame_rate_index);
-        ac4::Decoder decoder;
+        iclforge::ac4::Decoder decoder;
         std::vector<float> left;
-        for (const ac4::SyncFrame& frame :
+        for (const iclforge::ac4::SyncFrame& frame :
              std::span(scan.frames).first(std::min(kLegFrames, scan.frames.size()))) {
             const auto decoded = decoder.decode(frame.raw_ac4_frame);
             INFO(decoder.refusal_reason());
             REQUIRE(decoded.has_value());
             REQUIRE(decoded->has_value());
-            const ac4::DecodedFrame& pcm = **decoded;
+            const iclforge::ac4::DecodedFrame& pcm = **decoded;
             CHECK(pcm.sample_rate_hz == 48000);
             REQUIRE(pcm.channels.size() == 2);
             CHECK(pcm.channels[0].size() ==
@@ -755,21 +764,21 @@ TEST_CASE("decode takes the IMS streams' frame rates through the sample rate con
 }
 
 TEST_CASE("decode reports a table of contents it cannot read", "[ac4dec][pcm]") {
-    ac4::Decoder decoder;
+    iclforge::ac4::Decoder decoder;
     const std::array<std::byte, 3> garbage{std::byte{0xFF}, std::byte{0xFF}, std::byte{0xFF}};
     const auto decoded = decoder.decode(garbage);
     REQUIRE_FALSE(decoded.has_value());
-    CHECK(decoded.error() == ac4::DecodeError::kInvalidToc);
+    CHECK(decoded.error() == iclforge::ac4::DecodeError::kInvalidToc);
     CHECK_FALSE(decoder.refusal_reason().empty());
 }
 
 TEST_CASE("the |q|^(4/3) table holds the double nearest every power", "[ac4dec][pcm]") {
-    namespace pd = ac4::detail::pow43_detail;
-    const auto& table = ac4::detail::kPow43<double>;
-    const auto& narrow = ac4::detail::kPow43<float>;
+    namespace pd = iclforge::ac4::detail::pow43_detail;
+    const auto& table = iclforge::ac4::detail::kPow43<double>;
+    const auto& narrow = iclforge::ac4::detail::kPow43<float>;
     CHECK(table[0] == 0.0);
     CHECK(table[1] == 1.0);
-    for (std::size_t m = 1; m <= ac4::detail::kMaxQuant; ++m) {
+    for (std::size_t m = 1; m <= iclforge::ac4::detail::kMaxQuant; ++m) {
         const double v = table[m];
         const auto x = static_cast<double>(m);
         const double a = x * x * x * x;  // m^4, exact below 2^52
@@ -789,7 +798,7 @@ TEST_CASE("the |q|^(4/3) table holds the double nearest every power", "[ac4dec][
         CHECK(std::abs(v - std::pow(x, 4.0 / 3.0)) <= 1.1e-15 * v);
     }
     // The 4/3 power of a cube k^3 is k^4, an integer, and the table has it exactly.
-    for (std::size_t k = 1; k * k * k <= ac4::detail::kMaxQuant; ++k) {
+    for (std::size_t k = 1; k * k * k <= iclforge::ac4::detail::kMaxQuant; ++k) {
         CHECK(table[k * k * k] == static_cast<double>(k * k * k * k));
     }
 }
@@ -799,5 +808,5 @@ TEST_CASE(
     "[ac4dec][pcm]") {
     // The three stages hold their decorrelators' history, 100 to 170 KiB each at double;
     // the first frame that applies one makes it, so SubstreamPcm itself is a few KiB.
-    CHECK(sizeof(ac4::detail::SubstreamPcm) <= 16 * 1024);
+    CHECK(sizeof(iclforge::ac4::detail::SubstreamPcm) <= 16 * 1024);
 }

@@ -55,23 +55,24 @@ class SendspinEvents {
     // buffered; the stream ended. `frame` is valid during the call; `local_time`
     // is the local time (esp_timer microseconds) its first sample plays at,
     // the output delay already taken off.
-    virtual void on_stream_start(const ac3::sendspin::messages::PlayerStream& stream) = 0;
+    virtual void on_stream_start(const iclforge::sendspin::messages::PlayerStream& stream) = 0;
     virtual void on_stream_clear() = 0;
     virtual void on_stream_end() = 0;
     virtual void on_audio(std::span<const std::uint8_t> frame, std::int64_t server_time,
                           std::int64_t local_time) = 0;
     // A volume, mute or output delay command the player listed. The owner
     // applies it and reports the new state with set_player_state().
-    virtual void on_player_command(const ac3::sendspin::messages::PlayerCommandMessage& command) = 0;
+    virtual void on_player_command(const iclforge::sendspin::messages::PlayerCommandMessage& command) = 0;
 
     // _ac3forge_player@v1, the same way.
-    virtual void on_burst_stream_start(const ac3::sendspin::ac3forge::StreamStart& stream) = 0;
+    virtual void on_burst_stream_start(const iclforge::sendspin::ac3forge::StreamStart& stream) = 0;
     virtual void on_burst_stream_clear() = 0;
     virtual void on_burst_stream_end() = 0;
-    virtual void on_burst(const ac3::sendspin::BurstChunk& chunk, std::int64_t local_time) = 0;
+    virtual void on_burst(const iclforge::sendspin::BurstChunk& chunk, std::int64_t local_time) = 0;
     virtual void on_invalid_burst() = 0;
-    virtual void on_ac3forge_command(const ac3::sendspin::ac3forge::CommandMessage& command) = 0;
-    virtual void on_settings_refused(const ac3::sendspin::ac3forge::SettingsError& error) = 0;
+    virtual void on_ac3forge_command(
+        const iclforge::sendspin::ac3forge::CommandMessage& command) = 0;
+    virtual void on_settings_refused(const iclforge::sendspin::ac3forge::SettingsError& error) = 0;
 
     // A pairing attempt showed a dynamic code (digits), was held back for the
     // operator, or ended ("paired", or why not). For the console and the page;
@@ -104,7 +105,7 @@ struct SendspinHostConfig {
     std::size_t max_connections = 3;
     // What each connection's session is told, less its identity, which is
     // the store's.
-    ac3::sendspin::PlayerConfig player;
+    iclforge::sendspin::PlayerConfig player;
 };
 
 // What the host is doing, for the console and the page. Fixed-size, so the
@@ -133,7 +134,7 @@ struct SendspinStatus {
     bool clock_converged = false;
     std::int64_t clock_error_us = 0;
     // Clock bursts the filter took, and bursts it left out for their replies'
-    // delay (ac3::sendspin::ClockSync::rejected()).
+    // delay (iclforge::sendspin::ClockSync::rejected()).
     std::uint32_t clock_updates = 0;
     std::uint32_t clock_rejected = 0;
     // The server holds a pairing this board no longer has
@@ -201,15 +202,15 @@ class SendspinHost final {
     //
     // The player's own state, or the role's: volume, mute, delay, and for the
     // role its levels, counters and decoder report.
-    void set_player_state(const ac3::sendspin::messages::PlayerState& state);
-    void set_ac3forge_state(const ac3::sendspin::ac3forge::State& state);
+    void set_player_state(const iclforge::sendspin::messages::PlayerState& state);
+    void set_ac3forge_state(const iclforge::sendspin::ac3forge::State& state);
     // Something outside Sendspin has the output (a play from the control
     // surface), or has given it back.
     void set_external_source(bool external);
     // The configuration new connections are given. A connection that has
     // said hello with another is told to go (client/goodbye restart), and its
     // server dials again.
-    void set_player_config(const ac3::sendspin::PlayerConfig& player);
+    void set_player_config(const iclforge::sendspin::PlayerConfig& player);
     // The operator's actions on the device (pairing.md): a reset of the
     // dynamic code's round limit, and cancelling the attempt in progress.
     void reset_pairing_rounds();

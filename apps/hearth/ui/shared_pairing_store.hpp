@@ -5,7 +5,7 @@
 #include <QString>
 
 // qsettings_store.hpp undefines Qt's `slots` macro before settings_model.hpp's
-// include chain reaches ac3::render (that header's own comment), so it comes
+// include chain reaches iclforge::render (that header's own comment), so it comes
 // before pairing_store.hpp here.
 #include "qsettings_store.hpp"
 
@@ -32,9 +32,9 @@
 // lives while a controller holds it, so it is made and destroyed while Qt is
 // up rather than by static destruction after it has gone.
 
-namespace ac3::hearth::ui {
+namespace iclforge::hearth::ui {
 
-[[nodiscard]] inline std::shared_ptr<ac3::hearth::PairingStore> shared_pairing_store() {
+[[nodiscard]] inline std::shared_ptr<iclforge::hearth::PairingStore> shared_pairing_store() {
     struct Shared {
         // The four-argument constructor, as both controllers' own: the
         // two-argument one always uses the native store, whatever
@@ -43,7 +43,7 @@ namespace ac3::hearth::ui {
         QSettings settings{QSettings::defaultFormat(), QSettings::UserScope, QStringLiteral("ac3forge"),
                            QStringLiteral("Hearth")};
         QSettingsStore store{settings};
-        ac3::hearth::PairingStore pairing{
+        iclforge::hearth::PairingStore pairing{
             store, [] { return QDate::currentDate().toString(Qt::ISODate).toStdString(); }};
     };
     static std::weak_ptr<Shared> held;
@@ -55,4 +55,4 @@ namespace ac3::hearth::ui {
     return {shared, &shared->pairing};
 }
 
-}  // namespace ac3::hearth::ui
+}  // namespace iclforge::hearth::ui

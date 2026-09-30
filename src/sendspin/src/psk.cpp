@@ -9,7 +9,7 @@
 // psk_id, the one handshake-message value that needs a hash, apart from
 // handshake.cpp so the message parsers build without a crypto backend.
 
-namespace ac3::sendspin::handshake {
+namespace iclforge::sendspin::handshake {
 
 std::optional<crypto::Digest32> psk_id(const crypto::Key32& psk) {
     static constexpr std::string_view kLabel = "sendspin-psk-id-v1";
@@ -22,4 +22,4 @@ std::optional<crypto::Digest32> psk_id(const crypto::Key32& psk) {
     return id;
 }
 
-}  // namespace ac3::sendspin::handshake
+}  // namespace iclforge::sendspin::handshake

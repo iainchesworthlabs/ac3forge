@@ -8,7 +8,7 @@
 
 #include "iclforge/ac4core/dsp/real_functions.hpp"
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 namespace {
 
 constexpr Real kAlpha = Real(0.65);
@@ -44,7 +44,7 @@ constexpr int kMaxSlots = 64;
 // "The companding average").
 //
 // At double this is std::pow, as it always was. At float it is
-// 2^(e log2 L) through ac3::internal's scalar_exp2 and scalar_log2, which are
+// 2^(e log2 L) through iclforge::internal's scalar_exp2 and scalar_log2, which are
 // plain float multiplies and adds (dsp::pow_of): the C libraries' powf differ
 // in the last bit on some inputs, a gain that differs in its last bit scales
 // the slot's samples by a different float, and the synthesis bank spreads the
@@ -158,4 +158,4 @@ void apply_companding(const CompandingControl& control, int sb0, Real full_scale
     }
 }
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

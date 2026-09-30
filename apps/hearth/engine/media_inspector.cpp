@@ -5,7 +5,7 @@
 
 // See media_inspector.hpp.
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 MediaInspector::MediaInspector(ItemLoader loader, std::size_t cache_size)
     : loader_(std::move(loader)), cache_size_(std::max<std::size_t>(cache_size, 1)) {
@@ -108,4 +108,4 @@ void MediaInspector::run(const std::stop_token& stop) {
     }
 }
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

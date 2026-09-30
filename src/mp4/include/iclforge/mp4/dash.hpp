@@ -10,12 +10,12 @@
 #include "iclforge/mp4/mp4.hpp"
 
 // DASH signaling (ISO/IEC 23009-1, "Dynamic Adaptive Streaming over HTTP")
-// for the same CMAF segments mp4::hls.hpp's helpers describe - that sharing
+// for the same CMAF segments iclforge::mp4::hls.hpp's helpers describe - that sharing
 // is the entire point of CMAF (ISO/IEC 23000-19): one segment format, two
 // manifest flavors. See mp4/hls.hpp's own header comment for the same
 // codec-blindness this module keeps.
 
-namespace mp4 {
+namespace iclforge::mp4 {
 
 // One DASH descriptor (ISO/IEC 23009-1 §5.8.2's DescriptorType): the scheme it
 // names and its value there.
@@ -36,7 +36,7 @@ struct DashOptions {
     std::string representation_id{"audio"};
     // TS 103 420 §8.3.2's complexity_index_type_a for a stream carrying that
     // spec's backward-compatible object audio (Dolby Atmos in Dolby Digital
-    // Plus) - this project's own ac3::io::ScannedStream::oba_complexity_index.
+    // Plus) - this project's own iclforge::io::ScannedStream::oba_complexity_index.
     // Set, it adds the two SupplementalProperty descriptors DASH-IF IOP Part
     // 8 v5.0.0 §5.3.2 names for E-AC-3 with JOC, "as specified in ETSI TS
     // 103 420 clause D.2":
@@ -48,7 +48,7 @@ struct DashOptions {
     // Unset (the default) is correct for plain AC-3/E-AC-3, and is what a
     // caller with no object layer to declare leaves alone. Caller-supplied
     // for the same reason HlsOptions::channels_attribute is: TS 103 420's
-    // object layer is bitstream syntax mp4:: never reads - the caller that
+    // object layer is bitstream syntax iclforge::mp4:: never reads - the caller that
     // scanned it off the stream to build the dec3 box already has the value.
     std::optional<int> joc_complexity_index = std::nullopt;
     // The AudioChannelConfiguration descriptor's @value, on the Dolby scheme
@@ -86,7 +86,7 @@ struct DashOptions {
 // AdaptationSet in (ISO/IEC 23009-1 §5.3.1.2's MPD@type).
 struct MpdOptions {
     // "static" - the whole asset exists, its total duration is known, and a
-    // player may seek anywhere in it. The right shape for mp4::fragment()'s
+    // player may seek anywhere in it. The right shape for iclforge::mp4::fragment()'s
     // batch output. False switches to "dynamic": segments appear over time,
     // there is no mediaPresentationDuration, and the timing fields below take
     // over. That is the live shape, and TS 103 420 §D.2.3's own example MPD
@@ -96,7 +96,7 @@ struct MpdOptions {
     // wall-clock time, as an ISO 8601 UTC string, that segment number
     // startNumber's playback would begin at - every segment's availability
     // is this plus its own position on the timeline. Supplied by the caller
-    // rather than read off a clock here, because mp4:: has no clock: no file
+    // rather than read off a clock here, because iclforge::mp4:: has no clock: no file
     // I/O, no time, nothing but bytes in and bytes out, which is also what
     // keeps this testable without either.
     std::string availability_start_time{};
@@ -119,7 +119,7 @@ struct MpdOptions {
 // fragment() or FragmentWriter produced - ready to nest inside a caller's own
 // <Period>, or to hand straight to build_dash_mpd() below.
 // Single-representation audio only, per this module's scope (see mp4.hpp's
-// own header comment on mp4:: staying single-track): no ABR ladder, no
+// own header comment on iclforge::mp4:: staying single-track): no ABR ladder, no
 // multi-period MPD - a caller assembling a richer manifest supplies those
 // (whichever other Representations/Periods it has).
 //
@@ -135,12 +135,12 @@ struct MpdOptions {
 // nothing extra to build. @startNumber and the timeline's first <S t="...">
 // both come from the segments handed in rather than being assumed to start at
 // the beginning of the track, which is what lets a rolling live WINDOW (see
-// mp4::FragmentWriter::window()) describe itself correctly.
+// iclforge::mp4::FragmentWriter::window()) describe itself correctly.
 [[nodiscard]] MP4_EXPORT std::string build_dash_adaptation_set(
     const AudioTrack& track, std::span<const SegmentInfo> segments,
     const DashOptions& options = {});
 
-// Convenience overload for a caller holding mp4::fragment()'s batch output.
+// Convenience overload for a caller holding iclforge::mp4::fragment()'s batch output.
 [[nodiscard]] MP4_EXPORT std::string build_dash_adaptation_set(
     const AudioTrack& track, std::span<const MediaSegment> segments,
     const DashOptions& options = {});
@@ -159,4 +159,4 @@ struct MpdOptions {
                                                     std::string_view adaptation_set,
                                                     const MpdOptions& options = {});
 
-}  // namespace mp4
+}  // namespace iclforge::mp4

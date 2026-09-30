@@ -353,7 +353,7 @@ inline CompareResult compare_pcm(const std::vector<std::vector<float>>& ours,
 
 // The whole pipeline for one fuzzer input: write `coded_bytes` to a scratch
 // file, have FFmpeg strict-decode it, write THIS project's own decode
-// (`pcm`/`sample_rate`/`channel_order` - same shape ac3::io::write_wav_f32
+// (`pcm`/`sample_rate`/`channel_order` - same shape iclforge::io::write_wav_f32
 // itself takes, `channel_order` empty meaning identity) to a second scratch
 // WAV, read both back and compare. Aborts (see report_divergence) exactly
 // when the comparison is eligible AND disagrees by more than
@@ -392,10 +392,10 @@ inline void run_differential(const char* codec_label, std::span<const std::byte>
     if (!ffmpeg_wav_path.empty() && !ours_wav_path.empty() &&
         write_file(coded_path, coded_bytes) &&
         ffmpeg_strict_decode(coded_path, ffmpeg_wav_path) &&
-        ac3::io::write_wav_f32(ours_wav_path, std::span<const std::vector<float>>(pcm),
+        iclforge::io::write_wav_f32(ours_wav_path, std::span<const std::vector<float>>(pcm),
                                 sample_rate, channel_order)) {
-        const auto ffmpeg_wav = ac3::io::read_wav(ffmpeg_wav_path);
-        const auto ours_wav = ac3::io::read_wav(ours_wav_path);
+        const auto ffmpeg_wav = iclforge::io::read_wav(ffmpeg_wav_path);
+        const auto ours_wav = iclforge::io::read_wav(ours_wav_path);
         if (ffmpeg_wav && ours_wav && ffmpeg_wav->sample_rate == ours_wav->sample_rate) {
             const auto result = compare_pcm(ours_wav->channels, ffmpeg_wav->channels);
             if (measure_only) {

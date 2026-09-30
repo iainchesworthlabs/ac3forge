@@ -21,20 +21,20 @@
 // ClockedDevice stands in for one under ac3tests.
 //
 // Kept out of hearth_controller.hpp (which forward-declares it) for the
-// reason that header gives for every ac3::hearth type: pcm_sink.hpp reaches
-// ac3::render::OutputLayout, whose slots() collides with Qt's `slots` macro.
+// reason that header gives for every iclforge::hearth type: pcm_sink.hpp reaches
+// iclforge::render::OutputLayout, whose slots() collides with Qt's `slots` macro.
 
-namespace ac3::hearth::ui {
+namespace iclforge::hearth::ui {
 
 struct TestOutputs {
     // Builds the engine's PCM sink - called once, from start().
-    std::function<std::unique_ptr<ac3::hearth::PcmSink>()> make_pcm;
+    std::function<std::unique_ptr<iclforge::hearth::PcmSink>()> make_pcm;
     // The render endpoints the engine's output decision reads
     // (EngineOutputs::endpoints), in place of device_endpoints().
-    ac3::hearth::EndpointSource endpoints;
+    iclforge::hearth::EndpointSource endpoints;
     // What refreshOutputDevices() lists, in place of
-    // ac3::audio::enumerate_render_devices().
-    std::function<decltype(ac3::audio::enumerate_render_devices())()> enumerate;
+    // iclforge::audio::enumerate_render_devices().
+    std::function<decltype(iclforge::audio::enumerate_render_devices())()> enumerate;
 };
 
-}  // namespace ac3::hearth::ui
+}  // namespace iclforge::hearth::ui

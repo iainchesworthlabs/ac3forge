@@ -6,7 +6,7 @@
 
 #include "queue.hpp"
 
-// ac3::hearth::Queue (apps/hearth/engine/queue.cpp): the play queue, and what
+// iclforge::hearth::Queue (apps/hearth/engine/queue.cpp): the play queue, and what
 // happens to the item that is playing when the list changes around it.
 //
 // Every case here is a person doing something ordinary to a queue while a
@@ -16,9 +16,9 @@
 
 namespace {
 
-using ac3::hearth::ItemFacts;
-using ac3::hearth::Queue;
-using ac3::hearth::QueueItem;
+using iclforge::hearth::ItemFacts;
+using iclforge::hearth::Queue;
+using iclforge::hearth::QueueItem;
 
 QueueItem item(std::string title, std::uint32_t rate = 48000) {
     // Built field by field rather than in one braced initialiser that both
@@ -30,7 +30,7 @@ QueueItem item(std::string title, std::uint32_t rate = 48000) {
     QueueItem entry;
     entry.path = title + ".ec3";
     entry.title = std::move(title);
-    entry.facts.stream = ac3::audio::BitstreamFormat::kEac3;
+    entry.facts.stream = iclforge::audio::BitstreamFormat::kEac3;
     entry.facts.sample_rate = rate;
     entry.facts.channels = 6;
     return entry;

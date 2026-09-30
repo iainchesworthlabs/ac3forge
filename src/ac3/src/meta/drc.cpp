@@ -11,7 +11,7 @@
 
 #include "iclforge/ac3/meta/mixing.hpp"  // kReferenceDialnorm
 
-namespace ac3::meta {
+namespace iclforge::meta {
 
 namespace {
 
@@ -244,4 +244,4 @@ bool parse_profile(std::string_view name, ProfileId& out) {
     return false;
 }
 
-}  // namespace ac3::meta
+}  // namespace iclforge::meta

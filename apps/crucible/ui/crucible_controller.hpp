@@ -172,7 +172,7 @@ class CrucibleController : public QObject {
     Q_PROPERTY(bool has3D READ has3D CONSTANT)
     // Whether this build can hand decoded objects to the platform's own
     // object renderer, which is what the headphones mode is
-    // (ac3::audio::audio_backend().spatial). That report answers for the
+    // (iclforge::audio::audio_backend().spatial). That report answers for the
     // build, not for one endpoint: whether a particular endpoint has a
     // spatial format switched on is the per-endpoint `spatial` flag in
     // `endpoints`, and the two are separate questions. False on every
@@ -350,11 +350,11 @@ public:
     // device are held here rather than passed to the engine at start(), and
     // movesDefault and silentDeviceFromPackage are CONSTANT properties whose
     // bindings never re-read after a swap.
-    void set_test_services(std::shared_ptr<ac3::crucible::SessionMonitor> sessions,
-                           std::shared_ptr<ac3::crucible::AudioDevices> devices,
-                           std::shared_ptr<ac3::crucible::Foreground> foreground,
-                           std::shared_ptr<ac3::crucible::DefaultDevice> default_device,
-                           std::shared_ptr<ac3::crucible::VirtualDevice> virtual_device);
+    void set_test_services(std::shared_ptr<iclforge::crucible::SessionMonitor> sessions,
+                           std::shared_ptr<iclforge::crucible::AudioDevices> devices,
+                           std::shared_ptr<iclforge::crucible::Foreground> foreground,
+                           std::shared_ptr<iclforge::crucible::DefaultDevice> default_device,
+                           std::shared_ptr<iclforge::crucible::VirtualDevice> virtual_device);
 
 signals:
     void stateChanged();
@@ -369,11 +369,11 @@ signals:
 private:
     void poll();
     void restart_engine();
-    [[nodiscard]] ac3::crucible::EngineConfig engine_config() const;
+    [[nodiscard]] iclforge::crucible::EngineConfig engine_config() const;
     void emit_restored_default();
     void poll_driver();
-    [[nodiscard]] ac3::crucible::ReportFacts build_report_facts() const;
-    [[nodiscard]] ac3::crucible::Secrets secrets() const;
+    [[nodiscard]] iclforge::crucible::ReportFacts build_report_facts() const;
+    [[nodiscard]] iclforge::crucible::Secrets secrets() const;
     // The restore behind quit() and QCoreApplication::aboutToQuit: idempotent
     // through moved_default_by_us_, and it never opens the sound settings on
     // a refusal (a window opening as the application exits is worse than a
@@ -384,9 +384,9 @@ private:
     // and the silent device applications play into. Both are resolved
     // from platform_services.hpp, so nothing in this file names an
     // operating system (docs/crucible/design/promotion.md, Phase 2).
-    std::shared_ptr<ac3::crucible::DefaultDevice> default_device_;
+    std::shared_ptr<iclforge::crucible::DefaultDevice> default_device_;
     QSettings settings_;
-    std::unique_ptr<ac3::crucible::Engine> engine_;
+    std::unique_ptr<iclforge::crucible::Engine> engine_;
     QTimer poll_timer_;
 
     bool running_ = false;
@@ -411,9 +411,9 @@ private:
     bool moved_default_by_us_ = false;
     std::uint64_t last_endpoint_stamp_ = 0;
 
-    std::shared_ptr<ac3::crucible::VirtualDevice> virtual_device_;
+    std::shared_ptr<iclforge::crucible::VirtualDevice> virtual_device_;
     QTimer driver_timer_;
-    ac3::crucible::SilentDeviceState silent_state_;
+    iclforge::crucible::SilentDeviceState silent_state_;
     bool driver_busy_ = false;
     QString driver_message_;
     QString driver_verb_;
@@ -422,17 +422,17 @@ private:
     // message handler and this controller share: a reference, since it
     // outlives everything including this object. The full-screen seam is
     // held for its support() line in the report only.
-    ac3::crucible::DiagnosticLog& log_;
-    std::shared_ptr<ac3::crucible::Foreground> foreground_;
+    iclforge::crucible::DiagnosticLog& log_;
+    std::shared_ptr<iclforge::crucible::Foreground> foreground_;
     // One SessionMonitor for the process, for the same reason: this object
     // reads listing_rule() for the room page and the engine polls refresh()
     // on its session thread.
-    std::shared_ptr<ac3::crucible::SessionMonitor> sessions_;
+    std::shared_ptr<iclforge::crucible::SessionMonitor> sessions_;
     QString diagnostics_message_;
 
     // Set only by set_test_services(); null in the shipped window, which is
     // what makes engine_config() ask the platform for each of them.
-    std::shared_ptr<ac3::crucible::SessionMonitor> test_sessions_;
-    std::shared_ptr<ac3::crucible::AudioDevices> test_devices_;
-    std::shared_ptr<ac3::crucible::Foreground> test_foreground_;
+    std::shared_ptr<iclforge::crucible::SessionMonitor> test_sessions_;
+    std::shared_ptr<iclforge::crucible::AudioDevices> test_devices_;
+    std::shared_ptr<iclforge::crucible::Foreground> test_foreground_;
 };

@@ -10,7 +10,7 @@
 #include "iclforge/ac3/core/tables.hpp"
 #include "iclforge/ac3/meta/mixing.hpp"
 
-namespace ac3::meta {
+namespace iclforge::meta {
 
 namespace {
 
@@ -301,4 +301,4 @@ bool parse_timecode(std::string_view text, TimeCodeCoarse& coarse, TimeCodeFine&
 
 // format_timecode lives in bsi_format.cpp - see there for why.
 
-}  // namespace ac3::meta
+}  // namespace iclforge::meta

@@ -12,7 +12,7 @@
 // aspx_data element carries), its PCM stage with the tables; the encoder
 // derives the same ones.
 
-namespace ac4::detail::aspx {
+namespace iclforge::ac4::detail::aspx {
 
 inline constexpr int kMaxSbgMaster = 22;  // sbg_template_highres spans 22 groups
 inline constexpr int kMaxSbgNoise = 5;    // 5.7.6.3.1.3
@@ -80,4 +80,4 @@ struct PatchTables {
 [[nodiscard]] bool derive_patch_tables(const SubbandGroups& groups, int master_freq_scale,
                                        bool base_48k, PatchTables& out);
 
-}  // namespace ac4::detail::aspx
+}  // namespace iclforge::ac4::detail::aspx

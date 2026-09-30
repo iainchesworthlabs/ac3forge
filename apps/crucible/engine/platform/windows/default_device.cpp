@@ -16,7 +16,7 @@
 #include <cwctype>
 #include <string>
 
-namespace ac3::crucible {
+namespace iclforge::crucible {
 
 namespace {
 
@@ -259,7 +259,7 @@ public:
     std::string find_endpoint(std::string_view name_substring) override {
         return find_render_endpoint(name_substring);
     }
-    void open_sound_settings() override { ac3::crucible::open_sound_settings(); }
+    void open_sound_settings() override { iclforge::crucible::open_sound_settings(); }
 };
 
 }  // namespace
@@ -268,4 +268,4 @@ std::shared_ptr<DefaultDevice> platform_default_device() {
     return std::make_shared<WindowsDefaultDevice>();
 }
 
-}  // namespace ac3::crucible
+}  // namespace iclforge::crucible

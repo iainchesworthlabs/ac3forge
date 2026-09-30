@@ -1,7 +1,7 @@
 // Wrap an elementary stream in Matroska.
 //
-// matroska::matroska links nothing from ac3::forge — it takes frames as opaque
-// bytes. Pairing it with ac3::io::scan is what keeps the track header honest:
+// iclforge::matroska links nothing from iclforge::ac3 — it takes frames as opaque
+// bytes. Pairing it with iclforge::io::scan is what keeps the track header honest:
 // the channel count and packet boundaries come off the bitstream rather than
 // from the caller.
 
@@ -22,15 +22,15 @@ int main() {
     // Some AC-3 to wrap.
     // Heap-allocated: FrameEncoder carries several KB of MDCT scratch/history
     // state (PREfast's C6262).
-    auto encoder = std::make_unique<ac3::FrameEncoder>(
-        ac3::EncoderConfig{.bitrate_kbps = 192, .acmod = ac3::Acmod::k2_0});
-    std::vector<std::vector<float>> pcm(2, std::vector<float>(ac3::kSamplesPerFrame));
+    auto encoder = std::make_unique<iclforge::FrameEncoder>(
+        iclforge::EncoderConfig{.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0});
+    std::vector<std::vector<float>> pcm(2, std::vector<float>(iclforge::kSamplesPerFrame));
     const std::vector<std::span<const float>> views{pcm[0], pcm[1]};
 
     std::vector<std::byte> elementary;
     for (int frame = 0; frame < 31; ++frame) {
         for (std::size_t ch = 0; ch < pcm.size(); ++ch) {
-            for (int n = 0; n < ac3::kSamplesPerFrame; ++n) {
+            for (int n = 0; n < iclforge::kSamplesPerFrame; ++n) {
                 pcm[ch][static_cast<std::size_t>(n)] =
                     0.2F * static_cast<float>((n % 61) - 30) / 30.0F;
             }
@@ -43,7 +43,7 @@ int main() {
     }
 
     // Ask the bitstream what it is rather than asserting it.
-    const auto scanned = ac3::io::scan(elementary);
+    const auto scanned = iclforge::io::scan(elementary);
     if (!scanned) {
         fmt::printf("scan failed\n");
         return 1;
@@ -58,20 +58,20 @@ int main() {
         frames.emplace_back(unit.begin(), unit.end());
     }
 
-    const matroska::AudioTrack track{
-        .codec_id = std::string{scanned->kind == ac3::io::StreamKind::kAc3
-                                    ? matroska::kCodecAc3
-                                    : matroska::kCodecEac3},
-        .sample_rate = ac3::sample_rate_hz(scanned->sample_rate),
+    const iclforge::matroska::AudioTrack track{
+        .codec_id = std::string{scanned->kind == iclforge::io::StreamKind::kAc3
+                                    ? iclforge::matroska::kCodecAc3
+                                    : iclforge::matroska::kCodecEac3},
+        .sample_rate = iclforge::sample_rate_hz(scanned->sample_rate),
         .channels = scanned->channels,
-        .samples_per_frame = ac3::kSamplesPerFrame,
+        .samples_per_frame = iclforge::kSamplesPerFrame,
     };
 
-    const auto file = matroska::mux(track, frames);
+    const auto file = iclforge::matroska::mux(track, frames);
     if (!file) {
         fmt::printf("mux failed: %.*s\n",
-                    static_cast<int>(matroska::describe(file.error()).size()),
-                    matroska::describe(file.error()).data());
+                    static_cast<int>(iclforge::matroska::describe(file.error()).size()),
+                    iclforge::matroska::describe(file.error()).data());
         return 1;
     }
 

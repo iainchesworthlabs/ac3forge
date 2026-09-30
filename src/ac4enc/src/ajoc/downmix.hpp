@@ -10,7 +10,7 @@
 // track each downmix signal takes. src/ac4enc/ERRATA.md, "A-JOC's downmix",
 // records the readings.
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 // The computed downmix's groups: for each object at `positions` (Annex F.2's
 // X, Y and Z), the downmix signal it is summed into, of `signals`. The objects
@@ -33,4 +33,4 @@ namespace ac4::detail {
 // that A-JOC input `i` reads, of `m` full-band downmix signals.
 [[nodiscard]] int ajoc_input_track(int i, int m) noexcept;
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

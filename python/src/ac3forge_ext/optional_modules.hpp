@@ -7,8 +7,8 @@
 // anything to register.
 //
 // `ac3.signing`, `ac3.containers` and `ac3.ac4` exist only when the configure
-// that built this extension also built the libraries behind them - ac3::signing,
-// the matroska/mp4/mpegts trio, and ac4::ac4/ac4::decoder/ac4::encoder (see
+// that built this extension also built the libraries behind them - iclforge::signing,
+// the matroska/mp4/mpegts trio, and iclforge::ac4/iclforge::ac4dec/iclforge::ac4enc (see
 // python/CMakeLists.txt, and the options' comments in the root CMakeLists.txt).
 // A trimmed developer build - codec only - still produces a working extension
 // without them; the wheel build (python/pyproject.toml) turns every one of
@@ -27,10 +27,10 @@
 // A caller reaching for ac3.signing in a build without it gets Python's own
 // AttributeError on the missing submodule, exactly as before.
 
-namespace ac3::python {
+namespace iclforge::python {
 
 // Adds the `signing` submodule to `m`, or does nothing in a build with no
-// ac3::signing behind it.
+// iclforge::signing behind it.
 void register_signing(pybind11::module_& m);
 
 // Adds the `containers` submodule to `m`, or does nothing in a build with no
@@ -38,7 +38,7 @@ void register_signing(pybind11::module_& m);
 void register_containers(pybind11::module_& m);
 
 // Adds the `ac4` submodule to `m`, or does nothing in a build with no
-// ac4::ac4/ac4::decoder/ac4::encoder behind it.
+// iclforge::ac4/iclforge::ac4dec/iclforge::ac4enc behind it.
 void register_ac4(pybind11::module_& m);
 
-}  // namespace ac3::python
+}  // namespace iclforge::python

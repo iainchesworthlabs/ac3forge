@@ -29,10 +29,10 @@
 
 namespace {
 
-namespace m = ac3::sendspin::messages;
-namespace pm = ac3::sendspin::pairing_messages;
-namespace json = ac3::sendspin::json;
-using ac3::sendspin::Dialect;
+namespace m = iclforge::sendspin::messages;
+namespace pm = iclforge::sendspin::pairing_messages;
+namespace json = iclforge::sendspin::json;
+using iclforge::sendspin::Dialect;
 
 // Reads `text` as a message and hands its payload to `read`, which returns an expected.
 template <class Read>

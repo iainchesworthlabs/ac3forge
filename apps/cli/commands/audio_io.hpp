@@ -28,10 +28,10 @@ int run_outputs();
 // `device_index` is 'outputs' own, negative for the default endpoint.
 // `layout_text` names the layout to walk ("5.1", "7.1.4", "L,R,C"), empty or
 // "-" for the device's own speakers, which is every output it reports.
-// `routing_text` is ac3::render::Routing's text form - a token per rendered
+// `routing_text` is iclforge::render::Routing's text form - a token per rendered
 // channel, an output index or "-" - empty or "-" for the patch
-// ac3::audio::PcmOutput builds from the device's speakers. `level_db` is the
-// tone's RMS level, in ac3::render::IdentifyTone's accepted range.
+// iclforge::audio::PcmOutput builds from the device's speakers. `level_db` is the
+// tone's RMS level, in iclforge::render::IdentifyTone's accepted range.
 //
 // The point of the patch argument is A2's own exit: a stream routed with two
 // channels swapped should be heard from the swapped speakers.
@@ -47,7 +47,7 @@ int run_identify(int device_index, std::string_view layout_text, std::uint32_t s
 // one of the six blocks a burst period spans).
 //
 // play/monitor follow mode: when a specific device_index is named, this first asks what
-// it actually accepts - ac3::audio::read_sink_capabilities' EDID read where
+// it actually accepts - iclforge::audio::read_sink_capabilities' EDID read where
 // a backend has one, enumerate_render_devices' own live probe otherwise (see
 // that header's comment for why the two are kept apart). A source format the
 // sink rejects gets an automatic fallback rather than a refusal: E-AC-3 on an

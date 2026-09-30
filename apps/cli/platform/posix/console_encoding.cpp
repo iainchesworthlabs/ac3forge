@@ -11,7 +11,7 @@
 // stdio_binary.cpp's POSIX half gives: the call site never asks which
 // platform it is running on.
 
-namespace ac3::cli::platform {
+namespace iclforge::cli::platform {
 
 unsigned int set_console_utf8() {
     return 0;
@@ -21,4 +21,4 @@ void restore_console_encoding(unsigned int /*previous*/) {
     // Nothing to restore: set_console_utf8() above never changed anything.
 }
 
-}  // namespace ac3::cli::platform
+}  // namespace iclforge::cli::platform

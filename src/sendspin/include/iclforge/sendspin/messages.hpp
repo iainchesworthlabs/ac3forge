@@ -30,7 +30,7 @@
 // Writers return the whole message text. Strings a peer sent are decoded copies, bounded by
 // the message's own size.
 
-namespace ac3::sendspin::messages {
+namespace iclforge::sendspin::messages {
 
 enum class MessageError : std::uint8_t {
     kMalformed,
@@ -402,4 +402,4 @@ enum class GoodbyeReason : std::uint8_t {
 [[nodiscard]] std::string write_client_leave();
 [[nodiscard]] std::string write_server_unpair();
 
-}  // namespace ac3::sendspin::messages
+}  // namespace iclforge::sendspin::messages

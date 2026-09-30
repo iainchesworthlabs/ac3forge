@@ -6,7 +6,7 @@
 #include <QString>
 #include <QHash>
 
-namespace ac3::crucible::ui {
+namespace iclforge::crucible::ui {
 
 // image://appicon/<percent-encoded executable path>?icon=<icon-theme name>
 // &app=<application id>&name=<display name>: the platform's own icon for an
@@ -30,4 +30,4 @@ private:
     QHash<QString, QImage> cache_;
 };
 
-}  // namespace ac3::crucible::ui
+}  // namespace iclforge::crucible::ui

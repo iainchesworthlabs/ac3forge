@@ -8,7 +8,7 @@
 #include "iclforge/ac4core/tables/huffman_tables.hpp"
 #include "iclforge/ac4core/tables/sfb_tables.hpp"
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 namespace {
 
 constexpr int kCodebooks = 12;          // 0, and Tables A.2 to A.12's 1 to 11
@@ -473,4 +473,4 @@ void write_sf_data(BitWriter& w, const CodedTrack& track, const FrameLayout& lay
     w.write(1, 0, "b_snf_data_exists");
 }
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

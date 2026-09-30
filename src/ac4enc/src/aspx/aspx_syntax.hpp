@@ -17,7 +17,7 @@
 // them by the encoder (src/ac4enc/src/aspx/aspx_encoder.hpp), which also
 // derives the counts the syntax reads with.
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 // aspx_config(), Table 50.
 struct AspxConfigFields {
@@ -116,4 +116,4 @@ void write_aspx_data_2ch(BitWriter& w, bool b_iframe, int xover_subband_offset,
 [[nodiscard]] bool aspx_envelope_codable(bool signal, int quant_mode, bool balance,
                                          const AspxEnvelopeFields& envelope);
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

@@ -17,7 +17,7 @@
 
 #include "iclforge/sendspin/discovery.hpp"
 
-namespace ac3::sendspin::discovery::mdns_packets {
+namespace iclforge::sendspin::discovery::mdns_packets {
 
 namespace {
 
@@ -523,4 +523,4 @@ BrowseState::Changes BrowseState::report(std::int64_t now) {
     return changes;
 }
 
-}  // namespace ac3::sendspin::discovery::mdns_packets
+}  // namespace iclforge::sendspin::discovery::mdns_packets

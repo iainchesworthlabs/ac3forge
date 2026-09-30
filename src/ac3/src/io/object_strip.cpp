@@ -12,7 +12,7 @@
 #include "iclforge/ac3/core/crc16.hpp"
 #include "iclforge/ac3/emdf/frame_layout.hpp"
 
-namespace ac3::io {
+namespace iclforge::io {
 
 namespace {
 
@@ -249,4 +249,4 @@ std::expected<StrippedStream, StripError> strip_objects(std::span<const std::byt
     return result;
 }
 
-}  // namespace ac3::io
+}  // namespace iclforge::io

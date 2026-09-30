@@ -12,14 +12,14 @@
 
 #include "iclforge/matroska/export.hpp"
 
-// The read side of matroska::mux()/matroska::Writer: pulling one audio
+// The read side of iclforge::matroska::mux()/iclforge::matroska::Writer: pulling one audio
 // track's frames back out of a Matroska file.
 //
 // This is a container reader and nothing more, in exactly the sense the
 // writer beside it is a container writer and nothing more (see
 // matroska/matroska.hpp): it walks EBML, finds the track the caller asked
 // for, and hands each frame back as opaque bytes. It has NO dependency on
-// ac3::forge and no knowledge of AC-3 - what comes out is whatever the muxer
+// iclforge::ac3 and no knowledge of AC-3 - what comes out is whatever the muxer
 // put in. The one place it names a codec is track auto-selection
 // (kCodecAc3/kCodecEac3, the same two CodecID strings the writer already
 // declares); a caller that wants some other track says so by number.
@@ -27,13 +27,13 @@
 // Two shapes, mirroring the write side exactly:
 //
 //   demux()  - batch, and ZERO-COPY: the frames it returns are spans into
-//              the caller's own buffer, the way ac3::io::scan already hands
+//              the caller's own buffer, the way iclforge::io::scan already hands
 //              back access units. For a caller that has the file resident
 //              anyway.
 //   Reader   - incremental, for a file too big to hold: push() chunks in,
 //              frames come back through a callback. Peak memory is one
 //              frame plus one chunk, never the file - the same bound
-//              matroska::Writer offers on the way out.
+//              iclforge::matroska::Writer offers on the way out.
 //
 // Both run the same EBML walker (src/matroska/src/reader.cpp); the only
 // difference is where the bytes come from and where the frames point.
@@ -47,7 +47,7 @@
 // the third, and fuzz/fuzz_matroska_demux.cpp drives the whole walker with
 // arbitrary bytes.
 
-namespace matroska {
+namespace iclforge::matroska {
 
 namespace detail {
 // Reader's parse state, defined in src/matroska/src/reader.cpp. A
@@ -119,7 +119,7 @@ struct Demuxed {
 // Reads a complete Matroska file held in one buffer. Frames come back as
 // views into `file` - no audio is copied.
 //
-// A file whose Segment uses EBML's "unknown size" (what matroska::Writer
+// A file whose Segment uses EBML's "unknown size" (what iclforge::matroska::Writer
 // emits for a live recording) reads back exactly like a sized one, and so
 // does one truncated mid-cluster: every whole frame before the cut is
 // returned rather than an error, because a truncated capture is the normal
@@ -129,7 +129,7 @@ struct Demuxed {
     std::span<const std::byte> file, const ReadOptions& options = {});
 
 // Incrementally reads frames out of a Matroska file as its bytes arrive -
-// matroska::Writer's mirror image, and the shape `ac3cli demux` uses so a
+// iclforge::matroska::Writer's mirror image, and the shape `ac3cli demux` uses so a
 // multi-gigabyte rip never lands in memory.
 //
 // Frames are delivered to a callback rather than returned, so nothing
@@ -181,4 +181,4 @@ class MATROSKA_EXPORT Reader {
     std::unique_ptr<detail::ReaderState> state_;
 };
 
-}  // namespace matroska
+}  // namespace iclforge::matroska

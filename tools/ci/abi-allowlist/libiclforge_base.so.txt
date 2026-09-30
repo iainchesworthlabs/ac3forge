@@ -1,1 +1,1 @@
-ac3::internal::cpu::has_avx2()
+iclforge::internal::cpu::has_avx2()

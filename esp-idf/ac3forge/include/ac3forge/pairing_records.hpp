@@ -38,7 +38,7 @@
 
 namespace ac3forge {
 
-// A server's key or a PSK: ac3::sendspin::crypto::Key32, which this header
+// A server's key or a PSK: iclforge::sendspin::crypto::Key32, which this header
 // names for itself so as to need nothing from src/sendspin.
 using PairingKey = std::array<std::uint8_t, 32>;
 

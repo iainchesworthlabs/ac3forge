@@ -40,8 +40,8 @@ std::vector<std::byte> with_substreams(BitWriter w, int n, std::size_t size = 3,
     return frame;
 }
 
-ac4::RawFrame parse(const std::vector<std::byte>& frame) {
-    auto result = ac4::parse_raw_frame(frame);
+iclforge::ac4::RawFrame parse(const std::vector<std::byte>& frame) {
+    auto result = iclforge::ac4::parse_raw_frame(frame);
     REQUIRE(result.has_value());
     return std::move(*result);
 }
@@ -64,7 +64,8 @@ void content_type_with_language(BitWriter& w, int classifier, bool serialized) {
 }  // namespace
 
 TEST_CASE("describe names an Error value outside the enumeration as unknown", "[ac4][toc]") {
-    CHECK(ac4::describe(static_cast<ac4::Error>(42)) == "unknown ac4::Error");
+    CHECK(iclforge::ac4::describe(static_cast<iclforge::ac4::Error>(42)) ==
+          "unknown iclforge::ac4::Error");
 }
 
 TEST_CASE("scan reads a sync frame's extended frame_size and refuses short ones", "[ac4][toc]") {
@@ -72,7 +73,7 @@ TEST_CASE("scan reads a sync frame's extended frame_size and refuses short ones"
         std::vector<std::byte> data = {std::byte{0xAC}, std::byte{0x40}, std::byte{0xFF}, std::byte{0xFF},
                                        std::byte{0x00}, std::byte{0x00}, std::byte{0x05}};
         data.resize(data.size() + 5, std::byte{0x11});
-        const auto result = ac4::scan(data);
+        const auto result = iclforge::ac4::scan(data);
         CHECK_FALSE(result.stopped_at.has_value());
         REQUIRE(result.frames.size() == 1);
         CHECK(result.frames[0].raw_ac4_frame.size() == 5);
@@ -82,15 +83,15 @@ TEST_CASE("scan reads a sync frame's extended frame_size and refuses short ones"
     SECTION("an extended header cut short") {
         const std::vector<std::byte> data = {std::byte{0xAC}, std::byte{0x40}, std::byte{0xFF}, std::byte{0xFF},
                                              std::byte{0x00}};
-        const auto result = ac4::scan(data);
-        CHECK(result.stopped_at == ac4::Error::kTruncated);
+        const auto result = iclforge::ac4::scan(data);
+        CHECK(result.stopped_at == iclforge::ac4::Error::kTruncated);
         CHECK(result.stopped_at_offset == 0);
     }
     SECTION("a frame longer than the data") {
         std::vector<std::byte> data = {std::byte{0xAC}, std::byte{0x41}, std::byte{0x00}, std::byte{0x10}};
         data.resize(12, std::byte{0});
-        const auto result = ac4::scan(data);
-        CHECK(result.stopped_at == ac4::Error::kTruncated);
+        const auto result = iclforge::ac4::scan(data);
+        CHECK(result.stopped_at == iclforge::ac4::Error::kTruncated);
         CHECK(result.frames.empty());
     }
 }
@@ -206,7 +207,7 @@ TEST_CASE("the table of contents reads every TOC-level escape and presentation s
         }
     }
     const auto frame = parse(with_substreams(w, 5, 3, 34));
-    const ac4::Toc& toc = frame.toc;
+    const iclforge::ac4::Toc& toc = frame.toc;
     CHECK(toc.sequence_counter == 7);
     CHECK(toc.wait_frames == 3);
     CHECK(toc.payload_base == 34);
@@ -264,7 +265,7 @@ TEST_CASE("the table of contents reads every TOC-level escape and presentation s
     CHECK(frame.substreams[1].offset == frame.substreams[0].offset + 3);
     CHECK(frame.substreams[0].is_audio);
     CHECK_FALSE(frame.substreams[4].is_audio);
-    CHECK(ac4::samples_per_frame(toc) == std::nullopt);  // 29.97 alternates
+    CHECK(iclforge::ac4::samples_per_frame(toc) == std::nullopt);  // 29.97 alternates
 }
 
 TEST_CASE("ac4_substream_info_chan reads every channel_mode code and its fields", "[ac4][toc]") {
@@ -360,9 +361,9 @@ TEST_CASE("a frame cut short inside a channel-coded group is truncated", "[ac4][
     w.flag(true);
     ac4_toc_test::channel_mode(w, 1);
     w.align();
-    const auto result = ac4::parse_raw_frame(w.bytes());
+    const auto result = iclforge::ac4::parse_raw_frame(w.bytes());
     REQUIRE_FALSE(result.has_value());
-    CHECK(result.error() == ac4::Error::kTruncated);
+    CHECK(result.error() == iclforge::ac4::Error::kTruncated);
 }
 
 TEST_CASE("frame_rate_fractions_info reads the fraction for each frame rate family", "[ac4][toc]") {
@@ -552,7 +553,7 @@ TEST_CASE("object and A-JOC substream infos read each bed and object assignment"
     CHECK(ajoc0.b_lfe);
     CHECK(ajoc0.n_fullband_dmx_signals == 4);
     CHECK(ajoc0.static_objects.size() == 10);
-    CHECK(ajoc0.static_objects[0].kind == ac4::ObjectKind::kIsf);
+    CHECK(ajoc0.static_objects[0].kind == iclforge::ac4::ObjectKind::kIsf);
     CHECK(ajoc0.upmix_objects.size() == 5);
     CHECK(ajoc0.sf_multiplier == 1);
     CHECK(ajoc0.bitrate_kbps == 16);
@@ -564,9 +565,9 @@ TEST_CASE("object and A-JOC substream infos read each bed and object assignment"
         CAPTURE(i);
         REQUIRE(subs[i].obj.has_value());
         CHECK(subs[i].obj->b_dynamic_objects == (i == 3));
-        CHECK((subs[i].obj->static_kind == ac4::ObjSubstreamInfo::Static::kBed) ==
+        CHECK((subs[i].obj->static_kind == iclforge::ac4::ObjSubstreamInfo::Static::kBed) ==
               (i >= 4 && i <= 7));
-        CHECK((subs[i].obj->static_kind == ac4::ObjSubstreamInfo::Static::kIsf) ==
+        CHECK((subs[i].obj->static_kind == iclforge::ac4::ObjSubstreamInfo::Static::kIsf) ==
               (i == 8 || i == 9));
         CHECK_FALSE(subs[i].obj->brate_ind.has_value());
     }
@@ -578,8 +579,8 @@ TEST_CASE("object and A-JOC substream infos read each bed and object assignment"
     const auto& obj3 = *subs[3].obj;
     REQUIRE(obj3.objects.size() == 4);  // Table 60: 3 + b_lfe, the LFE first
     CHECK(obj3.objects[0].lfe);
-    CHECK(obj3.objects[1].kind == ac4::ObjectKind::kDyn);
-    CHECK(obj3.objects[3].kind == ac4::ObjectKind::kDyn);
+    CHECK(obj3.objects[1].kind == iclforge::ac4::ObjectKind::kDyn);
+    CHECK(obj3.objects[3].kind == iclforge::ac4::ObjectKind::kDyn);
     CHECK(obj3.sf_multiplier == 1);
     REQUIRE(subs[4].obj->objects.size() == 8);
     CHECK(subs[4].obj->objects[3].lfe);
@@ -616,9 +617,9 @@ TEST_CASE("an A-JOC bed assignment counting past the data stops at truncation", 
     w.flag(false);     // nonstd assignment per signal
     w.put(4000, 12);   // 4001 bed signals, and the data ends
     w.align();
-    const auto result = ac4::parse_raw_frame(w.bytes());
+    const auto result = iclforge::ac4::parse_raw_frame(w.bytes());
     REQUIRE_FALSE(result.has_value());
-    CHECK(result.error() == ac4::Error::kTruncated);
+    CHECK(result.error() == iclforge::ac4::Error::kTruncated);
 }
 
 namespace {
@@ -808,9 +809,9 @@ TEST_CASE("oamd_common_data reads a bare bed render info and a trim past its bud
         for (int i = 0; i < 9; ++i) {
             oamd.flag(true);
         }
-        const auto result = ac4::parse_raw_frame(ajoc_with_oamd(oamd));
+        const auto result = iclforge::ac4::parse_raw_frame(ajoc_with_oamd(oamd));
         REQUIRE_FALSE(result.has_value());
-        CHECK(result.error() == ac4::Error::kTruncated);
+        CHECK(result.error() == iclforge::ac4::Error::kTruncated);
     }
 }
 
@@ -824,9 +825,9 @@ TEST_CASE("oamd_common_data's add_data running past the frame is truncated", "[a
     oamd.flag(false);  // b_trim_present
     oamd.flag(false);  // b_bed_render_info
     oamd.flag(false);  // b_headphone
-    const auto result = ac4::parse_raw_frame(ajoc_with_oamd(oamd, false));
+    const auto result = iclforge::ac4::parse_raw_frame(ajoc_with_oamd(oamd, false));
     REQUIRE_FALSE(result.has_value());
-    CHECK(result.error() == ac4::Error::kTruncated);
+    CHECK(result.error() == iclforge::ac4::Error::kTruncated);
 }
 
 TEST_CASE("bitstream_version 1 presentations of every shape", "[ac4][toc]") {
@@ -936,7 +937,7 @@ TEST_CASE("bitstream_version 1 presentations of every shape", "[ac4][toc]") {
     bytes.insert(bytes.end(), header.begin(), header.end());
     bytes.resize(bytes.size() + 6 * 4 - header.size(), std::byte{0});
     const auto frame = parse(bytes);
-    const ac4::Toc& toc = frame.toc;
+    const iclforge::ac4::Toc& toc = frame.toc;
     REQUIRE(toc.presentations_v0.size() == 5);
     CHECK(toc.presentations_v1.empty());
     const auto& p0 = toc.presentations_v0[0];
@@ -977,31 +978,31 @@ TEST_CASE("bitstream_version 1 presentations of every shape", "[ac4][toc]") {
     // The carriage helpers read a version 0 table of contents too; its dac4
     // would need Part 1 Annex E.4a's ac4_presentation_v0_dsi(), which
     // build_dac4() does not write.
-    CHECK(ac4::build_dac4(toc).empty());
-    CHECK_FALSE(ac4::dac4_refusal(toc).empty());
+    CHECK(iclforge::ac4::build_dac4(toc).empty());
+    CHECK_FALSE(iclforge::ac4::dac4_refusal(toc).empty());
     // The codecs parameter names the presentation with the widest
-    // compatibility (TS 103 190-2 Annex G.2.3, ac4::signalled_presentation()):
+    // compatibility (TS 103 190-2 Annex G.2.3, iclforge::ac4::signalled_presentation()):
     // presentation 1, at md_compat 0, where presentation 0 needs level 4.
-    CHECK(ac4::signalled_presentation(toc) == std::optional<std::size_t>{1});
-    CHECK(ac4::rfc6381_codec_string(toc) == "ac-4.01.00.00");
-    CHECK(ac4::samples_per_frame(toc) == 2002U);
+    CHECK(iclforge::ac4::signalled_presentation(toc) == std::optional<std::size_t>{1});
+    CHECK(iclforge::ac4::rfc6381_codec_string(toc) == "ac-4.01.00.00");
+    CHECK(iclforge::ac4::samples_per_frame(toc) == 2002U);
 }
 
 TEST_CASE("samples_per_frame covers every frame rate index", "[ac4][toc]") {
-    ac4::Toc toc;
+    iclforge::ac4::Toc toc;
     const std::vector<std::optional<std::uint32_t>> expected = {
         2002, 2000, 1920, std::nullopt, 1600, 1001, 1000, 960, std::nullopt, 800, 480, std::nullopt, 400, 2048,
         std::nullopt, std::nullopt};
     for (int index = 0; index < 16; ++index) {
         toc.frame_rate_index = index;
         INFO("frame_rate_index " << index);
-        CHECK(ac4::samples_per_frame(toc) == expected[static_cast<std::size_t>(index)]);
+        CHECK(iclforge::ac4::samples_per_frame(toc) == expected[static_cast<std::size_t>(index)]);
     }
     toc.sample_rate_hz = 44100;
     toc.frame_rate_index = 13;
-    CHECK(ac4::samples_per_frame(toc) == 2048U);
+    CHECK(iclforge::ac4::samples_per_frame(toc) == 2048U);
     toc.frame_rate_index = 2;
-    CHECK_FALSE(ac4::samples_per_frame(toc).has_value());
+    CHECK_FALSE(iclforge::ac4::samples_per_frame(toc).has_value());
     // No presentations at all: version and md_compat read as 0.
-    CHECK(ac4::rfc6381_codec_string(ac4::Toc{}) == "ac-4.00.00.00");
+    CHECK(iclforge::ac4::rfc6381_codec_string(iclforge::ac4::Toc{}) == "ac-4.00.00.00");
 }

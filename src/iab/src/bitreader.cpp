@@ -5,7 +5,7 @@
 
 #include "bitreader.hpp"
 
-namespace ac3iab::detail {
+namespace iclforge::iab::detail {
 
 std::expected<std::uint64_t, IabError> BitReader::read_bits(unsigned count) {
     if (count > 64 || count > bits_remaining()) {
@@ -54,4 +54,4 @@ std::expected<std::span<const std::byte>, IabError> BitReader::read_bytes(std::s
     return data_.subspan(start, count);
 }
 
-}  // namespace ac3iab::detail
+}  // namespace iclforge::iab::detail

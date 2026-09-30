@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cstdint>
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 namespace {
 
 // A field of `bits` bits whose all-ones value escapes to variable_bits(n_bits)
@@ -485,4 +485,4 @@ std::optional<std::vector<std::byte>> assemble_frame(
     return frame;
 }
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

@@ -37,7 +37,7 @@
 // interpolation. src/ac4dec/ERRATA.md records the readings taken, under
 // "A-CPL".
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 // The most acpl_data_1ch() one element carries: the immersive element's four.
 inline constexpr std::size_t kMaxAcplModules = 4;
@@ -157,4 +157,4 @@ class AcplStage {
     std::array<Param, 6> coupling_g_{};
 };
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

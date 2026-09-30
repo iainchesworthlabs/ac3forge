@@ -42,7 +42,7 @@ extern "C" {
  * Status / error codes
  * --------------------------------------------------------------------- */
 
-/* Mirrors ac3::FrameError (encode side) and ac3::DecodeError (decode side)
+/* Mirrors iclforge::FrameError (encode side) and iclforge::DecodeError (decode side)
  * one-for-one, plus a handful of codes this layer itself can raise. Grouped
  * with gaps between groups so a future addition to either C++ enum gets its
  * own number without renumbering anything already shipped. */
@@ -60,7 +60,7 @@ typedef enum ac3forge_status {
      * zero-initialized struct as its type allows. */
     AC3FORGE_ERROR_UNSUPPORTED = 4,
 
-    /* ac3::FrameError — FrameEncoder::encode_frame(), AtmosEncoder::encode_frame() */
+    /* iclforge::FrameError — FrameEncoder::encode_frame(), AtmosEncoder::encode_frame() */
     AC3FORGE_ERROR_ENCODE_INVALID_BITRATE = 10,
     AC3FORGE_ERROR_ENCODE_INVALID_DIALNORM = 11,
     AC3FORGE_ERROR_ENCODE_INVALID_SUBSTREAM = 12,
@@ -70,7 +70,7 @@ typedef enum ac3forge_status {
     AC3FORGE_ERROR_ENCODE_INVALID_OBJECT_AUDIO = 16,
     AC3FORGE_ERROR_ENCODE_INVALID_BSI = 17,
 
-    /* ac3::DecodeError — FrameDecoder::decode_frame(), Eac3Decoder::decode_substream()/decode_access_unit() */
+    /* iclforge::DecodeError — FrameDecoder::decode_frame(), Eac3Decoder::decode_substream()/decode_access_unit() */
     AC3FORGE_ERROR_DECODE_TRUNCATED = 30,
     AC3FORGE_ERROR_DECODE_BAD_SYNC_WORD = 31,
     AC3FORGE_ERROR_DECODE_BAD_CRC = 32,
@@ -78,9 +78,9 @@ typedef enum ac3forge_status {
     AC3FORGE_ERROR_DECODE_UNSUPPORTED = 34,
     AC3FORGE_ERROR_DECODE_INVALID_STREAM = 35,
 
-    /* ac3::io::ScanError — ac3forge_scan() only; split_frames()/split_access_units()/
-     * stream_bsid() stay on ac3::DecodeError above, since ac3::io::scan() is the
-     * only entry point in this header built on ac3::io's own error type. */
+    /* iclforge::io::ScanError — ac3forge_scan() only; split_frames()/split_access_units()/
+     * stream_bsid() stay on iclforge::DecodeError above, since iclforge::io::scan() is the
+     * only entry point in this header built on iclforge::io's own error type. */
     AC3FORGE_ERROR_SCAN_EMPTY = 50,
     AC3FORGE_ERROR_SCAN_LOST_SYNC = 51,
     AC3FORGE_ERROR_SCAN_UNSUPPORTED_BSID = 52,
@@ -88,14 +88,14 @@ typedef enum ac3forge_status {
     AC3FORGE_ERROR_SCAN_TRUNCATED = 54,
     AC3FORGE_ERROR_SCAN_UNSUPPORTED_STRUCTURE = 55,
 
-    /* ac4::DecodeError - ac4::Decoder::parse()/decode() */
+    /* iclforge::ac4::DecodeError - iclforge::ac4::Decoder::parse()/decode() */
     AC3FORGE_ERROR_AC4_DECODE_TRUNCATED = 60,
     AC3FORGE_ERROR_AC4_DECODE_INVALID_TOC = 61,
     AC3FORGE_ERROR_AC4_DECODE_INVALID_STREAM = 62,
     AC3FORGE_ERROR_AC4_DECODE_UNSUPPORTED = 63,
     AC3FORGE_ERROR_AC4_DECODE_MISSING_IFRAME = 64,
 
-    /* ac4::EncodeError - ac4::Encoder::create()/encode()/flush() */
+    /* iclforge::ac4::EncodeError - iclforge::ac4::Encoder::create()/encode()/flush() */
     AC3FORGE_ERROR_AC4_ENCODE_INVALID_CONFIG = 80,
     AC3FORGE_ERROR_AC4_ENCODE_INVALID_INPUT = 81
 } ac3forge_status_t;
@@ -123,17 +123,17 @@ typedef struct ac3forge_version_info {
     int minor;
     int patch;
     /* Semver plus prerelease suffix (e.g. "0.8.0-beta.1"), library-owned
-     * storage valid for the process lifetime — mirrors ac3::version_full. */
+     * storage valid for the process lifetime — mirrors iclforge::version_full. */
     const char* full;
 } ac3forge_version_t;
 
 AC3FORGEC_EXPORT ac3forge_version_t ac3forge_version(void);
 
 /* --------------------------------------------------------------------- *
- * Shared enums (ac3::SampleRate, ac3::Acmod)
+ * Shared enums (iclforge::SampleRate, iclforge::Acmod)
  * --------------------------------------------------------------------- */
 
-/* Ordinals match ac3::SampleRate exactly (A/52 Table 5.6 fscod, plus the
+/* Ordinals match iclforge::SampleRate exactly (A/52 Table 5.6 fscod, plus the
  * three Annex E fscod2 reduced rates). */
 typedef enum ac3forge_sample_rate {
     AC3FORGE_SAMPLE_RATE_48000 = 0,
@@ -144,7 +144,7 @@ typedef enum ac3forge_sample_rate {
     AC3FORGE_SAMPLE_RATE_16000 = 5  /* E-AC-3 only */
 } ac3forge_sample_rate_t;
 
-/* Ordinals match ac3::Acmod exactly (A/52 Table 5.8). kDualMono (0) is 1+1:
+/* Ordinals match iclforge::Acmod exactly (A/52 Table 5.8). kDualMono (0) is 1+1:
  * two independent programmes sharing one syncframe, not a channel count. */
 typedef enum ac3forge_acmod {
     AC3FORGE_ACMOD_DUAL_MONO = 0, /* 1+1: Ch1, Ch2 */
@@ -174,7 +174,7 @@ typedef enum ac3forge_acmod {
  * Latency (bare-metal probe harness)
  * --------------------------------------------------------------------- */
 
-/* Mirrors ac3::LatencyBudget: the ALGORITHMIC delay of an encode -> decode
+/* Mirrors iclforge::LatencyBudget: the ALGORITHMIC delay of an encode -> decode
  * chain, in samples at the coded sample rate. Compute time is a separate
  * question (docs/performance-trend.md); transport, device buffers and
  * resampling are the integrator's own to add.
@@ -224,9 +224,9 @@ typedef enum ac3forge_surround_mix_level {
     AC3FORGE_SURMIXLEV_SILENT = 2
 } ac3forge_surround_mix_level_t;
 
-/* The five conventional Dolby DRC curves (ac3::meta::ProfileId) — the same
+/* The five conventional Dolby DRC curves (iclforge::meta::ProfileId) — the same
  * named presets ac3cli's own --drc flag accepts. The full custom
- * ac3::meta::Profile curve (attack/release timing, boost ratios, ...) is an
+ * iclforge::meta::Profile curve (attack/release timing, boost ratios, ...) is an
  * internal tuning knob, not part of this minimal stable surface. */
 typedef enum ac3forge_drc_profile {
     AC3FORGE_DRC_FILM_STANDARD = 0,
@@ -236,7 +236,7 @@ typedef enum ac3forge_drc_profile {
     AC3FORGE_DRC_SPEECH = 4
 } ac3forge_drc_profile_t;
 
-/* ac3::meta::HeavyConfig verbatim (§7.7.2) — small enough, and specific
+/* iclforge::meta::HeavyConfig verbatim (§7.7.2) — small enough, and specific
  * enough per-field, to expose directly rather than behind a preset. */
 typedef struct ac3forge_heavy_config {
     double dialogue_target_dbfs; /* default -20.0 */
@@ -247,12 +247,12 @@ typedef struct ac3forge_heavy_config {
 AC3FORGEC_EXPORT void ac3forge_heavy_config_init(ac3forge_heavy_config_t* config);
 
 /* --------------------------------------------------------------------- *
- * AC-3 encoder (ac3::FrameEncoder)
+ * AC-3 encoder (iclforge::FrameEncoder)
  * --------------------------------------------------------------------- */
 
 typedef struct ac3forge_encoder ac3forge_encoder_t;
 
-/* Mirrors ac3::EncoderConfig. `has_*` flags stand in for std::optional<T>,
+/* Mirrors iclforge::EncoderConfig. `has_*` flags stand in for std::optional<T>,
  * since C has no direct equivalent — the paired field is read only when its
  * flag is non-zero. Call ac3forge_encoder_config_init() first so every field
  * this struct doesn't set explicitly carries the same default EncoderConfig{}
@@ -289,7 +289,7 @@ typedef struct ac3forge_encoder_config {
     ac3forge_surround_mix_level_t surmixlev;
 } ac3forge_encoder_config_t;
 
-/* Fills `config` with the same defaults as ac3::EncoderConfig{}. */
+/* Fills `config` with the same defaults as iclforge::EncoderConfig{}. */
 AC3FORGEC_EXPORT void ac3forge_encoder_config_init(ac3forge_encoder_config_t* config);
 
 AC3FORGEC_EXPORT ac3forge_status_t ac3forge_encoder_create(const ac3forge_encoder_config_t* config,
@@ -332,12 +332,12 @@ AC3FORGEC_EXPORT ac3forge_status_t ac3forge_encoder_encode_frame(ac3forge_encode
                                                                ac3forge_bytes_t** out_frame);
 
 /* --------------------------------------------------------------------- *
- * AC-3 decoder (ac3::FrameDecoder)
+ * AC-3 decoder (iclforge::FrameDecoder)
  * --------------------------------------------------------------------- */
 
 typedef struct ac3forge_decoder ac3forge_decoder_t;
 
-/* Mirrors ac3::DecoderConfig. */
+/* Mirrors iclforge::DecoderConfig. */
 typedef struct ac3forge_decoder_config {
     double drc_scale;      /* 0.0..1.0, default 0.0 (§7.7.1's "Partial Compression") */
     int heavy_compression; /* default 0 */
@@ -356,7 +356,7 @@ AC3FORGEC_EXPORT void ac3forge_decoder_destroy(ac3forge_decoder_t* decoder);
  * sum a caller can write. */
 AC3FORGEC_EXPORT int ac3forge_decoder_latency_samples(const ac3forge_decoder_t* decoder);
 
-/* One decoded syncframe (ac3::DecodedFrame), read through the accessors
+/* One decoded syncframe (iclforge::DecodedFrame), read through the accessors
  * below. */
 typedef struct ac3forge_decoded_frame ac3forge_decoded_frame_t;
 
@@ -425,13 +425,13 @@ AC3FORGEC_EXPORT int ac3forge_decoded_frame_block_switched(const ac3forge_decode
 AC3FORGEC_EXPORT void ac3forge_decoded_frame_destroy(ac3forge_decoded_frame_t* frame);
 
 /* --------------------------------------------------------------------- *
- * E-AC-3 encoder (ac3::eac3::FrameEncoder / AccessUnitEncoder)
+ * E-AC-3 encoder (iclforge::eac3::FrameEncoder / AccessUnitEncoder)
  * --------------------------------------------------------------------- */
 
-/* Mirrors ac3::eac3::StreamType (Table E1.2, §E2.3.1.2). This encoder only
+/* Mirrors iclforge::eac3::StreamType (Table E1.2, §E2.3.1.2). This encoder only
  * ever emits kIndependent/kDependent; kConvertible/kReserved are accepted
  * here for a faithful mirror but never produced by anything below, the same
- * way ac3::eac3::FrameEncoder's own validate() refuses them. */
+ * way iclforge::eac3::FrameEncoder's own validate() refuses them. */
 typedef enum ac3forge_stream_type {
     AC3FORGE_STREAM_TYPE_INDEPENDENT = 0,
     AC3FORGE_STREAM_TYPE_DEPENDENT = 1,
@@ -442,7 +442,7 @@ typedef enum ac3forge_stream_type {
 typedef struct ac3forge_eac3_encoder ac3forge_eac3_encoder_t;
 typedef struct ac3forge_eac3_access_unit_encoder ac3forge_eac3_access_unit_encoder_t;
 
-/* Mirrors ac3::eac3::FrameConfig's core surface - the fields needed to
+/* Mirrors iclforge::eac3::FrameConfig's core surface - the fields needed to
  * produce a real E-AC-3 substream. `has_*` flags stand in for
  * std::optional<T>, same convention as ac3forge_encoder_config_t. Not
  * mirrored here: the mixmdate/infomdat metadata groups, dialnorm2/drc/heavy
@@ -483,8 +483,8 @@ typedef struct ac3forge_eac3_frame_config {
      * Meaningful when building a multi-substream access unit by hand out of
      * several ac3forge_eac3_encoder_t instances.
      * ac3forge_eac3_access_unit_encoder_t assigns these itself the way
-     * ac3::eac3::AccessUnitEncoder does, and does not read them from the
-     * configs passed to it (see ac3::eac3::AccessUnitConfig's own comment) -
+     * iclforge::eac3::AccessUnitEncoder does, and does not read them from the
+     * configs passed to it (see iclforge::eac3::AccessUnitConfig's own comment) -
      * only chanmap/has_chanmap on a dependent matters there. */
     ac3forge_stream_type_t strmtyp;
     int substreamid;
@@ -495,7 +495,7 @@ typedef struct ac3forge_eac3_frame_config {
 AC3FORGEC_EXPORT void ac3forge_eac3_frame_config_init(ac3forge_eac3_frame_config_t* config);
 
 /* A few of Table E2.5's chanmap combinations, matching
- * ac3::eac3::chanmap::k71Rear/k512Height/kTopQuad - what a dependent
+ * iclforge::eac3::chanmap::k71Rear/k512Height/kTopQuad - what a dependent
  * substream needs to widen a 5.1 bed. See docs/library/encoding-eac3.md's
  * "Wide layouts" table. */
 #define AC3FORGE_CHANMAP_71_REAR 0x1A00u    /* Ls, Rs, Lrs, Rrs -> 7.1 */
@@ -503,10 +503,10 @@ AC3FORGEC_EXPORT void ac3forge_eac3_frame_config_init(ac3forge_eac3_frame_config
 /* Vhl, Vhr, Lts, Rts -> 5.1.4 (or 7.1.4 with 71_REAR in a second dependent) */
 #define AC3FORGE_CHANMAP_TOP_QUAD 0x0014u
 
-/* Mirrors ac3::eac3::FrameMetadata - the §7.7 words for one frame, shared
+/* Mirrors iclforge::eac3::FrameMetadata - the §7.7 words for one frame, shared
  * across every substream of one programme by
  * ac3forge_eac3_access_unit_encoder_encode() so they never disagree (see
- * ac3::eac3::FrameEncoder's own comment on why "measured per substream" and
+ * iclforge::eac3::FrameEncoder's own comment on why "measured per substream" and
  * "shared across substreams" give different answers). */
 typedef struct ac3forge_eac3_frame_metadata {
     uint8_t dynrng[AC3FORGE_BLOCKS_PER_FRAME];
@@ -533,7 +533,7 @@ AC3FORGEC_EXPORT size_t ac3forge_eac3_encoder_channel_count(const ac3forge_eac3_
 /* Always AC3FORGE_SAMPLES_PER_FRAME (numblkscod is not exposed above,
  * so every substream this API builds carries six blocks); exposed as its own
  * accessor rather than assumed so a caller never has to special-case this
- * encoder against the AC-3 one - ac3::eac3::FrameEncoder::samples_per_frame()
+ * encoder against the AC-3 one - iclforge::eac3::FrameEncoder::samples_per_frame()
  * varies once a caller reaches numblkscod, which nothing here can ask
  * for. */
 AC3FORGEC_EXPORT size_t ac3forge_eac3_encoder_samples_per_frame(
@@ -547,11 +547,11 @@ AC3FORGEC_EXPORT int ac3forge_eac3_encoder_latency_samples(const ac3forge_eac3_e
  * ac3forge_eac3_encoder_channel_count(encoder)), each to exactly
  * ac3forge_eac3_encoder_samples_per_frame(encoder) samples nominally in
  * [-1, 1), in AC-3 channel order (Table 5.8) with LFE last. `metadata`, when
- * non-NULL, supplies the §7.7 words explicitly (ac3::eac3::FrameEncoder's
+ * non-NULL, supplies the §7.7 words explicitly (iclforge::eac3::FrameEncoder's
  * second encode_frame() overload) instead of measuring them from `channels`
  * - the access-unit path needs this so every substream of one programme
  * agrees; NULL measures internally, matching a standalone stream. `aux`/
- * `aux_size` carry a caller-built EMDF container (ac3::emdf::build_container)
+ * `aux_size` carry a caller-built EMDF container (iclforge::emdf::build_container)
  * in the frame's aux data, or NULL/0 for none - at most 511 bytes (it rides
  * block 0's skip field, whose skipl is 9 bits); a larger payload fails with
  * AC3FORGE_ERROR_ENCODE_INVALID_OBJECT_AUDIO. On success, *out_frame
@@ -561,10 +561,10 @@ AC3FORGEC_EXPORT ac3forge_status_t ac3forge_eac3_encoder_encode_frame(
     size_t samples_per_channel, const ac3forge_eac3_frame_metadata_t* metadata,
     const uint8_t* aux, size_t aux_size, ac3forge_bytes_t** out_frame);
 
-/* --- wide layouts: ac3::eac3::AccessUnitEncoder ------------------------- */
+/* --- wide layouts: iclforge::eac3::AccessUnitEncoder ------------------------- */
 
 /* An access unit's bytes plus per-substream boundaries - mirrors
- * ac3::eac3::AccessUnit. Unlike ac3forge_atmos_encoder_encode_frame() (which
+ * iclforge::eac3::AccessUnit. Unlike ac3forge_atmos_encoder_encode_frame() (which
  * always produces exactly one substream and so returns a plain
  * ac3forge_bytes_t), a general access-unit encoder can produce several, and a
  * caller re-deriving crc2 or demuxing substreams individually needs to know
@@ -585,9 +585,9 @@ AC3FORGEC_EXPORT void ac3forge_eac3_access_unit_destroy(ac3forge_eac3_access_uni
 /* `independent` is the bed's config; `dependents`/`dependent_count` are the
  * substreams that widen it (at most 8 - a larger count fails with
  * AC3FORGE_ERROR_INVALID_ARGUMENT), in transmission order - see
- * ac3::eac3::AccessUnitConfig. Every substream must agree on sample_rate;
+ * iclforge::eac3::AccessUnitConfig. Every substream must agree on sample_rate;
  * strmtyp/substreamid on `independent` and each of `dependents` are assigned
- * by this call the way ac3::eac3::AccessUnitEncoder's constructor does, so
+ * by this call the way iclforge::eac3::AccessUnitEncoder's constructor does, so
  * whatever the caller set there is not read - only chanmap/has_chanmap on a
  * dependent matters (Table E2.5; AC3FORGE_CHANMAP_* above name a few
  * combinations). */
@@ -611,7 +611,7 @@ AC3FORGEC_EXPORT int ac3forge_eac3_access_unit_encoder_latency_samples(
  * each dependent's in the order its chanmap names them - channel_count()
  * spans total, each AC3FORGE_SAMPLES_PER_FRAME samples. NULL is accepted when
  * channel_count is 0, which happens when `independent`/`dependents` described
- * a config ac3::eac3::AccessUnitEncoder's constructor could not build any
+ * a config iclforge::eac3::AccessUnitEncoder's constructor could not build any
  * substreams from (see ac3forge_eac3_access_unit_encoder_create()'s own
  * comment) - calling this then reports the real reason as a status code
  * rather than silently producing nothing. `aux`/`aux_size`: see
@@ -623,7 +623,7 @@ AC3FORGEC_EXPORT ac3forge_status_t ac3forge_eac3_access_unit_encoder_encode(
     ac3forge_eac3_access_unit_t** out_unit);
 
 /* --------------------------------------------------------------------- *
- * E-AC-3 / Atmos decode (ac3::Eac3Decoder)
+ * E-AC-3 / Atmos decode (iclforge::Eac3Decoder)
  * --------------------------------------------------------------------- */
 
 typedef struct ac3forge_eac3_decoder ac3forge_eac3_decoder_t;
@@ -659,7 +659,7 @@ AC3FORGEC_EXPORT ac3forge_status_t ac3forge_eac3_decoder_decode_substream(
     ac3forge_decoded_substream_t** out_substream);
 
 /* Same held-back convention as decode_substream, for the same reason (see
- * ac3::Eac3Decoder::decode_access_unit's own comment). `unit` must be
+ * iclforge::Eac3Decoder::decode_access_unit's own comment). `unit` must be
  * delimited exactly as ac3forge_split_access_units() would delimit it. */
 AC3FORGEC_EXPORT ac3forge_status_t ac3forge_eac3_decoder_decode_access_unit(
     ac3forge_eac3_decoder_t* decoder, const uint8_t* unit, size_t unit_size,
@@ -705,7 +705,7 @@ AC3FORGEC_EXPORT ac3forge_status_t ac3forge_eac3_decoder_flush(
 AC3FORGEC_EXPORT void ac3forge_decoded_substream_array_destroy(
     ac3forge_decoded_substream_t** substreams, size_t count);
 
-/* --- ac3::DecodedSubstream accessors ------------------------------------ */
+/* --- iclforge::DecodedSubstream accessors ------------------------------------ */
 
 AC3FORGEC_EXPORT int ac3forge_decoded_substream_is_independent(
     const ac3forge_decoded_substream_t* substream);
@@ -757,7 +757,7 @@ AC3FORGEC_EXPORT const float* ac3forge_decoded_substream_channel_samples(
 AC3FORGEC_EXPORT int ac3forge_decoded_substream_block_switched(
     const ac3forge_decoded_substream_t* substream, size_t channel_index, int block_index);
 
-/* --- object audio: OAMD (ac3::oba::DecodedProgram) + JOC reconstruction -- */
+/* --- object audio: OAMD (iclforge::oba::DecodedProgram) + JOC reconstruction -- */
 
 AC3FORGEC_EXPORT int ac3forge_decoded_substream_has_object_metadata(
     const ac3forge_decoded_substream_t* substream);
@@ -805,7 +805,7 @@ AC3FORGEC_EXPORT void ac3forge_decoded_substream_destroy(ac3forge_decoded_substr
 #define AC3FORGE_BED_LW_RW (1u << 1)
 #define AC3FORGE_BED_LFE2 (1u << 0)
 
-/* --- ac3::eac3::Location (Table E2.5), used by location_map()/layout ---- */
+/* --- iclforge::eac3::Location (Table E2.5), used by location_map()/layout ---- */
 typedef enum ac3forge_location {
     AC3FORGE_LOCATION_L = 0,
     AC3FORGE_LOCATION_C = 1,
@@ -831,10 +831,10 @@ typedef enum ac3forge_location {
     AC3FORGE_LOCATION_LFE = 21
 } ac3forge_location_t;
 
-/* --- ac3::DecodedAccessUnit accessors ----------------------------------- */
+/* --- iclforge::DecodedAccessUnit accessors ----------------------------------- */
 
 /* Same held-back-frame convention as decode_substream/decode_access_unit
- * above; see ac3::Eac3Decoder::decode_access_unit's own comment. */
+ * above; see iclforge::Eac3Decoder::decode_access_unit's own comment. */
 AC3FORGEC_EXPORT ac3forge_sample_rate_t ac3forge_decoded_access_unit_sample_rate(
     const ac3forge_decoded_access_unit_t* unit);
 AC3FORGEC_EXPORT ac3forge_acmod_t ac3forge_decoded_access_unit_acmod(
@@ -872,7 +872,7 @@ AC3FORGEC_EXPORT const float* ac3forge_decoded_access_unit_channel_samples(
 
 /* 0 for dual mono (acmod == AC3FORGE_ACMOD_DUAL_MONO): 1+1 has no Table
  * E2.5 layout, its two channels are unrelated programmes — see
- * ac3::DecodedAccessUnit::layout's own comment. Otherwise equal to
+ * iclforge::DecodedAccessUnit::layout's own comment. Otherwise equal to
  * channel_count() above. */
 AC3FORGEC_EXPORT size_t ac3forge_decoded_access_unit_layout_count(
     const ac3forge_decoded_access_unit_t* unit);
@@ -902,7 +902,7 @@ AC3FORGEC_EXPORT const float* ac3forge_decoded_access_unit_object_audio(
 AC3FORGEC_EXPORT void ac3forge_decoded_access_unit_destroy(ac3forge_decoded_access_unit_t* unit);
 
 /* --------------------------------------------------------------------- *
- * Stream framing helpers (ac3::split_frames / split_access_units / stream_bsid)
+ * Stream framing helpers (iclforge::split_frames / split_access_units / stream_bsid)
  * --------------------------------------------------------------------- */
 
 /* A library-owned array of (offset, length) spans into the SAME buffer the
@@ -935,22 +935,22 @@ AC3FORGEC_EXPORT ac3forge_status_t ac3forge_stream_bsid(const uint8_t* frame, si
                                                       int* out_bsid);
 
 /* --------------------------------------------------------------------- *
- * Stream scan (ac3::io::scan / ac3::io::ScannedStream)
+ * Stream scan (iclforge::io::scan / iclforge::io::ScannedStream)
  * --------------------------------------------------------------------- */
 
 /* split_frames()/split_access_units()/stream_bsid() above only delimit a
  * stream; ac3forge_scan() actually reads what it contains - sample rate,
  * layout, every programme it carries, the Annex G/DVB service fields a
  * muxer's descriptors want - without decoding any audio. Mirrors
- * ac3::io::scan()/ScannedStream. */
+ * iclforge::io::scan()/ScannedStream. */
 
-/* Mirrors ac3::io::StreamKind. */
+/* Mirrors iclforge::io::StreamKind. */
 typedef enum ac3forge_stream_kind {
     AC3FORGE_STREAM_KIND_AC3 = 0,   /* bsid <= 10 */
     AC3FORGE_STREAM_KIND_EAC3 = 1,  /* bsid 16 (Annex E) */
     /* §E2.3.1.2 legacy-core delivery: an AC-3 syncframe carrying the 5.1 bed,
      * immediately followed by one or more Annex E dependent substreams that
-     * extend it - see ac3::io::StreamKind's own comment on why this is its
+     * extend it - see iclforge::io::StreamKind's own comment on why this is its
      * own kind rather than folded into either of the two above. */
     AC3FORGE_STREAM_KIND_AC3_CORE_EAC3_EXTENSION = 2
 } ac3forge_stream_kind_t;
@@ -995,7 +995,7 @@ AC3FORGEC_EXPORT uint32_t ac3forge_scanned_stream_access_unit_samples(
 AC3FORGEC_EXPORT size_t ac3forge_scanned_stream_substreams_per_unit(
     const ac3forge_scanned_stream_t* stream);
 
-/* --- raw syntax fields (ac3::io::dec3.hpp's codec-config boxes / MPEG-TS
+/* --- raw syntax fields (iclforge::io::dec3.hpp's codec-config boxes / MPEG-TS
  * descriptors want these straight off the bitstream) --------------------- */
 
 AC3FORGEC_EXPORT int ac3forge_scanned_stream_bsid(const ac3forge_scanned_stream_t* stream);
@@ -1027,8 +1027,8 @@ AC3FORGEC_EXPORT uint8_t ac3forge_scanned_stream_independent_substreams(
     const ac3forge_scanned_stream_t* stream);
 /* The FIRST programme's rendered channel LOCATIONS as one Table E2.5
  * custom-channel-map word (bit 0 = Left in the MSB through bit 15 = LFE in
- * the LSB) - see ac3::io::ScannedStream::channel_map's own comment. Written
- * for ac3::io::dash_channel_configuration()'s DASH @value. */
+ * the LSB) - see iclforge::io::ScannedStream::channel_map's own comment. Written
+ * for iclforge::io::dash_channel_configuration()'s DASH @value. */
 AC3FORGEC_EXPORT uint16_t ac3forge_scanned_stream_channel_map(
     const ac3forge_scanned_stream_t* stream);
 
@@ -1050,7 +1050,7 @@ AC3FORGEC_EXPORT int ac3forge_scanned_stream_associated_substream_lfe(
 AC3FORGEC_EXPORT int ac3forge_scanned_stream_associated_substream_mix_metadata(
     const ac3forge_scanned_stream_t* stream, int index);
 
-/* --- ac3::io::ScannedProgramme, by index - ascending substreamid order,
+/* --- iclforge::io::ScannedProgramme, by index - ascending substreamid order,
  * never empty on a successful scan. Entry 0 is the same programme every
  * scalar accessor above describes. §E2.3.1.2 allows up to 8 for E-AC-3;
  * always exactly 1 for AC-3 and AC3FORGE_STREAM_KIND_AC3_CORE_EAC3_EXTENSION,
@@ -1090,7 +1090,7 @@ AC3FORGEC_EXPORT ac3forge_span_t ac3forge_scanned_stream_programme_access_unit(
 
 AC3FORGEC_EXPORT void ac3forge_scanned_stream_destroy(ac3forge_scanned_stream_t* stream);
 
-/* --- timing (ac3::io::access_unit_timing() and neighbours) - over the FIRST
+/* --- timing (iclforge::io::access_unit_timing() and neighbours) - over the FIRST
  * programme's access units, same convention as the scalar fields above. --- */
 
 /* Access unit `index`'s absolute position - returns 0 (out-parameters left
@@ -1115,24 +1115,24 @@ AC3FORGEC_EXPORT int ac3forge_scanned_stream_access_unit_at_sample(
 AC3FORGEC_EXPORT int ac3forge_scanned_stream_access_unit_at_seconds(
     const ac3forge_scanned_stream_t* stream, double seconds, size_t* out_index);
 /* The one length every access unit shares - returns 0 (out_samples
- * untouched) when they differ, 1 otherwise. mp4::AudioTrack/mpegts::
- * AudioTrack/matroska::AudioTrack each need exactly this before a stream can
+ * untouched) when they differ, 1 otherwise. iclforge::mp4::AudioTrack/iclforge::mpegts::
+ * AudioTrack/iclforge::matroska::AudioTrack each need exactly this before a stream can
  * be muxed into a fixed-duration track. */
 AC3FORGEC_EXPORT int ac3forge_scanned_stream_uniform_access_unit_samples(
     const ac3forge_scanned_stream_t* stream, uint32_t* out_samples);
 
 /* --------------------------------------------------------------------- *
- * Atmos encode (ac3::oba::AtmosEncoder)
+ * Atmos encode (iclforge::oba::AtmosEncoder)
  * --------------------------------------------------------------------- */
 
 typedef struct ac3forge_atmos_encoder ac3forge_atmos_encoder_t;
 
-/* Mirrors ac3::oba::AtmosConfig. */
+/* Mirrors iclforge::oba::AtmosConfig. */
 typedef struct ac3forge_atmos_config {
     ac3forge_sample_rate_t sample_rate;
     uint32_t bitrate_kbps; /* default 448 */
     int dialnorm;
-    int num_bands_idx; /* index into ac3::oba::joc::kNumBands (Table 50), 0..7; default 4 */
+    int num_bands_idx; /* index into iclforge::oba::joc::kNumBands (Table 50), 0..7; default 4 */
     int fine_quant;
     int emit_object_metadata; /* default 1 — see AtmosConfig's own comment on turning this off */
     int fast_mdct;
@@ -1140,7 +1140,7 @@ typedef struct ac3forge_atmos_config {
 
 AC3FORGEC_EXPORT void ac3forge_atmos_config_init(ac3forge_atmos_config_t* config);
 
-/* One object's placement for one frame — mirrors ac3::oba::ObjectPlacement.
+/* One object's placement for one frame — mirrors iclforge::oba::ObjectPlacement.
  * Position is §4.2.1's room-anchored system, same ranges as
  * ac3forge_decoded_substream_dynamic_object()'s out_x/out_y/out_z above. */
 typedef struct ac3forge_object_placement {
@@ -1149,7 +1149,7 @@ typedef struct ac3forge_object_placement {
     double lfe_send; /* linear, default 0.0 — the only route an object reaches the LFE */
 } ac3forge_object_placement_t;
 
-/* Fills `placement` with the same defaults ac3::oba::ObjectPlacement's own default member
+/* Fills `placement` with the same defaults iclforge::oba::ObjectPlacement's own default member
  * initializers give — room-centre position (x 0.5, y 0.5, z 0.0), unity gain, no LFE send —
  * call this before setting only the fields you need, the same convention every
  * ac3forge_*_config_init() above follows. Without it, a zero-initialized
@@ -1170,7 +1170,7 @@ AC3FORGEC_EXPORT int ac3forge_atmos_encoder_dynamic_object_count(
 
 /* The OBJECT path's latency budget — what this encoder is for. Its
  * transform_samples is AC3FORGE_SAMPLES_PER_BLOCK plus the §7.1 QMF
- * filterbank's own delay (576 samples, ac3::dsp::kQmfDelay): JOC codes a
+ * filterbank's own delay (576 samples, iclforge::dsp::kQmfDelay): JOC codes a
  * matrix that pulls objects back out of the decoded bed in a 64-band complex
  * QMF domain rather than the MDCT's, and analysis plus synthesis costs that
  * much on top of the bed's own overlap. With config.emit_object_metadata
@@ -1201,13 +1201,13 @@ AC3FORGEC_EXPORT ac3forge_status_t ac3forge_atmos_encoder_encode_frame(
     size_t placement_count, ac3forge_bytes_t** out_unit);
 
 /* --------------------------------------------------------------------- *
- * Loudness metering (ac3::meta::LoudnessMeter)
+ * Loudness metering (iclforge::meta::LoudnessMeter)
  * --------------------------------------------------------------------- */
 
 typedef struct ac3forge_loudness_meter ac3forge_loudness_meter_t;
 
 /* BS.1770-4 Annex 1's basic algorithm, keyed on acmod/lfe exactly like
- * ac3::meta::LoudnessMeter's own first constructor - the lone surround of
+ * iclforge::meta::LoudnessMeter's own first constructor - the lone surround of
  * 2/1 and 3/1 is weighted as the surround FIELD collapsed to one channel
  * (see the C++ class's own comment on how this differs from the chanmap
  * form below for that one case). push() below expects spans in the coded
@@ -1221,7 +1221,7 @@ AC3FORGEC_EXPORT ac3forge_status_t ac3forge_loudness_meter_create(
  * dependent substream's height/wide/rear channels are not members of Table
  * 5.8 at all. `chanmap` is the same Table E2.5 bitmask
  * ac3forge_decoded_substream_location_map()/AC3FORGE_CHANMAP_* use; push()
- * then expects spans in that map's own bit order (ac3::eac3::chanmap::expand()'s
+ * then expects spans in that map's own bit order (iclforge::eac3::chanmap::expand()'s
  * order). Fails with AC3FORGE_ERROR_INVALID_ARGUMENT for a chanmap with no
  * channels set. */
 AC3FORGEC_EXPORT ac3forge_status_t ac3forge_loudness_meter_create_for_chanmap(
@@ -1242,7 +1242,7 @@ AC3FORGEC_EXPORT ac3forge_status_t ac3forge_loudness_meter_push(
 /* std::nullopt-via-has_* convention, same as every optional field elsewhere
  * in this header (e.g. ac3forge_decoded_frame_has_compr()) - false before
  * enough audio has been pushed for that measurement to mean anything (see
- * ac3::meta::LoudnessMeter's own per-accessor comments on how much). */
+ * iclforge::meta::LoudnessMeter's own per-accessor comments on how much). */
 AC3FORGEC_EXPORT int ac3forge_loudness_meter_has_integrated_lkfs(
     const ac3forge_loudness_meter_t* meter);
 AC3FORGEC_EXPORT double ac3forge_loudness_meter_integrated_lkfs(
@@ -1270,12 +1270,12 @@ AC3FORGEC_EXPORT double ac3forge_loudness_meter_true_peak_dbtp(
 AC3FORGEC_EXPORT int ac3forge_dialnorm_from_lkfs(double lkfs);
 
 /* --------------------------------------------------------------------- *
- * Level metering (ac3::analysis::LevelMeter)
+ * Level metering (iclforge::analysis::LevelMeter)
  * --------------------------------------------------------------------- */
 
 /* Everything at or below this reports as this on
  * ac3forge_channel_level_t/ac3forge_channel_summary_t's *_db fields, so a
- * caller never meets log10(0) - mirrors ac3::analysis::kFloorDb. */
+ * caller never meets log10(0) - mirrors iclforge::analysis::kFloorDb. */
 #define AC3FORGE_LEVEL_METER_FLOOR_DB (-120.0)
 
 typedef struct ac3forge_level_meter_ballistics {
@@ -1284,7 +1284,7 @@ typedef struct ac3forge_level_meter_ballistics {
     double peak_hold_ms;        /* default 1200.0 */
 } ac3forge_level_meter_ballistics_t;
 
-/* Fills `ballistics` with the same defaults as ac3::analysis::MeterBallistics{}. */
+/* Fills `ballistics` with the same defaults as iclforge::analysis::MeterBallistics{}. */
 AC3FORGEC_EXPORT void ac3forge_level_meter_ballistics_init(
     ac3forge_level_meter_ballistics_t* ballistics);
 
@@ -1334,7 +1334,7 @@ AC3FORGEC_EXPORT ac3forge_channel_level_t ac3forge_level_meter_level(
 
 typedef struct ac3forge_channel_summary {
     double peak; /* linear */
-    double rms;  /* linear - ac3::analysis::ChannelSummary::rms() */
+    double rms;  /* linear - iclforge::analysis::ChannelSummary::rms() */
     double peak_db;
     double rms_db;
     uint64_t samples;
@@ -1348,7 +1348,7 @@ AC3FORGEC_EXPORT ac3forge_channel_summary_t ac3forge_level_meter_summary(
     const ac3forge_level_meter_t* meter, size_t channel_index);
 
 /* --------------------------------------------------------------------- *
- * QC gate (ac3::meta::qc)
+ * QC gate (iclforge::meta::qc)
  * --------------------------------------------------------------------- */
 
 typedef enum ac3forge_qc_loudness_limit {
@@ -1356,7 +1356,7 @@ typedef enum ac3forge_qc_loudness_limit {
     AC3FORGE_QC_LOUDNESS_CEILING = 1 /* measured <= target; tolerance_lu unused */
 } ac3forge_qc_loudness_limit_t;
 
-/* Mirrors ac3::meta::QcPresetId, ordinals matching kQcPresetIds's own
+/* Mirrors iclforge::meta::QcPresetId, ordinals matching kQcPresetIds's own
  * declaration order. */
 typedef enum ac3forge_qc_preset_id {
     AC3FORGE_QC_PRESET_EBU_R128_S2 = 0,
@@ -1368,7 +1368,7 @@ typedef enum ac3forge_qc_preset_id {
 
 /* Every preset id is valid in [0, ac3forge_qc_preset_count()) - for a caller
  * that wants to check a measurement against all of them (mirrors
- * ac3::meta::kQcPresetIds's own size). */
+ * iclforge::meta::kQcPresetIds's own size). */
 AC3FORGEC_EXPORT size_t ac3forge_qc_preset_count(void);
 
 /* Tagged ac3forge_qc_preset_info rather than ac3forge_qc_preset: GCC's
@@ -1394,7 +1394,7 @@ AC3FORGEC_EXPORT const char* ac3forge_qc_preset_name(ac3forge_qc_preset_id_t id)
  * *out_id is left untouched when this returns 0. */
 AC3FORGEC_EXPORT int ac3forge_parse_qc_preset(const char* name, ac3forge_qc_preset_id_t* out_id);
 
-/* One preset's verdict against one measurement - mirrors ac3::meta::QcVerdict.
+/* One preset's verdict against one measurement - mirrors iclforge::meta::QcVerdict.
  * Either half is left at its not-passing default when the corresponding
  * measurement was itself unavailable (has_integrated_lkfs/has_true_peak_dbtp
  * false below) - material this gate cannot actually judge, not a false
@@ -1419,7 +1419,7 @@ AC3FORGEC_EXPORT ac3forge_qc_verdict_t ac3forge_evaluate_qc_gate(
     int has_true_peak_dbtp, double true_peak_dbtp);
 
 /* --------------------------------------------------------------------- *
- * AC-4 (ac4::Decoder / ac4::Encoder) - ETSI TS 103 190-1 V1.4.1 and
+ * AC-4 (iclforge::ac4::Decoder / iclforge::ac4::Encoder) - ETSI TS 103 190-1 V1.4.1 and
  * TS 103 190-2 V1.3.1
  * --------------------------------------------------------------------- *
  *
@@ -1433,23 +1433,23 @@ AC3FORGEC_EXPORT ac3forge_qc_verdict_t ac3forge_evaluate_qc_gate(
  * struct as its type allows.
  * ac3forge_c/version.h's AC3FORGE_HAS_AC4 (a plain #define, #cmakedefine'd
  * from that option) still tells a caller which behaviour to expect. Mirrors
- * ac4::Decoder (src/ac4dec/include/iclforge/ac4dec/decoder.hpp) and ac4::Encoder
- * (src/ac4enc/include/iclforge/ac4enc/encoder.hpp), plus the table-of-contents helpers
- * of src/ac4/include/iclforge/ac4/ac4.hpp a container muxer needs beside the encoder.
- * AC-4's frame length varies by frame rate (Part 1 Tables 83/84), so unlike
- * the AC-3/E-AC-3 sections above there is no AC3FORGE_SAMPLES_PER_FRAME
- * equivalent - every accessor that needs a length reports it.
+ * iclforge::ac4::Decoder (src/ac4dec/include/iclforge/ac4dec/decoder.hpp) and
+ * iclforge::ac4::Encoder (src/ac4enc/include/iclforge/ac4enc/encoder.hpp), plus the
+ * table-of-contents helpers of src/ac4/include/iclforge/ac4/ac4.hpp a container muxer needs beside
+ * the encoder. AC-4's frame length varies by frame rate (Part 1 Tables 83/84), so unlike the
+ * AC-3/E-AC-3 sections above there is no AC3FORGE_SAMPLES_PER_FRAME equivalent - every accessor
+ * that needs a length reports it.
  *
  * The encoder writes channel-based and channel-based-immersive content
  * (mono, stereo, 5.0, 5.1, 5.0.4, 5.1.4) and, given an objects configuration
  * (ac3forge_ac4_objects_config_t, in the encoder section below), the one
- * object substream ac4::Encoder writes with experimental.objects: A-JOC, or
+ * object substream iclforge::ac4::Encoder writes with experimental.objects: A-JOC, or
  * direct-coded objects (planning/ac4.md phases E9 and I4b). The decoder's
  * object accessors below read whatever object audio a stream carries. */
 
 /* --- shared enums -------------------------------------------------------- */
 
-/* Mirrors ac4::Speaker (Part 1 clause D.1, Part 2 clause A.3). */
+/* Mirrors iclforge::ac4::Speaker (Part 1 clause D.1, Part 2 clause A.3). */
 typedef enum ac3forge_ac4_speaker {
     AC3FORGE_AC4_SPEAKER_LEFT = 0,
     AC3FORGE_AC4_SPEAKER_RIGHT = 1,
@@ -1470,7 +1470,7 @@ typedef enum ac3forge_ac4_speaker {
     AC3FORGE_AC4_SPEAKER_LFE2 = 16
 } ac3forge_ac4_speaker_t;
 
-/* Mirrors ac4::ObjectKind (ac4/ac4.hpp): a bed object, a dynamic object, or an
+/* Mirrors iclforge::ac4::ObjectKind (ac4/ac4.hpp): a bed object, a dynamic object, or an
  * intermediate spatial format object (the decoder renders an ISF's own
  * objects into channels rather than listing them - see
  * ac3forge_ac4_decoded_frame_object_kind()'s own comment). */
@@ -1481,10 +1481,10 @@ typedef enum ac3forge_ac4_object_kind {
 } ac3forge_ac4_object_kind_t;
 
 /* --------------------------------------------------------------------- *
- * AC-4 decoder (ac4::Decoder)
+ * AC-4 decoder (iclforge::ac4::Decoder)
  * --------------------------------------------------------------------- */
 
-/* Mirrors ac4::DownmixTarget (Part 1 clause 6.2.17, Part 2 clause 5.10.2): the
+/* Mirrors iclforge::ac4::DownmixTarget (Part 1 clause 6.2.17, Part 2 clause 5.10.2): the
  * layout ac3forge_ac4_decoder_decode() renders to. */
 typedef enum ac3forge_ac4_downmix_target {
     AC3FORGE_AC4_DOWNMIX_AS_CODED = 0,
@@ -1500,7 +1500,7 @@ typedef enum ac3forge_ac4_downmix_target {
     AC3FORGE_AC4_DOWNMIX_5X2 = 10
 } ac3forge_ac4_downmix_target_t;
 
-/* Mirrors ac4::DrcMode (Part 1 Table 161). */
+/* Mirrors iclforge::ac4::DrcMode (Part 1 Table 161). */
 typedef enum ac3forge_ac4_drc_mode {
     AC3FORGE_AC4_DRC_OFF = 0,
     AC3FORGE_AC4_DRC_DEFAULT = 1,
@@ -1510,14 +1510,14 @@ typedef enum ac3forge_ac4_drc_mode {
     AC3FORGE_AC4_DRC_PORTABLE_HEADPHONES = 5
 } ac3forge_ac4_drc_mode_t;
 
-/* Mirrors ac4::DecodingMode (Part 2 clause 4.7): full reconstruction, or the
+/* Mirrors iclforge::ac4::DecodingMode (Part 2 clause 4.7): full reconstruction, or the
  * immersive element's core (5.X.2/5.X.0) for a low-complexity platform. */
 typedef enum ac3forge_ac4_decoding_mode {
     AC3FORGE_AC4_DECODING_FULL = 0,
     AC3FORGE_AC4_DECODING_CORE = 1
 } ac3forge_ac4_decoding_mode_t;
 
-/* Mirrors ac4::ConcealmentPolicy: what ac3forge_ac4_decoder_decode() does with
+/* Mirrors iclforge::ac4::ConcealmentPolicy: what ac3forge_ac4_decoder_decode() does with
  * a frame that will not decode, once at least one frame has. */
 typedef enum ac3forge_ac4_concealment_policy {
     AC3FORGE_AC4_CONCEALMENT_NONE = 0,
@@ -1525,13 +1525,13 @@ typedef enum ac3forge_ac4_concealment_policy {
     AC3FORGE_AC4_CONCEALMENT_MUTE = 2
 } ac3forge_ac4_concealment_policy_t;
 
-/* Mirrors ac4::ConcealmentAction: what a concealed frame actually got. */
+/* Mirrors iclforge::ac4::ConcealmentAction: what a concealed frame actually got. */
 typedef enum ac3forge_ac4_concealment_action {
     AC3FORGE_AC4_CONCEALMENT_ACTION_REPEAT_FADE = 0,
     AC3FORGE_AC4_CONCEALMENT_ACTION_MUTE = 1
 } ac3forge_ac4_concealment_action_t;
 
-/* Mirrors ac4::AssociatedType (Part 1 Table 92), a refinement of
+/* Mirrors iclforge::ac4::AssociatedType (Part 1 Table 92), a refinement of
  * ac3forge_ac4_presentation_choice_t::associated. */
 typedef enum ac3forge_ac4_associated_type {
     AC3FORGE_AC4_ASSOCIATED_ANY = 0,
@@ -1541,7 +1541,7 @@ typedef enum ac3forge_ac4_associated_type {
     AC3FORGE_AC4_ASSOCIATED_EMERGENCY_INFORMATION = 4
 } ac3forge_ac4_associated_type_t;
 
-/* Mirrors ac4::OutputConfig. `has_output_level_dbfs` stands in for
+/* Mirrors iclforge::ac4::OutputConfig. `has_output_level_dbfs` stands in for
  * std::optional<double>, same convention as elsewhere in this header. Call
  * ac3forge_ac4_output_config_init() first so every field this struct doesn't
  * set explicitly carries the same default OutputConfig{} does. */
@@ -1559,7 +1559,7 @@ typedef struct ac3forge_ac4_output_config {
 
 AC3FORGEC_EXPORT void ac3forge_ac4_output_config_init(ac3forge_ac4_output_config_t* config);
 
-/* Mirrors ac4::PresentationChoice. `language`, when non-NULL and non-empty, is
+/* Mirrors iclforge::ac4::PresentationChoice. `language`, when non-NULL and non-empty, is
  * an IETF BCP 47 tag read during the call this struct is passed to and not
  * retained - it need not outlive that call. has_associated/has_index/
  * has_presentation_id stand in for std::optional<T>. Call
@@ -1580,7 +1580,7 @@ typedef struct ac3forge_ac4_presentation_choice {
 AC3FORGEC_EXPORT void ac3forge_ac4_presentation_choice_init(
     ac3forge_ac4_presentation_choice_t* choice);
 
-/* Mirrors ac4::DecoderConfig, less its syntax trace (an internal diagnostic
+/* Mirrors iclforge::ac4::DecoderConfig, less its syntax trace (an internal diagnostic
  * hook with no C surface). */
 typedef struct ac3forge_ac4_decoder_config {
     ac3forge_ac4_output_config_t output;
@@ -1600,17 +1600,17 @@ AC3FORGEC_EXPORT void ac3forge_ac4_decoder_destroy(ac3forge_ac4_decoder_t* decod
 
 /* The output processing, from the next frame; and the presentation choice,
  * also from the next frame (a newly chosen presentation needs no I-frame -
- * see ac4::Decoder::set_presentation()'s own comment). */
+ * see iclforge::ac4::Decoder::set_presentation()'s own comment). */
 AC3FORGEC_EXPORT void ac3forge_ac4_decoder_set_output(ac3forge_ac4_decoder_t* decoder,
                                                      const ac3forge_ac4_output_config_t* output);
 AC3FORGEC_EXPORT void ac3forge_ac4_decoder_set_presentation(
     ac3forge_ac4_decoder_t* decoder, const ac3forge_ac4_presentation_choice_t* choice);
 
-/* Forgets everything carried between frames - ac4::Decoder::reset(). */
+/* Forgets everything carried between frames - iclforge::ac4::Decoder::reset(). */
 AC3FORGEC_EXPORT void ac3forge_ac4_decoder_reset(ac3forge_ac4_decoder_t* decoder);
 
 /* The decoder's own added delay at the output rate, for the stream as last
- * decoded; 0 before a frame has decoded - ac4::Decoder::latency_samples(). */
+ * decoded; 0 before a frame has decoded - iclforge::ac4::Decoder::latency_samples(). */
 AC3FORGEC_EXPORT int ac3forge_ac4_decoder_latency_samples(const ac3forge_ac4_decoder_t* decoder);
 
 /* Why the last decode() call failed, returned nothing, or returned a
@@ -1621,13 +1621,13 @@ AC3FORGEC_EXPORT const char* ac3forge_ac4_decoder_refusal_reason(
 
 typedef struct ac3forge_ac4_decoded_frame ac3forge_ac4_decoded_frame_t;
 
-/* `frame` must be exactly one raw_ac4_frame (an ac4::SyncFrame's
+/* `frame` must be exactly one raw_ac4_frame (an iclforge::ac4::SyncFrame's
  * raw_ac4_frame, or an MP4 sample). On success, *out_frame receives the
  * decode result, which the caller must destroy; std::nullopt-via-out-
  * parameter convention as elsewhere in this header: AC3FORGE_OK with
  * *out_frame left NULL means this frame has no output yet (its substreams
  * need configuration no I-frame has sent), not an error - see
- * ac4::Decoder::decode()'s own comment. */
+ * iclforge::ac4::Decoder::decode()'s own comment. */
 AC3FORGEC_EXPORT ac3forge_status_t ac3forge_ac4_decoder_decode(
     ac3forge_ac4_decoder_t* decoder, const uint8_t* frame, size_t frame_size,
     ac3forge_ac4_decoded_frame_t** out_frame);
@@ -1667,15 +1667,15 @@ AC3FORGEC_EXPORT ac3forge_ac4_concealment_action_t ac3forge_ac4_decoded_frame_co
 AC3FORGEC_EXPORT ac3forge_status_t ac3forge_ac4_decoded_frame_concealment_error(
     const ac3forge_ac4_decoded_frame_t* frame);
 
-/* --- objects (Part 2 clause 4.8.3.4; ac4::DecodedFrame::objects) --------- *
+/* --- objects (Part 2 clause 4.8.3.4; iclforge::ac4::DecodedFrame::objects) --------- *
  *
  * Each object's kind, its bed loudspeaker where it has one, its audio, the
  * ObjectProperties in force at the frame's first sample, and the updates
- * within the frame (ac4::DecodedObject::updates): the block updates of the
+ * within the frame (iclforge::ac4::DecodedObject::updates): the block updates of the
  * object's metadata a renderer moves through, each at a sample of the frame
  * and with the number of samples it takes to reach its properties. An
  * intermediate spatial format's own objects are rendered into the channels
- * above, not listed here (ac4::Decoder's header, "Objects").
+ * above, not listed here (iclforge::ac4::Decoder's header, "Objects").
  *
  * The objects come in the decoder's order, not that of the encoder's input:
  * the LFE object first, then the bed objects, then the dynamic objects, each
@@ -1698,7 +1698,7 @@ AC3FORGEC_EXPORT ac3forge_ac4_speaker_t ac3forge_ac4_decoded_frame_object_speake
 AC3FORGEC_EXPORT const float* ac3forge_ac4_decoded_frame_object_samples(
     const ac3forge_ac4_decoded_frame_t* frame, size_t object_index);
 
-/* Mirrors ac4::ObjectProperties (Part 2 Annex F.2 to F.10 and
+/* Mirrors iclforge::ac4::ObjectProperties (Part 2 Annex F.2 to F.10 and
  * add_per_object_md()'s data): what one block update of an object's metadata
  * sets. The decoder reports it, and the encoder takes it, in these terms:
  *   - gain_db: F.5, +15 to -49 dB in steps of 1, or -infinity for silence;
@@ -1747,7 +1747,7 @@ typedef struct ac3forge_ac4_object_properties {
     int head_track_disabled;
 } ac3forge_ac4_object_properties_t;
 
-/* Fills `properties` with ac4::ObjectProperties{}'s defaults: active, 0 dB,
+/* Fills `properties` with iclforge::ac4::ObjectProperties{}'s defaults: active, 0 dB,
  * priority 1, room centre (0.5, 0.5, 0), no zone constraint, elevation
  * enabled, no snap, zero width, screen factor 0, depth exponent 1, no
  * distance, no divergence, trim and head tracking enabled, no headphone
@@ -1759,7 +1759,7 @@ AC3FORGEC_EXPORT void ac3forge_ac4_object_properties_init(
 AC3FORGEC_EXPORT ac3forge_ac4_object_properties_t ac3forge_ac4_decoded_frame_object_properties(
     const ac3forge_ac4_decoded_frame_t* frame, size_t object_index);
 
-/* Mirrors ac4::ObjectUpdate (Part 2 Annex F.11): one block update within the
+/* Mirrors iclforge::ac4::ObjectUpdate (Part 2 Annex F.11): one block update within the
  * frame - the output sample of the frame it takes effect at (counted with the
  * decoder's delay, as the frame's channels are), the samples a renderer takes
  * to move to `properties` from what was in force, and those properties. */
@@ -1781,7 +1781,7 @@ AC3FORGEC_EXPORT ac3forge_ac4_object_update_t ac3forge_ac4_decoded_frame_object_
 
 AC3FORGEC_EXPORT void ac3forge_ac4_decoded_frame_destroy(ac3forge_ac4_decoded_frame_t* frame);
 
-/* --- presentations (ac4::PresentationInfo, ac4::Decoder::presentations()) - *
+/* --- presentations (iclforge::ac4::PresentationInfo, iclforge::ac4::Decoder::presentations()) - *
  * the last frame read's table of contents, in its own order; empty before
  * one. `name`/`language` accessors return library-owned storage valid until
  * the next ac3forge_ac4_decoder_decode() call or the decoder's destruction -
@@ -1827,7 +1827,7 @@ AC3FORGEC_EXPORT size_t ac3forge_ac4_decoder_presentation_speaker_count(
 AC3FORGEC_EXPORT ac3forge_ac4_speaker_t ac3forge_ac4_decoder_presentation_speaker(
     const ac3forge_ac4_decoder_t* decoder, size_t presentation_index, size_t speaker_index);
 
-/* --- loudness metadata (ac4::LoudnessInfo, of the presentation decode()
+/* --- loudness metadata (iclforge::ac4::LoudnessInfo, of the presentation decode()
  * selected) - the fields ac3forge_evaluate_qc_gate() above already takes, so
  * an AC-4 stream's own sent loudness can feed the same QC gate a
  * ac3forge_loudness_meter_t measurement does. has_* 0 leaves the paired field
@@ -1849,10 +1849,10 @@ AC3FORGEC_EXPORT ac3forge_ac4_loudness_info_t ac3forge_ac4_decoder_metadata_loud
     const ac3forge_ac4_decoder_t* decoder);
 
 /* --------------------------------------------------------------------- *
- * AC-4 encoder (ac4::Encoder)
+ * AC-4 encoder (iclforge::ac4::Encoder)
  * --------------------------------------------------------------------- */
 
-/* Mirrors ac4::CodecMode (Part 1 clause 4.3.6.1, Part 2 clause 6.3.5.1). */
+/* Mirrors iclforge::ac4::CodecMode (Part 1 clause 4.3.6.1, Part 2 clause 6.3.5.1). */
 typedef enum ac3forge_ac4_codec_mode {
     AC3FORGE_AC4_CODEC_AUTO = 0,
     AC3FORGE_AC4_CODEC_SIMPLE = 1,
@@ -1865,14 +1865,14 @@ typedef enum ac3forge_ac4_codec_mode {
     AC3FORGE_AC4_CODEC_ASPX_AJCC = 8
 } ac3forge_ac4_codec_mode_t;
 
-/* Mirrors ac4::RateMode (Part 1 Table 81's wait_frames). */
+/* Mirrors iclforge::ac4::RateMode (Part 1 Table 81's wait_frames). */
 typedef enum ac3forge_ac4_rate_mode {
     AC3FORGE_AC4_RATE_CONSTANT = 0,
     AC3FORGE_AC4_RATE_AVERAGE = 1,
     AC3FORGE_AC4_RATE_VARIABLE = 2
 } ac3forge_ac4_rate_mode_t;
 
-/* --- objects: the encoder's object substream (ac4::ObjectsConfig) --------- *
+/* --- objects: the encoder's object substream (iclforge::ac4::ObjectsConfig) --------- *
  *
  * Object audio (Part 2 clause 4.8.3.4): each object is one input channel of
  * PCM, and its metadata (ac3forge_ac4_object_properties_t) is what the
@@ -1896,7 +1896,7 @@ typedef enum ac3forge_ac4_rate_mode {
 /* The most downmix signals a computed A-JOC downmix takes. */
 #define AC3FORGE_AC4_MAX_DOWNMIX_SIGNALS 11
 
-/* Mirrors ac4::BedChannel: the loudspeaker a bed object plays from, Part 2
+/* Mirrors iclforge::ac4::BedChannel: the loudspeaker a bed object plays from, Part 2
  * Table 66's nonstd_bed_channel_assignment, whose code each value is. */
 typedef enum ac3forge_ac4_bed_channel {
     AC3FORGE_AC4_BED_LEFT = 0,
@@ -1916,7 +1916,7 @@ typedef enum ac3forge_ac4_bed_channel {
     AC3FORGE_AC4_BED_RIGHT_WIDE = 15
 } ac3forge_ac4_bed_channel_t;
 
-/* Mirrors ac4::ObjectCoding: how the objects are coded. */
+/* Mirrors iclforge::ac4::ObjectCoding: how the objects are coded. */
 typedef enum ac3forge_ac4_object_coding {
     /* An A-JOC substream (Part 2 clause 5.7): a downmix coded in a
      * var_channel_element() or a static 5.X bed, and the matrices that
@@ -1927,7 +1927,7 @@ typedef enum ac3forge_ac4_object_coding {
     AC3FORGE_AC4_OBJECT_CODING_DIRECT = 1
 } ac3forge_ac4_object_coding_t;
 
-/* Mirrors ac4::AjocDownmix: A-JOC's downmix, which Part 2 leaves to the
+/* Mirrors iclforge::ac4::AjocDownmix: A-JOC's downmix, which Part 2 leaves to the
  * encoder. */
 typedef enum ac3forge_ac4_ajoc_downmix {
     /* Downmix signals the encoder computes: the objects in groups by where
@@ -1941,7 +1941,7 @@ typedef enum ac3forge_ac4_ajoc_downmix {
     AC3FORGE_AC4_AJOC_DOWNMIX_STATIC_51 = 2
 } ac3forge_ac4_ajoc_downmix_t;
 
-/* Mirrors ac4::AdditionalPair (Part 1 Table 88): the 7.X element's pair
+/* Mirrors iclforge::ac4::AdditionalPair (Part 1 Table 88): the 7.X element's pair
  * beyond L, R, C, Ls and Rs. */
 typedef enum ac3forge_ac4_additional_pair {
     AC3FORGE_AC4_PAIR_NONE = 0,
@@ -1950,7 +1950,7 @@ typedef enum ac3forge_ac4_additional_pair {
     AC3FORGE_AC4_PAIR_TOP_FRONT = 3 /* 3/2/2: Tfl and Tfr */
 } ac3forge_ac4_additional_pair_t;
 
-/* Mirrors ac4::ObjectConfig: one object, the input channel at its index. */
+/* Mirrors iclforge::ac4::ObjectConfig: one object, the input channel at its index. */
 typedef struct ac3forge_ac4_object_config {
     /* A bed object from the loudspeaker `bed` where has_bed is non-zero; a
      * dynamic object where it is 0. */
@@ -1963,12 +1963,12 @@ typedef struct ac3forge_ac4_object_config {
     ac3forge_ac4_object_properties_t properties;
 } ac3forge_ac4_object_config_t;
 
-/* A dynamic object at ac4::ObjectConfig{}'s defaults: the room's centre,
+/* A dynamic object at iclforge::ac4::ObjectConfig{}'s defaults: the room's centre,
  * unity gain, properties as ac3forge_ac4_object_properties_init() gives
  * them. */
 AC3FORGEC_EXPORT void ac3forge_ac4_object_config_init(ac3forge_ac4_object_config_t* config);
 
-/* Mirrors ac4::ObjectsConfig: the objects and how they are coded. Call
+/* Mirrors iclforge::ac4::ObjectsConfig: the objects and how they are coded. Call
  * ac3forge_ac4_objects_config_init() first. The struct and the array it points
  * to are read only while ac3forge_ac4_encoder_create() and
  * ac3forge_ac4_encoder_refusal_reason() run. */
@@ -2003,7 +2003,7 @@ typedef struct ac3forge_ac4_objects_config {
 
 AC3FORGEC_EXPORT void ac3forge_ac4_objects_config_init(ac3forge_ac4_objects_config_t* config);
 
-/* Mirrors ac4::EncoderConfig::Experimental: syntax only this project's readers
+/* Mirrors iclforge::ac4::EncoderConfig::Experimental: syntax only this project's readers
  * have read from this encoder, off unless asked for (planning/ac4.md, "What
  * the encoder writes by default"). Not mirrored: drc_gains and three_zero,
  * which need the DRC modes and the substream list this struct does not
@@ -2021,7 +2021,7 @@ typedef struct ac3forge_ac4_experimental {
     int objects;   /* object audio: required by a non-NULL objects configuration */
 } ac3forge_ac4_experimental_t;
 
-/* Mirrors ac4::EncoderConfig: one substream in one presentation, channel-based
+/* Mirrors iclforge::ac4::EncoderConfig: one substream in one presentation, channel-based
  * or channel-based-immersive input, or - with `objects` - one object
  * substream. Not mirrored here, as ac3forge_eac3_frame_config_t's own comment
  * leaves its broader metadata surface for the same reason: the loudness, DRC,
@@ -2067,7 +2067,7 @@ AC3FORGEC_EXPORT void ac3forge_ac4_encoder_config_init(ac3forge_ac4_encoder_conf
  * 13"; empty ("") where it makes an encoder of it. For a NULL config, or one
  * that is not a valid argument (create() then returns
  * AC3FORGE_ERROR_INVALID_ARGUMENT), it says so instead. It does create()'s
- * work to find out - ac4::Encoder::refusal_reason(). A library built without
+ * work to find out - iclforge::ac4::Encoder::refusal_reason(). A library built without
  * AC-4 says that. The pointer is to library-owned storage valid for the
  * process lifetime. */
 AC3FORGEC_EXPORT const char* ac3forge_ac4_encoder_refusal_reason(
@@ -2077,7 +2077,7 @@ typedef struct ac3forge_ac4_encoder ac3forge_ac4_encoder_t;
 
 /* Fails with AC3FORGE_ERROR_AC4_ENCODE_INVALID_CONFIG for a configuration
  * outside what the encoder writes, or whose rate cannot hold its least
- * frame - ac4::Encoder::create() - and with AC3FORGE_ERROR_INVALID_ARGUMENT for
+ * frame - iclforge::ac4::Encoder::create() - and with AC3FORGE_ERROR_INVALID_ARGUMENT for
  * a NULL pointer where an array has entries, or an enumerator outside its
  * enumeration. */
 AC3FORGEC_EXPORT ac3forge_status_t ac3forge_ac4_encoder_create(
@@ -2089,14 +2089,14 @@ AC3FORGEC_EXPORT void ac3forge_ac4_encoder_destroy(ac3forge_ac4_encoder_t* encod
 AC3FORGEC_EXPORT ac3forge_ac4_codec_mode_t ac3forge_ac4_encoder_codec_mode(
     const ac3forge_ac4_encoder_t* encoder);
 /* Samples of silence the encoder puts before the input, at the input's rate -
- * ac4::Encoder::delay_samples(). */
+ * iclforge::ac4::Encoder::delay_samples(). */
 AC3FORGEC_EXPORT int ac3forge_ac4_encoder_delay_samples(const ac3forge_ac4_encoder_t* encoder);
 /* The delay ac3forge_ac4_decoder_t adds on top, at the input's rate -
- * ac4::Encoder::decoder_delay_samples(). */
+ * iclforge::ac4::Encoder::decoder_delay_samples(). */
 AC3FORGEC_EXPORT int ac3forge_ac4_encoder_decoder_delay_samples(
     const ac3forge_ac4_encoder_t* encoder);
 
-/* One coded frame (ac4::EncodedFrame): what an MP4 sample holds as it is, and
+/* One coded frame (iclforge::ac4::EncodedFrame): what an MP4 sample holds as it is, and
  * what ac3forge_ac4_sync_frame() wraps for a raw .ac4 file or MPEG-2 TS. */
 typedef struct ac3forge_ac4_encoded_frame ac3forge_ac4_encoded_frame_t;
 
@@ -2116,9 +2116,9 @@ AC3FORGEC_EXPORT void ac3forge_ac4_encoded_frame_array_destroy(
 /* channels: `channel_count` pointers (must equal config.channels, or the
  * object count of an objects configuration), each to exactly
  * `samples_per_channel` planar samples nominally in [-1, 1), in
- * ac4::Decoder's own channel order for that count. Any samples_per_channel
+ * iclforge::ac4::Decoder's own channel order for that count. Any samples_per_channel
  * works, unlike encode_frame() elsewhere in this header, since the encoder
- * buffers input to its own frame length internally - see ac4::Encoder::
+ * buffers input to its own frame length internally - see iclforge::ac4::Encoder::
  * encode()'s own comment. On success, *out_frames and *out_count receive the
  * frames this input completed (zero when the encoder's delay is still
  * filling); the caller must destroy the array with
@@ -2127,7 +2127,7 @@ AC3FORGEC_EXPORT ac3forge_status_t ac3forge_ac4_encoder_encode(
     ac3forge_ac4_encoder_t* encoder, const float* const* channels, size_t channel_count,
     size_t samples_per_channel, ac3forge_ac4_encoded_frame_t*** out_frames, size_t* out_count);
 
-/* Mirrors ac4::ObjectMetadataUpdate: a change to an object's metadata, given
+/* Mirrors iclforge::ac4::ObjectMetadataUpdate: a change to an object's metadata, given
  * with the input it belongs to. From input sample `sample` of that call's
  * channels (0 its first, and any later one, past the call's own length too)
  * object `object` - an index into ac3forge_ac4_objects_config_t::objects -
@@ -2156,7 +2156,7 @@ AC3FORGEC_EXPORT void ac3forge_ac4_object_metadata_update_init(
  * update for an object the configuration lacks, before this input's first
  * sample or with a property off its range fails with
  * AC3FORGE_ERROR_AC4_ENCODE_INVALID_INPUT, and so does an encoder without an
- * object substream when given any update - ac4::Encoder::encode()'s overload
+ * object substream when given any update - iclforge::ac4::Encoder::encode()'s overload
  * with updates. */
 AC3FORGEC_EXPORT ac3forge_status_t ac3forge_ac4_encoder_encode_objects(
     ac3forge_ac4_encoder_t* encoder, const float* const* objects, size_t object_count,
@@ -2165,15 +2165,15 @@ AC3FORGEC_EXPORT ac3forge_status_t ac3forge_ac4_encoder_encode_objects(
 
 /* Ends the stream: pads to the end of the last frame and returns the frames
  * the delay still held, so a decoder's output covers every input sample. The
- * encoder takes no input after this - ac4::Encoder::flush(). */
+ * encoder takes no input after this - iclforge::ac4::Encoder::flush(). */
 AC3FORGEC_EXPORT ac3forge_status_t ac3forge_ac4_encoder_flush(
     ac3forge_ac4_encoder_t* encoder, ac3forge_ac4_encoded_frame_t*** out_frames, size_t* out_count);
 
-/* --- the table of contents, for the dac4 box (ac4::Toc) ------------------ *
+/* --- the table of contents, for the dac4 box (iclforge::ac4::Toc) ------------------ *
  *
  * An owned copy of the stream's table of contents as it stands after the
- * frames encoded so far - ac4::Encoder::toc(). Everything below reads it
- * rather than raw bytes, matching ac4::build_dac4() and neighbours' own
+ * frames encoded so far - iclforge::ac4::Encoder::toc(). Everything below reads it
+ * rather than raw bytes, matching iclforge::ac4::build_dac4() and neighbours' own
  * "read the already-parsed Toc" design (ac4/ac4.hpp's carriage comment). */
 typedef struct ac3forge_ac4_toc ac3forge_ac4_toc_t;
 
@@ -2182,18 +2182,18 @@ AC3FORGEC_EXPORT ac3forge_status_t ac3forge_ac4_encoder_toc(const ac3forge_ac4_e
 AC3FORGEC_EXPORT void ac3forge_ac4_toc_destroy(ac3forge_ac4_toc_t* toc);
 
 /* The 'dac4' box payload (ac4_dsi_v1, Annex E.6, box header excluded) an ISO-
- * BMFF 'ac-4' sample entry carries - ac4::build_dac4(). Empty
+ * BMFF 'ac-4' sample entry carries - iclforge::ac4::build_dac4(). Empty
  * (ac3forge_bytes_size() 0) where ac3forge_ac4_dac4_refusal() names what the
  * table of contents holds that this cannot describe whole. */
 AC3FORGEC_EXPORT ac3forge_status_t ac3forge_ac4_build_dac4(const ac3forge_ac4_toc_t* toc,
                                                            ac3forge_bytes_t** out_box);
 /* Why ac3forge_ac4_build_dac4() wrote nothing - library-owned storage valid
  * for the process lifetime; empty ("") where it describes every presentation
- * whole - ac4::dac4_refusal(). */
+ * whole - iclforge::ac4::dac4_refusal(). */
 AC3FORGEC_EXPORT const char* ac3forge_ac4_dac4_refusal(const ac3forge_ac4_toc_t* toc);
 
 /* TS 103 190-2 Table E.1: the media time scale an ISOBMFF track of the stream
- * counts in, and each sample's duration in it - ac4::media_timing(). Returns 0
+ * counts in, and each sample's duration in it - iclforge::ac4::media_timing(). Returns 0
  * (out-parameters untouched) for a frame rate Table 83/84 does not define, 1
  * otherwise, same has-value convention as
  * ac3forge_scanned_stream_uniform_access_unit_samples() above. */
@@ -2202,12 +2202,12 @@ AC3FORGEC_EXPORT int ac3forge_ac4_media_timing(const ac3forge_ac4_toc_t* toc,
 /* Samples per AC-4 frame at the stream's own sample rate - Table 84;
  * nullopt/0 for the 1000/1001-family frame rates, whose length alternates
  * from frame to frame (ac3forge_ac4_media_timing() above gives the track a
- * time scale in which they have one) - ac4::samples_per_frame(). Same
+ * time scale in which they have one) - iclforge::ac4::samples_per_frame(). Same
  * has-value convention as ac3forge_ac4_media_timing(). */
 AC3FORGEC_EXPORT int ac3forge_ac4_samples_per_frame(const ac3forge_ac4_toc_t* toc,
                                                     uint32_t* out_samples);
 
-/* --- sync-frame wrapping (ac4::sync_frame) -------------------------------- *
+/* --- sync-frame wrapping (iclforge::ac4::sync_frame) -------------------------------- *
  *
  * Part 2 Annex G.3.1's ac4_syncframe(): the sync word 0xAC40, or 0xAC41 and a
  * trailing crc_word (Annex G.4.2) when `crc` is set, then frame_size and

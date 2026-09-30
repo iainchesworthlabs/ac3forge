@@ -1,6 +1,6 @@
 #include "iclforge/ac4core/tables/noise_tables.hpp"
 
-namespace ac4::detail::tables {
+namespace iclforge::ac4::detail::tables {
 
 const std::array<float, 256> kRandomNoiseTable = {
    0.643120f, 0.970001f, -0.340081f, -0.643120f, 0.889720f, -0.612330f, 0.332226f, 0.038815f,
@@ -37,4 +37,4 @@ const std::array<float, 256> kRandomNoiseTable = {
    1.044036f, -0.396268f, -0.846374f, -0.454945f, 0.481011f, -1.085529f, 0.067108f, 0.270683f,
 };
 
-}  // namespace ac4::detail::tables
+}  // namespace iclforge::ac4::detail::tables

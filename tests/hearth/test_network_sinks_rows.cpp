@@ -16,12 +16,12 @@
 // outcomes the page shows as an error, and the per-sink commands reaching a host that has no such
 // connection.
 
-namespace ss = ac3::sendspin;
-using ac3::hearth::MemorySettingsStore;
-using ac3::hearth::NetworkSinks;
-using ac3::hearth::PairingStore;
-using ac3::hearth::PairState;
-using ac3::hearth::SinkKind;
+namespace ss = iclforge::sendspin;
+using iclforge::hearth::MemorySettingsStore;
+using iclforge::hearth::NetworkSinks;
+using iclforge::hearth::PairingStore;
+using iclforge::hearth::PairState;
+using iclforge::hearth::SinkKind;
 
 namespace {
 
@@ -58,7 +58,7 @@ struct Rig {
         const auto identity = ss::noise::KeyPair::generate();
         REQUIRE(identity.has_value());
         // No mDNS browsing: see test_network_sinks.cpp's own header comment.
-        sinks.emplace(*identity, "Test Hearth", store, ac3::hearth::NetworkSinksOptions{.browse = false});
+        sinks.emplace(*identity, "Test Hearth", store, iclforge::hearth::NetworkSinksOptions{.browse = false});
         REQUIRE(sinks->started());
     }
 };
@@ -200,7 +200,7 @@ TEST_CASE("network sinks rows: a pairing asked for before hello waits for the at
     CHECK_FALSE(row.pairing_requested);
     CHECK(row.pairing_active);
     CHECK(row.wants_code);
-    CHECK(ac3::hearth::to_detail(row).pairing == "code");
+    CHECK(iclforge::hearth::to_detail(row).pairing == "code");
     CHECK(rig.sinks->status().selected_id == "attic");
 
     // An attempt that ended without pairing leaves the activity declared until the host decides
@@ -211,8 +211,8 @@ TEST_CASE("network sinks rows: a pairing asked for before hello waits for the at
     rig.sinks->on_client(ended);
     row = rig.sinks->status().sinks.front();
     CHECK_FALSE(row.pairing_active);
-    CHECK(ac3::hearth::to_detail(row).pairing == "none");
-    CHECK(ac3::hearth::to_detail(row).can_pair);
+    CHECK(iclforge::hearth::to_detail(row).pairing == "none");
+    CHECK(iclforge::hearth::to_detail(row).can_pair);
 
     // Cancelling clears the request, and the per-sink commands reach the host for a known id.
     rig.sinks->on_client(connected(service, "client-attic"));
@@ -258,7 +258,7 @@ TEST_CASE("network sinks rows: a sink that lost its pairing says so", "[hearth][
     CHECK(row.lost_pairing);
     CHECK(row.pair_state == PairState::kNotPaired);
     CHECK_FALSE(row.notice.empty());
-    CHECK(ac3::hearth::to_detail(row).can_pair);
+    CHECK(iclforge::hearth::to_detail(row).can_pair);
 }
 
 TEST_CASE("network sinks rows: mDNS's own name stands until the sink says its own", "[hearth][network-sinks]") {

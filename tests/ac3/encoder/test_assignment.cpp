@@ -17,11 +17,11 @@
 // nullopt, never a silent best guess.
 
 using Catch::Approx;
-using ac3::plan::Assignment;
-using ac3::plan::Destination;
-using ac3::plan::DestinationKind;
-using ac3::plan::SourceShape;
-using Location = ac3::eac3::chanmap::Location;
+using iclforge::plan::Assignment;
+using iclforge::plan::Destination;
+using iclforge::plan::DestinationKind;
+using iclforge::plan::SourceShape;
+using Location = iclforge::eac3::chanmap::Location;
 
 namespace {
 
@@ -83,8 +83,8 @@ TEST_CASE("rows_of returns rows of one kind in (source, channel) order", "[assig
 // ---------------------------------------------------------------------------
 
 TEST_CASE("a fully-assigned single source is carried, not rendered", "[assignment]") {
-    const auto target = ac3::plan::channel_plan_for(ac3::plan::LayoutId::k51);
-    const auto coded = ac3::plan::coded_channels(target);
+    const auto target = iclforge::plan::channel_plan_for(iclforge::plan::LayoutId::k51);
+    const auto coded = iclforge::plan::coded_channels(target);
     REQUIRE(coded.size() == 6);
 
     const std::vector<SourceShape> sources{{.channels = 6, .label = "orbit51.wav"}};
@@ -93,7 +93,7 @@ TEST_CASE("a fully-assigned single source is carried, not rendered", "[assignmen
         assignment.set(0, i, to_location(coded[i].location));
     }
 
-    const auto routing = ac3::plan::route(target, sources, assignment);
+    const auto routing = iclforge::plan::route(target, sources, assignment);
     REQUIRE(routing.has_value());
     CHECK(routing->source_channels == 6);
     CHECK(routing->coded_channels == 6);
@@ -104,8 +104,8 @@ TEST_CASE("a fully-assigned single source is carried, not rendered", "[assignmen
 }
 
 TEST_CASE("assignment spreads across sources at the right flat index", "[assignment]") {
-    const auto target = ac3::plan::channel_plan_for(ac3::plan::LayoutId::k51);
-    const auto coded = ac3::plan::coded_channels(target);
+    const auto target = iclforge::plan::channel_plan_for(iclforge::plan::LayoutId::k51);
+    const auto coded = iclforge::plan::coded_channels(target);
     REQUIRE(coded.size() == 6);
 
     // Two of the six coded channels come from source 0, the other four from
@@ -121,7 +121,7 @@ TEST_CASE("assignment spreads across sources at the right flat index", "[assignm
     assignment.set(1, 2, to_location(coded[4].location));
     assignment.set(1, 3, to_location(coded[5].location));
 
-    const auto routing = ac3::plan::route(target, sources, assignment);
+    const auto routing = iclforge::plan::route(target, sources, assignment);
     REQUIRE(routing.has_value());
     CHECK(routing->source_channels == 6);
     CHECK(routing->is_permutation());
@@ -136,15 +136,15 @@ TEST_CASE("a bed channel and its dependent replacement both hear an explicit ass
     // rears - so Ls appears twice in coded_channels(), once bed, once not.
     // An explicit row for Ls has to reach both, the same way the automatic
     // router's LFE handling already does by location rather than by index.
-    const auto target = ac3::plan::channel_plan_for(ac3::plan::LayoutId::k71);
-    const auto coded = ac3::plan::coded_channels(target);
+    const auto target = iclforge::plan::channel_plan_for(iclforge::plan::LayoutId::k71);
+    const auto coded = iclforge::plan::coded_channels(target);
     REQUIRE(coded.size() == 10);
 
     const std::vector<SourceShape> sources{{.channels = 1, .label = "ls.wav"}};
     Assignment assignment;
     assignment.set(0, 0, to_location(Location::kLeftSurround));
 
-    const auto routing = ac3::plan::route(target, sources, assignment);
+    const auto routing = iclforge::plan::route(target, sources, assignment);
     REQUIRE(routing.has_value());
     int hits = 0;
     for (std::size_t c = 0; c < coded.size(); ++c) {
@@ -159,33 +159,33 @@ TEST_CASE("a bed channel and its dependent replacement both hear an explicit ass
 }
 
 TEST_CASE("route() rejects two rows aimed at the same location", "[assignment]") {
-    const auto target = ac3::plan::channel_plan_for(ac3::plan::LayoutId::k51);
+    const auto target = iclforge::plan::channel_plan_for(iclforge::plan::LayoutId::k51);
     const std::vector<SourceShape> sources{{.channels = 2, .label = "a.wav"}};
     Assignment assignment;
     assignment.set(0, 0, to_location(Location::kLeft));
     assignment.set(0, 1, to_location(Location::kLeft));
 
-    CHECK_FALSE(ac3::plan::route(target, sources, assignment).has_value());
+    CHECK_FALSE(iclforge::plan::route(target, sources, assignment).has_value());
 }
 
 TEST_CASE("route() rejects a location the target cannot express", "[assignment]") {
-    const auto target = ac3::plan::channel_plan_for(ac3::plan::LayoutId::kStereo);
+    const auto target = iclforge::plan::channel_plan_for(iclforge::plan::LayoutId::kStereo);
     const std::vector<SourceShape> sources{{.channels = 1, .label = "a.wav"}};
     Assignment assignment;
     assignment.set(0, 0, to_location(Location::kLeftSurround));
 
-    CHECK_FALSE(ac3::plan::route(target, sources, assignment).has_value());
+    CHECK_FALSE(iclforge::plan::route(target, sources, assignment).has_value());
 }
 
 TEST_CASE("object and unassigned rows contribute nothing, but are not an error",
           "[assignment]") {
-    const auto target = ac3::plan::channel_plan_for(ac3::plan::LayoutId::k51);
+    const auto target = iclforge::plan::channel_plan_for(iclforge::plan::LayoutId::k51);
     const std::vector<SourceShape> sources{{.channels = 2, .label = "a.wav"}};
     Assignment assignment;
     assignment.set(0, 0, {.kind = DestinationKind::kObject});
     // channel 1 left entirely unassigned
 
-    const auto routing = ac3::plan::route(target, sources, assignment);
+    const auto routing = iclforge::plan::route(target, sources, assignment);
     REQUIRE(routing.has_value());
     for (int c = 0; c < routing->coded_channels; ++c) {
         for (int s = 0; s < routing->source_channels; ++s) {
@@ -199,13 +199,13 @@ TEST_CASE("objm rows contribute nothing to route(), same as obj", "[assignment]"
     // content reaches the stream through the object plane assembly instead
     // (see encoder_controller.cpp's encodeObjects) - route() itself must
     // treat kObjectMono exactly like kObject: present, but all-zero here.
-    const auto target = ac3::plan::channel_plan_for(ac3::plan::LayoutId::k51);
+    const auto target = iclforge::plan::channel_plan_for(iclforge::plan::LayoutId::k51);
     const std::vector<SourceShape> sources{{.channels = 2, .label = "a.wav"}};
     Assignment assignment;
     assignment.set(0, 0, {.kind = DestinationKind::kObjectMono});
     assignment.set(0, 1, {.kind = DestinationKind::kObjectMono});
 
-    const auto routing = ac3::plan::route(target, sources, assignment);
+    const auto routing = iclforge::plan::route(target, sources, assignment);
     REQUIRE(routing.has_value());
     for (int c = 0; c < routing->coded_channels; ++c) {
         for (int s = 0; s < routing->source_channels; ++s) {
@@ -215,7 +215,7 @@ TEST_CASE("objm rows contribute nothing to route(), same as obj", "[assignment]"
 }
 
 TEST_CASE("route() applies a row's trim as linear gain, not just unity", "[assignment]") {
-    const auto target = ac3::plan::channel_plan_for(ac3::plan::LayoutId::kStereo);
+    const auto target = iclforge::plan::channel_plan_for(iclforge::plan::LayoutId::kStereo);
     const std::vector<SourceShape> sources{{.channels = 2, .label = "a.wav"}};
     Assignment assignment;
     assignment.set(0, 0, {.kind = DestinationKind::kLocation, .location = Location::kLeft,
@@ -223,7 +223,7 @@ TEST_CASE("route() applies a row's trim as linear gain, not just unity", "[assig
     assignment.set(0, 1, {.kind = DestinationKind::kLocation, .location = Location::kRight,
                           .trim_db = 0.0});
 
-    const auto routing = ac3::plan::route(target, sources, assignment);
+    const auto routing = iclforge::plan::route(target, sources, assignment);
     REQUIRE(routing.has_value());
     // -6dB is not exactly a factor of 0.5, but close enough that a test
     // asserting "roughly half" would not catch a formula bug (e.g. dividing
@@ -233,9 +233,9 @@ TEST_CASE("route() applies a row's trim as linear gain, not just unity", "[assig
 }
 
 TEST_CASE("route() refuses an empty source list", "[assignment]") {
-    const auto target = ac3::plan::channel_plan_for(ac3::plan::LayoutId::k51);
+    const auto target = iclforge::plan::channel_plan_for(iclforge::plan::LayoutId::k51);
     const Assignment assignment;
-    CHECK_FALSE(ac3::plan::route(target, {}, assignment).has_value());
+    CHECK_FALSE(iclforge::plan::route(target, {}, assignment).has_value());
 }
 
 // ---------------------------------------------------------------------------
@@ -249,12 +249,12 @@ TEST_CASE("dual_mono_routing reproduces route()'s identity for one two-channel s
     assignment.set(0, 0, {.kind = DestinationKind::kProgramme1});
     assignment.set(0, 1, {.kind = DestinationKind::kProgramme2});
 
-    const auto routing = ac3::plan::dual_mono_routing(sources, assignment);
+    const auto routing = iclforge::plan::dual_mono_routing(sources, assignment);
     REQUIRE(routing.has_value());
 
-    const auto legacy = ac3::plan::route(ac3::plan::LayoutId::kDualMono, 2,
-                                         ac3::meta::CentreMixLevel::kMinus4_5dB,
-                                         ac3::meta::SurroundMixLevel::kMinus6dB);
+    const auto legacy = iclforge::plan::route(iclforge::plan::LayoutId::kDualMono, 2,
+                                         iclforge::meta::CentreMixLevel::kMinus4_5dB,
+                                         iclforge::meta::SurroundMixLevel::kMinus6dB);
     REQUIRE(legacy.has_value());
 
     CHECK(routing->source_channels == legacy->source_channels);
@@ -273,7 +273,7 @@ TEST_CASE("dual_mono_routing spans two independent one-channel sources", "[assig
     assignment.set(0, 0, {.kind = DestinationKind::kProgramme1});
     assignment.set(1, 0, {.kind = DestinationKind::kProgramme2});
 
-    const auto routing = ac3::plan::dual_mono_routing(sources, assignment);
+    const auto routing = iclforge::plan::dual_mono_routing(sources, assignment);
     REQUIRE(routing.has_value());
     CHECK(routing->is_permutation());
     CHECK(routing->at(0, 0) == Approx(1.0));
@@ -288,7 +288,7 @@ TEST_CASE("dual_mono_routing applies each programme row's own trim", "[assignmen
     assignment.set(0, 0, {.kind = DestinationKind::kProgramme1, .trim_db = -12.0});
     assignment.set(0, 1, {.kind = DestinationKind::kProgramme2, .trim_db = 6.0});
 
-    const auto routing = ac3::plan::dual_mono_routing(sources, assignment);
+    const auto routing = iclforge::plan::dual_mono_routing(sources, assignment);
     REQUIRE(routing.has_value());
     CHECK(routing->at(0, 0) == Approx(std::pow(10.0, -12.0 / 20.0)).epsilon(1e-9));
     CHECK(routing->at(1, 1) == Approx(std::pow(10.0, 6.0 / 20.0)).epsilon(1e-9));
@@ -299,12 +299,12 @@ TEST_CASE("dual_mono_routing rejects a missing or doubled programme", "[assignme
 
     Assignment missing_p2;
     missing_p2.set(0, 0, {.kind = DestinationKind::kProgramme1});
-    CHECK_FALSE(ac3::plan::dual_mono_routing(sources, missing_p2).has_value());
+    CHECK_FALSE(iclforge::plan::dual_mono_routing(sources, missing_p2).has_value());
 
     Assignment doubled_p1;
     doubled_p1.set(0, 0, {.kind = DestinationKind::kProgramme1});
     doubled_p1.set(0, 1, {.kind = DestinationKind::kProgramme1});
-    CHECK_FALSE(ac3::plan::dual_mono_routing(sources, doubled_p1).has_value());
+    CHECK_FALSE(iclforge::plan::dual_mono_routing(sources, doubled_p1).has_value());
 }
 
 // ---------------------------------------------------------------------------
@@ -312,42 +312,47 @@ TEST_CASE("dual_mono_routing rejects a missing or doubled programme", "[assignme
 // ---------------------------------------------------------------------------
 
 TEST_CASE("derive_codec stays AC-3 until something actually needs E-AC-3", "[assignment]") {
-    const auto narrow = ac3::plan::channel_plan_for(ac3::plan::LayoutId::k51);
-    const ac3::plan::Tools no_tools{};
-    const ac3::plan::Metadata plain_meta{};
+    const auto narrow = iclforge::plan::channel_plan_for(iclforge::plan::LayoutId::k51);
+    const iclforge::plan::Tools no_tools{};
+    const iclforge::plan::Metadata plain_meta{};
 
-    CHECK(ac3::plan::derive_codec(narrow, no_tools, plain_meta, std::nullopt,
-                                  ac3::SampleRate::k48000) == ac3::plan::Codec::kAc3);
+    CHECK(iclforge::plan::derive_codec(narrow, no_tools, plain_meta, std::nullopt,
+                                  iclforge::SampleRate::k48000) == iclforge::plan::Codec::kAc3);
 
     SECTION("an immersive target promotes") {
-        const auto wide = ac3::plan::channel_plan_for(ac3::plan::LayoutId::k71);
-        CHECK(ac3::plan::derive_codec(wide, no_tools, plain_meta, std::nullopt,
-                                      ac3::SampleRate::k48000) == ac3::plan::Codec::kEac3);
+        const auto wide = iclforge::plan::channel_plan_for(iclforge::plan::LayoutId::k71);
+        CHECK(iclforge::plan::derive_codec(wide, no_tools, plain_meta, std::nullopt,
+                                           iclforge::SampleRate::k48000) ==
+              iclforge::plan::Codec::kEac3);
     }
 
     SECTION("a ticked Annex E tool promotes") {
-        ac3::plan::Tools tools{};
+        iclforge::plan::Tools tools{};
         tools.coupling = true;
-        CHECK(ac3::plan::derive_codec(narrow, tools, plain_meta, std::nullopt,
-                                      ac3::SampleRate::k48000) == ac3::plan::Codec::kEac3);
+        CHECK(iclforge::plan::derive_codec(narrow, tools, plain_meta, std::nullopt,
+                                           iclforge::SampleRate::k48000) ==
+              iclforge::plan::Codec::kEac3);
     }
 
     SECTION("VBR promotes") {
-        const ac3::eac3::VbrConfig vbr{.quality = 0.75};
-        CHECK(ac3::plan::derive_codec(narrow, no_tools, plain_meta, vbr,
-                                      ac3::SampleRate::k48000) == ac3::plan::Codec::kEac3);
+        const iclforge::eac3::VbrConfig vbr{.quality = 0.75};
+        CHECK(iclforge::plan::derive_codec(narrow, no_tools, plain_meta, vbr,
+                                           iclforge::SampleRate::k48000) ==
+              iclforge::plan::Codec::kEac3);
     }
 
     SECTION("mixing metadata promotes") {
-        ac3::plan::Metadata meta{};
+        iclforge::plan::Metadata meta{};
         meta.mixmeta = true;
-        CHECK(ac3::plan::derive_codec(narrow, no_tools, meta, std::nullopt,
-                                      ac3::SampleRate::k48000) == ac3::plan::Codec::kEac3);
+        CHECK(iclforge::plan::derive_codec(narrow, no_tools, meta, std::nullopt,
+                                           iclforge::SampleRate::k48000) ==
+              iclforge::plan::Codec::kEac3);
     }
 
     SECTION("a reduced sample rate promotes") {
-        CHECK(ac3::plan::derive_codec(narrow, no_tools, plain_meta, std::nullopt,
-                                      ac3::SampleRate::k24000) == ac3::plan::Codec::kEac3);
+        CHECK(iclforge::plan::derive_codec(narrow, no_tools, plain_meta, std::nullopt,
+                                           iclforge::SampleRate::k24000) ==
+              iclforge::plan::Codec::kEac3);
     }
 }
 
@@ -371,9 +376,9 @@ TEST_CASE("destination tokens round-trip through format/parse", "[assignment]") 
         {.kind = DestinationKind::kProgramme2, .trim_db = -24.0},
     };
     for (const auto& dest : cases) {
-        const auto token = ac3::plan::format_destination(dest);
+        const auto token = iclforge::plan::format_destination(dest);
         INFO("token " << token);
-        const auto parsed = ac3::plan::parse_destination(token);
+        const auto parsed = iclforge::plan::parse_destination(token);
         REQUIRE(parsed.has_value());
         CHECK(parsed->kind == dest.kind);
         CHECK(parsed->trim_db == dest.trim_db);
@@ -382,27 +387,28 @@ TEST_CASE("destination tokens round-trip through format/parse", "[assignment]") 
         }
     }
 
-    CHECK(ac3::plan::format_destination({.kind = DestinationKind::kUnassigned}) == "none");
-    CHECK(ac3::plan::format_destination({.kind = DestinationKind::kObjectMono}) == "objm");
-    CHECK_FALSE(ac3::plan::parse_destination("not-a-real-token").has_value());
+    CHECK(iclforge::plan::format_destination({.kind = DestinationKind::kUnassigned}) == "none");
+    CHECK(iclforge::plan::format_destination({.kind = DestinationKind::kObjectMono}) == "objm");
+    CHECK_FALSE(iclforge::plan::parse_destination("not-a-real-token").has_value());
 }
 
 TEST_CASE("a trim suffix formats compactly and parses back exactly", "[assignment]") {
     // format_destination's spelling: whole dB values print with no decimal,
     // fractional ones with exactly one - never float-formatting noise like
     // "-3.50" or "-3.4999999999999996".
-    CHECK(ac3::plan::format_destination(to_location(Location::kLeft)) == "L");  // no trim -> no @
-    CHECK(ac3::plan::format_destination(
+    CHECK(iclforge::plan::format_destination(to_location(Location::kLeft)) ==
+          "L");  // no trim -> no @
+    CHECK(iclforge::plan::format_destination(
               {.kind = DestinationKind::kLocation, .location = Location::kLeft, .trim_db = -3.5}) ==
           "L@-3.5");
-    CHECK(ac3::plan::format_destination(
+    CHECK(iclforge::plan::format_destination(
               {.kind = DestinationKind::kLocation, .location = Location::kLeft, .trim_db = 2.0}) ==
           "L@2");
-    CHECK(ac3::plan::format_destination(
+    CHECK(iclforge::plan::format_destination(
               {.kind = DestinationKind::kLocation, .location = Location::kLeft, .trim_db = -0.5}) ==
           "L@-0.5");
 
-    const auto parsed = ac3::plan::parse_destination("obj@-6.5");
+    const auto parsed = iclforge::plan::parse_destination("obj@-6.5");
     REQUIRE(parsed.has_value());
     CHECK(parsed->kind == DestinationKind::kObject);
     CHECK(parsed->trim_db == -6.5);
@@ -412,18 +418,18 @@ TEST_CASE("a trim outside the documented range is clamped or rejected", "[assign
     // A small overshoot (within 1dB of the boundary) snaps to the boundary
     // rather than failing outright - see parse_trim's own comment on why a
     // coarse trim control is allowed a little slack.
-    const auto slight = ac3::plan::parse_destination("L@24.5");
+    const auto slight = iclforge::plan::parse_destination("L@24.5");
     REQUIRE(slight.has_value());
     CHECK(slight->trim_db == 24.0);
-    const auto slight_low = ac3::plan::parse_destination("L@-24.7");
+    const auto slight_low = iclforge::plan::parse_destination("L@-24.7");
     REQUIRE(slight_low.has_value());
     CHECK(slight_low->trim_db == -24.0);
 
     // Wildly out of range is a mistake to report, not silently clamp.
-    CHECK_FALSE(ac3::plan::parse_destination("L@30").has_value());
-    CHECK_FALSE(ac3::plan::parse_destination("L@1000").has_value());
-    CHECK_FALSE(ac3::plan::parse_destination("L@not-a-number").has_value());
-    CHECK_FALSE(ac3::plan::parse_destination("L@").has_value());
+    CHECK_FALSE(iclforge::plan::parse_destination("L@30").has_value());
+    CHECK_FALSE(iclforge::plan::parse_destination("L@1000").has_value());
+    CHECK_FALSE(iclforge::plan::parse_destination("L@not-a-number").has_value());
+    CHECK_FALSE(iclforge::plan::parse_destination("L@").has_value());
 }
 
 // ---------------------------------------------------------------------------
@@ -434,7 +440,7 @@ TEST_CASE("parse_assignment reads a full map= spec, one entry per channel", "[as
     const std::vector<SourceShape> sources{{.channels = 2, .label = "a.wav"},
                                            {.channels = 1, .label = "b.wav"}};
     Assignment assignment;
-    REQUIRE(ac3::plan::parse_assignment("0.0:L,0.1:R,1.0:LFE", sources, assignment));
+    REQUIRE(iclforge::plan::parse_assignment("0.0:L,0.1:R,1.0:LFE", sources, assignment));
     CHECK(assignment.at(0, 0) == to_location(Location::kLeft));
     CHECK(assignment.at(0, 1) == to_location(Location::kRight));
     CHECK(assignment.at(1, 0) == to_location(Location::kLfe));
@@ -444,13 +450,13 @@ TEST_CASE("parse_assignment expands a channel range for obj and none only", "[as
     const std::vector<SourceShape> sources{{.channels = 4, .label = "a.wav"}};
 
     Assignment objects;
-    REQUIRE(ac3::plan::parse_assignment("0.0-3:obj", sources, objects));
+    REQUIRE(iclforge::plan::parse_assignment("0.0-3:obj", sources, objects));
     for (std::size_t c = 0; c < 4; ++c) {
         CHECK(objects.at(0, c).kind == DestinationKind::kObject);
     }
 
     Assignment none;
-    REQUIRE(ac3::plan::parse_assignment("0.0-3:none", sources, none));
+    REQUIRE(iclforge::plan::parse_assignment("0.0-3:none", sources, none));
     for (std::size_t c = 0; c < 4; ++c) {
         CHECK(none.at(0, c).kind == DestinationKind::kUnassigned);
     }
@@ -458,14 +464,14 @@ TEST_CASE("parse_assignment expands a channel range for obj and none only", "[as
     // A location names exactly one channel - a range there is ambiguous
     // about which one it means, so it is rejected rather than guessed at.
     Assignment rejected;
-    CHECK_FALSE(ac3::plan::parse_assignment("0.0-3:L", sources, rejected));
+    CHECK_FALSE(iclforge::plan::parse_assignment("0.0-3:L", sources, rejected));
 }
 
 TEST_CASE("parse_assignment expands a channel range for objm too, folding to one group",
           "[assignment]") {
     const std::vector<SourceShape> sources{{.channels = 4, .label = "a.wav"}};
     Assignment assignment;
-    REQUIRE(ac3::plan::parse_assignment("0.0-1:objm,0.2-3:obj", sources, assignment));
+    REQUIRE(iclforge::plan::parse_assignment("0.0-1:objm,0.2-3:obj", sources, assignment));
     CHECK(assignment.at(0, 0).kind == DestinationKind::kObjectMono);
     CHECK(assignment.at(0, 1).kind == DestinationKind::kObjectMono);
     // The other range on the same source stays plain obj - objm is a
@@ -477,7 +483,7 @@ TEST_CASE("parse_assignment expands a channel range for objm too, folding to one
 TEST_CASE("parse_assignment reads a per-channel trim alongside the destination", "[assignment]") {
     const std::vector<SourceShape> sources{{.channels = 2, .label = "a.wav"}};
     Assignment assignment;
-    REQUIRE(ac3::plan::parse_assignment("0.0:L@-3.5,0.1:R", sources, assignment));
+    REQUIRE(iclforge::plan::parse_assignment("0.0:L@-3.5,0.1:R", sources, assignment));
     CHECK(assignment.at(0, 0).trim_db == -3.5);
     CHECK(assignment.at(0, 1).trim_db == 0.0);
 }
@@ -486,29 +492,29 @@ TEST_CASE("parse_assignment requires every declared channel to appear", "[assign
     const std::vector<SourceShape> sources{{.channels = 2, .label = "a.wav"}};
     Assignment assignment;
     // Channel 1 is never mentioned - not even as "none".
-    CHECK_FALSE(ac3::plan::parse_assignment("0.0:L", sources, assignment));
+    CHECK_FALSE(iclforge::plan::parse_assignment("0.0:L", sources, assignment));
 }
 
 TEST_CASE("parse_assignment rejects a channel mentioned twice", "[assignment]") {
     const std::vector<SourceShape> sources{{.channels = 1, .label = "a.wav"}};
     Assignment assignment;
-    CHECK_FALSE(ac3::plan::parse_assignment("0.0:L,0.0:R", sources, assignment));
+    CHECK_FALSE(iclforge::plan::parse_assignment("0.0:L,0.0:R", sources, assignment));
 }
 
 TEST_CASE("parse_assignment rejects an out-of-range source or channel", "[assignment]") {
     const std::vector<SourceShape> sources{{.channels = 1, .label = "a.wav"}};
     Assignment assignment;
-    CHECK_FALSE(ac3::plan::parse_assignment("1.0:L", sources, assignment));   // no source 1
-    CHECK_FALSE(ac3::plan::parse_assignment("0.1:L", sources, assignment));  // no channel 1
+    CHECK_FALSE(iclforge::plan::parse_assignment("1.0:L", sources, assignment));   // no source 1
+    CHECK_FALSE(iclforge::plan::parse_assignment("0.1:L", sources, assignment));  // no channel 1
 }
 
 TEST_CASE("parse_assignment rejects malformed text outright", "[assignment]") {
     const std::vector<SourceShape> sources{{.channels = 1, .label = "a.wav"}};
     Assignment assignment;
-    CHECK_FALSE(ac3::plan::parse_assignment("", sources, assignment));
-    CHECK_FALSE(ac3::plan::parse_assignment("0.0", sources, assignment));         // no ':'
-    CHECK_FALSE(ac3::plan::parse_assignment("0:L", sources, assignment));         // no '.'
-    CHECK_FALSE(ac3::plan::parse_assignment("0.0:bogus", sources, assignment));   // bad dest
+    CHECK_FALSE(iclforge::plan::parse_assignment("", sources, assignment));
+    CHECK_FALSE(iclforge::plan::parse_assignment("0.0", sources, assignment));         // no ':'
+    CHECK_FALSE(iclforge::plan::parse_assignment("0:L", sources, assignment));         // no '.'
+    CHECK_FALSE(iclforge::plan::parse_assignment("0.0:bogus", sources, assignment));   // bad dest
 }
 
 TEST_CASE("format_assignment round-trips through parse_assignment", "[assignment]") {
@@ -520,9 +526,9 @@ TEST_CASE("format_assignment round-trips through parse_assignment", "[assignment
     original.set(1, 0, {.kind = DestinationKind::kObject});
     original.set(1, 1, {.kind = DestinationKind::kUnassigned});
 
-    const auto text = ac3::plan::format_assignment(sources, original);
+    const auto text = iclforge::plan::format_assignment(sources, original);
     Assignment roundtripped;
-    REQUIRE(ac3::plan::parse_assignment(text, sources, roundtripped));
+    REQUIRE(iclforge::plan::parse_assignment(text, sources, roundtripped));
     for (std::size_t s = 0; s < sources.size(); ++s) {
         for (std::size_t c = 0; c < sources[s].channels; ++c) {
             CHECK(roundtripped.at(s, c) == original.at(s, c));
@@ -539,10 +545,10 @@ TEST_CASE("format_assignment round-trips trims and an objm group", "[assignment]
     original.set(0, 1, {.kind = DestinationKind::kObjectMono, .trim_db = 6.0});
     original.set(0, 2, {.kind = DestinationKind::kObjectMono, .trim_db = 6.0});
 
-    const auto text = ac3::plan::format_assignment(sources, original);
+    const auto text = iclforge::plan::format_assignment(sources, original);
     INFO("map= text: " << text);
     Assignment roundtripped;
-    REQUIRE(ac3::plan::parse_assignment(text, sources, roundtripped));
+    REQUIRE(iclforge::plan::parse_assignment(text, sources, roundtripped));
     for (std::size_t c = 0; c < 3; ++c) {
         CHECK(roundtripped.at(0, c) == original.at(0, c));
     }

@@ -21,7 +21,7 @@
 // default port is not, and Sendspin's rates (a chunk every 32 ms per connection)
 // make the lock's cost irrelevant.
 
-namespace ac3::sendspin::crypto {
+namespace iclforge::sendspin::crypto {
 
 using Key32 = std::array<std::uint8_t, 32>;
 using Digest32 = std::array<std::uint8_t, 32>;
@@ -105,4 +105,4 @@ class AeadKey {
     Aead aead_ = Aead::kChaCha20Poly1305;
 };
 
-}  // namespace ac3::sendspin::crypto
+}  // namespace iclforge::sendspin::crypto

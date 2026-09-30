@@ -12,7 +12,7 @@
 #include "iclforge/sendspin/crypto.hpp"
 #include "field25519.hpp"
 
-namespace ac3::sendspin::cpace {
+namespace iclforge::sendspin::cpace {
 
 namespace {
 
@@ -229,4 +229,4 @@ bool Party::verify(Bytes peer_tag) const {
     return expected && constant_time_equal(*expected, peer_tag);
 }
 
-}  // namespace ac3::sendspin::cpace
+}  // namespace iclforge::sendspin::cpace

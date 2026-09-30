@@ -7,7 +7,7 @@
 
 // See play_meters.hpp.
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 namespace {
 
@@ -174,4 +174,4 @@ bool PlayMeters::release(std::uint64_t heard, MeterSnapshot& latest) {
     return true;
 }
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

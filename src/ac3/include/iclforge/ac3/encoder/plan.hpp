@@ -34,7 +34,7 @@
 // AccessUnitConfig values and says how a source's channels reach them; the
 // encoders are unchanged and unaware of it.
 
-namespace ac3::plan {
+namespace iclforge::plan {
 
 // --- codec ------------------------------------------------------------------
 //
@@ -47,8 +47,8 @@ namespace ac3::plan {
 enum class Codec : std::uint8_t {
     kAc3,   // bsid 8, A/52 §5
     kEac3,  // bsid 16, A/52 Annex E
-    // ETSI TS 103 190. ac3::forge does not encode it: a plan names it for a front
-    // end that hands the plan's channels, rate and metadata to ac4::Encoder
+    // ETSI TS 103 190. iclforge::ac3 does not encode it: a plan names it for a front
+    // end that hands the plan's channels, rate and metadata to iclforge::ac4::Encoder
     // (src/ac4enc), and ac3_config()/eac3_config() have nothing to say about it.
     kAc4,
 };
@@ -186,7 +186,7 @@ inline constexpr std::array<LayoutInfo, 8> kLayouts{{
 // A LayoutId only ever names one of the combinations below. This is the
 // general form underneath: a bed acmod/lfe plus however many dependent
 // chanmaps it takes to render an arbitrary set of Table E2.5 locations
-// (ac3::eac3::chanmap::allocate does the actual partitioning). Every function
+// (iclforge::eac3::chanmap::allocate does the actual partitioning). Every function
 // below that used to take only a LayoutId now also takes a ChannelPlan
 // directly, and the LayoutId overload is a one-line lookup into it - so a
 // named layout is a convenience shortcut for a specific plan, not a separate
@@ -512,7 +512,7 @@ struct Plan {
     LayoutId layout = LayoutId::kStereo;
     // A caller-built alternative to `layout`: when set, this OVERRIDES
     // `layout` entirely and the plan targets exactly these Table E2.5
-    // locations (ac3::eac3::chanmap::allocate) instead of a named preset.
+    // locations (iclforge::eac3::chanmap::allocate) instead of a named preset.
     std::optional<std::uint16_t> custom_locations = std::nullopt;
     SampleRate sample_rate = SampleRate::k48000;
     std::uint32_t bitrate_kbps = 192;
@@ -592,7 +592,7 @@ enum class PlanError : std::uint8_t {
 // to return a verdict to. eac3::AccessUnitEncoder's simply builds no
 // substreams, which leaves its channel_count() at zero. A Codec::kAc4 plan is
 // held to what this library can know of AC-4, its layout and sample rate;
-// ac4::Encoder::refusal_reason() names what the AC-4 encoder refuses beyond them.
+// iclforge::ac4::Encoder::refusal_reason() names what the AC-4 encoder refuses beyond them.
 [[nodiscard]] ICLFORGE_AC3_EXPORT std::optional<PlanError> validate(const Plan& plan);
 
 // --- routing a source onto a plan -------------------------------------------
@@ -639,4 +639,4 @@ struct ICLFORGE_AC3_EXPORT Routing {
 ICLFORGE_AC3_EXPORT void render(const Routing& routing, std::span<const std::span<const float>> source,
                             std::span<const std::span<float>> coded, std::size_t samples);
 
-}  // namespace ac3::plan
+}  // namespace iclforge::plan

@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cstring>
 
-namespace ac3::signing {
+namespace iclforge::signing {
 namespace {
 
 constexpr std::array<std::uint32_t, 8> kInitialHash = {
@@ -125,4 +125,4 @@ std::array<std::byte, 32> sha256(std::span<const std::byte> data) {
     return out;
 }
 
-}  // namespace ac3::signing
+}  // namespace iclforge::signing

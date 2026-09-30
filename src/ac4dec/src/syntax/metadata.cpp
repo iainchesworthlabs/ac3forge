@@ -9,7 +9,7 @@
 #include "huffman.hpp"
 #include "iclforge/ac4core/tables/huffman_tables.hpp"
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 namespace {
 
@@ -1017,4 +1017,4 @@ ParseResult parse_metadata(BitReader& r, const SubstreamContext& ctx, MetadataSt
     return check(r);
 }
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

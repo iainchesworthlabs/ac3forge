@@ -13,7 +13,7 @@
 // Pseudocode 55's reset state lands (src/ac4dec/ERRATA.md, "x = x++ in
 // Pseudocode 57").
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 struct RandGenState {
     // Pseudocode 54: every field is modulo 256.
@@ -34,4 +34,4 @@ struct RandGenState {
 // Pseudocode 24's closed form.
 void advance(RandGenState& state) noexcept;
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

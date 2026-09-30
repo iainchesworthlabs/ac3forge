@@ -3,7 +3,7 @@
 #include <cstddef>
 #include <utility>
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 namespace {
 
 // Table 178, chel_matsel 0 to 11, as read off the printed entries: for 0,
@@ -117,4 +117,4 @@ UnitChoice undo_five(int chel_matsel, std::array<Channel*, 5> unit, std::span<co
     return choice;
 }
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

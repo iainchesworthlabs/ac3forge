@@ -27,7 +27,7 @@
 // bytes, so sibling elements inside a SubElementCount loop come out byte-aligned to each
 // other without this reader ever needing to track a position relative to anything but its
 // own current element.
-namespace ac3iab::detail {
+namespace iclforge::iab::detail {
 
 class BitReader {
 public:
@@ -61,4 +61,4 @@ private:
     std::size_t bit_pos_ = 0;
 };
 
-}  // namespace ac3iab::detail
+}  // namespace iclforge::iab::detail

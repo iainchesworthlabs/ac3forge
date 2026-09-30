@@ -15,7 +15,7 @@
 #include "iclforge/sendspin/json.hpp"
 #include "iclforge/sendspin/messages.hpp"
 
-namespace ac3::sendspin::pairing_messages {
+namespace iclforge::sendspin::pairing_messages {
 
 namespace {
 
@@ -309,4 +309,4 @@ std::expected<AbortReason, MessageError> read_pair_abort(json::Value payload, Di
     return malformed();
 }
 
-}  // namespace ac3::sendspin::pairing_messages
+}  // namespace iclforge::sendspin::pairing_messages

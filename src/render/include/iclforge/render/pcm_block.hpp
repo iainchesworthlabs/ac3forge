@@ -7,7 +7,7 @@
 
 #include "iclforge/objects/oamd.hpp"
 
-namespace ac3::render {
+namespace iclforge::render {
 
 // One block of a decoded programme's PCM, as the *_by_block forms hand it
 // over: kSamplesPerBlock samples of every output slot, in the same slot order
@@ -64,4 +64,4 @@ class BlockSink {
     void (*call_)(void*, const PcmBlock&);
 };
 
-}  // namespace ac3::render
+}  // namespace iclforge::render

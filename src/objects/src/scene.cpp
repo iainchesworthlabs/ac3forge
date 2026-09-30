@@ -19,7 +19,7 @@
 #include "iclforge/objects/placement.hpp"
 #include "scene_text.hpp"
 
-namespace ac3::oba {
+namespace iclforge::oba {
 
 namespace {
 
@@ -406,4 +406,4 @@ std::expected<ObjectScene, SceneError> scene_from_text(std::string_view text,
     return ObjectScene::create(std::move(contents->objects), contents->orientation);
 }
 
-}  // namespace ac3::oba
+}  // namespace iclforge::oba

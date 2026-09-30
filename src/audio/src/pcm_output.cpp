@@ -10,7 +10,7 @@
 // arithmetic over a patch - the same reason speakers.cpp sits beside the
 // backend tree rather than inside it.
 
-namespace ac3::audio {
+namespace iclforge::audio {
 
 std::uint16_t output_width(const RenderDeviceInfo& device, std::uint16_t rendered_channels) {
     return device.channels != 0 ? device.channels : rendered_channels;
@@ -213,4 +213,4 @@ MonitorStats PcmOutput::stats() const {
     return impl_->sink.stats();
 }
 
-}  // namespace ac3::audio
+}  // namespace iclforge::audio

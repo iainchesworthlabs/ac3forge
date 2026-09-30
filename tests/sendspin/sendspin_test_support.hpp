@@ -10,7 +10,7 @@
 
 // Hex helpers for the Sendspin tests' byte-for-byte vectors.
 
-namespace ac3::sendspin::test {
+namespace iclforge::sendspin::test {
 
 inline std::vector<std::uint8_t> from_hex(std::string_view hex) {
     const auto nibble = [](char c) {
@@ -53,4 +53,4 @@ inline std::span<const std::uint8_t> bytes_of(std::string_view text) {
     return {static_cast<const std::uint8_t*>(static_cast<const void*>(text.data())), text.size()};
 }
 
-}  // namespace ac3::sendspin::test
+}  // namespace iclforge::sendspin::test

@@ -4,7 +4,7 @@
 
 #include "iclforge/objects/emdf.hpp"
 
-// ac3::emdf::parse_container (src/objects/src/emdf.cpp) over raw bytes.
+// iclforge::emdf::parse_container (src/objects/src/emdf.cpp) over raw bytes.
 //
 // This is the outermost of the three metadata parsers and the one the decoder
 // hands attacker-controlled bytes to first: eac3_decoder.cpp reads skipl (9
@@ -19,6 +19,6 @@
 // on the container's own syntax rather than on the frame carrying it.
 extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size) {
     const std::span<const std::byte> bytes{reinterpret_cast<const std::byte*>(data), size};
-    (void)ac3::emdf::parse_container(bytes);
+    (void)iclforge::emdf::parse_container(bytes);
     return 0;
 }

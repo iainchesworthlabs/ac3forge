@@ -33,7 +33,7 @@
 #include "syntax/presentation.hpp"
 #include "syntax/substream.hpp"
 
-namespace ac4 {
+namespace iclforge::ac4 {
 
 std::string_view describe(DecodeError error) {
     switch (error) {
@@ -2219,7 +2219,7 @@ std::expected<FrameReport, DecodeError> Decoder::Impl::read(
     std::span<const std::byte> raw_ac4_frame) {
     AC4_ZONE_SCOPED_N("ac4_parse");
     Capture* const capture = &frame_capture;
-    auto frame = ac4::parse_raw_frame(raw_ac4_frame);
+    auto frame = iclforge::ac4::parse_raw_frame(raw_ac4_frame);
     if (!frame) {
         // The frame is taken to be the one the stream expected next, so that
         // one damaged frame is not a change of source. After a splice mark
@@ -2579,4 +2579,4 @@ std::expected<FrameReport, DecodeError> Decoder::Impl::read(
     return report;
 }
 
-}  // namespace ac4
+}  // namespace iclforge::ac4

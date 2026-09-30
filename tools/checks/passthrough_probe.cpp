@@ -48,7 +48,7 @@
 
 namespace {
 
-bool submit_paced(ac3::audio::PassthroughSink& sink, std::span<const std::byte> burst,
+bool submit_paced(iclforge::audio::PassthroughSink& sink, std::span<const std::byte> burst,
                   std::chrono::steady_clock::time_point until) {
     // submit() returns false when the sink is ahead of real time, and the
     // caller waits, exactly as the sink documents. It also returns false once
@@ -67,10 +67,10 @@ bool submit_paced(ac3::audio::PassthroughSink& sink, std::span<const std::byte> 
 }  // namespace
 
 int main(int argc, char** argv) {
-    const auto devices = ac3::audio::enumerate_render_devices(48000);
+    const auto devices = iclforge::audio::enumerate_render_devices(48000);
     if (!devices) {
         std::printf("enumerate_render_devices refused: %s\n",
-                    std::string(ac3::audio::describe(devices.error())).c_str());
+                    std::string(iclforge::audio::describe(devices.error())).c_str());
         return 1;
     }
     std::printf("%zu render endpoint(s)\n", devices->size());
@@ -98,7 +98,7 @@ int main(int argc, char** argv) {
         std::printf("cannot read %s\n", path.c_str());
         return 2;
     }
-    const auto bsid = ac3::stream_bsid(stream);
+    const auto bsid = iclforge::stream_bsid(stream);
     if (!bsid) {
         std::printf("%s holds no syncframe\n", path.c_str());
         return 2;
@@ -108,7 +108,7 @@ int main(int argc, char** argv) {
     // Whole access units for E-AC-3 (an independent substream's frame plus
     // any dependents), which is the granularity the burst packer wants;
     // single syncframes for AC-3, each of which is its own burst.
-    const auto units = eac3 ? ac3::split_access_units(stream) : ac3::split_frames(stream);
+    const auto units = eac3 ? iclforge::split_access_units(stream) : iclforge::split_frames(stream);
     if (!units || units->empty()) {
         std::printf("could not split %s into frames\n", path.c_str());
         return 2;
@@ -117,16 +117,16 @@ int main(int argc, char** argv) {
                 eac3 ? "E-AC-3" : "AC-3", units->size(), eac3 ? "access units" : "syncframes",
                 id.c_str(), seconds);
 
-    ac3::audio::PassthroughSink sink;
+    iclforge::audio::PassthroughSink sink;
     const auto started = sink.start(id, 48000,
-                                    eac3 ? ac3::audio::BitstreamFormat::kEac3
-                                         : ac3::audio::BitstreamFormat::kAc3);
+                                    eac3 ? iclforge::audio::BitstreamFormat::kEac3
+                                         : iclforge::audio::BitstreamFormat::kAc3);
     if (!started) {
-        std::printf("start refused: %s\n", std::string(ac3::audio::describe(started.error())).c_str());
+        std::printf("start refused: %s\n", std::string(iclforge::audio::describe(started.error())).c_str());
         return 3;
     }
 
-    ac3::iec61937::Eac3BurstPacker packer;
+    iclforge::iec61937::Eac3BurstPacker packer;
     const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(seconds);
     std::size_t bursts = 0;
     std::size_t loops = 0;
@@ -148,7 +148,7 @@ int main(int argc, char** argv) {
                 }
                 taking = submit_paced(sink, **burst, until);
             } else {
-                const auto burst = ac3::iec61937::wrap_frame(unit);
+                const auto burst = iclforge::iec61937::wrap_frame(unit);
                 if (!burst) {
                     std::printf("wrap_frame refused a syncframe\n");
                     sink.stop();

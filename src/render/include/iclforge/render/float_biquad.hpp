@@ -8,7 +8,7 @@
 // (ac3/render/render.hpp) and the identify tone's low band
 // (ac3/render/identify.hpp).
 //
-// Deliberately NOT ac3::dsp::Biquad (ac3/dsp/biquad.hpp): that one accumulates
+// Deliberately NOT iclforge::dsp::Biquad (ac3/dsp/biquad.hpp): that one accumulates
 // in double even though its interface is float, which is free on the
 // desktop-class hardware its callers run on and expensive on a board these
 // headers also serve. Every double operation on the ESP32-S3's PIE is a
@@ -25,7 +25,7 @@
 // the per-sample arithmetic uses. Moved out of LayoutRenderer unchanged, so the
 // crossover's arithmetic is what it was.
 
-namespace ac3::render {
+namespace iclforge::render {
 
 struct FloatBiquad {
     float b0 = 1.0F, b1 = 0.0F, b2 = 0.0F, a1 = 0.0F, a2 = 0.0F;
@@ -37,7 +37,7 @@ struct FloatBiquad {
     static constexpr double kButterworthQ = 0.70710678118654752;  // 1/sqrt(2)
 
     // Direct Form II Transposed: two state variables, no separate input and
-    // output delay lines to keep in sync - the structure ac3::dsp::Biquad uses.
+    // output delay lines to keep in sync - the structure iclforge::dsp::Biquad uses.
     float process(float x) {
         const float y = b0 * x + z1;
         z1 = b1 * x - a1 * y + z2;
@@ -91,4 +91,4 @@ struct FloatBiquad {
     }
 };
 
-}  // namespace ac3::render
+}  // namespace iclforge::render

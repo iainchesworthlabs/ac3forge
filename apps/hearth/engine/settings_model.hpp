@@ -41,7 +41,7 @@
 // holds nothing a person typed (numbers and a layout/routing description), so
 // it is not withheld.
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 class SettingsStore {
 public:
@@ -179,7 +179,7 @@ struct SavedSpeakerSetup {
     // that length is how many slots were saved.
     std::vector<double> trim_db{};
     std::vector<double> delay_ms{};
-    double crossover_hz = ac3::render::LayoutRenderer::kDefaultCrossoverHz;
+    double crossover_hz = iclforge::render::LayoutRenderer::kDefaultCrossoverHz;
     // Routing::format()'s text form, and the device output count it was
     // captured against - Routing::parse() needs both to rebuild the same
     // patch. Empty when nothing has been saved, or when nothing was open to
@@ -200,4 +200,4 @@ void save_speaker_setup(const SavedSpeakerSetup& saved, SettingsStore& store);
 // load_queue() gives a damaged queue.
 [[nodiscard]] SavedSpeakerSetup load_speaker_setup(const SettingsStore& store);
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

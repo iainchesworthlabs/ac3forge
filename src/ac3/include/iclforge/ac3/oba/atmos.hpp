@@ -35,7 +35,7 @@
 // only split their shared energy in proportion to how loud each one is. That
 // is not a defect of this encoder; it is what a parametric object coder is.
 
-namespace ac3::oba {
+namespace iclforge::oba {
 
 struct AtmosConfig {
     SampleRate sample_rate = SampleRate::k48000;
@@ -67,7 +67,7 @@ struct AtmosConfig {
     // never both - which is why turning this off also drops TS 103 420 §8.3.1's
     // addbsi object marker (flag_ec3_extension_type_a and §8.3.2.2's complexity
     // index): that marker is what every reader keys an object layer off
-    // (ac3::io::scan, the dec3 box's Atmos extension, an HLS CHANNELS=.../JOC
+    // (iclforge::io::scan, the dec3 box's Atmos extension, an HLS CHANNELS=.../JOC
     // attribute, FFmpeg's "Dolby Digital Plus + Dolby Atmos" profile), and a
     // stream with no container has no object layer to advertise. The 5.1 MIX is
     // the same either way (the same float bed is encoded); the decoded samples
@@ -112,7 +112,7 @@ struct AtmosConfig {
 
 // Selects AtmosEncoder's other constructor: a channel-based-immersive (CBI)
 // bed programme instead of dynamic objects. `bed` is the Table 12 standard
-// assignment (ac3::oba::bed::k* flags, OR'd together - e.g. bed::k51 |
+// assignment (iclforge::oba::bed::k* flags, OR'd together - e.g. bed::k51 |
 // bed::kTflTfr | bed::kTblTbr for a 5.1.4 bed) this encoder declares; the
 // programme's dynamic_objects is always 0. A distinct type rather than a
 // second int/uint16_t constructor parameter so the two constructors cannot be
@@ -230,7 +230,7 @@ class ICLFORGE_AC3_EXPORT AtmosEncoder {
     // Every private data member - config, the bed encoder, the per-object
     // gain ramps, the QMF analysis filterbanks, all of it - lives behind
     // this one pimpl, following the same pattern as
-    // ac3::io::WavStreamReader/Writer and ac3::FrameEncoder. Impl is defined
+    // iclforge::io::WavStreamReader/Writer and iclforge::FrameEncoder. Impl is defined
     // in atmos.cpp.
     struct Impl;
     std::unique_ptr<Impl> impl_;
@@ -274,4 +274,4 @@ ICLFORGE_AC3_EXPORT void qmf_band_energy(std::span<const float> signal,
                                      std::span<const std::uint8_t, 64> mapping,
                                      std::span<double> out, dsp::QmfAnalysis& analysis);
 
-}  // namespace ac3::oba
+}  // namespace iclforge::oba

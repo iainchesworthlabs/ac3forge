@@ -4,7 +4,7 @@
 
 #include <fmt/format.h>
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 namespace {
 
@@ -227,4 +227,4 @@ FirmwareClientPlan plan_firmware_client(bool busy, const SinkFirmware::Snapshot&
     return FirmwareClientPlan{.let_go = (!shown || moved) && !busy, .keep_sink = busy || (shown && !moved && ended)};
 }
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

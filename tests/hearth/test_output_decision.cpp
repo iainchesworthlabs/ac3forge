@@ -8,7 +8,7 @@
 #include "iclforge/audio/passthrough.hpp"
 #include "output_decision.hpp"
 
-// ac3::hearth::choose_output's case table (apps/hearth/engine/output_decision.cpp).
+// iclforge::hearth::choose_output's case table (apps/hearth/engine/output_decision.cpp).
 //
 // A2's exit for this is "the output decision's case table runs with no sound
 // card", and that is the point of the decision being pure: every row here is
@@ -24,12 +24,12 @@
 
 namespace {
 
-using ac3::audio::BitstreamFormat;
-using ac3::hearth::CapabilitySource;
-using ac3::hearth::choose_output;
-using ac3::hearth::EndpointFacts;
-using ac3::hearth::OutputMode;
-using ac3::hearth::OutputRequest;
+using iclforge::audio::BitstreamFormat;
+using iclforge::hearth::CapabilitySource;
+using iclforge::hearth::choose_output;
+using iclforge::hearth::EndpointFacts;
+using iclforge::hearth::OutputMode;
+using iclforge::hearth::OutputRequest;
 
 EndpointFacts receiver(std::string name, bool eac3, bool ac3, bool is_default = false) {
     return EndpointFacts{.id = name + "-id",
@@ -317,7 +317,7 @@ TEST_CASE("output decision: an AC-4 item is decoded here whatever is pinned",
                                                         /*is_default=*/true)};
     for (const BitstreamFormat link :
          {BitstreamFormat::kAc4, BitstreamFormat::kAc4Hbr4, BitstreamFormat::kAc4Hbr16}) {
-        CAPTURE(ac3::audio::format_name(link));
+        CAPTURE(iclforge::audio::format_name(link));
         const auto automatic = choose_output(asking(endpoints, link));
         CHECK(automatic.mode == OutputMode::kLocalPcm);
         CHECK(mentions(automatic.reason, "No output takes AC-4"));
@@ -357,13 +357,13 @@ TEST_CASE("output decision: every mode and capability source describes itself",
           "[hearth][output-decision]") {
     for (const auto mode : {OutputMode::kBitstream, OutputMode::kBitstreamAsAc3,
                             OutputMode::kLocalPcm, OutputMode::kNetworkGroup, OutputMode::kNone}) {
-        const std::string_view text = ac3::hearth::describe(mode);
+        const std::string_view text = iclforge::hearth::describe(mode);
         CHECK_FALSE(text.empty());
         CHECK(text != "unknown output mode");
     }
     for (const auto source : {CapabilitySource::kDescriptor, CapabilitySource::kProbe,
                               CapabilitySource::kNoDescriptor, CapabilitySource::kNoReader}) {
-        const std::string_view text = ac3::hearth::describe(source);
+        const std::string_view text = iclforge::hearth::describe(source);
         CHECK_FALSE(text.empty());
         CHECK(text != "unknown capability source");
     }

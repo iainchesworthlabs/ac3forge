@@ -42,7 +42,7 @@
 // so the period follows the stream's frame rate instead of being fixed; see
 // the AC-4 section below.
 
-namespace ac3::iec61937 {
+namespace iclforge::iec61937 {
 
 inline constexpr std::size_t kBurstBytes = 6144;
 inline constexpr std::size_t kEac3BurstBytes = 24576;
@@ -90,7 +90,7 @@ enum class WrapError : std::uint8_t {
     std::span<const std::byte> frame);
 
 // Accumulates E-AC-3 access units into IEC 61937 bursts. Feed it whole access
-// units (ac3::split_access_units's granularity — the independent substream's
+// units (iclforge::split_access_units's granularity — the independent substream's
 // syncframe plus every dependent's, concatenated exactly as split_access_units
 // returns them) rather than lone syncframes: a dependent's channels only
 // reach the burst if its bytes are included, and a decoder finds them by the
@@ -98,7 +98,7 @@ enum class WrapError : std::uint8_t {
 class ICLFORGE_IEC61937_EXPORT Eac3BurstPacker {
    public:
     // Real work, not =default, because Impl below is incomplete here - same
-    // reason ac3::io::WavStreamReader's default ctor gives.
+    // reason iclforge::io::WavStreamReader's default ctor gives.
     Eac3BurstPacker();
     // Declared (and defined in iec61937.cpp, where Impl below is complete)
     // rather than implicit: a dllexport class generates every implicit
@@ -125,9 +125,9 @@ class ICLFORGE_IEC61937_EXPORT Eac3BurstPacker {
 };
 
 // Wrap a whole stream's worth of ALREADY-SPLIT units into one concatenated
-// IEC 61937 payload - one AC-3 frame per unit (ac3::split_frames's
+// IEC 61937 payload - one AC-3 frame per unit (iclforge::split_frames's
 // granularity), or one whole E-AC-3 access unit per unit
-// (ac3::split_access_units's granularity), matching `eac3`. For a caller
+// (iclforge::split_access_units's granularity), matching `eac3`. For a caller
 // that already has its frames/access units in hand - e.g. a GUI's freshly
 // encoded output - rather than a raw elementary-stream buffer it would
 // otherwise have to split itself first. ac3cli's own `spdif`/`play` commands
@@ -262,7 +262,7 @@ class ICLFORGE_IEC61937_EXPORT Ac4BurstPacker {
     std::optional<Packed> last_;
 };
 
-// A whole stream's sync frames (as ac4::scan finds them in an .ac4 file) as one
+// A whole stream's sync frames (as iclforge::ac4::scan finds them in an .ac4 file) as one
 // carrier, the AC-4 counterpart of wrap_stream.
 [[nodiscard]] ICLFORGE_IEC61937_EXPORT std::expected<std::vector<std::byte>, WrapError> wrap_ac4_stream(
     std::span<const std::span<const std::byte>> frames, BurstDataType type = BurstDataType::kAc4);
@@ -438,7 +438,7 @@ ICLFORGE_IEC61937_EXPORT void carrier_from_capture(std::span<const float> interl
 // preamble every repetition period, a syncframe behind it - and that is what
 // this answers, so a recorder can keep the elementary stream instead.
 //
-// Fed the same interleaved float frames ac3::audio::Capture delivers. A
+// Fed the same interleaved float frames iclforge::audio::Capture delivers. A
 // backend that converts int16 to float by dividing by 32768 (which is what
 // every backend here does) loses nothing, so the words come back exactly;
 // a capture that is genuinely float32-native has been through a mixer and
@@ -481,4 +481,4 @@ class ICLFORGE_IEC61937_EXPORT PassthroughDetector {
     std::optional<WordOrder> order_;
 };
 
-}  // namespace ac3::iec61937
+}  // namespace iclforge::iec61937

@@ -67,7 +67,7 @@
 // implementation cited above. E-AC-3 has no comparably established IEC
 // 60958-wrapped physical-format constant in CoreAudioTypes.h - the closest
 // published one is kAudioFormatEnhancedAC3 ('ec-3'), the same fourCC this
-// project's own ac3::io::build_codec_config_box uses for a raw E-AC-3
+// project's own iclforge::io::build_codec_config_box uses for a raw E-AC-3
 // elementary stream in an MP4 sample entry, not a documented S/PDIF/HDMI
 // wire format. Apple's own support documentation confirms Dolby Digital
 // Plus and Dolby Atmos (E-AC-3 JOC) HDMI passthrough exists on Apple
@@ -76,7 +76,7 @@
 // kAudioFormatEnhancedAC3 exactly as it does kAudioFormat60958AC3, and
 // where a driver does not offer it (older hardware, a non-HDMI output, an
 // Intel Mac), supports_eac3_passthrough simply comes back false - the same
-// "a platform can gain one and not the other" contract ac3::audio::RenderDeviceInfo
+// "a platform can gain one and not the other" contract iclforge::audio::RenderDeviceInfo
 // already documents for the AC-3/E-AC-3 split, not a claim that every
 // digital output on every Mac carries Dolby Digital Plus.
 //
@@ -110,7 +110,7 @@
 #include "coreaudio_names.hpp"
 #include "coreaudio_support.hpp"
 
-namespace ac3::audio {
+namespace iclforge::audio {
 
 namespace {
 
@@ -614,4 +614,4 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
     return {};
 }
 
-}  // namespace ac3::audio
+}  // namespace iclforge::audio

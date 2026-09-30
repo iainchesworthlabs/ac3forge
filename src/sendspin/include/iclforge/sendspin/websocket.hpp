@@ -28,7 +28,7 @@
 // thread of its own. Each also has cpp-httplib's ping thread while ConnectionOptions::
 // ping_interval is non-zero.
 
-namespace ac3::sendspin::transport::websocket {
+namespace iclforge::sendspin::transport::websocket {
 
 // The recommended ports and path (connection.md): a client listens on 8928, a server on 8927,
 // and both advertise the path in their mDNS TXT record.
@@ -109,4 +109,4 @@ enum class ConnectError : std::uint8_t {
 [[nodiscard]] std::expected<std::unique_ptr<Connection>, ConnectError> connect(
     const std::string& url, const ConnectOptions& options = {});
 
-}  // namespace ac3::sendspin::transport::websocket
+}  // namespace iclforge::sendspin::transport::websocket

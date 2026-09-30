@@ -21,15 +21,15 @@
 
 namespace {
 
-using ac4::DecodeError;
-using ac4::detail::BitReader;
-using ac4::detail::ParseResult;
-using ac4::detail::PresentationContext;
-using ac4::detail::PresentationSubstream;
-using ac4::detail::PresentationSubstreamState;
+using iclforge::ac4::DecodeError;
+using iclforge::ac4::detail::BitReader;
+using iclforge::ac4::detail::ParseResult;
+using iclforge::ac4::detail::PresentationContext;
+using iclforge::ac4::detail::PresentationSubstream;
+using iclforge::ac4::detail::PresentationSubstreamState;
 using ac4dec_test::BitWriter;
 using ac4dec_test::Recorder;
-namespace ch_mode = ac4::detail::ch_mode;
+namespace ch_mode = iclforge::ac4::detail::ch_mode;
 
 // Reads `w` as a presentation substream. On success the reader must stop at
 // the end of `w`, which every case byte-aligns as the syntax does.
@@ -37,7 +37,8 @@ ParseResult read_presentation(const BitWriter& w, const PresentationContext& ctx
                               PresentationSubstream& out, Recorder& rec) {
     const std::vector<std::byte> bytes = w.bytes();
     BitReader reader(bytes, 0, rec);
-    const ParseResult result = ac4::detail::parse_presentation_substream(reader, ctx, state, out);
+    const ParseResult result =
+        iclforge::ac4::detail::parse_presentation_substream(reader, ctx, state, out);
     if (result) {
         CHECK(reader.position() == w.size());
     }
@@ -62,21 +63,21 @@ void put_loudness_and_no_drc(BitWriter& w, int dialnorm = 20) {
     w.flag(false);  // b_drc_present
 }
 
-ac4::ChannelSubstreamInfo chan(int mode) {
-    ac4::ChannelSubstreamInfo info;
+iclforge::ac4::ChannelSubstreamInfo chan(int mode) {
+    iclforge::ac4::ChannelSubstreamInfo info;
     info.ch_mode = mode;
     return info;
 }
 
-ac4::GroupSubstream chan_substream(int mode) {
-    ac4::GroupSubstream sub;
-    sub.kind = ac4::GroupSubstream::Kind::kChan;
+iclforge::ac4::GroupSubstream chan_substream(int mode) {
+    iclforge::ac4::GroupSubstream sub;
+    sub.kind = iclforge::ac4::GroupSubstream::Kind::kChan;
     sub.chan = chan(mode);
     return sub;
 }
 
-ac4::SubstreamGroupInfo group_of(std::vector<ac4::GroupSubstream> substreams) {
-    ac4::SubstreamGroupInfo group;
+iclforge::ac4::SubstreamGroupInfo group_of(std::vector<iclforge::ac4::GroupSubstream> substreams) {
+    iclforge::ac4::SubstreamGroupInfo group;
     group.b_substreams_present = true;
     group.substreams = std::move(substreams);
     return group;
@@ -87,8 +88,8 @@ ac4::SubstreamGroupInfo group_of(std::vector<ac4::GroupSubstream> substreams) {
 // --- superset() and presentation_context_v1() ----------------------------
 
 TEST_CASE("superset_ch_mode gives the lowest mode holding both", "[ac4dec][presentation]") {
-    using ac4::detail::superset_ch_mode;
-    using ac4::detail::superset_ch_mode_core;
+    using iclforge::ac4::detail::superset_ch_mode;
+    using iclforge::ac4::detail::superset_ch_mode_core;
     CHECK(superset_ch_mode(-1, 4) == 4);
     CHECK(superset_ch_mode(3, -1) == 3);
     CHECK(superset_ch_mode(0, 1) == 1);
@@ -106,12 +107,12 @@ TEST_CASE("superset_ch_mode gives the lowest mode holding both", "[ac4dec][prese
 }
 
 TEST_CASE("presentation_context_v1 counts substream groups by presentation_config", "[ac4dec][presentation]") {
-    ac4::Toc toc;
+    iclforge::ac4::Toc toc;
     toc.frame_rate_index = 13;
     toc.substream_groups = {group_of({chan_substream(ch_mode::kStereo)}),
                             group_of({chan_substream(ch_mode::kMono)}),
                             group_of({chan_substream(ch_mode::kMono)})};
-    ac4::PresentationInfoV1 p;
+    iclforge::ac4::PresentationInfoV1 p;
     p.group_refs = {0, 1, 2};
 
     struct Case {
@@ -121,7 +122,7 @@ TEST_CASE("presentation_context_v1 counts substream groups by presentation_confi
     for (const Case c : {Case{std::nullopt, 1}, Case{0, 2}, Case{1, 1}, Case{2, 2}, Case{3, 3}, Case{4, 2},
                          Case{5, 3}, Case{7, 0}}) {
         p.presentation_config = c.config;
-        const PresentationContext ctx = ac4::detail::presentation_context_v1(toc, p);
+        const PresentationContext ctx = iclforge::ac4::detail::presentation_context_v1(toc, p);
         INFO("presentation_config " << c.config.value_or(-1));
         CHECK(ctx.n_substream_groups == c.groups);
         // The helpers run over every group named, whatever the count.
@@ -132,22 +133,22 @@ TEST_CASE("presentation_context_v1 counts substream groups by presentation_confi
 }
 
 TEST_CASE("presentation_context_v1 derives the channel helpers of Part 2 6.3.3.1", "[ac4dec][presentation]") {
-    ac4::Toc toc;
+    iclforge::ac4::Toc toc;
     toc.frame_rate_index = 3;  // 1536 at 48 kHz
 
     SECTION("7.0.4 and 7.1.4 substreams, with their content flags") {
         auto a = chan_substream(ch_mode::k7_0_4);
-        a.chan->original_content = ac4::OriginalContent{true, true, 1};
+        a.chan->original_content = iclforge::ac4::OriginalContent{true, true, 1};
         auto b = chan_substream(ch_mode::k7_1_4);
-        b.chan->original_content = ac4::OriginalContent{false, true, 3};
+        b.chan->original_content = iclforge::ac4::OriginalContent{false, true, 3};
         auto reserved = chan_substream(0);
         reserved.chan->ch_mode.reset();  // a reserved channel_mode adds nothing
         toc.substream_groups = {group_of({a}), group_of({b, reserved})};
-        ac4::PresentationInfoV1 p;
+        iclforge::ac4::PresentationInfoV1 p;
         p.group_refs = {0, 1, 1, 7, -1};  // a repeat and two groups the TOC does not hold
         p.b_alternative = true;
         p.b_pres_ndot = true;
-        const PresentationContext ctx = ac4::detail::presentation_context_v1(toc, p);
+        const PresentationContext ctx = iclforge::ac4::detail::presentation_context_v1(toc, p);
         CHECK(ctx.b_alternative);
         CHECK(ctx.b_pres_ndot);
         CHECK(ctx.n_substreams_in_presentation == 3);
@@ -160,11 +161,11 @@ TEST_CASE("presentation_context_v1 derives the channel helpers of Part 2 6.3.3.1
     }
     SECTION("9.0.4 alone takes the 5.0.2 core") {
         auto a = chan_substream(ch_mode::k9_0_4);
-        a.chan->original_content = ac4::OriginalContent{false, false, 2};
+        a.chan->original_content = iclforge::ac4::OriginalContent{false, false, 2};
         toc.substream_groups = {group_of({a})};
-        ac4::PresentationInfoV1 p;
+        iclforge::ac4::PresentationInfoV1 p;
         p.group_refs = {0};
-        const PresentationContext ctx = ac4::detail::presentation_context_v1(toc, p);
+        const PresentationContext ctx = iclforge::ac4::detail::presentation_context_v1(toc, p);
         CHECK(ctx.pres_ch_mode == ch_mode::k9_0_4);
         CHECK(ctx.pres_ch_mode_core == 5);
         CHECK(ctx.pres_top_channel_pairs == 1);
@@ -172,32 +173,32 @@ TEST_CASE("presentation_context_v1 derives the channel helpers of Part 2 6.3.3.1
         CHECK_FALSE(ctx.b_pres_has_lfe);
     }
     SECTION("an A-JOC substream with a static downmix leaves only a core") {
-        ac4::GroupSubstream ajoc;
-        ajoc.kind = ac4::GroupSubstream::Kind::kAjoc;
-        ajoc.ajoc = ac4::AjocSubstreamInfo{};
+        iclforge::ac4::GroupSubstream ajoc;
+        ajoc.kind = iclforge::ac4::GroupSubstream::Kind::kAjoc;
+        ajoc.ajoc = iclforge::ac4::AjocSubstreamInfo{};
         ajoc.ajoc->b_static_dmx = true;
         ajoc.ajoc->b_lfe = true;
         toc.substream_groups = {group_of({chan_substream(ch_mode::kStereo), ajoc})};
-        ac4::PresentationInfoV1 p;
+        iclforge::ac4::PresentationInfoV1 p;
         p.group_refs = {0};
-        const PresentationContext ctx = ac4::detail::presentation_context_v1(toc, p);
+        const PresentationContext ctx = iclforge::ac4::detail::presentation_context_v1(toc, p);
         CHECK(ctx.pres_ch_mode == -1);
         CHECK(ctx.pres_ch_mode_core == 4);
         CHECK(ctx.b_pres_has_lfe);
     }
     SECTION("an adaptive A-JOC or an object substream leaves neither") {
-        ac4::GroupSubstream ajoc;
-        ajoc.kind = ac4::GroupSubstream::Kind::kAjoc;
-        ajoc.ajoc = ac4::AjocSubstreamInfo{};
-        ac4::GroupSubstream obj;
-        obj.kind = ac4::GroupSubstream::Kind::kObj;
+        iclforge::ac4::GroupSubstream ajoc;
+        ajoc.kind = iclforge::ac4::GroupSubstream::Kind::kAjoc;
+        ajoc.ajoc = iclforge::ac4::AjocSubstreamInfo{};
+        iclforge::ac4::GroupSubstream obj;
+        obj.kind = iclforge::ac4::GroupSubstream::Kind::kObj;
         auto static_core = ajoc;
         static_core.ajoc->b_static_dmx = true;
         toc.substream_groups = {group_of({ajoc}), group_of({obj}), group_of({static_core})};
         for (const int group : {0, 1}) {
-            ac4::PresentationInfoV1 p;
+            iclforge::ac4::PresentationInfoV1 p;
             p.group_refs = {2, group};
-            const PresentationContext ctx = ac4::detail::presentation_context_v1(toc, p);
+            const PresentationContext ctx = iclforge::ac4::detail::presentation_context_v1(toc, p);
             INFO("group " << group);
             CHECK(ctx.pres_ch_mode == -1);
             CHECK(ctx.pres_ch_mode_core == -1);
@@ -207,9 +208,9 @@ TEST_CASE("presentation_context_v1 derives the channel helpers of Part 2 6.3.3.1
     SECTION("a reserved frame rate index leaves no frame length") {
         toc.sample_rate_hz = 44100;
         toc.substream_groups = {group_of({chan_substream(ch_mode::kStereo)})};
-        ac4::PresentationInfoV1 p;
+        iclforge::ac4::PresentationInfoV1 p;
         p.group_refs = {0};
-        CHECK(ac4::detail::presentation_context_v1(toc, p).frame_len_base == 0);
+        CHECK(iclforge::ac4::detail::presentation_context_v1(toc, p).frame_len_base == 0);
     }
 }
 
@@ -436,7 +437,7 @@ TEST_CASE("the presentation substream's additional data carries advanced dialogu
     }
     SECTION("an I-frame without advanced DE disables it") {
         PresentationSubstreamState state;
-        state.advanced_de_config = ac4::detail::AdvancedDeConfig{1, 2, 3};
+        state.advanced_de_config = iclforge::ac4::detail::AdvancedDeConfig{1, 2, 3};
         PresentationContext ctx = stereo_context();
         ctx.b_pres_ndot = true;
         BitWriter w;

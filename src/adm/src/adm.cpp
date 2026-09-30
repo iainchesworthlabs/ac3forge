@@ -25,17 +25,17 @@
 
 #include "adm_model.hpp"
 
-// Every `bw64::`/`adm::` symbol below is a vendored third-party library
+// Every `bw64::`/`::adm::` symbol below is a vendored third-party library
 // (libbw64/libadm respectively, see src/adm/CMakeLists.txt); every
-// `ac3adm::` symbol is this module's own. Both libraries report failure by
+// `iclforge::adm::` symbol is this module's own. Both libraries report failure by
 // throwing std::runtime_error (or, for libadm's XML/schema errors, the
-// adm::error::AdmException hierarchy) - this project's own convention is
+// ::adm::error::AdmException hierarchy) - this project's own convention is
 // std::expected for stream-level/recoverable failure (CONTRIBUTING.md), so
 // every call into either library is wrapped here at this one boundary and
 // translated into AdmError rather than letting an exception escape this
 // module's public API.
 
-namespace ac3adm {
+namespace iclforge::adm {
 
 std::string_view describe(AdmError error) {
     switch (error) {
@@ -194,7 +194,7 @@ PcmAudio read_pcm(bw64::Bw64Reader& reader, std::uint64_t file_bytes) {
 namespace detail {
 
 std::expected<AdmModel, AdmError> parse_axml(const std::string& xml) {
-    std::shared_ptr<adm::Document> document;
+    std::shared_ptr<::adm::Document> document;
     try {
         std::istringstream xml_stream(xml);
         // recursive_node_search: without it, libadm's default parser only accepts
@@ -206,17 +206,17 @@ std::expected<AdmModel, AdmError> parse_axml(const std::string& xml) {
         // <audioFormatExtended> root instead. Both are the same ADM content once found,
         // so accepting either here (rather than rejecting the bare form) is the more
         // robust choice for a production ingest reader.
-        document = adm::parseXml(xml_stream, adm::xml::ParserOptions::recursive_node_search);
-    } catch (const adm::error::AdmException&) {
-        // Covers every adm::error:: exception libadm defines - AdmException is the common
+        document = ::adm::parseXml(xml_stream, ::adm::xml::ParserOptions::recursive_node_search);
+    } catch (const ::adm::error::AdmException&) {
+        // Covers every ::adm::error:: exception libadm defines - AdmException is the common
         // base every one of them derives from (duplicate IDs, an unresolved reference, an
         // invalid enumerated value, the audioFormatExtended root not found, ...). Confirmed
         // reachable in practice for e.g. a duplicate element ID
-        // (adm::error::XmlParsingDuplicateId); this is what AdmError::kMalformedAdm means.
+        // (::adm::error::XmlParsingDuplicateId); this is what AdmError::kMalformedAdm means.
         return std::unexpected(AdmError::kMalformedAdm);
     } catch (const std::exception&) {
         // Anything else - genuinely malformed XML (an unterminated tag, say) that never
-        // reaches one of libadm's own adm::error:: types, since the lower-level XML
+        // reaches one of libadm's own ::adm::error:: types, since the lower-level XML
         // tokenizer it uses internally is a private/vendored dependency of libadm's own
         // (never exposed through any public libadm header, so this module cannot catch its
         // exact exception type without reaching past libadm's own public API boundary) -
@@ -511,21 +511,21 @@ std::vector<float> interleave(const PcmAudio& audio) {
 // AudioTrackUidId, plus the real AudioTrackFormatId/AudioPackFormatId of whichever of the two
 // (or neither, for a plain-PCM-shortcut AudioTrackUid) that track uid ended up referencing.
 std::expected<bw64::AudioId, AdmWriteError> to_audio_id(
-    const ChnaEntry& entry, const std::unordered_map<std::string, std::shared_ptr<adm::AudioTrackUid>>& track_uids_by_key) {
+    const ChnaEntry& entry, const std::unordered_map<std::string, std::shared_ptr<::adm::AudioTrackUid>>& track_uids_by_key) {
     const auto it = track_uids_by_key.find(entry.uid);
     if (it == track_uids_by_key.end()) {
         return std::unexpected(AdmWriteError::kInvalidDocument);
     }
     const auto& track_uid = it->second;
     std::string track_ref;
-    if (const auto track_format = track_uid->getReference<adm::AudioTrackFormat>()) {
-        track_ref = adm::formatId(track_format->get<adm::AudioTrackFormatId>());
+    if (const auto track_format = track_uid->getReference<::adm::AudioTrackFormat>()) {
+        track_ref = ::adm::formatId(track_format->get<::adm::AudioTrackFormatId>());
     }
     std::string pack_ref;
-    if (const auto pack_format = track_uid->getReference<adm::AudioPackFormat>()) {
-        pack_ref = adm::formatId(pack_format->get<adm::AudioPackFormatId>());
+    if (const auto pack_format = track_uid->getReference<::adm::AudioPackFormat>()) {
+        pack_ref = ::adm::formatId(pack_format->get<::adm::AudioPackFormatId>());
     }
-    return bw64::AudioId(entry.track_index, adm::formatId(track_uid->get<adm::AudioTrackUidId>()), track_ref, pack_ref);
+    return bw64::AudioId(entry.track_index, ::adm::formatId(track_uid->get<::adm::AudioTrackUidId>()), track_ref, pack_ref);
 }
 
 }  // namespace
@@ -538,11 +538,11 @@ std::expected<void, AdmWriteError> write_bw64(const std::string& path, const Adm
         return std::unexpected(built.error());
     }
     // Everything from here to the XML calls into libadm, so it runs inside a try (this file's top
-    // comment). adm::formatId() writes each ID field at a fixed width and throws
+    // comment). ::adm::formatId() writes each ID field at a fixed width and throws
     // std::runtime_error for a value that does not fit - a 256th audioTrackFormat on one
     // audioStreamFormat, say, or a 61,440th audioObject - and both to_audio_id() and
-    // adm::writeXml() format IDs; writeXml() also allocates as it builds the XML.
-    // adm::reassignIds() throws only from the ID setters' collision and type checks, which the
+    // ::adm::writeXml() format IDs; writeXml() also allocates as it builds the XML.
+    // ::adm::reassignIds() throws only from the ID setters' collision and type checks, which the
     // IDs it assigns do not trip, but it is not noexcept either.
     std::shared_ptr<bw64::ChnaChunk> chna_chunk;
     std::shared_ptr<bw64::AxmlChunk> axml_chunk;
@@ -550,7 +550,7 @@ std::expected<void, AdmWriteError> write_bw64(const std::string& path, const Adm
         // reassignIds() BEFORE resolving chna: it is the source of every real, final ID this
         // function (and the AudioId rows it builds below) reports - see ac3adm.hpp's own write_bw64
         // doc comment on why the caller's own AdmModel ID strings never appear in the written file.
-        adm::reassignIds(built->document);
+        ::adm::reassignIds(built->document);
 
         std::vector<bw64::AudioId> audio_ids;
         audio_ids.reserve(document.chna.size());
@@ -564,7 +564,7 @@ std::expected<void, AdmWriteError> write_bw64(const std::string& path, const Adm
         chna_chunk = std::make_shared<bw64::ChnaChunk>(std::move(audio_ids));
 
         std::ostringstream xml;
-        adm::writeXml(xml, built->document);
+        ::adm::writeXml(xml, built->document);
         // rapidxml prints through std::ostream_iterator, and an exception thrown inside a
         // stream's output operator sets badbit instead of propagating - so a failed print would
         // otherwise be written out as a truncated <axml> chunk.
@@ -590,12 +590,12 @@ std::expected<void, AdmWriteError> write_bw64(const std::string& path, const Adm
         writer->write(interleaved.data(), document.audio.frame_count());
         // ~Bw64Writer (writer's destructor, at scope exit) finalizes the file: writes the <axml>
         // chunk queued above, then patches the RIFF/data chunk sizes now that every sample has
-        // gone out - the same "close on scope exit" shape ac3::io::WavStreamWriter's own callers
-        // rely on elsewhere in this project.
+        // gone out - the same "close on scope exit" shape iclforge::io::WavStreamWriter's own
+        // callers rely on elsewhere in this project.
     } catch (const std::exception&) {
         return std::unexpected(AdmWriteError::kOther);
     }
     return {};
 }
 
-}  // namespace ac3adm
+}  // namespace iclforge::adm

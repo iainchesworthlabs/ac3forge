@@ -5,7 +5,7 @@
 #include "iclforge/audio/watchdog.hpp"
 
 using namespace std::chrono_literals;
-using ac3::audio::SilenceWatchdog;
+using iclforge::audio::SilenceWatchdog;
 
 TEST_CASE("a watchdog that keeps seeing data never times out", "[watchdog][concurrency]") {
     SilenceWatchdog watchdog(3000ms);

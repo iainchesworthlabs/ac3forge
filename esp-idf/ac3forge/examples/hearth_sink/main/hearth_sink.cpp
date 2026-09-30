@@ -8,7 +8,7 @@
 // works and is not how anything real gets its audio. This one never has the
 // whole stream in memory: a fetch task reads it in blocks from wherever it is,
 // a ring buffer holds what has arrived, and a decode task on the other core
-// frames it with ac3::io::AccessUnitAccumulator, decodes whatever complete
+// frames it with iclforge::io::AccessUnitAccumulator, decodes whatever complete
 // access units come out a block at a time, renders each block onto the
 // configured layout and writes it to the sink.
 //
@@ -89,7 +89,7 @@ namespace {
 
 constexpr std::uint32_t kSampleRate = 48000;
 constexpr std::uint64_t kFrameDurationUs = 32000;  // §5.3.2: 1,536 samples at 48 kHz
-constexpr std::size_t kMaxSlots = ac3::render::OutputLayout::kMaxSlots;
+constexpr std::size_t kMaxSlots = iclforge::render::OutputLayout::kMaxSlots;
 
 // From Kconfig, ints so they arrive as plain constants rather than through
 // preprocessor conditionals - see main/Kconfig.projbuild. kMaxLaps of 0 plays
@@ -101,19 +101,19 @@ constexpr std::uint32_t kMaxLaps = CONFIG_AC3FORGE_EXAMPLE_MAX_LAPS;
 constexpr std::uint64_t kReportEveryFrames = CONFIG_AC3FORGE_EXAMPLE_REPORT_EVERY_FRAMES;
 constexpr std::uint16_t kControlPort = CONFIG_AC3FORGE_EXAMPLE_CONTROL_PORT;
 constexpr const char* kLayoutText = CONFIG_AC3FORGE_EXAMPLE_LAYOUT;
-constexpr ac3::DownmixTarget kStereoFold = CONFIG_AC3FORGE_EXAMPLE_STEREO_FOLD != 0
-                                               ? ac3::DownmixTarget::kLtRt
-                                               : ac3::DownmixTarget::kLoRo;
+constexpr iclforge::DownmixTarget kStereoFold = CONFIG_AC3FORGE_EXAMPLE_STEREO_FOLD != 0
+                                               ? iclforge::DownmixTarget::kLtRt
+                                               : iclforge::DownmixTarget::kLoRo;
 constexpr ac3forge::PlayerConfig::Objects kObjects =
     CONFIG_AC3FORGE_EXAMPLE_OBJECTS == 1   ? ac3forge::PlayerConfig::Objects::kNever
     : CONFIG_AC3FORGE_EXAMPLE_OBJECTS == 2 ? ac3forge::PlayerConfig::Objects::kAlways
                                            : ac3forge::PlayerConfig::Objects::kAuto;
-constexpr ac3::oba::joc::Domain kJocDomain = CONFIG_AC3FORGE_EXAMPLE_JOC_DOMAIN != 0
-                                                 ? ac3::oba::joc::Domain::kMdctBand
-                                                 : ac3::oba::joc::Domain::kQmf;
-constexpr ac3::OperatingMode kMode = CONFIG_AC3FORGE_EXAMPLE_DRC_MODE == 1   ? ac3::OperatingMode::kRf
-                                     : CONFIG_AC3FORGE_EXAMPLE_DRC_MODE == 2 ? ac3::OperatingMode::kCustom
-                                                                             : ac3::OperatingMode::kLine;
+constexpr iclforge::oba::joc::Domain kJocDomain = CONFIG_AC3FORGE_EXAMPLE_JOC_DOMAIN != 0
+                                                 ? iclforge::oba::joc::Domain::kMdctBand
+                                                 : iclforge::oba::joc::Domain::kQmf;
+constexpr iclforge::OperatingMode kMode = CONFIG_AC3FORGE_EXAMPLE_DRC_MODE == 1   ? iclforge::OperatingMode::kRf
+                                     : CONFIG_AC3FORGE_EXAMPLE_DRC_MODE == 2 ? iclforge::OperatingMode::kCustom
+                                                                             : iclforge::OperatingMode::kLine;
 
 BaseType_t core_from_kconfig(int value) { return value < 0 ? tskNO_AFFINITY : value; }
 
@@ -218,7 +218,7 @@ std::atomic<const char*> g_state{"stopped"};
 std::atomic<float> g_volume{1.0F};
 // The layout the next play uses, and its text for /layout and /status. Written
 // by app_main, read under the mutex by the control surface.
-ac3::render::OutputLayout g_layout;
+iclforge::render::OutputLayout g_layout;
 // How many channels the sink is presently open for - 0 before the first
 // begin_play, which is always a reconfigure since a real layout needs at
 // least one. Written only from begin_play, on the task that owns the player.
@@ -474,7 +474,7 @@ bool begin_play(Session& session, const std::function<void()>& on_source_open = 
 // A layout for the next play, from the control surface: parsed here, on the
 // server's task, so a refusal is answered at once; applied by app_main.
 bool accept_layout(std::string_view text) {
-    const auto layout = ac3::render::OutputLayout::parse(text);
+    const auto layout = iclforge::render::OutputLayout::parse(text);
     if (!layout.has_value() || layout->slots() > static_cast<std::size_t>(player::sink_slots())) {
         return false;
     }
@@ -808,7 +808,7 @@ extern "C" void app_main() {
     // commands when there is a player.
     player::discovery_start();
 
-    const auto layout = ac3::render::OutputLayout::parse(kLayoutText);
+    const auto layout = iclforge::render::OutputLayout::parse(kLayoutText);
     if (!layout.has_value()) {
         std::printf("error: CONFIG_AC3FORGE_EXAMPLE_LAYOUT \"%s\" is not a layout - a name like "
                     "5.1.4, or a speaker list like L,R,C,LFE,Ls,Rs\n",
@@ -940,7 +940,7 @@ extern "C" void app_main() {
                 case CommandKind::kLayout:
                     // Already validated by accept_layout; parsed again here
                     // because the queue carries text, not a layout.
-                    if (const auto next = ac3::render::OutputLayout::parse(cmd.text)) {
+                    if (const auto next = iclforge::render::OutputLayout::parse(cmd.text)) {
                         xSemaphoreTake(g_player_mutex, portMAX_DELAY);
                         g_layout = *next;
                         xSemaphoreGive(g_player_mutex);

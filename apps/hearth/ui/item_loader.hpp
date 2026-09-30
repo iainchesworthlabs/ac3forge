@@ -15,11 +15,11 @@
 // crash - it comes back as an error, which Session::open() turns into the
 // item's unplayable reason, so the queue lists the file and says why rather
 // than leaving it out. `.ac4` bytes play since planning/ac4.md's phase I2:
-// Session::open() splits their sync frames, and ac4::Decoder decodes them.
+// Session::open() splits their sync frames, and iclforge::ac4::Decoder decodes them.
 
-namespace ac3::hearth::ui {
+namespace iclforge::hearth::ui {
 
-[[nodiscard]] ac3::hearth::ItemLoader make_file_item_loader();
+[[nodiscard]] iclforge::hearth::ItemLoader make_file_item_loader();
 
 // Every media file under `folder`, found by walking it (and every
 // subfolder) and sorted for a stable queue order. "Media file" is wider than
@@ -34,4 +34,4 @@ namespace ac3::hearth::ui {
 // than throwing.
 [[nodiscard]] std::vector<std::string> list_folder_items(const std::string& folder);
 
-}  // namespace ac3::hearth::ui
+}  // namespace iclforge::hearth::ui

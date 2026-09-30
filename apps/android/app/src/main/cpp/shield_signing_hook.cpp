@@ -25,8 +25,8 @@ constexpr char kSigningKeyAsset[] = "signing.key";
 // A function-local static rather than a namespace-scope global, so there is no
 // non-trivial constructor running before main() - init_signing() fills it in
 // once the AAssetManager is available, and the others read it.
-ac3::signing::SigningKey& key_slot() {
-    static ac3::signing::SigningKey key;
+iclforge::signing::SigningKey& key_slot() {
+    static iclforge::signing::SigningKey key;
     return key;
 }
 
@@ -53,7 +53,7 @@ void init_signing(AAssetManager* asset_manager) {
                             kSigningKeyAsset, read_bytes, static_cast<long long>(length));
         return;
     }
-    auto key = ac3::signing::decode_signing_key(bytes);
+    auto key = iclforge::signing::decode_signing_key(bytes);
     if (!key) {
         __android_log_print(ANDROID_LOG_WARN, kLogTag,
                             "'%s' held no usable key - object signing disabled", kSigningKeyAsset);
@@ -72,7 +72,7 @@ bool maybe_sign_atmos_unit(std::vector<std::byte>& unit) {
     if (key_slot().empty()) {
         return false;
     }
-    return ac3::signing::sign_atmos_frame(unit, key_slot());
+    return iclforge::signing::sign_atmos_frame(unit, key_slot());
 }
 
 }  // namespace ac3shield

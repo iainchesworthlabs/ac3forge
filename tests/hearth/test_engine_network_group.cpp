@@ -42,7 +42,7 @@
 // app, a group of two test sinks... plays one programme." Unlike
 // test_network_group_sink.cpp, which drives NetworkGroupSink directly to
 // prove the wrapper's own translation, this drives it from
-// ac3::hearth::Engine - the same class HearthController wraps - exactly the
+// iclforge::hearth::Engine - the same class HearthController wraps - exactly the
 // way HearthController::start()/selectOutputGroup() do: an EngineOutputs
 // with a real group resolver, OutputPreferences pinning kNetworkGroup, a
 // queue item added and played. What test_group.cpp and PR #932's mixed-
@@ -53,30 +53,30 @@
 namespace {
 
 namespace fs = std::filesystem;
-namespace m = ac3::sendspin::messages;
-namespace testsink = ac3::hearth::testsink;
+namespace m = iclforge::sendspin::messages;
+namespace testsink = iclforge::hearth::testsink;
 using namespace std::chrono_literals;
-using ac3::hearth::Engine;
-using ac3::hearth::EngineOutputs;
-using ac3::hearth::EngineStatus;
-using ac3::hearth::EngineTiming;
-using ac3::hearth::ItemLoader;
-using ac3::hearth::LoadedItem;
-using ac3::hearth::OutputMode;
-using ac3::hearth::OutputPreferences;
-using ac3::hearth::QueueItem;
-using ac3::hearth::TransportState;
+using iclforge::hearth::Engine;
+using iclforge::hearth::EngineOutputs;
+using iclforge::hearth::EngineStatus;
+using iclforge::hearth::EngineTiming;
+using iclforge::hearth::ItemLoader;
+using iclforge::hearth::LoadedItem;
+using iclforge::hearth::OutputMode;
+using iclforge::hearth::OutputPreferences;
+using iclforge::hearth::QueueItem;
+using iclforge::hearth::TransportState;
 
-std::string scratch_pid_suffix() { return ac3::test::platform::process_id(); }
+std::string scratch_pid_suffix() { return iclforge::test::platform::process_id(); }
 
 class QuietLog final : public testsink::SinkLog {
    public:
     void line(std::string_view /*text*/) override {}
 };
 
-class HostEvents final : public ac3::sendspin::ServerHostEvents {
+class HostEvents final : public iclforge::sendspin::ServerHostEvents {
    public:
-    void on_client(const ac3::sendspin::ClientView& client) override {
+    void on_client(const iclforge::sendspin::ClientView& client) override {
         {
             const std::lock_guard lock(mutex_);
             clients_[client.client_id] = client;
@@ -87,7 +87,7 @@ class HostEvents final : public ac3::sendspin::ServerHostEvents {
     void on_pairing_code_wanted(const std::string& /*client_id*/) override {}
     void on_paired(const std::string& /*client_id*/) override {}
     void on_pairing_ended(const std::string& /*client_id*/,
-                          std::optional<ac3::sendspin::pairing_messages::AbortReason> /*reason*/) override {}
+                          std::optional<iclforge::sendspin::pairing_messages::AbortReason> /*reason*/) override {}
     void on_log(std::string_view /*line*/) override {}
 
     template <class Predicate>
@@ -99,7 +99,7 @@ class HostEvents final : public ac3::sendspin::ServerHostEvents {
    private:
     std::mutex mutex_;
     std::condition_variable changed_;
-    std::map<std::string, ac3::sendspin::ClientView> clients_;
+    std::map<std::string, iclforge::sendspin::ClientView> clients_;
 };
 
 std::unique_ptr<testsink::Sink> start_sink(const fs::path& directory, std::string name, bool extension_role,
@@ -124,13 +124,13 @@ std::unique_ptr<testsink::Sink> start_sink(const fs::path& directory, std::strin
 // mirrors: each unit is a full six-block (1,536-sample, 32 ms) burst on its
 // own, so `frames` * 32 ms is the programme's real-time length.
 std::vector<std::byte> eac3_stream(int frames) {
-    ac3::eac3::FrameConfig config;
+    iclforge::eac3::FrameConfig config;
     config.bitrate_kbps = 192;
-    config.acmod = ac3::Acmod::k2_0;
-    ac3::eac3::FrameEncoder encoder{config};
+    config.acmod = iclforge::Acmod::k2_0;
+    iclforge::eac3::FrameEncoder encoder{config};
     std::vector<std::byte> out;
     for (int f = 0; f < frames; ++f) {
-        std::vector<float> samples(ac3::kSamplesPerFrame);
+        std::vector<float> samples(iclforge::kSamplesPerFrame);
         for (std::size_t n = 0; n < samples.size(); ++n) {
             samples[n] = static_cast<float>(
                 0.3 * std::sin(2.0 * std::numbers::pi * 440.0 *
@@ -170,7 +170,7 @@ std::vector<std::byte> read_bytes(const fs::path& path) {
 // elementary stream of their own.
 std::vector<std::byte> ac4_frames(const fs::path& path, std::size_t count) {
     const std::vector<std::byte> file = read_bytes(path);
-    const ac4::ScanResult scanned = ac4::scan(file);
+    const iclforge::ac4::ScanResult scanned = iclforge::ac4::scan(file);
     REQUIRE(scanned.frames.size() > count);
     return {file.begin(), file.begin() + static_cast<std::ptrdiff_t>(scanned.frames[count].offset)};
 }
@@ -214,20 +214,20 @@ struct TwoSinkGroup {
     QuietLog log;
     std::unique_ptr<testsink::Sink> pcm_sink;
     std::unique_ptr<testsink::Sink> burst_sink;
-    ac3::sendspin::MemoryServerStore store;
+    iclforge::sendspin::MemoryServerStore store;
     HostEvents events;
-    std::unique_ptr<ac3::sendspin::ServerHost> host;
-    std::shared_ptr<ac3::sendspin::Group> group;
+    std::unique_ptr<iclforge::sendspin::ServerHost> host;
+    std::shared_ptr<iclforge::sendspin::Group> group;
 
     explicit TwoSinkGroup(const fs::path& scratch) {
         pcm_sink = start_sink(scratch / "pcm", "PCM sink", /*extension_role=*/false,
                               /*unpaired_access=*/true, log);
         burst_sink = start_sink(scratch / "burst", "Burst sink", /*extension_role=*/true,
                                 /*unpaired_access=*/false, log);
-        std::optional<ac3::sendspin::noise::KeyPair> identity =
-            ac3::sendspin::noise::KeyPair::generate();
+        std::optional<iclforge::sendspin::noise::KeyPair> identity =
+            iclforge::sendspin::noise::KeyPair::generate();
         REQUIRE(identity.has_value());
-        auto started = ac3::sendspin::ServerHost::start({.identity = *identity,
+        auto started = iclforge::sendspin::ServerHost::start({.identity = *identity,
                                                          .name = "Test host",
                                                          .languages = {"en"},
                                                          .address = "127.0.0.1",
@@ -252,7 +252,7 @@ struct TwoSinkGroup {
             },
             20s));
         group = host->make_group("Living room");
-        for (const ac3::sendspin::ClientView& client : host->clients()) {
+        for (const iclforge::sendspin::ClientView& client : host->clients()) {
             group->add(client.client_id);
         }
     }
@@ -268,9 +268,9 @@ struct TwoSinkGroup {
 
 // Plays `programme` from an Engine whose only output is `group`, with
 // `settings`, to its end.
-EngineStatus play_to_group(const std::shared_ptr<ac3::sendspin::Group>& group,
+EngineStatus play_to_group(const std::shared_ptr<iclforge::sendspin::Group>& group,
                            std::vector<std::byte> programme,
-                           const ac3::hearth::DecoderSettings& settings) {
+                           const iclforge::hearth::DecoderSettings& settings) {
     const ItemLoader loader =
         [programme = std::move(programme)](
             const std::string& path) -> std::expected<LoadedItem, std::string> {
@@ -279,10 +279,10 @@ EngineStatus play_to_group(const std::shared_ptr<ac3::sendspin::Group>& group,
         }
         return LoadedItem{.bytes = programme};
     };
-    const auto layout = ac3::render::OutputLayout::parse("2.0");
+    const auto layout = iclforge::render::OutputLayout::parse("2.0");
     REQUIRE(layout.has_value());
     EngineOutputs outputs{
-        .group = ac3::hearth::make_group_sink([group](const std::string&) { return group; })};
+        .group = iclforge::hearth::make_group_sink([group](const std::string&) { return group; })};
     Engine engine(std::move(outputs), loader, *layout, settings,
                   EngineTiming{.period = 5ms, .budget = 4800});
     engine.set_output_preferences(OutputPreferences{.pinned = OutputMode::kNetworkGroup,
@@ -312,11 +312,11 @@ TEST_CASE("engine: from the app, a group of two test sinks plays one programme",
     const std::unique_ptr<testsink::Sink> burst_sink =
         start_sink(scratch / "burst", "Burst sink", /*extension_role=*/true, /*unpaired_access=*/false, log);
 
-    std::optional<ac3::sendspin::noise::KeyPair> identity = ac3::sendspin::noise::KeyPair::generate();
+    std::optional<iclforge::sendspin::noise::KeyPair> identity = iclforge::sendspin::noise::KeyPair::generate();
     REQUIRE(identity.has_value());
-    ac3::sendspin::MemoryServerStore store;
+    iclforge::sendspin::MemoryServerStore store;
     HostEvents events;
-    auto host = ac3::sendspin::ServerHost::start(
+    auto host = iclforge::sendspin::ServerHost::start(
         {.identity = *identity, .name = "Test host", .languages = {"en"}, .address = "127.0.0.1",
          .port = std::nullopt, .advertise = false, .browse = false, .mdns_interfaces = {}},
         store, events);
@@ -334,8 +334,8 @@ TEST_CASE("engine: from the app, a group of two test sinks plays one programme",
         },
         20s));
 
-    std::shared_ptr<ac3::sendspin::Group> group = (*host)->make_group("Living room");
-    for (const ac3::sendspin::ClientView& client : (*host)->clients()) {
+    std::shared_ptr<iclforge::sendspin::Group> group = (*host)->make_group("Living room");
+    for (const iclforge::sendspin::ClientView& client : (*host)->clients()) {
         group->add(client.client_id);
     }
 
@@ -350,14 +350,14 @@ TEST_CASE("engine: from the app, a group of two test sinks plays one programme",
         return LoadedItem{.bytes = programme};
     };
 
-    const auto layout = ac3::render::OutputLayout::parse("2.0");
+    const auto layout = iclforge::render::OutputLayout::parse("2.0");
     REQUIRE(layout.has_value());
     // No local pcm/bitstream/endpoints: this group is the only output there
     // is, so a fallback silently playing somewhere else would show up as a
     // refusal (EngineStatus::note), not a false pass.
-    EngineOutputs outputs{.group = ac3::hearth::make_group_sink(
+    EngineOutputs outputs{.group = iclforge::hearth::make_group_sink(
                               [&group](const std::string&) { return group; })};
-    Engine engine(std::move(outputs), loader, *layout, ac3::hearth::DecoderSettings{},
+    Engine engine(std::move(outputs), loader, *layout, iclforge::hearth::DecoderSettings{},
                  EngineTiming{.period = 5ms, .budget = 4800});
     engine.set_output_preferences(OutputPreferences{.pinned = OutputMode::kNetworkGroup,
                                                      .follow_sink = true,
@@ -401,7 +401,7 @@ TEST_CASE("engine: from the app, a group of two test sinks plays one programme",
 // AC-4 item from the Engine to a group of a player@v1 sink and an
 // _ac3forge_player@v1 sink that lists AC-4 (D11's test sink): the first takes
 // the Engine's decode as PCM, and the second the item's own sync frames, a
-// burst each, which it decodes itself - to what ac4::Decoder makes of them,
+// burst each, which it decodes itself - to what iclforge::ac4::Decoder makes of them,
 // sample for sample, every burst's frame placed on the group's one timeline.
 TEST_CASE(
     "engine: an AC-4 item reaches a group as PCM, and as a bitstream for the sink that decodes it",
@@ -414,7 +414,7 @@ TEST_CASE(
         fs::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / "ac4-20-tones-192" / "dee.ac4", kFrames);
     TwoSinkGroup sinks(scratch);
     const EngineStatus finished =
-        play_to_group(sinks.group, programme, ac3::hearth::DecoderSettings{});
+        play_to_group(sinks.group, programme, iclforge::hearth::DecoderSettings{});
     INFO("output_reason: " << finished.output_reason << " / note: " << finished.note
                            << " / error: " << finished.error);
     REQUIRE(finished.history.size() == 1);
@@ -428,40 +428,41 @@ TEST_CASE(
     CHECK(played_bursts() == kFrames);
     CHECK(sinks.burst_sink->totals().burst_frames == expected);
 
-    // The burst sink's WAV: the frames as ac4::Decoder decodes them, placed
+    // The burst sink's WAV: the frames as iclforge::ac4::Decoder decodes them, placed
     // on its layout - the test sink's own, 7.1.4 - by the bed of their
     // speakers, as BurstOutput places them.
-    const std::optional<ac3::render::OutputLayout> layout =
-        ac3::render::OutputLayout::parse(testsink::SinkOptions{}.layout);
+    const std::optional<iclforge::render::OutputLayout> layout =
+        iclforge::render::OutputLayout::parse(testsink::SinkOptions{}.layout);
     REQUIRE(layout.has_value());
-    ac3::io::WavStreamReader wav;
+    iclforge::io::WavStreamReader wav;
     REQUIRE(wav.open(only_file(scratch / "burst" / "out", "bursts-", ".wav").string()).has_value());
     REQUIRE(static_cast<std::size_t>(wav.channels()) == layout->slots());
     std::vector<std::vector<float>> heard(layout->slots(),
-                                          std::vector<float>(ac3::kSamplesPerBlock));
+                                          std::vector<float>(iclforge::kSamplesPerBlock));
     std::vector<std::span<float>> heard_spans(heard.begin(), heard.end());
-    std::vector<std::array<float, ac3::kSamplesPerBlock>> rendered(layout->slots());
+    std::vector<std::array<float, iclforge::kSamplesPerBlock>> rendered(layout->slots());
     std::vector<std::span<float>> rendered_spans;
-    for (std::array<float, ac3::kSamplesPerBlock>& slot : rendered) {
+    for (std::array<float, iclforge::kSamplesPerBlock>& slot : rendered) {
         rendered_spans.emplace_back(slot);
     }
-    ac4::Decoder decoder;
-    ac3::render::LayoutRenderer renderer(*layout);
+    iclforge::ac4::Decoder decoder;
+    iclforge::render::LayoutRenderer renderer(*layout);
     std::uint64_t compared = 0;
     std::uint64_t different = 0;
-    for (const ac4::SyncFrame& frame : ac4::scan(programme).frames) {
+    for (const iclforge::ac4::SyncFrame& frame : iclforge::ac4::scan(programme).frames) {
         const auto decoded = decoder.decode(frame.raw_ac4_frame);
         REQUIRE(decoded.has_value());
         REQUIRE(decoded->has_value());
-        const ac4::DecodedFrame& pcm = **decoded;
+        const iclforge::ac4::DecodedFrame& pcm = **decoded;
         renderer.set_bed(testsink::ac4_bed(pcm.speakers));
         std::vector<std::span<const float>> channels(pcm.channels.size());
-        for (std::size_t at = 0; at < pcm.samples; at += ac3::kSamplesPerBlock) {
-            const std::size_t m = std::min<std::size_t>(ac3::kSamplesPerBlock, pcm.samples - at);
+        for (std::size_t at = 0; at < pcm.samples; at += iclforge::kSamplesPerBlock) {
+            const std::size_t m =
+                std::min<std::size_t>(iclforge::kSamplesPerBlock, pcm.samples - at);
             for (std::size_t c = 0; c < pcm.channels.size(); ++c) {
                 channels[c] = std::span<const float>(pcm.channels[c]).subspan(at, m);
             }
-            renderer.render(ac3::PcmBlock{.index = 0,
+            renderer.render(iclforge::PcmBlock{.index = 0,
                                           .blocks = 1,
                                           .channels = channels,
                                           .objects = {},
@@ -503,7 +504,7 @@ TEST_CASE("engine: an AC-4 presentation a sink would not choose reaches a group 
     const std::vector<std::byte> programme =
         read_bytes(fs::path{AC4DEC_GOLDEN_DIR} / "presentations" / "encoder-broadcast.ac4");
     TwoSinkGroup sinks(scratch);
-    ac3::hearth::DecoderSettings settings;
+    iclforge::hearth::DecoderSettings settings;
     settings.ac4.presentation_id = 2;
     const EngineStatus finished = play_to_group(sinks.group, programme, settings);
     INFO("output_reason: " << finished.output_reason << " / note: " << finished.note

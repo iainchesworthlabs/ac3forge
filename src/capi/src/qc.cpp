@@ -3,22 +3,22 @@
 #include "internal.hpp"
 
 namespace {
-ac3::meta::QcPreset to_cpp(const ac3forge_qc_preset_t& preset) {
-    return ac3::meta::QcPreset{
+iclforge::meta::QcPreset to_cpp(const ac3forge_qc_preset_t& preset) {
+    return iclforge::meta::QcPreset{
         .target_lkfs = preset.target_lkfs,
         .tolerance_lu = preset.tolerance_lu,
         .max_true_peak_dbtp = preset.max_true_peak_dbtp,
-        .loudness_limit = static_cast<ac3::meta::QcLoudnessLimit>(preset.loudness_limit),
+        .loudness_limit = static_cast<iclforge::meta::QcLoudnessLimit>(preset.loudness_limit),
         .source = preset.source == nullptr ? std::string_view{} : std::string_view{preset.source}};
 }
 }  // namespace
 
 extern "C" {
 
-size_t ac3forge_qc_preset_count(void) { return ac3::meta::kQcPresetIds.size(); }
+size_t ac3forge_qc_preset_count(void) { return iclforge::meta::kQcPresetIds.size(); }
 
 ac3forge_qc_preset_t ac3forge_qc_preset(ac3forge_qc_preset_id_t id) {
-    const auto preset = ac3::meta::qc_preset(static_cast<ac3::meta::QcPresetId>(id));
+    const auto preset = iclforge::meta::qc_preset(static_cast<iclforge::meta::QcPresetId>(id));
     return ac3forge_qc_preset_t{
         .target_lkfs = preset.target_lkfs,
         .tolerance_lu = preset.tolerance_lu,
@@ -28,15 +28,15 @@ ac3forge_qc_preset_t ac3forge_qc_preset(ac3forge_qc_preset_id_t id) {
 }
 
 const char* ac3forge_qc_preset_name(ac3forge_qc_preset_id_t id) {
-    return ac3::meta::qc_preset_name(static_cast<ac3::meta::QcPresetId>(id)).data();
+    return iclforge::meta::qc_preset_name(static_cast<iclforge::meta::QcPresetId>(id)).data();
 }
 
 int ac3forge_parse_qc_preset(const char* name, ac3forge_qc_preset_id_t* out_id) {
     if (name == nullptr || out_id == nullptr) {
         return 0;
     }
-    ac3::meta::QcPresetId id{};
-    if (!ac3::meta::parse_qc_preset(name, id)) {
+    iclforge::meta::QcPresetId id{};
+    if (!iclforge::meta::parse_qc_preset(name, id)) {
         return 0;
     }
     *out_id = static_cast<ac3forge_qc_preset_id_t>(id);
@@ -59,7 +59,7 @@ ac3forge_qc_verdict_t ac3forge_evaluate_qc_gate(const ac3forge_qc_preset_t* pres
     if (preset == nullptr) {
         return empty;
     }
-    const auto verdict = ac3::meta::evaluate_qc_gate(
+    const auto verdict = iclforge::meta::evaluate_qc_gate(
         to_cpp(*preset), has_integrated_lkfs != 0 ? std::optional<double>(integrated_lkfs) : std::nullopt,
         has_true_peak_dbtp != 0 ? std::optional<double>(true_peak_dbtp) : std::nullopt);
     return ac3forge_qc_verdict_t{

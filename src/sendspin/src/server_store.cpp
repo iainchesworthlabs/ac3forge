@@ -8,7 +8,7 @@
 #include "iclforge/sendspin/handshake.hpp"
 #include "iclforge/sendspin/handshake_session.hpp"
 
-namespace ac3::sendspin {
+namespace iclforge::sendspin {
 
 handshake::PskChoice MemoryServerStore::choose(const crypto::Key32& client_key) const {
     const std::lock_guard lock(mutex_);
@@ -64,4 +64,4 @@ void MemoryServerStore::set_approved(const crypto::Key32& client_key, bool appro
     approvals_[client_key] = approved;
 }
 
-}  // namespace ac3::sendspin
+}  // namespace iclforge::sendspin

@@ -20,7 +20,7 @@
 
 // See settings_model.hpp.
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 namespace {
 
@@ -99,7 +99,7 @@ constexpr std::string_view kSpeakersRoutingOutputs = "speakers/routingOutputs";
 
 // A signed decimal number, read the same locale-independent way as
 // number_of() above - not strtod, whose result depends on the process
-// locale, which Qt sets from the user's (ac3::sendspin::json's own header
+// locale, which Qt sets from the user's (iclforge::sendspin::json's own header
 // comment). std::from_chars for floating point is unavailable only on
 // Android and at the macOS wheel's deployment target (CONTRIBUTING.md) -
 // neither is a target apps/hearth's CMakeLists.txt builds for (WIN32 OR
@@ -322,7 +322,7 @@ SavedSpeakerSetup saved_speaker_setup(const EngineStatus& status) {
     out.trim_db = status.trim_db;
     out.delay_ms = status.delay_ms;
     out.crossover_hz = status.crossover_hz;
-    std::array<char, ac3::render::Routing::kTextBytes> routing_text{};
+    std::array<char, iclforge::render::Routing::kTextBytes> routing_text{};
     const std::size_t written = status.routing.format(routing_text);
     out.routing.assign(routing_text.data(), written);
     out.routing_outputs = status.routing.outputs();
@@ -351,7 +351,7 @@ SavedSpeakerSetup load_speaker_setup(const SettingsStore& store) {
     out.layout = store.value(kSpeakersLayout).value_or(std::string{});
     if (const auto slots = number_of(store.value(kSpeakersSlots))) {
         const std::uint64_t count =
-            std::min(*slots, static_cast<std::uint64_t>(ac3::render::OutputLayout::kMaxSlots));
+            std::min(*slots, static_cast<std::uint64_t>(iclforge::render::OutputLayout::kMaxSlots));
         out.trim_db.reserve(count);
         out.delay_ms.reserve(count);
         for (std::size_t i = 0; i < count; ++i) {
@@ -368,4 +368,4 @@ SavedSpeakerSetup load_speaker_setup(const SettingsStore& store) {
     return out;
 }
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

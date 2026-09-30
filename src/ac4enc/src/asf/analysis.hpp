@@ -23,7 +23,7 @@
 // scale, and the overlap-add's factor of two"), so the lines are the forward
 // transform of the windowed samples times 65 536.
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 class Analysis {
    public:
@@ -49,4 +49,4 @@ class Analysis {
     std::vector<double> segment_;
 };
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

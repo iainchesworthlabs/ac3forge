@@ -31,28 +31,28 @@
 namespace {
 
 constexpr std::uint32_t kRate = 48'000;
-constexpr std::uint64_t kBurstFrames = ac3::kSamplesPerFrame;
+constexpr std::uint64_t kBurstFrames = iclforge::kSamplesPerFrame;
 
 // One silent AC-3 stereo frame as a burst: silence, since a test that runs on
 // somebody's receiver should not be heard.
 std::vector<std::byte> silent_burst() {
-    ac3::EncoderConfig config;
-    config.sample_rate = ac3::SampleRate::k48000;
+    iclforge::EncoderConfig config;
+    config.sample_rate = iclforge::SampleRate::k48000;
     config.bitrate_kbps = 192;
-    config.acmod = ac3::Acmod::k2_0;
-    ac3::FrameEncoder encoder{config};
-    const std::vector<float> silence(ac3::kSamplesPerFrame, 0.0F);
+    config.acmod = iclforge::Acmod::k2_0;
+    iclforge::FrameEncoder encoder{config};
+    const std::vector<float> silence(iclforge::kSamplesPerFrame, 0.0F);
     const std::vector<std::span<const float>> views(2, silence);
     const auto frame = encoder.encode_frame(views);
     REQUIRE(frame.has_value());
-    auto burst = ac3::iec61937::wrap_frame(*frame);
+    auto burst = iclforge::iec61937::wrap_frame(*frame);
     REQUIRE(burst.has_value());
     return std::move(*burst);
 }
 
 // Keeps the sink fed with `bursts` more, which is what a caller playing in
 // real time does; submit() refusing means the queue is full, not an error.
-void feed(ac3::audio::PassthroughSink& sink, const std::vector<std::byte>& burst, int bursts) {
+void feed(iclforge::audio::PassthroughSink& sink, const std::vector<std::byte>& burst, int bursts) {
     for (int i = 0; i < bursts; ++i) {
         for (int attempt = 0; attempt < 400 && !sink.submit(burst); ++attempt) {
             std::this_thread::sleep_for(std::chrono::milliseconds(2));
@@ -62,7 +62,7 @@ void feed(ac3::audio::PassthroughSink& sink, const std::vector<std::byte>& burst
 
 // The first output the enumeration says takes AC-3, or nothing.
 std::string ac3_output() {
-    const auto devices = ac3::audio::enumerate_render_devices(kRate);
+    const auto devices = iclforge::audio::enumerate_render_devices(kRate);
     if (devices) {
         for (const auto& device : *devices) {
             if (device.supports_ac3_passthrough) {
@@ -84,10 +84,11 @@ TEST_CASE("passthrough live: the position follows the receiver's link, and pause
         return;
     }
 
-    ac3::audio::PassthroughSink sink;
-    const auto started = sink.start(id, kRate, ac3::audio::BitstreamFormat::kAc3);
+    iclforge::audio::PassthroughSink sink;
+    const auto started = sink.start(id, kRate, iclforge::audio::BitstreamFormat::kAc3);
     if (!started) {
-        WARN("the passthrough output would not open: " << ac3::audio::describe(started.error()));
+        WARN("the passthrough output would not open: "
+             << iclforge::audio::describe(started.error()));
         return;
     }
     REQUIRE(sink.running());
@@ -168,17 +169,18 @@ TEST_CASE("passthrough live: the position follows the receiver's link, and pause
 // has to work again afterwards with no stop() in between.
 TEST_CASE("passthrough live: a receiver that goes away stops the sink, which can start again",
           "[.][passthrough-unplug]") {
-    using ac3::audio::PassthroughError;
+    using iclforge::audio::PassthroughError;
     using namespace std::chrono_literals;
 
     const std::string id = ac3_output();
     if (id.empty()) {
         return;
     }
-    ac3::audio::PassthroughSink sink;
-    const auto started = sink.start(id, kRate, ac3::audio::BitstreamFormat::kAc3);
+    iclforge::audio::PassthroughSink sink;
+    const auto started = sink.start(id, kRate, iclforge::audio::BitstreamFormat::kAc3);
     if (!started) {
-        WARN("the passthrough output would not open: " << ac3::audio::describe(started.error()));
+        WARN("the passthrough output would not open: "
+             << iclforge::audio::describe(started.error()));
         return;
     }
     const auto burst = silent_burst();
@@ -212,7 +214,7 @@ TEST_CASE("passthrough live: a receiver that goes away stops the sink, which can
     WARN("Put the output back now (30 s).");
     deadline = std::chrono::steady_clock::now() + 30s;
     while (!sink.running() && std::chrono::steady_clock::now() < deadline) {
-        if (!sink.start(id, kRate, ac3::audio::BitstreamFormat::kAc3)) {
+        if (!sink.start(id, kRate, iclforge::audio::BitstreamFormat::kAc3)) {
             std::this_thread::sleep_for(500ms);
         }
     }

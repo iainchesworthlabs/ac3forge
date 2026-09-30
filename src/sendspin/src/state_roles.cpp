@@ -15,7 +15,7 @@
 #include "iclforge/sendspin/dialect.hpp"
 #include "iclforge/sendspin/json.hpp"
 
-namespace ac3::sendspin {
+namespace iclforge::sendspin {
 
 namespace {
 
@@ -547,4 +547,4 @@ bool meets_contrast(const State& state) {
 
 }  // namespace color
 
-}  // namespace ac3::sendspin
+}  // namespace iclforge::sendspin

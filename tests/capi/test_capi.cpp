@@ -74,8 +74,8 @@ struct Eac3Stream {
 
 // Phase-continuous tones, one per coded channel, through the C++ E-AC-3
 // encoder - the raw-byte input side of every C-API decode test below.
-Eac3Stream encode_eac3_stream(ac3::eac3::FrameEncoder& encoder, const std::vector<double>& tones,
-                              int frames) {
+Eac3Stream encode_eac3_stream(iclforge::eac3::FrameEncoder& encoder,
+                              const std::vector<double>& tones, int frames) {
     const auto nchans = static_cast<std::size_t>(encoder.channel_count());
     REQUIRE(tones.size() == nchans);
     Eac3Stream out;
@@ -225,7 +225,7 @@ TEST_CASE("ac3forge_encoder_encode_frame rejects a mismatched channel/sample cou
     ac3forge_encoder_destroy(encoder);
 }
 
-TEST_CASE("ac3forge_decoder_decode_frame reports the same errors ac3::FrameDecoder does",
+TEST_CASE("ac3forge_decoder_decode_frame reports the same errors iclforge::FrameDecoder does",
           "[capi]") {
     ac3forge_decoder_config_t config;
     ac3forge_decoder_config_init(&config);
@@ -362,7 +362,7 @@ TEST_CASE("E-AC-3 substreams round-trip through the C API across the Annex E too
           "[capi][eac3]") {
     struct ToolCombo {
         const char* name;
-        ac3::eac3::FrameConfig config;
+        iclforge::eac3::FrameConfig config;
     };
     const ToolCombo combos[] = {
         {"plain", {.bitrate_kbps = 192}},
@@ -375,7 +375,7 @@ TEST_CASE("E-AC-3 substreams round-trip through the C API across the Annex E too
     };
     for (const auto& combo : combos) {
         INFO(combo.name);
-        ac3::eac3::FrameEncoder encoder{combo.config};
+        iclforge::eac3::FrameEncoder encoder{combo.config};
         const auto stream = encode_eac3_stream(encoder, {1000.0, 800.0}, 4);
 
         ac3forge_decoder_config_t config;
@@ -627,7 +627,7 @@ TEST_CASE("E-AC-3 C encode entry points surface the encoder's own error codes", 
     ac3forge_eac3_access_unit_encoder_t* au_encoder = nullptr;
     REQUIRE(ac3forge_eac3_access_unit_encoder_create(&independent, &dependent, 1, &au_encoder) ==
             AC3FORGE_OK);
-    // ac3::eac3::AccessUnitEncoder's own constructor validates eagerly and
+    // iclforge::eac3::AccessUnitEncoder's own constructor validates eagerly and
     // silently builds no substreams when a config is invalid - channel_count()
     // is 0 rather than the 8 a caller might expect from acmod/lfe alone;
     // encode() below is how the real reason (an invalid channel map) surfaces.
@@ -662,12 +662,12 @@ TEST_CASE("E-AC-3 access units with a dependent substream cross the C API intact
     // 5.1.2: a 3/2+LFE bed plus one dependent substream carrying Vhl/Vhr -
     // the same layout family tests/ac3/decoder/test_eac3_decoder.cpp proves against the
     // C++ decoder; here the C access-unit surface is what walks it.
-    const ac3::eac3::AccessUnitConfig config{
-        .independent = {.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true},
+    const iclforge::eac3::AccessUnitConfig config{
+        .independent = {.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true},
         .dependents = {{.bitrate_kbps = 192,
-                        .acmod = ac3::Acmod::k2_0,
-                        .chanmap = ac3::eac3::chanmap::k512Height}}};
-    ac3::eac3::AccessUnitEncoder encoder{config};
+                        .acmod = iclforge::Acmod::k2_0,
+                        .chanmap = iclforge::eac3::chanmap::k512Height}}};
+    iclforge::eac3::AccessUnitEncoder encoder{config};
     REQUIRE(encoder.channel_count() == 8);
 
     const std::vector<double> tones = {1000.0, 800.0, 1200.0, 600.0, 1400.0, 60.0, 2000.0, 1300.0};
@@ -791,8 +791,9 @@ TEST_CASE("E-AC-3 access units with a dependent substream cross the C API intact
     CHECK(ac3forge_decoded_substream_id(dependent) == 0);
     CHECK(ac3forge_decoded_substream_acmod(dependent) == AC3FORGE_ACMOD_2_0);
     CHECK(ac3forge_decoded_substream_has_chanmap(dependent) == 1);
-    CHECK(ac3forge_decoded_substream_chanmap(dependent) == ac3::eac3::chanmap::k512Height);
-    CHECK(ac3forge_decoded_substream_location_map(dependent) == ac3::eac3::chanmap::k512Height);
+    CHECK(ac3forge_decoded_substream_chanmap(dependent) == iclforge::eac3::chanmap::k512Height);
+    CHECK(ac3forge_decoded_substream_location_map(dependent) ==
+          iclforge::eac3::chanmap::k512Height);
     CHECK(ac3forge_decoded_substream_last_dependent(dependent) == 1);
     ac3forge_decoded_substream_destroy(dependent);
     ac3forge_eac3_decoder_destroy(frame_decoder);
@@ -810,15 +811,15 @@ TEST_CASE("E-AC-3 dual mono metadata crosses the C boundary on both decode surfa
     // and 5 dB for Ch2 (dialnorm 25): past the default -0.5 dBFS ceiling for
     // Ch1, and past the -3 dBFS one Ch2 is given here, so both compressors and
     // both range controllers act rather than idle at unity.
-    ac3::eac3::FrameEncoder encoder{
+    iclforge::eac3::FrameEncoder encoder{
         {.bitrate_kbps = 192,
-         .acmod = ac3::Acmod::kDualMono,
+         .acmod = iclforge::Acmod::kDualMono,
          .dialnorm = 27,
          .dialnorm2 = 25,
-         .drc = ac3::meta::profile(ac3::meta::ProfileId::kFilmStandard),
-         .heavy = ac3::meta::HeavyConfig{},
-         .drc2 = ac3::meta::profile(ac3::meta::ProfileId::kMusicLight),
-         .heavy2 = ac3::meta::HeavyConfig{.peak_ceiling_dbfs = -3.0}}};
+         .drc = iclforge::meta::profile(iclforge::meta::ProfileId::kFilmStandard),
+         .heavy = iclforge::meta::HeavyConfig{},
+         .drc2 = iclforge::meta::profile(iclforge::meta::ProfileId::kMusicLight),
+         .heavy2 = iclforge::meta::HeavyConfig{.peak_ceiling_dbfs = -3.0}}};
     const auto stream = encode_eac3_stream(encoder, {900.0, 500.0}, 3);
 
     ac3forge_decoder_config_t config;
@@ -910,8 +911,8 @@ TEST_CASE("the C API holds back and flushes transient pre-noise frames like the 
     // it corrected" (tests/ac3/decoder/test_eac3_decoder.cpp). The silent frames here are
     // the tool's own semantics - frames that never switch a block release
     // immediately - not the test signal; the transient itself is real audio.
-    ac3::eac3::FrameEncoder encoder{
-        {.bitrate_kbps = 192, .acmod = ac3::Acmod::k2_0, .transient_prenoise = true}};
+    iclforge::eac3::FrameEncoder encoder{
+        {.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0, .transient_prenoise = true}};
 
     ac3forge_decoder_config_t config;
     ac3forge_decoder_config_init(&config);
@@ -1063,7 +1064,7 @@ TEST_CASE("E-AC-3 C decode entry points reject bad arguments and bad bitstreams"
 
     // A real frame decodes on this same decoder; the same frame cut short is
     // an error again, not a crash and not a false success.
-    ac3::eac3::FrameEncoder encoder{{.bitrate_kbps = 192}};
+    iclforge::eac3::FrameEncoder encoder{{.bitrate_kbps = 192}};
     const auto stream = encode_eac3_stream(encoder, {1000.0, 800.0}, 1);
     REQUIRE(ac3forge_eac3_decoder_decode_substream(decoder, stream.bytes.data(),
                                                    stream.bytes.size(), &substream) == AC3FORGE_OK);
@@ -1367,7 +1368,7 @@ TEST_CASE("Atmos C API tool variants round-trip objects and beds", "[capi][atmos
 }
 
 TEST_CASE("C encode entry points surface the encoder's own error codes", "[capi]") {
-    // Each case maps one ac3::FrameError onto its C status through the
+    // Each case maps one iclforge::FrameError onto its C status through the
     // internal from_cpp() bridge - the encode-side sibling of the decode
     // range checks above.
     std::vector<float> samples(AC3FORGE_SAMPLES_PER_FRAME);
@@ -1729,7 +1730,7 @@ TEST_CASE("the C Atmos latency surface separates the object path from the bed",
     ac3forge_atmos_encoder_latency(encoder, &objects);
     ac3forge_atmos_encoder_bed_latency(encoder, &bed);
     // The §7.1 QMF filterbank's own analysis+synthesis delay
-    // (ac3::dsp::kQmfDelay = 576, not exposed at the C boundary) on top of the
+    // (iclforge::dsp::kQmfDelay = 576, not exposed at the C boundary) on top of the
     // already-decoded bed's own overlap - measured end to end in
     // test_latency.cpp. 576 is spelled out here rather than named: the C API
     // has no QMF-specific constant of its own to reference.
@@ -1936,12 +1937,12 @@ TEST_CASE(
     // 5.1.2, same layout as the dependent-substream test above - eight
     // rendered channels out of the sixteen documented spans, so the unused
     // trailing spans staying untouched is exercised for real.
-    const ac3::eac3::AccessUnitConfig config{
-        .independent = {.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true},
+    const iclforge::eac3::AccessUnitConfig config{
+        .independent = {.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true},
         .dependents = {{.bitrate_kbps = 192,
-                        .acmod = ac3::Acmod::k2_0,
-                        .chanmap = ac3::eac3::chanmap::k512Height}}};
-    ac3::eac3::AccessUnitEncoder encoder{config};
+                        .acmod = iclforge::Acmod::k2_0,
+                        .chanmap = iclforge::eac3::chanmap::k512Height}}};
+    iclforge::eac3::AccessUnitEncoder encoder{config};
     REQUIRE(encoder.channel_count() == 8);
 
     const std::vector<double> tones = {1000.0, 800.0, 1200.0, 600.0, 1400.0, 60.0, 2000.0, 1300.0};
@@ -2022,8 +2023,8 @@ TEST_CASE(
     // Mirrors tests/ac3/decoder/test_eac3_decoder.cpp's C++ test of the same name -
     // see the C API's own version of this table on the AC-3 flush test above
     // for what the silent/transient split is standing in for.
-    ac3::eac3::FrameEncoder encoder{
-        {.bitrate_kbps = 192, .acmod = ac3::Acmod::k2_0, .transient_prenoise = true}};
+    iclforge::eac3::FrameEncoder encoder{
+        {.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0, .transient_prenoise = true}};
 
     ac3forge_decoder_config_t config;
     ac3forge_decoder_config_init(&config);
@@ -2099,7 +2100,7 @@ TEST_CASE(
     "ac3forge_eac3_decoder_decode_access_unit_into rejects bad arguments and a mismatched "
     "channel/sample count",
     "[capi][eac3]") {
-    ac3::eac3::FrameEncoder encoder{{.bitrate_kbps = 192}};
+    iclforge::eac3::FrameEncoder encoder{{.bitrate_kbps = 192}};
     const auto stream = encode_eac3_stream(encoder, {1000.0, 800.0}, 1);
 
     ac3forge_decoder_config_t config;
@@ -2159,7 +2160,7 @@ TEST_CASE(
 
 // --- scan / ScannedStream (legacy item AP5) -----------------------------------
 
-TEST_CASE("ac3forge_scan reports the same shape ac3::io::scan does for an AC-3 stream",
+TEST_CASE("ac3forge_scan reports the same shape iclforge::io::scan does for an AC-3 stream",
           "[capi][scan]") {
     ac3forge_encoder_config_t config;
     ac3forge_encoder_config_init(&config);
@@ -2286,12 +2287,12 @@ TEST_CASE(
     "ac3forge_scan reports programme and substream detail for an E-AC-3 access unit with a "
     "dependent",
     "[capi][scan][eac3]") {
-    const ac3::eac3::AccessUnitConfig config{
-        .independent = {.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true},
+    const iclforge::eac3::AccessUnitConfig config{
+        .independent = {.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true},
         .dependents = {{.bitrate_kbps = 192,
-                        .acmod = ac3::Acmod::k2_0,
-                        .chanmap = ac3::eac3::chanmap::k512Height}}};
-    ac3::eac3::AccessUnitEncoder encoder{config};
+                        .acmod = iclforge::Acmod::k2_0,
+                        .chanmap = iclforge::eac3::chanmap::k512Height}}};
+    iclforge::eac3::AccessUnitEncoder encoder{config};
     REQUIRE(encoder.channel_count() == 8);
 
     const std::vector<double> tones = {1000.0, 800.0, 1200.0, 600.0, 1400.0, 60.0, 2000.0, 1300.0};
@@ -2319,7 +2320,8 @@ TEST_CASE(
     CHECK(ac3forge_scanned_stream_channels(scanned) == 8);  // bed + Vhl/Vhr folded in
     CHECK(ac3forge_scanned_stream_substreams_per_unit(scanned) == 2);
     CHECK(ac3forge_scanned_stream_channel_map(scanned) ==
-          (ac3::eac3::chanmap::acmod_map(ac3::Acmod::k3_2, true) | ac3::eac3::chanmap::k512Height));
+          (iclforge::eac3::chanmap::acmod_map(iclforge::Acmod::k3_2, true) |
+           iclforge::eac3::chanmap::k512Height));
 
     REQUIRE(ac3forge_scanned_stream_access_unit_count(scanned) == 2);
     CHECK(ac3forge_scanned_stream_access_unit(scanned, 0).offset == 0);
@@ -2344,9 +2346,9 @@ TEST_CASE(
     // programme - a broadcast "second service" (§5.4.2.2), not a dependent
     // widening one bed. Concatenated frame by frame, the same wire shape
     // ac3forge_split_access_units already delimits into four access units.
-    ac3::eac3::FrameEncoder programme0{{.bitrate_kbps = 192, .acmod = ac3::Acmod::k2_0}};
-    ac3::eac3::FrameEncoder programme1{
-        {.bitrate_kbps = 96, .acmod = ac3::Acmod::k1_0, .substreamid = 1}};
+    iclforge::eac3::FrameEncoder programme0{{.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0}};
+    iclforge::eac3::FrameEncoder programme1{
+        {.bitrate_kbps = 96, .acmod = iclforge::Acmod::k1_0, .substreamid = 1}};
 
     std::vector<float> left(AC3FORGE_SAMPLES_PER_FRAME);
     std::vector<float> right(AC3FORGE_SAMPLES_PER_FRAME);
@@ -2558,7 +2560,7 @@ TEST_CASE("E-AC-3 structure and substream errors reach C as their own codes", "[
         ac3forge_eac3_frame_config_init(&d);
         d.has_chanmap = 1;
     }
-    namespace cm = ac3::eac3::chanmap;
+    namespace cm = iclforge::eac3::chanmap;
     dependents[0].acmod = AC3FORGE_ACMOD_3_2;
     dependents[0].bitrate_kbps = 448;
     dependents[0].chanmap = static_cast<uint16_t>(cm::kLcRcBit | cm::kLrsRrsBit | cm::kCsBit);
@@ -2666,7 +2668,8 @@ TEST_CASE("ac3forge_loudness_meter_create/push reject bad arguments", "[capi][lo
     ac3forge_loudness_meter_destroy(meter);
 }
 
-TEST_CASE("ac3forge_dialnorm_from_lkfs mirrors ac3::meta::dialnorm_from_lkfs", "[capi][loudness]") {
+TEST_CASE("ac3forge_dialnorm_from_lkfs mirrors iclforge::meta::dialnorm_from_lkfs",
+          "[capi][loudness]") {
     CHECK(ac3forge_dialnorm_from_lkfs(-24.0) == 24);
     CHECK(ac3forge_dialnorm_from_lkfs(-1.0) == 1);
     CHECK(ac3forge_dialnorm_from_lkfs(0.0) == 1);     // louder than -1 LKFS clamps
@@ -2780,7 +2783,7 @@ TEST_CASE("ac3forge_level_meter_process rejects bad arguments", "[capi][levels]"
     ac3forge_level_meter_destroy(meter);
 }
 
-TEST_CASE("ac3forge_qc_preset/name/parse mirror ac3::meta::qc's table", "[capi][qc]") {
+TEST_CASE("ac3forge_qc_preset/name/parse mirror iclforge::meta::qc's table", "[capi][qc]") {
     CHECK(ac3forge_qc_preset_count() == 5);
 
     const auto atsc = ac3forge_qc_preset(AC3FORGE_QC_PRESET_ATSC_A85);
@@ -2804,8 +2807,9 @@ TEST_CASE("ac3forge_qc_preset/name/parse mirror ac3::meta::qc's table", "[capi][
     CHECK(ac3forge_parse_qc_preset("netflix", nullptr) == 0);
 }
 
-TEST_CASE("ac3forge_evaluate_qc_gate passes/fails the same way ac3::meta::evaluate_qc_gate does",
-          "[capi][qc]") {
+TEST_CASE(
+    "ac3forge_evaluate_qc_gate passes/fails the same way iclforge::meta::evaluate_qc_gate does",
+    "[capi][qc]") {
     const auto preset = ac3forge_qc_preset(AC3FORGE_QC_PRESET_NETFLIX);  // -27 +/-2 LU, -2 dBTP ceiling
 
     auto verdict = ac3forge_evaluate_qc_gate(&preset, 1, -27.0, 1, -3.0);
@@ -2924,7 +2928,7 @@ TEST_CASE("scan/metering C accessors take their documented defaults on null hand
 // configuration (channel-based / channel-based-immersive), so
 // ac3forge_ac4_decoded_frame_object_count() is exercised at 0 there; the
 // object scenes after them (phase I4b) are A-JOC and direct-coded objects,
-// encoded through the C API and through ac4::Encoder itself, byte for byte.
+// encoded through the C API and through iclforge::ac4::Encoder itself, byte for byte.
 
 TEST_CASE("ac3forge_ac4_*_config_init match their C++ struct defaults", "[capi][ac4]") {
     ac3forge_ac4_output_config_t output;
@@ -2976,7 +2980,7 @@ TEST_CASE("ac3forge_ac4_*_config_init match their C++ struct defaults", "[capi][
 
     // The object types' defaults are the C++ structs': room centre, unity gain,
     // depth exponent 1 - what a zero-initialised struct is not.
-    const ac4::ObjectProperties cpp_properties{};
+    const iclforge::ac4::ObjectProperties cpp_properties{};
     ac3forge_ac4_object_properties_t properties{};
     ac3forge_ac4_object_properties_init(&properties);
     CHECK(properties.active == 1);
@@ -3197,8 +3201,9 @@ TEST_CASE("AC-4 5.1.4 (channel-based-immersive) encode/decode round-trips", "[ca
     CHECK(result.speakers[9] == AC3FORGE_AC4_SPEAKER_TOP_BACK_RIGHT);
 }
 
-TEST_CASE("ac3forge_ac4_encoder_create refuses a configuration ac4::Encoder::create() refuses",
-          "[capi][ac4]") {
+TEST_CASE(
+    "ac3forge_ac4_encoder_create refuses a configuration iclforge::ac4::Encoder::create() refuses",
+    "[capi][ac4]") {
     ac3forge_ac4_encoder_config_t config;
     ac3forge_ac4_encoder_config_init(&config);
     config.channels = 3;  // not one of EncoderConfig::channels' accepted counts
@@ -3286,9 +3291,9 @@ TEST_CASE("ac3forge_ac4_sync_frame wraps a raw frame", "[capi][ac4]") {
 
 // --- AC-4 objects (ac3forge_ac4_objects_config_t and its neighbours) ---------
 //
-// A scene is written once as an ac4::EncoderConfig, in the C++ API's own terms:
+// A scene is written once as an iclforge::ac4::EncoderConfig, in the C++ API's own terms:
 // the reference. An independent conversion below (not the library's) turns it
-// into the C structs, and the C API and ac4::Encoder itself then have to write
+// into the C structs, and the C API and iclforge::ac4::Encoder itself then have to write
 // the same bytes from the same input; the C API's decoder has to read the
 // scene back as it was given, within what each field's code can hold.
 
@@ -3307,39 +3312,39 @@ constexpr std::int64_t kObjectUpdateSample = 5000;
 constexpr int kObjectUpdateRamp = 1024;
 
 struct ObjectScene {
-    ac4::EncoderConfig config;
-    std::vector<ac4::ObjectMetadataUpdate> updates;
+    iclforge::ac4::EncoderConfig config;
+    std::vector<iclforge::ac4::ObjectMetadataUpdate> updates;
 
-    [[nodiscard]] const ac4::ObjectsConfig& objects() const {
+    [[nodiscard]] const iclforge::ac4::ObjectsConfig& objects() const {
         return *config.substreams.at(0).objects;
     }
 };
 
-ac4::ObjectConfig dynamic_object(double x, double y, double z, double gain_db) {
-    ac4::ObjectConfig object;
+iclforge::ac4::ObjectConfig dynamic_object(double x, double y, double z, double gain_db) {
+    iclforge::ac4::ObjectConfig object;
     object.properties.position = {x, y, z};
     object.properties.gain_db = gain_db;
     return object;
 }
 
-ac4::ObjectConfig lfe_object() {
-    ac4::ObjectConfig object;
+iclforge::ac4::ObjectConfig lfe_object() {
+    iclforge::ac4::ObjectConfig object;
     object.lfe = true;
     return object;
 }
 
-ObjectScene make_scene(ac4::ObjectsConfig objects, int kbps) {
+ObjectScene make_scene(iclforge::ac4::ObjectsConfig objects, int kbps) {
     ObjectScene scene;
     scene.config.bitrate_kbps = kbps;
     scene.config.experimental.objects = true;
-    ac4::SubstreamConfig substream;
+    iclforge::ac4::SubstreamConfig substream;
     substream.objects = std::move(objects);
     scene.config.substreams = {substream};
     // The first dynamic object moves at the update's sample to a position and
     // a gain of its own, over kObjectUpdateRamp samples.
-    ac4::ObjectMetadataUpdate update;
+    iclforge::ac4::ObjectMetadataUpdate update;
     for (std::size_t o = 0; o < scene.objects().objects.size(); ++o) {
-        const ac4::ObjectConfig& object = scene.objects().objects[o];
+        const iclforge::ac4::ObjectConfig& object = scene.objects().objects[o];
         if (!object.lfe && !object.bed) {
             update.object = static_cast<int>(o);
             break;
@@ -3357,20 +3362,20 @@ ObjectScene make_scene(ac4::ObjectsConfig objects, int kbps) {
 // the middle of their list, a bed object and three dynamic objects, whose
 // metadata takes every field a dynamic object sends.
 ObjectScene ajoc_scene() {
-    ac4::ObjectsConfig objects;
-    ac4::ObjectConfig a = dynamic_object(0.1, 0.2, 0.0, -3.0);
-    ac4::ObjectConfig b = dynamic_object(0.9, 0.5, 7.0 / 15.0, -6.0);
+    iclforge::ac4::ObjectsConfig objects;
+    iclforge::ac4::ObjectConfig a = dynamic_object(0.1, 0.2, 0.0, -3.0);
+    iclforge::ac4::ObjectConfig b = dynamic_object(0.9, 0.5, 7.0 / 15.0, -6.0);
     b.properties.priority = 16.0 / 31.0;
     b.properties.width = {0.2, 0.4, 0.6};
     b.properties.zone_mask = 3;
     b.properties.screen_factor = 0.5;
-    ac4::ObjectConfig bed;
-    bed.bed = ac4::BedChannel::kLeft;
+    iclforge::ac4::ObjectConfig bed;
+    bed.bed = iclforge::ac4::BedChannel::kLeft;
     bed.properties.gain_db = -12.0;
     bed.properties.trim_disabled = true;
     bed.properties.headphone_render_mode = 1;
     bed.properties.head_track_disabled = true;
-    ac4::ObjectConfig c = dynamic_object(0.5, 1.0, -0.6, -4.4);
+    iclforge::ac4::ObjectConfig c = dynamic_object(0.5, 1.0, -0.6, -4.4);
     c.properties.snap = true;
     c.properties.enable_elevation = false;
     // The screen factor and the depth exponent share a group of fields, which
@@ -3387,23 +3392,23 @@ ObjectScene ajoc_scene() {
 // Direct-coded: four dynamic objects and the LFE, which rides the first
 // substream.
 ObjectScene direct_scene() {
-    ac4::ObjectsConfig objects;
-    ac4::ObjectConfig b = dynamic_object(0.33, 0.66, 0.2, -6.0);
+    iclforge::ac4::ObjectsConfig objects;
+    iclforge::ac4::ObjectConfig b = dynamic_object(0.33, 0.66, 0.2, -6.0);
     b.properties.width = {0.1, 0.3, 0.5};
     b.properties.zone_mask = 5;
-    ac4::ObjectConfig quiet = dynamic_object(0.67, 0.34, -0.2, 0.0);
+    iclforge::ac4::ObjectConfig quiet = dynamic_object(0.67, 0.34, -0.2, 0.0);
     quiet.properties.active = false;
     objects.objects = {dynamic_object(0.0, 0.0, 0.0, -3.0), b, lfe_object(), quiet,
                        dynamic_object(1.0, 1.0, 1.0, -9.0)};
-    objects.coding = ac4::ObjectCoding::kDirect;
+    objects.coding = iclforge::ac4::ObjectCoding::kDirect;
     return make_scene(std::move(objects), 256);
 }
 
-std::vector<std::vector<float>> object_input(const ac4::ObjectsConfig& objects,
+std::vector<std::vector<float>> object_input(const iclforge::ac4::ObjectsConfig& objects,
                                              std::size_t samples) {
     std::vector<std::vector<float>> input;
     std::size_t tones = 0;
-    for (const ac4::ObjectConfig& object : objects.objects) {
+    for (const iclforge::ac4::ObjectConfig& object : objects.objects) {
         const double hz = object.lfe ? kObjectLfeHz
                                      : (kObjectSubbands[tones++ % kObjectSubbands.size()] + 0.5) *
                                            kObjectRate / 128.0;
@@ -3417,7 +3422,7 @@ std::vector<std::vector<float>> object_input(const ac4::ObjectsConfig& objects,
     return input;
 }
 
-ac3forge_ac4_object_properties_t c_properties(const ac4::ObjectProperties& p) {
+ac3forge_ac4_object_properties_t c_properties(const iclforge::ac4::ObjectProperties& p) {
     ac3forge_ac4_object_properties_t c;
     ac3forge_ac4_object_properties_init(&c);
     c.active = p.active ? 1 : 0;
@@ -3456,8 +3461,8 @@ struct CObjectScene {
 
 std::unique_ptr<CObjectScene> c_scene_of(const ObjectScene& scene) {
     auto c = std::make_unique<CObjectScene>();
-    const ac4::ObjectsConfig& objects = scene.objects();
-    for (const ac4::ObjectConfig& object : objects.objects) {
+    const iclforge::ac4::ObjectsConfig& objects = scene.objects();
+    for (const iclforge::ac4::ObjectConfig& object : objects.objects) {
         ac3forge_ac4_object_config_t& out = c->objects.emplace_back();
         ac3forge_ac4_object_config_init(&out);
         out.has_bed = object.bed.has_value() ? 1 : 0;
@@ -3470,7 +3475,7 @@ std::unique_ptr<CObjectScene> c_scene_of(const ObjectScene& scene) {
     ac3forge_ac4_objects_config_init(&c->objects_config);
     c->objects_config.objects = c->objects.data();
     c->objects_config.object_count = c->objects.size();
-    c->objects_config.coding = objects.coding == ac4::ObjectCoding::kDirect
+    c->objects_config.coding = objects.coding == iclforge::ac4::ObjectCoding::kDirect
                                    ? AC3FORGE_AC4_OBJECT_CODING_DIRECT
                                    : AC3FORGE_AC4_OBJECT_CODING_AJOC;
     c->objects_config.downmix = static_cast<ac3forge_ac4_ajoc_downmix_t>(objects.downmix);
@@ -3485,7 +3490,7 @@ std::unique_ptr<CObjectScene> c_scene_of(const ObjectScene& scene) {
     c->config.experimental.objects = scene.config.experimental.objects ? 1 : 0;
     c->config.objects = &c->objects_config;
 
-    for (const ac4::ObjectMetadataUpdate& update : scene.updates) {
+    for (const iclforge::ac4::ObjectMetadataUpdate& update : scene.updates) {
         ac3forge_ac4_object_metadata_update_t& out = c->updates.emplace_back();
         ac3forge_ac4_object_metadata_update_init(&out);
         out.object = static_cast<std::size_t>(update.object);
@@ -3505,7 +3510,7 @@ struct EncodedStream {
 EncodedStream encode_with_cpp(const ObjectScene& scene,
                               const std::vector<std::vector<float>>& input) {
     EncodedStream out;
-    auto encoder = ac4::Encoder::create(scene.config);
+    auto encoder = iclforge::ac4::Encoder::create(scene.config);
     REQUIRE(encoder.has_value());
     out.delay = encoder->delay_samples();
     out.decoder_delay = encoder->decoder_delay_samples();
@@ -3515,7 +3520,7 @@ EncodedStream encode_with_cpp(const ObjectScene& scene,
     auto rest = encoder->flush();
     REQUIRE(rest.has_value());
     for (const auto* list : {&*frames, &*rest}) {
-        for (const ac4::EncodedFrame& frame : *list) {
+        for (const iclforge::ac4::EncodedFrame& frame : *list) {
             const auto* bytes = reinterpret_cast<const std::uint8_t*>(frame.raw_ac4_frame.data());
             out.frames.emplace_back(bytes, bytes + frame.raw_ac4_frame.size());
         }
@@ -3624,7 +3629,7 @@ DecodedScene decode_with_c_api(const EncodedStream& stream) {
 
 // The decoded objects' order: the LFE first, then the bed objects and the
 // dynamic objects, each in the order the configuration lists them.
-std::vector<std::size_t> decoded_order(const ac4::ObjectsConfig& objects) {
+std::vector<std::size_t> decoded_order(const iclforge::ac4::ObjectsConfig& objects) {
     std::vector<std::size_t> order;
     for (std::size_t o = 0; o < objects.objects.size(); ++o) {
         if (objects.objects[o].lfe) {
@@ -3633,7 +3638,7 @@ std::vector<std::size_t> decoded_order(const ac4::ObjectsConfig& objects) {
     }
     for (const bool beds : {true, false}) {
         for (std::size_t o = 0; o < objects.objects.size(); ++o) {
-            const ac4::ObjectConfig& object = objects.objects[o];
+            const iclforge::ac4::ObjectConfig& object = objects.objects[o];
             if (!object.lfe && object.bed.has_value() == beds) {
                 order.push_back(o);
             }
@@ -3665,7 +3670,7 @@ double correlation(const std::vector<float>& reference, const std::vector<float>
 // divergence and the distance in the tables of Annex F. An inactive object
 // sends none of them, only that it is not active.
 void check_properties_near(const ac3forge_ac4_object_properties_t& got,
-                           const ac4::ObjectProperties& want, bool dynamic) {
+                           const iclforge::ac4::ObjectProperties& want, bool dynamic) {
     CHECK(got.active == (want.active ? 1 : 0));
     if (!want.active) {
         return;
@@ -3698,7 +3703,7 @@ void check_properties_near(const ac3forge_ac4_object_properties_t& got,
     CHECK(std::abs(got.divergence - want.divergence) <= 0.02);
 }
 
-// Encodes `scene` through the C API and through ac4::Encoder, checks the two
+// Encodes `scene` through the C API and through iclforge::ac4::Encoder, checks the two
 // streams are the same bytes, then decodes the C API's and checks each object
 // against the configuration, its audio and its metadata update.
 void check_object_scene(const ObjectScene& scene) {
@@ -3721,10 +3726,10 @@ void check_object_scene(const ObjectScene& scene) {
     REQUIRE(decoded.objects.size() == order.size());
 
     const std::int64_t lag = from_c.delay + from_c.decoder_delay;
-    const ac4::ObjectMetadataUpdate& update = scene.updates.front();
+    const iclforge::ac4::ObjectMetadataUpdate& update = scene.updates.front();
     for (std::size_t d = 0; d < order.size(); ++d) {
         const std::size_t o = order[d];
-        const ac4::ObjectConfig& configured = scene.objects().objects[o];
+        const iclforge::ac4::ObjectConfig& configured = scene.objects().objects[o];
         const DecodedObject& object = decoded.objects[d];
         CAPTURE(d, o);
         CHECK(object.lfe == configured.lfe);
@@ -3772,13 +3777,15 @@ void check_object_scene(const ObjectScene& scene) {
 }  // namespace
 
 TEST_CASE(
-    "an A-JOC object scene encodes through the C API as ac4::Encoder writes it and decodes back",
+    "an A-JOC object scene encodes through the C API as iclforge::ac4::Encoder writes it and "
+    "decodes back",
     "[capi][ac4]") {
     check_object_scene(ajoc_scene());
 }
 
 TEST_CASE(
-    "a direct-coded object scene encodes through the C API as ac4::Encoder writes it and decodes "
+    "a direct-coded object scene encodes through the C API as iclforge::ac4::Encoder writes it and "
+    "decodes "
     "back",
     "[capi][ac4]") {
     check_object_scene(direct_scene());
@@ -4021,7 +4028,7 @@ struct ChannelStream {
 };
 
 // `input` (planar, all one length) encoded whole and flushed, by the C API
-// with `config` and by ac4::Encoder with `reference`: what each wrote.
+// with `config` and by iclforge::ac4::Encoder with `reference`: what each wrote.
 ChannelStream encode_channels_with_c_api(const ac3forge_ac4_encoder_config_t& config,
                                          const std::vector<std::vector<float>>& input) {
     ChannelStream out;
@@ -4053,10 +4060,10 @@ ChannelStream encode_channels_with_c_api(const ac3forge_ac4_encoder_config_t& co
     return out;
 }
 
-ChannelStream encode_channels_with_cpp(const ac4::EncoderConfig& reference,
+ChannelStream encode_channels_with_cpp(const iclforge::ac4::EncoderConfig& reference,
                                        const std::vector<std::vector<float>>& input) {
     ChannelStream out;
-    auto encoder = ac4::Encoder::create(reference);
+    auto encoder = iclforge::ac4::Encoder::create(reference);
     REQUIRE(encoder.has_value());
     const std::vector<std::span<const float>> views(input.begin(), input.end());
     auto frames = encoder->encode(views);
@@ -4064,7 +4071,7 @@ ChannelStream encode_channels_with_cpp(const ac4::EncoderConfig& reference,
     auto rest = encoder->flush();
     REQUIRE(rest.has_value());
     for (const auto* list : {&*frames, &*rest}) {
-        for (const ac4::EncodedFrame& frame : *list) {
+        for (const iclforge::ac4::EncodedFrame& frame : *list) {
             const auto* bytes = reinterpret_cast<const std::uint8_t*>(frame.raw_ac4_frame.data());
             out.frames.emplace_back(bytes, bytes + frame.raw_ac4_frame.size());
             out.iframe.push_back(frame.iframe);
@@ -4094,7 +4101,7 @@ TEST_CASE("the encoder configuration's I-frame lists reach the encoder", "[capi]
     ac3forge_ac4_encoder_config_init(&config);
     config.bitrate_kbps = 96;
     config.iframe_interval = 1000;  // the first frame alone, without the lists
-    ac4::EncoderConfig reference;
+    iclforge::ac4::EncoderConfig reference;
     reference.bitrate_kbps = 96;
     reference.iframe_interval = 1000;
 
@@ -4193,7 +4200,7 @@ TEST_CASE("the encoder configuration's experimental flags reach the encoder", "[
         config.experimental.coding_configs = 1;
         CHECK(refusal_of(config) == "an A-CPL codec mode with experimental.coding_configs");
     }
-    SECTION("the ASPX mode's options are written as ac4::Encoder writes them") {
+    SECTION("the ASPX mode's options are written as iclforge::ac4::Encoder writes them") {
         // Stereo in the ASPX mode over a steady tone above the crossover, with
         // an attack in both channels every 1 100 samples: each option on its
         // own changes the stream, and the stream is the C++ API's, byte for
@@ -4219,28 +4226,29 @@ TEST_CASE("the encoder configuration's experimental flags reach the encoder", "[
         }
         config.bitrate_kbps = 48;
         config.codec_mode = AC3FORGE_AC4_CODEC_ASPX;
-        ac4::EncoderConfig reference;
+        iclforge::ac4::EncoderConfig reference;
         reference.bitrate_kbps = 48;
-        reference.codec_mode = ac4::CodecMode::kAspx;
+        reference.codec_mode = iclforge::ac4::CodecMode::kAspx;
         const ChannelStream plain = encode_channels_with_c_api(config, input);
         CHECK(plain.frames == encode_channels_with_cpp(reference, input).frames);
 
-        const auto with_option = [&](int ac3forge_ac4_experimental_t::* option,
-                                     bool ac4::EncoderConfig::Experimental::* cpp_option) {
-            ac3forge_ac4_encoder_config_t options = config;
-            options.experimental.*option = 1;
-            ac4::EncoderConfig cpp = reference;
-            cpp.experimental.*cpp_option = true;
-            const ChannelStream stream = encode_channels_with_c_api(options, input);
-            CHECK(stream.frames == encode_channels_with_cpp(cpp, input).frames);
-            CHECK(stream.frames != plain.frames);
-        };
+        const auto with_option =
+            [&](int ac3forge_ac4_experimental_t::* option,
+                bool iclforge::ac4::EncoderConfig::Experimental::* cpp_option) {
+                ac3forge_ac4_encoder_config_t options = config;
+                options.experimental.*option = 1;
+                iclforge::ac4::EncoderConfig cpp = reference;
+                cpp.experimental.*cpp_option = true;
+                const ChannelStream stream = encode_channels_with_c_api(options, input);
+                CHECK(stream.frames == encode_channels_with_cpp(cpp, input).frames);
+                CHECK(stream.frames != plain.frames);
+            };
         with_option(&ac3forge_ac4_experimental_t::aspx_balance,
-                    &ac4::EncoderConfig::Experimental::aspx_balance);
+                    &iclforge::ac4::EncoderConfig::Experimental::aspx_balance);
         with_option(&ac3forge_ac4_experimental_t::aspx_varvar,
-                    &ac4::EncoderConfig::Experimental::aspx_varvar);
+                    &iclforge::ac4::EncoderConfig::Experimental::aspx_varvar);
         with_option(&ac3forge_ac4_experimental_t::aspx_interleave,
-                    &ac4::EncoderConfig::Experimental::aspx_interleave);
+                    &iclforge::ac4::EncoderConfig::Experimental::aspx_interleave);
     }
 }
 

@@ -10,8 +10,8 @@
 
 #include "iclforge/audio/resampler.hpp"
 
-using ac3::audio::ClockDriftEstimator;
-using ac3::audio::DriftResampler;
+using iclforge::audio::ClockDriftEstimator;
+using iclforge::audio::DriftResampler;
 
 namespace {
 

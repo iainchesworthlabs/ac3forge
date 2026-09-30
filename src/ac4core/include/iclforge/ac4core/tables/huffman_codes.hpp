@@ -14,7 +14,7 @@
 // not edit by hand. The decoder reads through huffman_tables.hpp and does not
 // link these.
 
-namespace ac4::detail::tables {
+namespace iclforge::ac4::detail::tables {
 
 // A.1: ASF.
 extern const std::array<HuffCode, 121> kAsfHcbScalefacCodes;
@@ -118,4 +118,4 @@ extern const std::array<HuffCode, 41> kAjocHcbWetFineDfCodes;
 extern const std::array<HuffCode, 41> kAjocHcbWetCoarseDtCodes;
 extern const std::array<HuffCode, 81> kAjocHcbWetFineDtCodes;
 
-}  // namespace ac4::detail::tables
+}  // namespace iclforge::ac4::detail::tables

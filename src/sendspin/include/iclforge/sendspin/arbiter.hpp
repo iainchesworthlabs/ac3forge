@@ -27,7 +27,7 @@
 // PlayerSession::displace() - and persists last_playback(). It has a lock of its own, so the
 // sessions' listeners may call it from any thread.
 
-namespace ac3::sendspin {
+namespace iclforge::sendspin {
 
 class Arbiter {
    public:
@@ -78,4 +78,4 @@ class Arbiter {
     std::optional<crypto::Key32> last_playback_;
 };
 
-}  // namespace ac3::sendspin
+}  // namespace iclforge::sendspin

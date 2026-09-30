@@ -22,7 +22,7 @@
 #include "decoder_settings.hpp"
 #include "stream_decoder.hpp"
 
-// ac3::hearth::StreamDecoder (apps/hearth/engine/stream_decoder.cpp): access
+// iclforge::hearth::StreamDecoder (apps/hearth/engine/stream_decoder.cpp): access
 // units in, rendered blocks out, and nothing lost at the end of a stream.
 //
 // The count that matters for A3's gapless exit is the one checked here: every
@@ -33,7 +33,7 @@
 
 namespace {
 
-using ac3::hearth::StreamDecoder;
+using iclforge::hearth::StreamDecoder;
 
 // A second of a tone, or of silence, framed as the encoders want it.
 std::vector<float> tone(double hz, double level, std::size_t frames, std::size_t offset) {
@@ -46,9 +46,9 @@ std::vector<float> tone(double hz, double level, std::size_t frames, std::size_t
 }
 
 // `count` E-AC-3 syncframes of a steady tone, all channels alike.
-std::vector<std::vector<std::byte>> eac3_frames(ac3::Acmod acmod, bool lfe, int count,
+std::vector<std::vector<std::byte>> eac3_frames(iclforge::Acmod acmod, bool lfe, int count,
                                                  bool transient_at_end = false) {
-    ac3::eac3::FrameConfig config;
+    iclforge::eac3::FrameConfig config;
     config.bitrate_kbps = 384;
     config.acmod = acmod;
     config.lfe = lfe;
@@ -56,7 +56,7 @@ std::vector<std::vector<std::byte>> eac3_frames(ac3::Acmod acmod, bool lfe, int 
     // it stays engaged for the rest of the stream - so the last frame of
     // such a stream is the one only a flush releases.
     config.transient_prenoise = transient_at_end;
-    ac3::eac3::FrameEncoder encoder{config};
+    iclforge::eac3::FrameEncoder encoder{config};
     const auto channels = static_cast<std::size_t>(encoder.channel_count());
 
     std::vector<std::vector<std::byte>> out;
@@ -65,16 +65,16 @@ std::vector<std::vector<std::byte>> eac3_frames(ac3::Acmod acmod, bool lfe, int 
         if (transient_at_end && f == count - 2) {
             // Silence, then a sharp onset late in the frame: the shape the
             // encoder's own heuristic signals a correction for.
-            samples.assign(ac3::kSamplesPerFrame, 0.0F);
-            for (int n = 960; n < ac3::kSamplesPerFrame; ++n) {
+            samples.assign(iclforge::kSamplesPerFrame, 0.0F);
+            for (int n = 960; n < iclforge::kSamplesPerFrame; ++n) {
                 samples[static_cast<std::size_t>(n)] = static_cast<float>(
                     0.9 * std::sin(2.0 * std::numbers::pi * 1000.0 * n / 48000.0));
             }
         } else if (transient_at_end) {
-            samples.assign(ac3::kSamplesPerFrame, 0.0F);
+            samples.assign(iclforge::kSamplesPerFrame, 0.0F);
         } else {
-            samples = tone(440.0, 0.3, ac3::kSamplesPerFrame,
-                           static_cast<std::size_t>(f) * ac3::kSamplesPerFrame);
+            samples = tone(440.0, 0.3, iclforge::kSamplesPerFrame,
+                           static_cast<std::size_t>(f) * iclforge::kSamplesPerFrame);
         }
         const std::vector<std::span<const float>> views(channels, samples);
         auto frame = encoder.encode_frame(views);
@@ -84,17 +84,18 @@ std::vector<std::vector<std::byte>> eac3_frames(ac3::Acmod acmod, bool lfe, int 
     return out;
 }
 
-std::vector<std::vector<std::byte>> ac3_frames(ac3::Acmod acmod, bool lfe, int count) {
-    ac3::EncoderConfig config;
+std::vector<std::vector<std::byte>> ac3_frames(iclforge::Acmod acmod, bool lfe, int count) {
+    iclforge::EncoderConfig config;
     config.bitrate_kbps = 384;
     config.acmod = acmod;
     config.lfe = lfe;
-    ac3::FrameEncoder encoder{config};
+    iclforge::FrameEncoder encoder{config};
     const auto channels = static_cast<std::size_t>(encoder.channel_count());
     std::vector<std::vector<std::byte>> out;
     for (int f = 0; f < count; ++f) {
-        const std::vector<float> samples = tone(
-            440.0, 0.3, ac3::kSamplesPerFrame, static_cast<std::size_t>(f) * ac3::kSamplesPerFrame);
+        const std::vector<float> samples =
+            tone(440.0, 0.3, iclforge::kSamplesPerFrame,
+                 static_cast<std::size_t>(f) * iclforge::kSamplesPerFrame);
         const std::vector<std::span<const float>> views(channels, samples);
         auto frame = encoder.encode_frame(views);
         REQUIRE(frame.has_value());
@@ -141,16 +142,16 @@ Played play(StreamDecoder& decoder, const std::vector<std::vector<std::byte>>& u
 
 TEST_CASE("stream decoder: every E-AC-3 sample arrives, a block at a time, at the layout's width",
           "[hearth][stream-decoder]") {
-    const auto layout = ac3::render::OutputLayout::parse("5.1");
+    const auto layout = iclforge::render::OutputLayout::parse("5.1");
     REQUIRE(layout.has_value());
     StreamDecoder decoder{*layout, 48000};
 
-    const auto units = eac3_frames(ac3::Acmod::k3_2, /*lfe=*/true, 20);
+    const auto units = eac3_frames(iclforge::Acmod::k3_2, /*lfe=*/true, 20);
     const Played played = play(decoder, units);
 
-    CHECK(played.frames == 20 * ac3::kSamplesPerFrame);
-    CHECK(played.blocks == 20 * ac3::kBlocksPerFrame);
-    CHECK(played.widest_block == ac3::kSamplesPerBlock);
+    CHECK(played.frames == 20 * iclforge::kSamplesPerFrame);
+    CHECK(played.blocks == 20 * iclforge::kBlocksPerFrame);
+    CHECK(played.widest_block == iclforge::kSamplesPerBlock);
     CHECK(played.slots == 6);
     // Something audible came out, not just the right number of zeros.
     CHECK(played.energy > 1.0);
@@ -161,82 +162,84 @@ TEST_CASE("stream decoder: every E-AC-3 sample arrives, a block at a time, at th
 
 TEST_CASE("stream decoder: AC-3 frames go through the AC-3 decoder",
           "[hearth][stream-decoder]") {
-    const auto layout = ac3::render::OutputLayout::parse("5.1");
+    const auto layout = iclforge::render::OutputLayout::parse("5.1");
     REQUIRE(layout.has_value());
     StreamDecoder decoder{*layout, 48000};
 
-    const auto units = ac3_frames(ac3::Acmod::k3_2, /*lfe=*/true, 12);
+    const auto units = ac3_frames(iclforge::Acmod::k3_2, /*lfe=*/true, 12);
     const Played played = play(decoder, units);
 
-    CHECK(played.frames == 12 * ac3::kSamplesPerFrame);
+    CHECK(played.frames == 12 * iclforge::kSamplesPerFrame);
     CHECK(played.slots == 6);
     CHECK(played.energy > 1.0);
 }
 
 TEST_CASE("stream decoder: a stereo layout folds a 5.1 stream and loses no samples",
           "[hearth][stream-decoder]") {
-    const auto layout = ac3::render::OutputLayout::parse("2.0");
+    const auto layout = iclforge::render::OutputLayout::parse("2.0");
     REQUIRE(layout.has_value());
     StreamDecoder decoder{*layout, 48000};
     // A two-speaker layout is served by the decoder's own §7.8 fold rather
     // than by the renderer placing six channels onto two.
     REQUIRE(decoder.serving().fold.has_value());
 
-    const Played played = play(decoder, eac3_frames(ac3::Acmod::k3_2, /*lfe=*/true, 10));
-    CHECK(played.frames == 10 * ac3::kSamplesPerFrame);
+    const Played played = play(decoder, eac3_frames(iclforge::Acmod::k3_2, /*lfe=*/true, 10));
+    CHECK(played.frames == 10 * iclforge::kSamplesPerFrame);
     CHECK(played.slots == 2);
     CHECK(played.energy > 1.0);
 
     // And the AC-3 path under the same fold.
     StreamDecoder ac3_decoder{*layout, 48000};
-    const Played ac3_played = play(ac3_decoder, ac3_frames(ac3::Acmod::k3_2, /*lfe=*/true, 10));
-    CHECK(ac3_played.frames == 10 * ac3::kSamplesPerFrame);
+    const Played ac3_played =
+        play(ac3_decoder, ac3_frames(iclforge::Acmod::k3_2, /*lfe=*/true, 10));
+    CHECK(ac3_played.frames == 10 * iclforge::kSamplesPerFrame);
     CHECK(ac3_played.slots == 2);
 }
 
 TEST_CASE("stream decoder: a frame still held back at the end of the stream is not lost",
           "[hearth][stream-decoder]") {
-    const auto layout = ac3::render::OutputLayout::parse("2.0");
+    const auto layout = iclforge::render::OutputLayout::parse("2.0");
     REQUIRE(layout.has_value());
     StreamDecoder decoder{*layout, 48000};
 
     // Stereo with transient pre-noise processing, a transient in the
     // second-to-last frame: from there on the decoder runs a frame behind.
-    const auto units = eac3_frames(ac3::Acmod::k2_0, /*lfe=*/false, 8, /*transient_at_end=*/true);
+    const auto units =
+        eac3_frames(iclforge::Acmod::k2_0, /*lfe=*/false, 8, /*transient_at_end=*/true);
     const Played played = play(decoder, units);
 
     // Everything still arrives - the last frame through finish().
-    CHECK(played.frames == 8 * ac3::kSamplesPerFrame);
+    CHECK(played.frames == 8 * iclforge::kSamplesPerFrame);
     REQUIRE(played.per_call.size() == units.size() + 1);
     // The transient's own frame delivered nothing when it was decoded (it
     // was held back), and the end of the stream delivered the frame the
     // decoder was still holding.
     CHECK(played.per_call[units.size() - 2] == 0);
-    CHECK(played.per_call.back() == ac3::kSamplesPerFrame);
+    CHECK(played.per_call.back() == iclforge::kSamplesPerFrame);
     // The transient itself reached the output.
     CHECK(played.energy > 1.0);
 }
 
 TEST_CASE("stream decoder: a reset starts the next stream clean", "[hearth][stream-decoder]") {
-    const auto layout = ac3::render::OutputLayout::parse("5.1");
+    const auto layout = iclforge::render::OutputLayout::parse("5.1");
     REQUIRE(layout.has_value());
     StreamDecoder decoder{*layout, 48000};
 
-    const auto first = eac3_frames(ac3::Acmod::k3_2, /*lfe=*/true, 4);
-    const auto second = ac3_frames(ac3::Acmod::k2_0, /*lfe=*/false, 4);
-    CHECK(play(decoder, first).frames == 4 * ac3::kSamplesPerFrame);
+    const auto first = eac3_frames(iclforge::Acmod::k3_2, /*lfe=*/true, 4);
+    const auto second = ac3_frames(iclforge::Acmod::k2_0, /*lfe=*/false, 4);
+    CHECK(play(decoder, first).frames == 4 * iclforge::kSamplesPerFrame);
     // finish() leaves the decoder ready for another stream, of another
     // codec and another layout.
-    CHECK(play(decoder, second).frames == 4 * ac3::kSamplesPerFrame);
+    CHECK(play(decoder, second).frames == 4 * iclforge::kSamplesPerFrame);
 }
 
 TEST_CASE("stream decoder: the JOC domain setting reaches the renderer's LFE lag, "
           "construction and reset alike",
           "[hearth][stream-decoder]") {
-    const auto layout = ac3::render::OutputLayout::parse("5.1.2");
+    const auto layout = iclforge::render::OutputLayout::parse("5.1.2");
     REQUIRE(layout.has_value());
-    using ac3::oba::joc::Domain;
-    using ac3::oba::joc::reconstruction_delay;
+    using iclforge::oba::joc::Domain;
+    using iclforge::oba::joc::reconstruction_delay;
 
     // The default is kQmf, which is also a freshly built LayoutRenderer's own
     // default lag (render.hpp) - so a decoder that never touches the setting
@@ -244,7 +247,7 @@ TEST_CASE("stream decoder: the JOC domain setting reaches the renderer's LFE lag
     StreamDecoder default_decoder{*layout, 48000};
     CHECK(default_decoder.object_lag() == static_cast<std::size_t>(reconstruction_delay(Domain::kQmf)));
 
-    ac3::hearth::DecoderSettings settings;
+    iclforge::hearth::DecoderSettings settings;
     settings.joc_domain = Domain::kMdctBand;
     StreamDecoder decoder{*layout, 48000, settings};
     CHECK(decoder.object_lag() == static_cast<std::size_t>(reconstruction_delay(Domain::kMdctBand)));
@@ -263,7 +266,7 @@ TEST_CASE("stream decoder: a reset (a seek) keeps the crossover corner set befor
     // A layout with a small speaker, so the corner is not just stored but has
     // a filter to move (render.hpp's LayoutRenderer) - the list form, since
     // ":small" is not a recognised modifier on a name like "5.1".
-    const auto layout = ac3::render::OutputLayout::parse("L:small,C,R,Ls,Rs,LFE");
+    const auto layout = iclforge::render::OutputLayout::parse("L:small,C,R,Ls,Rs,LFE");
     REQUIRE(layout.has_value());
     StreamDecoder decoder{*layout, 48000};
 
@@ -277,14 +280,14 @@ TEST_CASE("stream decoder: a reset (a seek) keeps the crossover corner set befor
     CHECK(decoder.crossover_hz() == 120.0);
 
     // And decoding after the reset still works, at the kept corner.
-    const Played played = play(decoder, eac3_frames(ac3::Acmod::k3_2, /*lfe=*/true, 3));
-    CHECK(played.frames == 3 * ac3::kSamplesPerFrame);
+    const Played played = play(decoder, eac3_frames(iclforge::Acmod::k3_2, /*lfe=*/true, 3));
+    CHECK(played.frames == 3 * iclforge::kSamplesPerFrame);
     CHECK(decoder.crossover_hz() == 120.0);
 }
 
 TEST_CASE("stream decoder: a unit that is not a stream is reported, not played",
           "[hearth][stream-decoder]") {
-    const auto layout = ac3::render::OutputLayout::parse("2.0");
+    const auto layout = iclforge::render::OutputLayout::parse("2.0");
     REQUIRE(layout.has_value());
     StreamDecoder decoder{*layout, 48000};
 
@@ -299,8 +302,8 @@ TEST_CASE("stream decoder: a unit that is not a stream is reported, not played",
     CHECK(delivered == 0);
 
     // And the decoder carries on with a real stream afterwards.
-    CHECK(play(decoder, eac3_frames(ac3::Acmod::k2_0, false, 3)).frames ==
-          3 * ac3::kSamplesPerFrame);
+    CHECK(play(decoder, eac3_frames(iclforge::Acmod::k2_0, false, 3)).frames ==
+          3 * iclforge::kSamplesPerFrame);
 }
 
 namespace {
@@ -309,7 +312,7 @@ namespace {
 // delivered, and the reports in order, each with the frames delivered before
 // it in its call.
 struct Reported {
-    std::vector<ac3::hearth::UnitReport> reports;
+    std::vector<iclforge::hearth::UnitReport> reports;
     std::vector<std::size_t> frames_before;
     std::size_t frames = 0;
 };
@@ -321,7 +324,7 @@ Reported play_reported(StreamDecoder& decoder, const std::vector<std::vector<std
         in_call += frames;
         out.frames += frames;
     };
-    const auto reported = [&](const ac3::hearth::UnitReport& report) {
+    const auto reported = [&](const iclforge::hearth::UnitReport& report) {
         out.reports.push_back(report);
         out.frames_before.push_back(in_call);
     };
@@ -337,22 +340,22 @@ Reported play_reported(StreamDecoder& decoder, const std::vector<std::vector<std
 }  // namespace
 
 TEST_CASE("stream decoder: an AC-3 unit's report follows its blocks", "[hearth][stream-decoder]") {
-    const auto layout = ac3::render::OutputLayout::parse("5.1");
+    const auto layout = iclforge::render::OutputLayout::parse("5.1");
     REQUIRE(layout.has_value());
     StreamDecoder decoder{*layout, 48000};
-    ac3::EncoderConfig config;
+    iclforge::EncoderConfig config;
     config.bitrate_kbps = 448;
-    config.acmod = ac3::Acmod::k3_2;
+    config.acmod = iclforge::Acmod::k3_2;
     config.lfe = true;
     config.dialnorm = 20;
-    config.heavy = ac3::meta::HeavyConfig{};
-    config.cmixlev = ac3::meta::CentreMixLevel::kMinus3dB;
-    config.info.bsmod = ac3::meta::BitstreamMode::kCommentary;
-    ac3::FrameEncoder encoder{config};
+    config.heavy = iclforge::meta::HeavyConfig{};
+    config.cmixlev = iclforge::meta::CentreMixLevel::kMinus3dB;
+    config.info.bsmod = iclforge::meta::BitstreamMode::kCommentary;
+    iclforge::FrameEncoder encoder{config};
     std::vector<std::vector<std::byte>> units;
     for (int f = 0; f < 4; ++f) {
-        const std::vector<float> samples = tone(440.0, 0.3, ac3::kSamplesPerFrame,
-                                                static_cast<std::size_t>(f) * ac3::kSamplesPerFrame);
+        const std::vector<float> samples = tone(440.0, 0.3, iclforge::kSamplesPerFrame,
+                                                static_cast<std::size_t>(f) * iclforge::kSamplesPerFrame);
         const std::vector<std::span<const float>> views(6, samples);
         auto frame = encoder.encode_frame(views);
         REQUIRE(frame.has_value());
@@ -365,17 +368,17 @@ TEST_CASE("stream decoder: an AC-3 unit's report follows its blocks", "[hearth][
         INFO("unit " << k);
         const auto& report = played.reports[k];
         // After the unit's own six blocks.
-        CHECK(played.frames_before[k] == static_cast<std::size_t>(ac3::kSamplesPerFrame));
-        CHECK(report.acmod == ac3::Acmod::k3_2);
+        CHECK(played.frames_before[k] == static_cast<std::size_t>(iclforge::kSamplesPerFrame));
+        CHECK(report.acmod == iclforge::Acmod::k3_2);
         CHECK(report.lfe);
         CHECK(report.substreams == 1);
         CHECK(report.layout.count == 6);
         CHECK(report.bsmod == 5);
         CHECK(report.dialnorm == 20);
         CHECK(report.compr.has_value());
-        CHECK(report.blocks == ac3::kBlocksPerFrame);
+        CHECK(report.blocks == iclforge::kBlocksPerFrame);
         CHECK(report.short_blocks == 0);
-        CHECK(report.levels.loro_clev == ac3::meta::level::kMinus3dB);
+        CHECK(report.levels.loro_clev == iclforge::meta::level::kMinus3dB);
         CHECK_FALSE(report.concealed.has_value());
         CHECK_FALSE(report.objects.has_value());
         // sequence counts from 1; bitrate_kbps is close to the encoder's own
@@ -389,24 +392,24 @@ TEST_CASE("stream decoder: an AC-3 unit's report follows its blocks", "[hearth][
 
 TEST_CASE("stream decoder: an E-AC-3 unit's report comes with the call that delivers it",
           "[hearth][stream-decoder]") {
-    const auto layout = ac3::render::OutputLayout::parse("2.0");
+    const auto layout = iclforge::render::OutputLayout::parse("2.0");
     REQUIRE(layout.has_value());
 
     SECTION("mixing metadata") {
         StreamDecoder decoder{*layout, 48000};
-        ac3::eac3::FrameConfig config;
+        iclforge::eac3::FrameConfig config;
         config.bitrate_kbps = 384;
-        config.acmod = ac3::Acmod::k3_2;
+        config.acmod = iclforge::Acmod::k3_2;
         config.lfe = true;
         config.dialnorm = 24;
-        ac3::meta::MixMetadata mix;
-        mix.dmixmod = ac3::meta::DownmixMode::kLtRt;
+        iclforge::meta::MixMetadata mix;
+        mix.dmixmod = iclforge::meta::DownmixMode::kLtRt;
         mix.lfemixlevcod = 10;
         config.mixing = mix;
-        ac3::eac3::FrameEncoder encoder{config};
+        iclforge::eac3::FrameEncoder encoder{config};
         std::vector<std::vector<std::byte>> units;
         for (int f = 0; f < 3; ++f) {
-            const std::vector<float> samples = tone(440.0, 0.3, ac3::kSamplesPerFrame, 0);
+            const std::vector<float> samples = tone(440.0, 0.3, iclforge::kSamplesPerFrame, 0);
             const std::vector<std::span<const float>> views(6, samples);
             auto frame = encoder.encode_frame(views);
             REQUIRE(frame.has_value());
@@ -420,7 +423,7 @@ TEST_CASE("stream decoder: an E-AC-3 unit's report comes with the call that deli
         CHECK(report.lfe);
         CHECK_FALSE(report.bsmod.has_value());
         CHECK_FALSE(report.short_blocks.has_value());
-        CHECK(report.levels.preferred == ac3::meta::DownmixMode::kLtRt);
+        CHECK(report.levels.preferred == iclforge::meta::DownmixMode::kLtRt);
         CHECK(report.levels.lfe_mix_level_db == 0.0);
         // sequence counts from 1; bitrate_kbps is close to the encoder's own
         // 384 kbit/s (not exact: E-AC-3 frame size quantises to whole words).
@@ -432,13 +435,13 @@ TEST_CASE("stream decoder: an E-AC-3 unit's report comes with the call that deli
 
     SECTION("a unit held back is reported by the call that releases it, the last by finish()") {
         StreamDecoder decoder{*layout, 48000};
-        const auto units = eac3_frames(ac3::Acmod::k2_0, /*lfe=*/false, 8, /*transient_at_end=*/true);
+        const auto units = eac3_frames(iclforge::Acmod::k2_0, /*lfe=*/false, 8, /*transient_at_end=*/true);
         const Reported played = play_reported(decoder, units);
-        CHECK(played.frames == 8 * ac3::kSamplesPerFrame);
+        CHECK(played.frames == 8 * iclforge::kSamplesPerFrame);
         // One report for every unit, each after a whole unit's frames.
         REQUIRE(played.reports.size() == units.size());
         for (const std::size_t before : played.frames_before) {
-            CHECK(before == static_cast<std::size_t>(ac3::kSamplesPerFrame));
+            CHECK(before == static_cast<std::size_t>(iclforge::kSamplesPerFrame));
         }
         CHECK(played.reports.back().layout.count == 2);
         // sequence counts every reported unit, including the one finish()
@@ -457,14 +460,14 @@ TEST_CASE("stream decoder: an E-AC-3 unit's report comes with the call that deli
 }
 
 TEST_CASE("stream decoder: a unit's objects are in its report", "[hearth][stream-decoder]") {
-    ac3::oba::AtmosEncoder encoder{
+    iclforge::oba::AtmosEncoder encoder{
         {.bitrate_kbps = 448, .num_bands_idx = 4, .emit_object_metadata = true}, 1};
-    const std::array<ac3::oba::ObjectPlacement, 1> placement{{{}}};
+    const std::array<iclforge::oba::ObjectPlacement, 1> placement{{{}}};
     std::vector<std::span<const float>> views(1);
     std::vector<std::vector<std::byte>> units;
     for (int f = 0; f < 3; ++f) {
-        const std::vector<float> essence = tone(440.0, 0.3, ac3::kSamplesPerFrame,
-                                                static_cast<std::size_t>(f) * ac3::kSamplesPerFrame);
+        const std::vector<float> essence = tone(440.0, 0.3, iclforge::kSamplesPerFrame,
+                                                static_cast<std::size_t>(f) * iclforge::kSamplesPerFrame);
         views[0] = essence;
         auto unit = encoder.encode_frame(views, placement);
         REQUIRE(unit.has_value());
@@ -473,7 +476,7 @@ TEST_CASE("stream decoder: a unit's objects are in its report", "[hearth][stream
     // Whether or not the objects are reconstructed, the report carries them.
     for (const char* name : {"2.0", "7.1.4"}) {
         INFO("layout " << name);
-        const auto layout = ac3::render::OutputLayout::parse(name);
+        const auto layout = iclforge::render::OutputLayout::parse(name);
         REQUIRE(layout.has_value());
         StreamDecoder decoder{*layout, 48000};
         const Reported played = play_reported(decoder, units);
@@ -488,19 +491,19 @@ TEST_CASE("stream decoder: a unit's objects are in its report", "[hearth][stream
 
 TEST_CASE("stream decoder: dual mono plays the programme the settings choose",
           "[hearth][stream-decoder]") {
-    using ac3::hearth::DualMonoChoice;
+    using iclforge::hearth::DualMonoChoice;
     // Two unrelated programmes, one per channel, told apart by their tones.
-    ac3::EncoderConfig config;
+    iclforge::EncoderConfig config;
     config.bitrate_kbps = 192;
-    config.acmod = ac3::Acmod::kDualMono;
+    config.acmod = iclforge::Acmod::kDualMono;
     config.dialnorm2 = 31;  // required for 1+1
-    ac3::FrameEncoder encoder{config};
+    iclforge::FrameEncoder encoder{config};
     REQUIRE(encoder.channel_count() == 2);
     std::vector<std::vector<std::byte>> units;
     for (int f = 0; f < 6; ++f) {
-        const auto offset = static_cast<std::size_t>(f) * ac3::kSamplesPerFrame;
-        const std::vector<float> first = tone(440.0, 0.3, ac3::kSamplesPerFrame, offset);
-        const std::vector<float> second = tone(1000.0, 0.3, ac3::kSamplesPerFrame, offset);
+        const auto offset = static_cast<std::size_t>(f) * iclforge::kSamplesPerFrame;
+        const std::vector<float> first = tone(440.0, 0.3, iclforge::kSamplesPerFrame, offset);
+        const std::vector<float> second = tone(1000.0, 0.3, iclforge::kSamplesPerFrame, offset);
         const std::vector<std::span<const float>> views{first, second};
         auto frame = encoder.encode_frame(views);
         REQUIRE(frame.has_value());
@@ -511,15 +514,15 @@ TEST_CASE("stream decoder: dual mono plays the programme the settings choose",
     // and a 5.1 room, where the renderer places the bed's left and right.
     for (const char* name : {"2.0", "5.1"}) {
         INFO("layout " << name);
-        const auto layout = ac3::render::OutputLayout::parse(name);
+        const auto layout = iclforge::render::OutputLayout::parse(name);
         REQUIRE(layout.has_value());
-        const int left = layout->index_of(ac3::eac3::chanmap::Location::kLeft);
-        const int right = layout->index_of(ac3::eac3::chanmap::Location::kRight);
+        const int left = layout->index_of(iclforge::eac3::chanmap::Location::kLeft);
+        const int right = layout->index_of(iclforge::eac3::chanmap::Location::kRight);
         REQUIRE(left >= 0);
         REQUIRE(right >= 0);
 
         const auto heard = [&](DualMonoChoice choice) {
-            ac3::hearth::DecoderSettings settings;
+            iclforge::hearth::DecoderSettings settings;
             settings.dual_mono = choice;
             StreamDecoder decoder{*layout, 48000, settings};
             std::vector<std::vector<float>> slots(layout->slots());
@@ -541,7 +544,7 @@ TEST_CASE("stream decoder: dual mono plays the programme the settings choose",
         // Compared with ranges::equal so a failure prints a verdict, not
         // thousands of samples.
         const auto [both_left, both_right] = heard(DualMonoChoice::kBoth);
-        REQUIRE(both_left.size() == 6 * ac3::kSamplesPerFrame);
+        REQUIRE(both_left.size() == 6 * iclforge::kSamplesPerFrame);
         // Both programmes: one each side, and they are not the same audio.
         CHECK_FALSE(std::ranges::equal(both_left, both_right));
 
@@ -558,12 +561,12 @@ TEST_CASE("stream decoder: dual mono plays the programme the settings choose",
 TEST_CASE("stream decoder: fast inverse transform reaches the decoder, closely matching the "
           "reference transform",
           "[hearth][stream-decoder]") {
-    const auto layout = ac3::render::OutputLayout::parse("5.1");
+    const auto layout = iclforge::render::OutputLayout::parse("5.1");
     REQUIRE(layout.has_value());
-    const auto units = eac3_frames(ac3::Acmod::k3_2, /*lfe=*/true, 8);
+    const auto units = eac3_frames(iclforge::Acmod::k3_2, /*lfe=*/true, 8);
 
     const auto heard = [&](bool fast) {
-        ac3::hearth::DecoderSettings settings;
+        iclforge::hearth::DecoderSettings settings;
         settings.fast_inverse_transform = fast;
         StreamDecoder decoder{*layout, 48000, settings};
         std::vector<float> left;
@@ -583,7 +586,7 @@ TEST_CASE("stream decoder: fast inverse transform reaches the decoder, closely m
     const std::vector<float> fast = heard(true);
     const std::vector<float> reference = heard(false);
     REQUIRE(fast.size() == reference.size());
-    REQUIRE(fast.size() == 8 * ac3::kSamplesPerFrame);
+    REQUIRE(fast.size() == 8 * iclforge::kSamplesPerFrame);
 
     // The setting must reach DecoderConfig::fast_imdct rather than the same
     // path running twice (decoder_settings.cpp's decoder_setup()) - but both
@@ -605,14 +608,14 @@ TEST_CASE("stream decoder: fast inverse transform reaches the decoder, closely m
 TEST_CASE("stream decoder: RF mode's ceiling holds a fold's peak under it, where the same "
           "audio decoded without it does not",
           "[hearth][stream-decoder]") {
-    const auto layout = ac3::render::OutputLayout::parse("2.0");
+    const auto layout = iclforge::render::OutputLayout::parse("2.0");
     REQUIRE(layout.has_value());
     // Three full-bandwidth channels folded to Lo/Ro comfortably clear a tight
     // ceiling on their own, so the limiter has real work to do - the ceiling
     // holding is not just silence trivially satisfying it.
-    const auto units = eac3_frames(ac3::Acmod::k3_2, /*lfe=*/true, 8);
+    const auto units = eac3_frames(iclforge::Acmod::k3_2, /*lfe=*/true, 8);
 
-    const auto peak = [&](const ac3::hearth::DecoderSettings& settings) {
+    const auto peak = [&](const iclforge::hearth::DecoderSettings& settings) {
         StreamDecoder decoder{*layout, 48000, settings};
         float found = 0.0F;
         const auto deliver = [&found](std::span<const std::span<const float>> slots,
@@ -630,14 +633,14 @@ TEST_CASE("stream decoder: RF mode's ceiling holds a fold's peak under it, where
         return found;
     };
 
-    const double line_peak = static_cast<double>(peak(ac3::hearth::DecoderSettings{}));
+    const double line_peak = static_cast<double>(peak(iclforge::hearth::DecoderSettings{}));
     // -20 dBFS, converted the way decoder_setup() converts rf_ceiling_db
     // (test_decoder_settings.cpp already pins 10^(-20/20) == 0.1 there).
     constexpr double kCeiling = 0.1;
     REQUIRE(line_peak > kCeiling);
 
-    ac3::hearth::DecoderSettings rf;
-    rf.mode = ac3::OperatingMode::kRf;
+    iclforge::hearth::DecoderSettings rf;
+    rf.mode = iclforge::OperatingMode::kRf;
     rf.rf_ceiling_db = -20.0;
     const double rf_peak = static_cast<double>(peak(rf));
     // limit_frame()'s clamp is exact, not a smoothed approach to the ceiling -
@@ -649,21 +652,21 @@ TEST_CASE("stream decoder: RF mode's ceiling holds a fold's peak under it, where
 TEST_CASE("stream decoder: an independent-only decoder plays a unit's first substream alone",
           "[hearth][stream-decoder]") {
     // 7.1: a 5.1 independent substream and a dependent that adds to it.
-    ac3::plan::Plan plan;
-    plan.codec = ac3::plan::Codec::kEac3;
-    plan.layout = ac3::plan::LayoutId::k71;
+    iclforge::plan::Plan plan;
+    plan.codec = iclforge::plan::Codec::kEac3;
+    plan.layout = iclforge::plan::LayoutId::k71;
     plan.bitrate_kbps = 384;
-    ac3::eac3::AccessUnitEncoder encoder{ac3::plan::eac3_config(plan)};
+    iclforge::eac3::AccessUnitEncoder encoder{iclforge::plan::eac3_config(plan)};
     const auto coded = static_cast<std::size_t>(encoder.channel_count());
     REQUIRE(coded > 6);
     std::vector<std::vector<std::byte>> units;
     std::vector<std::vector<std::byte>> cores;
     for (int f = 0; f < 6; ++f) {
-        const auto offset = static_cast<std::size_t>(f) * ac3::kSamplesPerFrame;
+        const auto offset = static_cast<std::size_t>(f) * iclforge::kSamplesPerFrame;
         std::vector<std::vector<float>> channels;
         for (std::size_t c = 0; c < coded; ++c) {
             channels.push_back(tone(200.0 + (150.0 * static_cast<double>(c)), 0.2,
-                                    ac3::kSamplesPerFrame, offset));
+                                    iclforge::kSamplesPerFrame, offset));
         }
         const std::vector<std::span<const float>> views(channels.begin(), channels.end());
         auto unit = encoder.encode_access_unit(views);
@@ -689,17 +692,17 @@ TEST_CASE("stream decoder: an independent-only decoder plays a unit's first subs
         decoder.finish(deliver);
         return out;
     };
-    const auto layout = ac3::render::OutputLayout::named("5.1");
+    const auto layout = iclforge::render::OutputLayout::named("5.1");
     REQUIRE(layout.has_value());
-    const auto settings = ac3::hearth::transcode_settings({});
-    StreamDecoder independent{*layout, 48000, settings, ac3::hearth::Substreams::kIndependent};
+    const auto settings = iclforge::hearth::transcode_settings({});
+    StreamDecoder independent{*layout, 48000, settings, iclforge::hearth::Substreams::kIndependent};
     StreamDecoder first_only{*layout, 48000, settings};
     StreamDecoder whole{*layout, 48000, settings};
-    CHECK(independent.substreams() == ac3::hearth::Substreams::kIndependent);
-    CHECK(whole.substreams() == ac3::hearth::Substreams::kAll);
+    CHECK(independent.substreams() == iclforge::hearth::Substreams::kIndependent);
+    CHECK(whole.substreams() == iclforge::hearth::Substreams::kAll);
 
     const auto from_units = collect(independent, units);
-    REQUIRE(from_units.size() == 6 * 6 * ac3::kSamplesPerFrame);
+    REQUIRE(from_units.size() == 6 * 6 * iclforge::kSamplesPerFrame);
     // Compared with ranges::equal so a failure prints a verdict, not
     // thousands of samples.
     CHECK(std::ranges::equal(from_units, collect(first_only, cores)));

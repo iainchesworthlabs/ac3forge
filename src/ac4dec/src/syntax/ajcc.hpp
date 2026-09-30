@@ -16,7 +16,7 @@
 // before cb_off, with the diff_type that says how clause 5.6.3.2 decodes them,
 // as A-CPL's do (syntax/acpl.hpp).
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 inline constexpr int kAjccMaxParamBands = 15;  // Part 2 Table 83
 inline constexpr int kAjccMaxParamSets = 2;    // Part 2 Table 90
@@ -74,4 +74,4 @@ struct AjccData {
 [[nodiscard]] const Codebook& ajcc_codebook(AjccDataType data_type, int quant_mode,
                                             AjccHcbType hcb_type) noexcept;
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

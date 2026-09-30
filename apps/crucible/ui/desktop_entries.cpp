@@ -17,7 +17,7 @@
 // See desktop_entries.hpp. Everything here is plain C++ over the Desktop
 // Entry Specification's text format; nothing consults a theme or Qt.
 
-namespace ac3::crucible::ui {
+namespace iclforge::crucible::ui {
 
 namespace {
 
@@ -351,4 +351,4 @@ std::string_view icon_name_without_extension(std::string_view icon) {
     return icon;
 }
 
-}  // namespace ac3::crucible::ui
+}  // namespace iclforge::crucible::ui

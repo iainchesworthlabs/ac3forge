@@ -79,8 +79,9 @@ constexpr bool kWide = !kSlotBits16;
 // slots of them for the stereo pair outside TDM). At namespace scope for the
 // same reason the real sinks keep theirs there.
 constexpr std::size_t kMaxSlots = 16;
-std::array<std::int32_t, ac3::kSamplesPerBlock * (kWide ? kMaxSlots : 0)> g_tdm{};
-std::array<std::int16_t, ac3::kSamplesPerBlock * (kWide ? 0 : (kTdm ? kMaxSlots : 2))> g_narrow{};
+std::array<std::int32_t, iclforge::kSamplesPerBlock * (kWide ? kMaxSlots : 0)> g_tdm{};
+std::array<std::int16_t, iclforge::kSamplesPerBlock*(kWide ? 0 : (kTdm ? kMaxSlots : 2))>
+    g_narrow{};
 
 // Accumulated over the run rather than checked per block: a fault that only
 // appears on one block in six still moves these, and reporting once keeps the
@@ -112,7 +113,7 @@ bool sink_open(std::uint32_t sample_rate, int channels) {
                     static_cast<unsigned>(g_slots));
         return false;
     }
-    g_dac.open(kVirtualDescriptors, ac3::kSamplesPerBlock, sample_rate);
+    g_dac.open(kVirtualDescriptors, iclforge::kSamplesPerBlock, sample_rate);
     std::printf("sink: capture %lu Hz %s x%d in %u slots (no peripheral, %s)\n",
                 static_cast<unsigned long>(sample_rate), kWide ? "24-in-32" : "16-bit", channels,
                 static_cast<unsigned>(g_slots), kPaced ? "timed writes paced as a DAC would" : "no pacing");
@@ -124,8 +125,8 @@ void sink_write(std::span<const std::span<const float>> channels) {
         return;
     }
     std::size_t frames = channels[0].size();
-    if (frames > ac3::kSamplesPerBlock) {
-        frames = ac3::kSamplesPerBlock;
+    if (frames > iclforge::kSamplesPerBlock) {
+        frames = iclforge::kSamplesPerBlock;
     }
     // The level in integers, per write, and in double once per write: the
     // slots already hold integers, their squares sum exactly in 64 bits over a

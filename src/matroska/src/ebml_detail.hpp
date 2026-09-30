@@ -17,7 +17,7 @@
 // its own length marker in the leading bits, so unlike a size it is never
 // re-encoded.
 
-namespace matroska::detail {
+namespace iclforge::matroska::detail {
 
 inline constexpr std::uint32_t kEbmlHeader = 0x1A45DFA3;
 inline constexpr std::uint32_t kEbmlVersion = 0x4286;
@@ -89,4 +89,4 @@ inline constexpr std::uint64_t kUnknownSize = (std::uint64_t{1} << 56) - 1;
     return (std::uint64_t{1} << (7 * width)) - 1;
 }
 
-}  // namespace matroska::detail
+}  // namespace iclforge::matroska::detail

@@ -8,7 +8,7 @@
 
 #include "iclforge/arithmetic/scalar_math.hpp"
 
-namespace ac4::detail::aspx {
+namespace iclforge::ac4::detail::aspx {
 namespace {
 
 // Pseudocode 85's two dB conversions, power-referenced (10, not 20): a power
@@ -16,7 +16,7 @@ namespace {
 // Real = double this calls std::log10/std::pow exactly as the code always
 // did (bit-identical: the default build's tests and hashes hold unchanged).
 // At Real = float (planning/ac4.md, D14a) it instead takes the equal forms
-// (10 / log2 10) log2(x) and 2^(y log2(10) / 20) through ac3::internal's
+// (10 / log2 10) log2(x) and 2^(y log2(10) / 20) through iclforge::internal's
 // scalar_log2/scalar_exp2, never std::log10f/std::powf directly: two
 // platforms' libm can disagree in the last bit on the same float input,
 // which would break decision 26's promise of identical output on the host,
@@ -33,7 +33,7 @@ template <typename Real>
     if constexpr (std::is_same_v<Real, double>) {
         return Real{10} * std::log10(x);
     } else {
-        return static_cast<Real>(kTenOverLog2Of10) * ac3::internal::scalar_log2(x);
+        return static_cast<Real>(kTenOverLog2Of10) * iclforge::internal::scalar_log2(x);
     }
 }
 
@@ -42,7 +42,7 @@ template <typename Real>
     if constexpr (std::is_same_v<Real, double>) {
         return std::pow(Real{10}, db / Real{20});
     } else {
-        return ac3::internal::scalar_exp2(static_cast<Real>(kLog2Of10Over20) * db);
+        return iclforge::internal::scalar_exp2(static_cast<Real>(kLog2Of10Over20) * db);
     }
 }
 
@@ -298,4 +298,4 @@ AC4CORE_ALSO_AT_DOUBLE(
                                                   std::span<dsp::Complex<double>>,
                                                   std::span<dsp::Complex<double>>);)
 
-}  // namespace ac4::detail::aspx
+}  // namespace iclforge::ac4::detail::aspx

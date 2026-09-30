@@ -1,6 +1,6 @@
 // Sign an Atmos stream's EMDF object container.
 //
-// ac3::signing computes the keyed EMDF-protection tag a licensed decoder
+// iclforge::signing computes the keyed EMDF-protection tag a licensed decoder
 // checks before it will decode a stream's OAMD/JOC container - see
 // docs/concepts/object-signing.md. The key is always the operator's own to
 // provision at runtime (an environment variable or a signing-key=<path> file
@@ -38,14 +38,15 @@ int main() {
     constexpr int kObjects = 2;
     constexpr int kFrames = 31;  // one second
 
-    ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, kObjects};  // emit_object_metadata: default on
+    iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, kObjects};  // emit_object_metadata: default on
 
-    std::vector<std::vector<float>> sources(kObjects, std::vector<float>(ac3::kSamplesPerFrame));
+    std::vector<std::vector<float>> sources(kObjects,
+                                            std::vector<float>(iclforge::kSamplesPerFrame));
     std::vector<std::span<const float>> views;
     for (const auto& source : sources) {
         views.emplace_back(source);
     }
-    const std::array<ac3::oba::ObjectPlacement, kObjects> placement{{
+    const std::array<iclforge::oba::ObjectPlacement, kObjects> placement{{
         {.position = {.x = 0.3, .y = 0.5, .z = 0.0}, .gain = 0.8},
         {.position = {.x = 0.7, .y = 0.5, .z = 0.0}, .gain = 0.8},
     }};
@@ -60,8 +61,8 @@ int main() {
         stream.insert(stream.end(), unit->bytes.begin(), unit->bytes.end());
     }
 
-    const ac3::signing::SigningKey key{as_bytes("ac3forge-example-key-DO-NOT-USE")};
-    const int signed_count = ac3::signing::sign_atmos_stream(stream, key);
+    const iclforge::signing::SigningKey key{as_bytes("ac3forge-example-key-DO-NOT-USE")};
+    const int signed_count = iclforge::signing::sign_atmos_stream(stream, key);
 
     fmt::printf("signed %d of %d frames (%zu bytes)\n", signed_count, kFrames, stream.size());
     return signed_count == kFrames ? 0 : 1;

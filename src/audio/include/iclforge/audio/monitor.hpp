@@ -13,7 +13,7 @@
 // Shared-mode PCM playback: a sanity-check/preview path that decodes what is
 // being encoded and plays it back through an ordinary output, so a live
 // capture->encode session can be listened to before (or instead of) IEC 61937
-// hardware passthrough (ac3::audio::PassthroughSink).
+// hardware passthrough (iclforge::audio::PassthroughSink).
 //
 // Unlike PassthroughSink this deliberately does NOT use exclusive mode: the
 // audio engine is free to resample, mix and volume-scale, which is exactly
@@ -22,7 +22,7 @@
 // tolerate. There is no format negotiation dance to speak of - shared mode
 // adapts to whatever the caller asks for.
 
-namespace ac3::audio {
+namespace iclforge::audio {
 
 enum class MonitorError : std::uint8_t {
     kNoBackend,       // built without a platform monitor backend
@@ -156,4 +156,4 @@ private:
     std::unique_ptr<Impl> impl_;
 };
 
-}  // namespace ac3::audio
+}  // namespace iclforge::audio

@@ -7,7 +7,7 @@
 #include "huffman.hpp"
 #include "iclforge/ac4core/tables/huffman_tables.hpp"
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 namespace {
 
@@ -288,4 +288,4 @@ ParseResult parse_ajoc_bed_info(BitReader& r, AjocBedInfo& out) {
     return check(r);
 }
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

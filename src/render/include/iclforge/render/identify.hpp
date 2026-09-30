@@ -26,10 +26,10 @@
 // every run from reset(), which is what lets a test hold it to its level. Float
 // arithmetic per sample and no allocation, for a board as much as a computer.
 //
-// Levels are RMS relative to full scale (1.0), as ac3::analysis::LevelMeter
+// Levels are RMS relative to full scale (1.0), as iclforge::analysis::LevelMeter
 // reports them. Tested on the host in tests/render/test_identify.cpp.
 
-namespace ac3::render {
+namespace iclforge::render {
 
 class IdentifyTone {
    public:
@@ -173,4 +173,4 @@ class IdentifyTone {
     std::array<FloatBiquad, 2> low_lowpass_{};
 };
 
-}  // namespace ac3::render
+}  // namespace iclforge::render

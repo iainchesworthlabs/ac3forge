@@ -34,12 +34,12 @@
 namespace {
 
 namespace fs = std::filesystem;
-namespace m = ac3::sendspin::messages;
-namespace ss = ac3::sendspin;
-namespace testsink = ac3::hearth::testsink;
+namespace m = iclforge::sendspin::messages;
+namespace ss = iclforge::sendspin;
+namespace testsink = iclforge::hearth::testsink;
 using namespace std::chrono_literals;
 
-std::string scratch_pid_suffix() { return ac3::test::platform::process_id(); }
+std::string scratch_pid_suffix() { return iclforge::test::platform::process_id(); }
 
 class CodeLog final : public testsink::SinkLog {
    public:

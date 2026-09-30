@@ -309,7 +309,7 @@ def main():
         "#include <array>",
         "#include <cstdint>",
         "",
-        "namespace ac3::golden {",
+        "namespace iclforge::golden {",
         "",
         "struct BitAllocCase {",
         "    const char* name;",
@@ -353,7 +353,7 @@ def main():
         parts.append(f"     {small_arr(deltoffst)}, {small_arr(deltlen)}, {small_arr(deltba)}}},")
     parts.append("}};")
     parts.append("")
-    parts.append("}  // namespace ac3::golden")
+    parts.append("}  // namespace iclforge::golden")
 
     OUT.write_text("\n".join(parts) + "\n", encoding="utf-8", newline="\n")
     total_bits = sum(sum(case[11]) for case in cases)  # index 11 is the bap list

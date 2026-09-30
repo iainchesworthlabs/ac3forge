@@ -17,7 +17,7 @@
 #include <utility>
 #include <vector>
 
-namespace ac3::plan {
+namespace iclforge::plan {
 
 void Assignment::set(std::size_t source, std::size_t channel, Destination dest) {
     if (dest.kind == DestinationKind::kUnassigned) {
@@ -428,4 +428,4 @@ std::string format_assignment(std::span<const SourceShape> sources,
     return out;
 }
 
-}  // namespace ac3::plan
+}  // namespace iclforge::plan

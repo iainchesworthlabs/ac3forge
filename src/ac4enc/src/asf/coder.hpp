@@ -18,7 +18,7 @@
 // Lines are handled in the grouped order the syntax sends them (Pseudocode 4
 // and 25): by window group, then scale factor band, then window, then line.
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 // A track's lines regrouped from window order, with where each group's bands
 // start: offset[g][b] for b up to max_sfb[g], relative to the whole track.
@@ -78,4 +78,4 @@ void write_sf_info_dual(BitWriter& w, const FrameLayout& layout, std::array<int,
 // and asf_snf_data() without noise fill (Tables 36 and 39 to 42).
 void write_sf_data(BitWriter& w, const CodedTrack& track, const FrameLayout& layout);
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

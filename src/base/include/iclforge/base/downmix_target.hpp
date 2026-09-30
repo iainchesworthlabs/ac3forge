@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-namespace ac3::base {
+namespace iclforge::base {
 
 // Which fold to produce. kAsCoded is the default and does nothing at all -
 // the coded channels come out exactly as they went in.
@@ -13,4 +13,4 @@ enum class DownmixTarget : std::uint8_t {
     kMono,  // §7.8's "output_mode == 1/0" branch
 };
 
-}  // namespace ac3::base
+}  // namespace iclforge::base

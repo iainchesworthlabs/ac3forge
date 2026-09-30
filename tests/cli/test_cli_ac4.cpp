@@ -37,7 +37,7 @@ namespace {
 // tests/cli/test_cli_containers.cpp, whose shapes these copy).
 fs::path scratch_dir() {
     auto dir =
-        fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("cli_ac4_" + ac3::test::platform::process_id());
+        fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("cli_ac4_" + iclforge::test::platform::process_id());
     fs::create_directories(dir);
     return dir;
 }
@@ -45,7 +45,7 @@ fs::path scratch_dir() {
 int run_cli(const std::string& args, const fs::path& log) {
     const std::string command =
         "\"" + std::string(AC3CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
-    return ac3::test::platform::run_shell(command);
+    return iclforge::test::platform::run_shell(command);
 }
 
 std::string read_log(const fs::path& log) {
@@ -122,8 +122,9 @@ fs::path tones_wav(const std::string& name, std::size_t count, int rate = 48000)
             }
             channels.push_back(std::move(x));
         }
-        REQUIRE(ac3::io::write_wav_f32(path.string(), channels, static_cast<std::uint32_t>(rate))
-                    .has_value());
+        REQUIRE(
+            iclforge::io::write_wav_f32(path.string(), channels, static_cast<std::uint32_t>(rate))
+                .has_value());
     }
     return path;
 }
@@ -157,9 +158,9 @@ fs::path multiplexed() {
 }
 
 // The first syncframe's metadata of an AC-3 or E-AC-3 file.
-ac3::io::FrameMetadata first_metadata(const fs::path& path) {
+iclforge::io::FrameMetadata first_metadata(const fs::path& path) {
     const auto bytes = read_bytes(path);
-    const auto metadata = ac3::io::read_frame_metadata(bytes);
+    const auto metadata = iclforge::io::read_frame_metadata(bytes);
     REQUIRE(metadata.has_value());
     return *metadata;
 }
@@ -199,11 +200,11 @@ TEST_CASE("transcode carries an AC-4 presentation's metadata into E-AC-3 and AC-
     CHECK(json_field(json_section(metadata, "dynrng"), "present") == "true");
     const auto e = first_metadata(ec3);
     REQUIRE(e.mix.has_value());
-    CHECK(e.mix->dmixmod == ac3::meta::DownmixMode::kLtRt);
-    CHECK(e.mix->lorocmixlev == ac3::meta::MixLevel::kMinus1_5dB);
-    CHECK(e.mix->lorosurmixlev == ac3::meta::MixLevel::kMinus4_5dB);
-    CHECK(e.mix->ltrtcmixlev == ac3::meta::MixLevel::kMinus6dB);
-    CHECK(e.mix->ltrtsurmixlev == ac3::meta::MixLevel::kMinus3dB);
+    CHECK(e.mix->dmixmod == iclforge::meta::DownmixMode::kLtRt);
+    CHECK(e.mix->lorocmixlev == iclforge::meta::MixLevel::kMinus1_5dB);
+    CHECK(e.mix->lorosurmixlev == iclforge::meta::MixLevel::kMinus4_5dB);
+    CHECK(e.mix->ltrtcmixlev == iclforge::meta::MixLevel::kMinus6dB);
+    CHECK(e.mix->ltrtsurmixlev == iclforge::meta::MixLevel::kMinus3dB);
     // AC-4's -4.5 dB goes half a dB up to E-AC-3's -4 dB: code 14.
     CHECK(e.mix->lfemixlevcod == 14);
 
@@ -212,8 +213,8 @@ TEST_CASE("transcode carries an AC-4 presentation's metadata into E-AC-3 and AC-
     REQUIRE(run_cli("transcode " + quoted(source) + " " + quoted(ac3_out) + " 384", log) == 0);
     const auto a = first_metadata(ac3_out);
     CHECK(a.dialnorm == 24);
-    CHECK(a.cmixlev == ac3::meta::CentreMixLevel::kMinus6dB);
-    CHECK(a.surmixlev == ac3::meta::SurroundMixLevel::kMinus3dB);
+    CHECK(a.cmixlev == iclforge::meta::CentreMixLevel::kMinus6dB);
+    CHECK(a.surmixlev == iclforge::meta::SurroundMixLevel::kMinus3dB);
 
     // A presentation that sends no DRC gives the re-encode none.
     const auto plain = made("plain_20.ac4", "ac4-encode", tones_wav("plain_20.wav", 2), "96");
@@ -286,7 +287,7 @@ TEST_CASE("transcode folds a 7.X presentation for AC-3 and keeps its pair in E-A
     REQUIRE(run_cli("transcode " + quoted(source) + " " + quoted(ac3_out), log) == 0);
     CHECK(contains(read_log(log), "(the 7.X element folded to 5.X, Part 1 Table 219)"));
     const auto a = first_metadata(ac3_out);
-    CHECK(a.acmod == ac3::Acmod::k3_2);
+    CHECK(a.acmod == iclforge::Acmod::k3_2);
     CHECK(a.lfe);
 
     // The top front pair at E-AC-3's vertical heights.

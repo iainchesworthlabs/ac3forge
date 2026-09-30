@@ -9,7 +9,7 @@
 #include "pcm/pow43.hpp"
 #include "iclforge/ac4core/tables/sfb_tables.hpp"
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 namespace {
 
 // sign(q) |q|^(4/3), clause 5.1.3.2, from pcm/pow43.hpp's table in read-only
@@ -178,4 +178,4 @@ void ungroup(const SubstreamContext& ctx, const AsfPsyInfo& psy, const SfData& d
     }
 }
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

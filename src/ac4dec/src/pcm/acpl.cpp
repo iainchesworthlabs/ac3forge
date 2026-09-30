@@ -10,7 +10,7 @@
 #include "syntax/acpl.hpp"
 #include "syntax/reset.hpp"
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 namespace {
 
 using acpl::kSubbands;
@@ -534,4 +534,4 @@ void AcplStage::apply(int ch_mode, bool add_ch_base, ElementKind kind, int codec
     }
 }
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

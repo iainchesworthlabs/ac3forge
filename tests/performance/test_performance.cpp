@@ -74,17 +74,17 @@ constexpr int kDecodeSourceFrames = 40;
 constexpr int kObjects = 4;
 
 double real_time_budget_seconds(int frames) {
-    return static_cast<double>(frames) * ac3::kSamplesPerFrame / kSampleRate;
+    return static_cast<double>(frames) * iclforge::kSamplesPerFrame / kSampleRate;
 }
 
-const ac3::io::WavData& fixture() {
-    static const ac3::io::WavData audio = perf::load_real_audio(
-        perf::kReference51Wav, 6, static_cast<std::size_t>(ac3::kSamplesPerFrame));
+const iclforge::io::WavData& fixture() {
+    static const iclforge::io::WavData audio = perf::load_real_audio(
+        perf::kReference51Wav, 6, static_cast<std::size_t>(iclforge::kSamplesPerFrame));
     return audio;
 }
 
-std::vector<ac3::oba::ObjectPlacement> object_placement(int objects) {
-    std::vector<ac3::oba::ObjectPlacement> placement(static_cast<std::size_t>(objects));
+std::vector<iclforge::oba::ObjectPlacement> object_placement(int objects) {
+    std::vector<iclforge::oba::ObjectPlacement> placement(static_cast<std::size_t>(objects));
     for (int obj = 0; obj < objects; ++obj) {
         placement[static_cast<std::size_t>(obj)] = {
             .position = {.x = 0.2 + 0.2 * obj, .y = 0.5, .z = 0.0}, .gain = 1.0};
@@ -95,8 +95,8 @@ std::vector<ac3::oba::ObjectPlacement> object_placement(int objects) {
 // One AC-3 stream to decode, built outside any timed section.
 std::vector<std::byte> ac3_source_stream() {
     perf::FrameSource source{fixture(), perf::kFiveOneChannels};
-    ac3::FrameEncoder encoder{
-        {.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true, .fast_mdct = true}};
+    iclforge::FrameEncoder encoder{
+        {.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true, .fast_mdct = true}};
     std::vector<std::byte> stream;
     for (int frame = 0; frame < kDecodeSourceFrames; ++frame) {
         const auto result = encoder.encode_frame(source.frame(static_cast<std::size_t>(frame)));
@@ -108,8 +108,8 @@ std::vector<std::byte> ac3_source_stream() {
 
 std::vector<std::byte> eac3_source_stream() {
     perf::FrameSource source{fixture(), perf::kFiveOneChannels};
-    ac3::eac3::FrameEncoder encoder{
-        {.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true, .auto_tools = true}};
+    iclforge::eac3::FrameEncoder encoder{
+        {.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true, .auto_tools = true}};
     std::vector<std::byte> stream;
     for (int frame = 0; frame < kDecodeSourceFrames; ++frame) {
         const auto result = encoder.encode_frame(source.frame(static_cast<std::size_t>(frame)));
@@ -121,7 +121,7 @@ std::vector<std::byte> eac3_source_stream() {
 
 std::vector<std::byte> atmos_source_stream() {
     perf::FrameSource source{fixture(), perf::kFourObjectChannels};
-    ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, kObjects};
+    iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, kObjects};
     const auto placement = object_placement(kObjects);
     std::vector<std::byte> stream;
     for (int frame = 0; frame < kDecodeSourceFrames; ++frame) {
@@ -158,10 +158,10 @@ void check_ac4_faster_than_real_time(const std::string& what, double elapsed_sec
 // One encode() call per frame of input, from a fresh encoder at frame 0 like
 // the AC-3 cases; the first call or two return no frame while the encoder's
 // delay fills, and still count against the budget.
-void check_ac4_encode(const std::string& what, const ac4::EncoderConfig& config,
+void check_ac4_encode(const std::string& what, const iclforge::ac4::EncoderConfig& config,
                       std::span<const std::size_t> channels) {
     perf::ac4_bench::FrameSource source{fixture(), channels};
-    auto encoder = ac4::Encoder::create(config);
+    auto encoder = iclforge::ac4::Encoder::create(config);
     REQUIRE(encoder.has_value());
 
     const auto start = std::chrono::steady_clock::now();
@@ -173,12 +173,12 @@ void check_ac4_encode(const std::string& what, const ac4::EncoderConfig& config,
     check_ac4_faster_than_real_time(what, elapsed.count(), kFrames);
 }
 
-void check_ac4_decode(const std::string& what, const ac4::EncoderConfig& config,
+void check_ac4_decode(const std::string& what, const iclforge::ac4::EncoderConfig& config,
                       std::span<const std::size_t> channels) {
     perf::ac4_bench::FrameSource source{fixture(), channels};
     const auto frames = perf::ac4_bench::encode_frames(source, config, kDecodeSourceFrames);
     REQUIRE_FALSE(frames.empty());
-    ac4::Decoder decoder;
+    iclforge::ac4::Decoder decoder;
 
     const auto start = std::chrono::steady_clock::now();
     for (const auto& frame : frames) {
@@ -193,7 +193,8 @@ void check_ac4_decode(const std::string& what, const ac4::EncoderConfig& config,
 
 TEST_CASE("the plain 5.1 encoder stays faster than real time") {
     perf::FrameSource source{fixture(), perf::kFiveOneChannels};
-    ac3::FrameEncoder encoder{{.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true}};
+    iclforge::FrameEncoder encoder{
+        {.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true}};
 
     const auto start = std::chrono::steady_clock::now();
     for (int frame = 0; frame < kFrames; ++frame) {
@@ -211,8 +212,8 @@ TEST_CASE("the plain 5.1 encoder stays faster than real time") {
 // rate-crossover heuristic changes.
 TEST_CASE("the E-AC-3 5.1 encoder stays faster than real time") {
     perf::FrameSource source{fixture(), perf::kFiveOneChannels};
-    ac3::eac3::FrameEncoder encoder{
-        {.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true, .auto_tools = true}};
+    iclforge::eac3::FrameEncoder encoder{
+        {.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true, .auto_tools = true}};
 
     const auto start = std::chrono::steady_clock::now();
     for (int frame = 0; frame < kFrames; ++frame) {
@@ -225,7 +226,7 @@ TEST_CASE("the E-AC-3 5.1 encoder stays faster than real time") {
 
 TEST_CASE("the Atmos/JOC encoder stays faster than real time") {
     perf::FrameSource source{fixture(), perf::kFourObjectChannels};
-    ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, kObjects};
+    iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, kObjects};
     const auto placement = object_placement(kObjects);
 
     const auto start = std::chrono::steady_clock::now();
@@ -240,10 +241,10 @@ TEST_CASE("the Atmos/JOC encoder stays faster than real time") {
 
 TEST_CASE("the AC-3 decoder stays faster than real time") {
     const auto stream = ac3_source_stream();
-    const auto frames = ac3::split_frames(stream);
+    const auto frames = iclforge::split_frames(stream);
     REQUIRE(frames.has_value());
     REQUIRE_FALSE(frames->empty());
-    ac3::FrameDecoder decoder{};
+    iclforge::FrameDecoder decoder{};
 
     const auto start = std::chrono::steady_clock::now();
     for (const auto& frame : *frames) {
@@ -257,10 +258,10 @@ TEST_CASE("the AC-3 decoder stays faster than real time") {
 
 TEST_CASE("the E-AC-3 decoder stays faster than real time") {
     const auto stream = eac3_source_stream();
-    const auto units = ac3::split_access_units(stream);
+    const auto units = iclforge::split_access_units(stream);
     REQUIRE(units.has_value());
     REQUIRE_FALSE(units->empty());
-    ac3::Eac3Decoder decoder{};
+    iclforge::Eac3Decoder decoder{};
 
     const auto start = std::chrono::steady_clock::now();
     for (const auto& unit : *units) {
@@ -278,10 +279,10 @@ TEST_CASE("the E-AC-3 decoder stays faster than real time") {
 // object layer and reconstructs every object from it.
 TEST_CASE("the Atmos/JOC decoder stays faster than real time") {
     const auto stream = atmos_source_stream();
-    const auto units = ac3::split_access_units(stream);
+    const auto units = iclforge::split_access_units(stream);
     REQUIRE(units.has_value());
     REQUIRE_FALSE(units->empty());
-    ac3::Eac3Decoder decoder{};
+    iclforge::Eac3Decoder decoder{};
 
     const auto start = std::chrono::steady_clock::now();
     for (const auto& unit : *units) {

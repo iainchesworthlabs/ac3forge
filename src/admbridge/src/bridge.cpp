@@ -14,7 +14,7 @@
 #include "iclforge/objects/oamd.hpp"
 #include "iclforge/adm/ac3adm.hpp"
 
-namespace ac3::admbridge {
+namespace iclforge::admbridge {
 
 std::string_view describe(BridgeError error) {
     switch (error) {
@@ -33,20 +33,20 @@ std::string_view describe(BridgeError error) {
         case BridgeError::kEmptyInput: return "write() input had no channels, or a dynamic object had no updates";
         case BridgeError::kEmptyIabStream: return "build_iab() input had no frames";
         case BridgeError::kUnsupportedIabChannel:
-            return "a Bed ChannelID has no ac3::oba::BedLabel equivalent";
+            return "a Bed ChannelID has no iclforge::oba::BedLabel equivalent";
         case BridgeError::kNoIabEssenceForChannel:
             return "a channel's non-zero AudioDataID never resolved to AudioDataPCM essence";
     }
-    return "unknown ac3::admbridge::BridgeError";
+    return "unknown iclforge::admbridge::BridgeError";
 }
 
 namespace {
 
 // A real Dirac/instantaneous jump has no representation in KeyframePath's piecewise-linear model
-// (two keyframes cannot share one time_s - see ac3::oba::PathError::kDuplicateTimestamp). This is
-// the same resolution tests/ac3/oba/test_atmos_motion.cpp's own make_holds() helper relies on implicitly: every
-// caller in this codebase samples ObjectPath::evaluate() once per encoded frame
-// (ac3::kSamplesPerFrame = 1536 samples, 32 ms at 48 kHz - see ac3::oba::AtmosEncoder::
+// (two keyframes cannot share one time_s - see iclforge::oba::PathError::kDuplicateTimestamp). This
+// is the same resolution tests/ac3/oba/test_atmos_motion.cpp's own make_holds() helper relies on
+// implicitly: every caller in this codebase samples ObjectPath::evaluate() once per encoded frame
+// (iclforge::kSamplesPerFrame = 1536 samples, 32 ms at 48 kHz - see iclforge::oba::AtmosEncoder::
 // encode_frame's own doc comment, "one placement per frame"), so any transition faster than one
 // frame period is already indistinguishable from instantaneous at the resolution that actually
 // reaches the bitstream. 1 microsecond is roughly 1/20 of one 48 kHz sample and about six orders
@@ -59,8 +59,8 @@ constexpr double kInstantJumpEpsilon = 1.0e-6;
 
 }  // namespace
 
-std::expected<ac3::oba::ObjectPath, BridgeError> build_channel_path(
-    const ac3adm::AudioChannelFormat& channel, double object_start_s, bool force_lfe) {
+std::expected<iclforge::oba::ObjectPath, BridgeError> build_channel_path(
+    const iclforge::adm::AudioChannelFormat& channel, double object_start_s, bool force_lfe) {
     if (channel.block_formats.empty()) {
         return std::unexpected(BridgeError::kEmptyBlockSequence);
     }
@@ -70,10 +70,10 @@ std::expected<ac3::oba::ObjectPath, BridgeError> build_channel_path(
     // build_channel_path's own header comment). force_lfe discards the block's real data
     // entirely: an LFE bed channel has no direction to pin (ac3/oba/atmos.hpp: "Objects never
     // reach the LFE by panning"), so it reaches the bed only via lfe_send.
-    const auto placement_of = [&](const ac3adm::AudioBlockFormat& block)
-        -> std::pair<ac3::oba::Position, double> {
+    const auto placement_of = [&](const iclforge::adm::AudioBlockFormat& block)
+        -> std::pair<iclforge::oba::Position, double> {
         if (force_lfe) {
-            return {ac3::oba::Position{}, 0.0};
+            return {iclforge::oba::Position{}, 0.0};
         }
         return {adm_position_to_room(block.position), block.gain};
     };
@@ -81,7 +81,8 @@ std::expected<ac3::oba::ObjectPath, BridgeError> build_channel_path(
     // [0, 1] extents TS 103 420 §5.6.1.2 codes, on the same three axes, so
     // this is a rename and not a conversion. An LFE bed channel gets none of
     // it: it has no direction, so it has no extent around one either.
-    const auto extent_of = [&](const ac3adm::AudioBlockFormat& block) -> ac3::oba::ObjectSize {
+    const auto extent_of =
+        [&](const iclforge::adm::AudioBlockFormat& block) -> iclforge::oba::ObjectSize {
         if (force_lfe) {
             return {};
         }
@@ -94,12 +95,12 @@ std::expected<ac3::oba::ObjectPath, BridgeError> build_channel_path(
     // panning. maxDistance has no image - OAMD b_object_snap is one bit, with
     // no distance to condition it on - so a conditioned channelLock maps to an
     // unconditioned snap, which is the closest thing the syntax can say.
-    const auto snap_of = [&](const ac3adm::AudioBlockFormat& block) {
+    const auto snap_of = [&](const iclforge::adm::AudioBlockFormat& block) {
         return !force_lfe && block.has_channel_lock && block.channel_lock;
     };
     const double lfe_send = force_lfe ? 1.0 : 0.0;
 
-    std::vector<ac3::oba::Keyframe> keyframes;
+    std::vector<iclforge::oba::Keyframe> keyframes;
     keyframes.reserve(channel.block_formats.size() * 2);
 
     // Monotonically-increasing insertion with a minimum spacing of kInstantJumpEpsilon - the one
@@ -108,8 +109,8 @@ std::expected<ac3::oba::ObjectPath, BridgeError> build_channel_path(
     // same nominal time) into a valid, strictly-increasing keyframe sequence without needing a
     // separate branch for each. See kInstantJumpEpsilon's own comment for why this is inaudible
     // at the resolution that reaches the bitstream.
-    const auto push_keyframe = [&](double time_s, ac3::oba::Position position, double gain,
-                                   ac3::oba::ObjectSize size, bool snap) {
+    const auto push_keyframe = [&](double time_s, iclforge::oba::Position position, double gain,
+                                   iclforge::oba::ObjectSize size, bool snap) {
         if (!keyframes.empty() && time_s <= keyframes.back().time_s) {
             time_s = keyframes.back().time_s + kInstantJumpEpsilon;
         }
@@ -124,7 +125,7 @@ std::expected<ac3::oba::ObjectPath, BridgeError> build_channel_path(
     if (channel.block_formats.size() == 1) {
         // §5.4.1: "If there is only one audioBlockFormat within an audioChannelFormat, the
         // characteristics of the parent audioChannelFormat are considered to be static over
-        // time" - one keyframe, which ac3::oba::KeyframePath already holds everywhere.
+        // time" - one keyframe, which iclforge::oba::KeyframePath already holds everywhere.
         const auto& block = channel.block_formats.front();
         const auto [position, gain] = placement_of(block);
         push_keyframe(object_start_s + block.rtime_s, position, gain, extent_of(block),
@@ -178,7 +179,7 @@ std::expected<ac3::oba::ObjectPath, BridgeError> build_channel_path(
         }
     }
 
-    auto created = ac3::oba::KeyframePath::create(std::move(keyframes));
+    auto created = iclforge::oba::KeyframePath::create(std::move(keyframes));
     if (!created.has_value()) {
         // Unreachable in practice - push_keyframe's own monotonic nudge guarantees a strictly
         // increasing sequence, and it is never called with an empty channel.block_formats (the
@@ -187,7 +188,7 @@ std::expected<ac3::oba::ObjectPath, BridgeError> build_channel_path(
         // file-derived data.
         return std::unexpected(BridgeError::kEmptyBlockSequence);
     }
-    return ac3::oba::ObjectPath(std::move(*created));
+    return iclforge::oba::ObjectPath(std::move(*created));
 }
 
 namespace {
@@ -205,7 +206,7 @@ bool is_lfe_label(const std::string& label) {
     return label == "LFE" || label == "LFE1" || label == "LFE2";
 }
 
-bool channel_is_lfe(const ac3adm::AudioChannelFormat& channel) {
+bool channel_is_lfe(const iclforge::adm::AudioChannelFormat& channel) {
     for (const auto& block : channel.block_formats) {
         if (std::ranges::any_of(block.speaker_labels, is_lfe_label)) {
             return true;
@@ -216,17 +217,17 @@ bool channel_is_lfe(const ac3adm::AudioChannelFormat& channel) {
 
 struct ClassifiedObject {
     bool is_bed = false;
-    std::vector<const ac3adm::AudioChannelFormat*> channels;
+    std::vector<const iclforge::adm::AudioChannelFormat*> channels;
 };
 
 // Resolves one audioObject's pack_format_refs down to an ordered list of audioChannelFormats and
 // classifies it as a bed (every resolved pack is DirectSpeakers) or a dynamic object (every
 // resolved pack is Objects) - see bridge.hpp's own top comment for what happens to every other
 // TypeDefinition and to nested audioPackFormats.
-std::expected<ClassifiedObject, BridgeError> classify_object(const ac3adm::AdmModel& model,
-                                                              const ac3adm::AudioObject& object) {
+std::expected<ClassifiedObject, BridgeError> classify_object(
+    const iclforge::adm::AdmModel& model, const iclforge::adm::AudioObject& object) {
     ClassifiedObject result;
-    std::optional<ac3adm::TypeDefinition> agreed_type;
+    std::optional<iclforge::adm::TypeDefinition> agreed_type;
     for (const auto& pack_ref : object.pack_format_refs) {
         const auto* pack = find_by_id(model.pack_formats, pack_ref);
         if (pack == nullptr) {
@@ -238,8 +239,8 @@ std::expected<ClassifiedObject, BridgeError> classify_object(const ac3adm::AdmMo
             // top comment.
             return std::unexpected(BridgeError::kUnsupportedType);
         }
-        if (pack->type != ac3adm::TypeDefinition::kDirectSpeakers &&
-            pack->type != ac3adm::TypeDefinition::kObjects) {
+        if (pack->type != iclforge::adm::TypeDefinition::kDirectSpeakers &&
+            pack->type != iclforge::adm::TypeDefinition::kObjects) {
             return std::unexpected(BridgeError::kUnsupportedType);
         }
         if (agreed_type.has_value() && *agreed_type != pack->type) {
@@ -254,7 +255,7 @@ std::expected<ClassifiedObject, BridgeError> classify_object(const ac3adm::AdmMo
             result.channels.push_back(channel);
         }
     }
-    result.is_bed = (agreed_type == ac3adm::TypeDefinition::kDirectSpeakers);
+    result.is_bed = (agreed_type == iclforge::adm::TypeDefinition::kDirectSpeakers);
     return result;
 }
 
@@ -265,9 +266,9 @@ std::expected<ClassifiedObject, BridgeError> classify_object(const ac3adm::AdmMo
 // nests further objects contributes nothing of its own). `visiting` guards against a reference
 // cycle (§5.6.7: "An audioObject element should not reference itself, nor can a loop of
 // references be used").
-std::expected<std::vector<const ac3adm::AudioObject*>, BridgeError> collect_leaf_objects(
-    const ac3adm::AdmModel& model, const ac3adm::AudioProgramme& programme) {
-    std::vector<const ac3adm::AudioObject*> objects;
+std::expected<std::vector<const iclforge::adm::AudioObject*>, BridgeError> collect_leaf_objects(
+    const iclforge::adm::AdmModel& model, const iclforge::adm::AudioProgramme& programme) {
+    std::vector<const iclforge::adm::AudioObject*> objects;
     std::vector<std::string> visiting;
 
     const std::function<std::expected<void, BridgeError>(const std::string&)> visit =
@@ -316,19 +317,19 @@ constexpr std::size_t kMaxChannels = 15;
 
 }  // namespace
 
-std::expected<BridgeResult, BridgeError> build(const ac3adm::AdmDocument& document,
+std::expected<BridgeResult, BridgeError> build(const iclforge::adm::AdmDocument& document,
                                                 std::string_view programme_id) {
     const auto& model = document.model;
     if (model.programmes.empty()) {
         return std::unexpected(BridgeError::kNoProgramme);
     }
 
-    const ac3adm::AudioProgramme* programme = nullptr;
+    const iclforge::adm::AudioProgramme* programme = nullptr;
     if (programme_id.empty()) {
         // §5.8: IDs are formatted strings (APR_wwww, fixed-width hex), so a lexicographic
         // compare over them is a numeric-ID compare too.
         programme = &*std::ranges::min_element(model.programmes, std::ranges::less{},
-                                               &ac3adm::AudioProgramme::id);
+                                               &iclforge::adm::AudioProgramme::id);
     } else {
         programme = find_by_id(model.programmes, programme_id);
         if (programme == nullptr) {
@@ -358,7 +359,7 @@ std::expected<BridgeResult, BridgeError> build(const ac3adm::AdmDocument& docume
             const auto& track_uid_ref = object->track_uid_refs[i];
 
             const auto chna_it = std::ranges::find(document.chna, track_uid_ref,
-                                                    &ac3adm::ChnaEntry::uid);
+                                                    &iclforge::adm::ChnaEntry::uid);
             if (chna_it == document.chna.end()) {
                 return std::unexpected(BridgeError::kUnresolvedReference);
             }
@@ -404,7 +405,7 @@ namespace {
 // bug) are folded together - the later one overwrites the earlier rather than producing a
 // zero-or-negative-duration audioBlockFormat, mirroring build_channel_path()'s own
 // kInstantJumpEpsilon nudge for the equivalent read-direction case.
-std::vector<ac3adm::AudioBlockFormat> build_block_formats(std::span<const WriteObjectUpdate> updates,
+std::vector<iclforge::adm::AudioBlockFormat> build_block_formats(std::span<const WriteObjectUpdate> updates,
                                                           double total_duration_s, std::uint32_t sample_rate) {
     std::vector<WriteObjectUpdate> distinct;
     distinct.reserve(updates.size());
@@ -419,7 +420,8 @@ std::vector<ac3adm::AudioBlockFormat> build_block_formats(std::span<const WriteO
     const auto time_of = [sample_rate](std::uint64_t sample) {
         return static_cast<double>(sample) / static_cast<double>(sample_rate);
     };
-    const auto place = [](ac3adm::AudioBlockFormat& block, const ac3::oba::DynamicObject& state) {
+    const auto place = [](iclforge::adm::AudioBlockFormat& block,
+                          const iclforge::oba::DynamicObject& state) {
         block.cartesian = true;
         block.position = room_to_adm_cartesian(state.position);
         block.gain = std::pow(10.0, state.gain_db / 20.0);
@@ -432,10 +434,10 @@ std::vector<ac3adm::AudioBlockFormat> build_block_formats(std::span<const WriteO
         }
     };
 
-    std::vector<ac3adm::AudioBlockFormat> blocks;
+    std::vector<iclforge::adm::AudioBlockFormat> blocks;
     blocks.reserve(distinct.size());
 
-    ac3adm::AudioBlockFormat first;
+    iclforge::adm::AudioBlockFormat first;
     first.rtime_s = time_of(distinct.front().sample_offset);
     place(first, distinct.front().state);
     if (distinct.size() > 1) {
@@ -445,7 +447,7 @@ std::vector<ac3adm::AudioBlockFormat> build_block_formats(std::span<const WriteO
     blocks.push_back(std::move(first));
 
     for (std::size_t i = 1; i < distinct.size(); ++i) {
-        ac3adm::AudioBlockFormat block;
+        iclforge::adm::AudioBlockFormat block;
         block.rtime_s = time_of(distinct[i].sample_offset);
         place(block, distinct[i].state);
         block.has_duration = true;
@@ -466,16 +468,16 @@ std::vector<ac3adm::AudioBlockFormat> build_block_formats(std::span<const WriteO
 
 }  // namespace
 
-std::expected<ac3adm::AdmDocument, BridgeError> write(const WriteInput& input) {
+std::expected<iclforge::adm::AdmDocument, BridgeError> write(const WriteInput& input) {
     if (input.channels.empty()) {
         return std::unexpected(BridgeError::kEmptyInput);
     }
 
-    ac3adm::AdmDocument document;
+    iclforge::adm::AdmDocument document;
     document.audio.sample_rate = input.sample_rate;
-    // The width ac3adm::write_bw64 stores this PCM at, which every audioTrackUID below states as
-    // its bitDepth too - so the document already describes the master it becomes.
-    document.audio.bits_per_sample = ac3adm::kWriteBitDepth;
+    // The width iclforge::adm::write_bw64 stores this PCM at, which every audioTrackUID below
+    // states as its bitDepth too - so the document already describes the master it becomes.
+    document.audio.bits_per_sample = iclforge::adm::kWriteBitDepth;
 
     auto& model = document.model;
     model.channel_formats.reserve(input.channels.size());
@@ -490,33 +492,33 @@ std::expected<ac3adm::AdmDocument, BridgeError> write(const WriteInput& input) {
     for (std::size_t i = 0; i < input.channels.size(); ++i) {
         const auto& channel = input.channels[i];
         // A correlation key only, never written literally - see ac3adm.hpp's own write_bw64 doc
-        // comment on why ac3adm::write_bw64 lets libadm's reassignIds() assign the real IDs.
+        // comment on why iclforge::adm::write_bw64 lets libadm's reassignIds() assign the real IDs.
         const std::string key = std::to_string(i);
 
-        ac3adm::AudioChannelFormat channel_format;
+        iclforge::adm::AudioChannelFormat channel_format;
         channel_format.id = "chan_" + key;
         channel_format.name = channel.name;
 
-        ac3adm::AudioPackFormat pack_format;
+        iclforge::adm::AudioPackFormat pack_format;
         pack_format.id = "pack_" + key;
         pack_format.name = channel.name;
         pack_format.channel_format_refs = {channel_format.id};
 
         if (channel.bed_label.has_value()) {
-            channel_format.type = ac3adm::TypeDefinition::kDirectSpeakers;
-            pack_format.type = ac3adm::TypeDefinition::kDirectSpeakers;
+            channel_format.type = iclforge::adm::TypeDefinition::kDirectSpeakers;
+            pack_format.type = iclforge::adm::TypeDefinition::kDirectSpeakers;
 
-            ac3adm::AudioBlockFormat block;
+            iclforge::adm::AudioBlockFormat block;
             block.cartesian = true;
-            block.position = room_to_adm_cartesian(ac3::oba::bed_label_position(*channel.bed_label));
-            block.speaker_labels = {std::string(ac3::oba::describe(*channel.bed_label))};
+            block.position = room_to_adm_cartesian(iclforge::oba::bed_label_position(*channel.bed_label));
+            block.speaker_labels = {std::string(iclforge::oba::describe(*channel.bed_label))};
             channel_format.block_formats.push_back(std::move(block));
         } else {
             if (channel.updates.empty()) {
                 return std::unexpected(BridgeError::kEmptyInput);
             }
-            channel_format.type = ac3adm::TypeDefinition::kObjects;
-            pack_format.type = ac3adm::TypeDefinition::kObjects;
+            channel_format.type = iclforge::adm::TypeDefinition::kObjects;
+            pack_format.type = iclforge::adm::TypeDefinition::kObjects;
             const double total_duration_s = static_cast<double>(channel.pcm.size()) / input.sample_rate;
             channel_format.block_formats = build_block_formats(channel.updates, total_duration_s, input.sample_rate);
         }
@@ -530,17 +532,17 @@ std::expected<ac3adm::AdmDocument, BridgeError> write(const WriteInput& input) {
         // (caught by tests/admbridge/test_adm_bridge_write.cpp's own round trip, not by
         // construction here). This is also the exact wiring libadm's own
         // adm/utilities/object_creation.cpp uses for its Objects-type helper.
-        ac3adm::AudioStreamFormat stream_format;
+        iclforge::adm::AudioStreamFormat stream_format;
         stream_format.id = "stream_" + key;
         stream_format.name = channel.name;
         stream_format.channel_format_ref = channel_format.id;
 
-        ac3adm::AudioTrackFormat track_format;
+        iclforge::adm::AudioTrackFormat track_format;
         track_format.id = "track_" + key;
         track_format.name = channel.name;
         track_format.stream_format_ref = stream_format.id;
 
-        ac3adm::AudioTrackUid track_uid;
+        iclforge::adm::AudioTrackUid track_uid;
         track_uid.uid = "atu_" + key;
         track_uid.has_sample_rate = true;
         track_uid.sample_rate = input.sample_rate;
@@ -548,11 +550,11 @@ std::expected<ac3adm::AdmDocument, BridgeError> write(const WriteInput& input) {
         // <fmt >. write_bw64 writes kWriteBitDepth there whatever this field says (see its doc
         // comment); it is set here as well so a caller inspecting this document sees the same.
         track_uid.has_bit_depth = true;
-        track_uid.bit_depth = ac3adm::kWriteBitDepth;
+        track_uid.bit_depth = iclforge::adm::kWriteBitDepth;
         track_uid.track_format_ref = track_format.id;
         track_uid.pack_format_ref = pack_format.id;
 
-        ac3adm::AudioObject object;
+        iclforge::adm::AudioObject object;
         object.id = "obj_" + key;
         object.name = channel.name;
         object.pack_format_refs = {pack_format.id};
@@ -576,7 +578,7 @@ std::expected<ac3adm::AdmDocument, BridgeError> write(const WriteInput& input) {
         model.objects.push_back(std::move(object));
     }
 
-    ac3adm::AudioContent content;
+    iclforge::adm::AudioContent content;
     content.id = "content";
     content.name = "Programme";
     for (const auto& object : model.objects) {
@@ -584,7 +586,7 @@ std::expected<ac3adm::AdmDocument, BridgeError> write(const WriteInput& input) {
     }
     model.contents.push_back(std::move(content));
 
-    ac3adm::AudioProgramme programme;
+    iclforge::adm::AudioProgramme programme;
     programme.id = "programme";
     programme.name = "Programme";
     programme.content_refs = {model.contents.back().id};
@@ -593,4 +595,4 @@ std::expected<ac3adm::AdmDocument, BridgeError> write(const WriteInput& input) {
     return document;
 }
 
-}  // namespace ac3::admbridge
+}  // namespace iclforge::admbridge

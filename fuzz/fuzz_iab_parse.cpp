@@ -8,8 +8,8 @@
 #include "iclforge/iab/ac3iab.hpp"
 #include "iclforge/iab/mxf.hpp"
 
-// ac3iab::parse_iabitstream(std::istream&) and ac3iab::parse_mxf_iab(std::istream&)
-// (src/iab/src/iab_reader.cpp, mxf_reader.cpp), plus ac3iab::parse_iaframe
+// iclforge::iab::parse_iabitstream(std::istream&) and iclforge::iab::parse_mxf_iab(std::istream&)
+// (src/iab/src/iab_reader.cpp, mxf_reader.cpp), plus iclforge::iab::parse_iaframe
 // on the same bytes - the IAB reader, IAB reader phases 1 and 2.
 //
 // The whole of ac3iab exists to read files this project did not write: an
@@ -40,13 +40,13 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
 
     {
         std::istringstream stream(bytes, std::ios::binary);
-        (void)ac3iab::parse_iabitstream(stream);
+        (void)iclforge::iab::parse_iabitstream(stream);
     }
     {
         std::istringstream stream(bytes, std::ios::binary);
-        (void)ac3iab::parse_mxf_iab(stream);
+        (void)iclforge::iab::parse_mxf_iab(stream);
     }
-    (void)ac3iab::parse_iaframe(
+    (void)iclforge::iab::parse_iaframe(
         std::span<const std::byte>(reinterpret_cast<const std::byte*>(data), size));
 
     return 0;

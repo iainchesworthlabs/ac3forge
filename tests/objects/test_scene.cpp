@@ -45,14 +45,15 @@ std::vector<double> sample_times() {
     return times;
 }
 
-bool exactly_equal(const ac3::oba::ObjectPlacement& a, const ac3::oba::ObjectPlacement& b) {
+bool exactly_equal(const iclforge::oba::ObjectPlacement& a,
+                   const iclforge::oba::ObjectPlacement& b) {
     return a.position.x == b.position.x && a.position.y == b.position.y &&
            a.position.z == b.position.z && a.gain == b.gain && a.lfe_send == b.lfe_send;
 }
 
 std::vector<float> tone(double hz, double amplitude, std::uint64_t start) {
-    std::vector<float> out(ac3::kSamplesPerFrame);
-    for (int n = 0; n < ac3::kSamplesPerFrame; ++n) {
+    std::vector<float> out(iclforge::kSamplesPerFrame);
+    for (int n = 0; n < iclforge::kSamplesPerFrame; ++n) {
         const double t = static_cast<double>(start + static_cast<std::uint64_t>(n)) / 48000.0;
         out[static_cast<std::size_t>(n)] =
             static_cast<float>(amplitude * std::sin(2.0 * std::numbers::pi * hz * t));
@@ -60,9 +61,9 @@ std::vector<float> tone(double hz, double amplitude, std::uint64_t start) {
     return out;
 }
 
-ac3::oba::ObjectScene must_create(std::vector<ac3::oba::SceneObject> objects,
-                                  const ac3::oba::Orientation& orientation = {}) {
-    auto scene = ac3::oba::ObjectScene::create(std::move(objects), orientation);
+iclforge::oba::ObjectScene must_create(std::vector<iclforge::oba::SceneObject> objects,
+                                  const iclforge::oba::Orientation& orientation = {}) {
+    auto scene = iclforge::oba::ObjectScene::create(std::move(objects), orientation);
     REQUIRE(scene.has_value());
     return std::move(*scene);
 }
@@ -76,7 +77,7 @@ ac3::oba::ObjectScene must_create(std::vector<ac3::oba::SceneObject> objects,
 
 TEST_CASE("a scene from a legacy keyframe file evaluates exactly as KeyframePath did",
           "[oba][scene]") {
-    const auto parsed = ac3::oba::scene_objects_from_keyframe_text(kLegacyFile);
+    const auto parsed = iclforge::oba::scene_objects_from_keyframe_text(kLegacyFile);
     REQUIRE(parsed.has_value());
     REQUIRE(parsed->size() == 3);
     // Object 1 is the gap: mentioned by nobody, present, empty.
@@ -85,25 +86,25 @@ TEST_CASE("a scene from a legacy keyframe file evaluates exactly as KeyframePath
     CHECK(parsed->at(2).automation.size() == 2);
 
     // The same authored points through the layer that predates this type.
-    std::vector<ac3::oba::ObjectPath> paths;
+    std::vector<iclforge::oba::ObjectPath> paths;
     for (const auto& object : *parsed) {
         if (object.automation.empty()) {
             continue;
         }
-        std::vector<ac3::oba::Keyframe> keyframes;
+        std::vector<iclforge::oba::Keyframe> keyframes;
         for (const auto& point : object.automation) {
             keyframes.push_back({.time_s = point.time_s,
                                  .position = point.position,
                                  .gain = point.gain,
                                  .lfe_send = point.lfe_send});
         }
-        auto path = ac3::oba::KeyframePath::create(std::move(keyframes));
+        auto path = iclforge::oba::KeyframePath::create(std::move(keyframes));
         REQUIRE(path.has_value());
         paths.emplace_back(std::move(*path));
     }
     REQUIRE(paths.size() == 2);
 
-    std::vector<ac3::oba::SceneObject> objects{parsed->at(0), parsed->at(2)};
+    std::vector<iclforge::oba::SceneObject> objects{parsed->at(0), parsed->at(2)};
     const auto scene = must_create(std::move(objects));
 
     // Bit-for-bit, not approximately: a placement that differs in the last
@@ -125,19 +126,19 @@ TEST_CASE("a scene drives an encode to byte-identical output", "[oba][scene]") {
     constexpr int kObjects = 2;
     constexpr int kFrames = 6;
 
-    const auto parsed = ac3::oba::scene_objects_from_keyframe_text(kLegacyFile);
+    const auto parsed = iclforge::oba::scene_objects_from_keyframe_text(kLegacyFile);
     REQUIRE(parsed.has_value());
 
-    std::vector<ac3::oba::ObjectPath> paths;
+    std::vector<iclforge::oba::ObjectPath> paths;
     for (const std::size_t index : {std::size_t{0}, std::size_t{2}}) {
-        std::vector<ac3::oba::Keyframe> keyframes;
+        std::vector<iclforge::oba::Keyframe> keyframes;
         for (const auto& point : parsed->at(index).automation) {
             keyframes.push_back({.time_s = point.time_s,
                                  .position = point.position,
                                  .gain = point.gain,
                                  .lfe_send = point.lfe_send});
         }
-        auto path = ac3::oba::KeyframePath::create(std::move(keyframes));
+        auto path = iclforge::oba::KeyframePath::create(std::move(keyframes));
         REQUIRE(path.has_value());
         paths.emplace_back(std::move(*path));
     }
@@ -146,11 +147,11 @@ TEST_CASE("a scene drives an encode to byte-identical output", "[oba][scene]") {
     // middle - so this covers the whole migration a user would actually do,
     // not just the parser swap.
     const auto direct = must_create({parsed->at(0), parsed->at(2)});
-    const auto reloaded = ac3::oba::scene_from_json(ac3::oba::to_json(direct));
+    const auto reloaded = iclforge::oba::scene_from_json(iclforge::oba::to_json(direct));
     REQUIRE(reloaded.has_value());
 
     const auto encode = [&](auto&& placement_at) {
-        ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, kObjects};
+        iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, kObjects};
         std::vector<std::byte> stream;
         std::uint64_t n0 = 0;
         for (int frame = 0; frame < kFrames; ++frame) {
@@ -158,17 +159,18 @@ TEST_CASE("a scene drives an encode to byte-identical output", "[oba][scene]") {
                                                           tone(997.0, 0.22, n0)};
             const std::vector<std::span<const float>> views{sources[0], sources[1]};
             const double t =
-                static_cast<double>(n0 + ac3::kSamplesPerFrame) / 48000.0;
+                static_cast<double>(n0 + iclforge::kSamplesPerFrame) / 48000.0;
             const auto placement = placement_at(t);
             const auto unit = encoder.encode_frame(views, placement);
             REQUIRE(unit.has_value());
             stream.insert(stream.end(), unit->bytes.begin(), unit->bytes.end());
-            n0 += ac3::kSamplesPerFrame;
+            n0 += iclforge::kSamplesPerFrame;
         }
         return stream;
     };
 
-    const auto before = encode([&](double t) { return ac3::oba::evaluate_placements(paths, t); });
+    const auto before =
+        encode([&](double t) { return iclforge::oba::evaluate_placements(paths, t); });
     const auto after = encode([&](double t) { return direct.evaluate(t); });
     const auto after_json = encode([&](double t) { return reloaded->evaluate(t); });
 
@@ -183,7 +185,7 @@ TEST_CASE("a scene drives an encode to byte-identical output", "[oba][scene]") {
 
 TEST_CASE("the keyframe grammar keeps its shape", "[oba][scene]") {
     SECTION("a file with no newline at the end still yields its last line") {
-        const auto parsed = ac3::oba::scene_objects_from_keyframe_text("0 1 2 3 4 5 6");
+        const auto parsed = iclforge::oba::scene_objects_from_keyframe_text("0 1 2 3 4 5 6");
         REQUIRE(parsed.has_value());
         REQUIRE(parsed->size() == 1);
         REQUIRE(parsed->at(0).automation.size() == 1);
@@ -192,54 +194,54 @@ TEST_CASE("the keyframe grammar keeps its shape", "[oba][scene]") {
     }
 
     SECTION("an empty file is an empty scene, not an error") {
-        const auto parsed = ac3::oba::scene_objects_from_keyframe_text("");
+        const auto parsed = iclforge::oba::scene_objects_from_keyframe_text("");
         REQUIRE(parsed.has_value());
         CHECK(parsed->empty());
     }
 
     SECTION("comments and blank lines are skipped without consuming a line number") {
-        const auto parsed = ac3::oba::scene_objects_from_keyframe_text("# one\n\n0 nope\n");
+        const auto parsed = iclforge::oba::scene_objects_from_keyframe_text("# one\n\n0 nope\n");
         REQUIRE_FALSE(parsed.has_value());
-        CHECK(parsed.error().kind == ac3::oba::SceneErrorKind::kSyntax);
+        CHECK(parsed.error().kind == iclforge::oba::SceneErrorKind::kSyntax);
         CHECK(parsed.error().line == 3);
     }
 
     SECTION("a short line names the columns it wanted") {
-        const auto parsed = ac3::oba::scene_objects_from_keyframe_text("0 1 2 3 4 5\n");
+        const auto parsed = iclforge::oba::scene_objects_from_keyframe_text("0 1 2 3 4 5\n");
         REQUIRE_FALSE(parsed.has_value());
         CHECK(parsed.error().line == 1);
         CHECK(parsed.error().message == "expected 'object time_s x y z gain lfe_send'");
     }
 
     SECTION("a negative object index is refused rather than wrapping") {
-        const auto parsed = ac3::oba::scene_objects_from_keyframe_text("-1 0 0 0 0 1 0\n");
+        const auto parsed = iclforge::oba::scene_objects_from_keyframe_text("-1 0 0 0 0 1 0\n");
         REQUIRE_FALSE(parsed.has_value());
-        CHECK(parsed.error().kind == ac3::oba::SceneErrorKind::kSyntax);
+        CHECK(parsed.error().kind == iclforge::oba::SceneErrorKind::kSyntax);
     }
 
     SECTION("an absurd object index is refused rather than sizing a vector by it") {
         const auto parsed =
-            ac3::oba::scene_objects_from_keyframe_text("999999999999 0 0 0 0 1 0\n");
+            iclforge::oba::scene_objects_from_keyframe_text("999999999999 0 0 0 0 1 0\n");
         REQUIRE_FALSE(parsed.has_value());
-        CHECK(parsed.error().kind == ac3::oba::SceneErrorKind::kBadValue);
+        CHECK(parsed.error().kind == iclforge::oba::SceneErrorKind::kBadValue);
         CHECK(parsed.error().line == 1);
     }
 
     SECTION("two points at one instant are refused, not silently ordered") {
         const auto parsed =
-            ac3::oba::scene_objects_from_keyframe_text("0 1 0 0 0 1 0\n0 1 1 1 0 1 0\n");
+            iclforge::oba::scene_objects_from_keyframe_text("0 1 0 0 0 1 0\n0 1 1 1 0 1 0\n");
         REQUIRE(parsed.has_value());
-        const auto scene = ac3::oba::ObjectScene::create(*parsed);
+        const auto scene = iclforge::oba::ObjectScene::create(*parsed);
         REQUIRE_FALSE(scene.has_value());
-        CHECK(scene.error().kind == ac3::oba::SceneErrorKind::kDuplicateTime);
+        CHECK(scene.error().kind == iclforge::oba::SceneErrorKind::kDuplicateTime);
     }
 
     SECTION("keyframe text round-trips through a scene") {
-        const auto parsed = ac3::oba::scene_objects_from_keyframe_text(kLegacyFile);
+        const auto parsed = iclforge::oba::scene_objects_from_keyframe_text(kLegacyFile);
         REQUIRE(parsed.has_value());
         const auto scene = must_create({parsed->at(0), parsed->at(2)});
         const auto reparsed =
-            ac3::oba::scene_objects_from_keyframe_text(ac3::oba::to_keyframe_text(scene));
+            iclforge::oba::scene_objects_from_keyframe_text(iclforge::oba::to_keyframe_text(scene));
         REQUIRE(reparsed.has_value());
         REQUIRE(reparsed->size() == 2);
         const auto again = must_create(*reparsed);
@@ -252,7 +254,7 @@ TEST_CASE("the keyframe grammar keeps its shape", "[oba][scene]") {
 }
 
 TEST_CASE("scene_from_text sniffs the two forms apart", "[oba][scene]") {
-    const auto keyframes = ac3::oba::scene_from_text(kLegacyFile,
+    const auto keyframes = iclforge::oba::scene_from_text(kLegacyFile,
                                                      {.position = {.x = 0.25, .y = 0.75, .z = 0.5},
                                                       .gain = 0.125,
                                                       .lfe_send = 0.0625});
@@ -264,12 +266,13 @@ TEST_CASE("scene_from_text sniffs the two forms apart", "[oba][scene]") {
     CHECK(gap.gain == 0.125);
     CHECK(gap.lfe_send == 0.0625);
 
-    const auto json = ac3::oba::scene_from_text(ac3::oba::to_json(*keyframes));
+    const auto json = iclforge::oba::scene_from_text(iclforge::oba::to_json(*keyframes));
     REQUIRE(json.has_value());
     CHECK(json->object_count() == 3);
 
     // Leading whitespace before the brace still reads as JSON.
-    const auto padded = ac3::oba::scene_from_text("\n\n  " + ac3::oba::to_json(*keyframes));
+    const auto padded =
+        iclforge::oba::scene_from_text("\n\n  " + iclforge::oba::to_json(*keyframes));
     REQUIRE(padded.has_value());
 }
 
@@ -278,7 +281,7 @@ TEST_CASE("scene_from_text sniffs the two forms apart", "[oba][scene]") {
 // ---------------------------------------------------------------------------
 
 TEST_CASE("each interpolation means what it says", "[oba][scene]") {
-    using ac3::oba::Interpolation;
+    using iclforge::oba::Interpolation;
     const auto scene = must_create({
         {.name = "held",
          .automation = {{.time_s = 0.0,
@@ -361,18 +364,18 @@ TEST_CASE("a scene reports its own extent and refuses to be unusable", "[oba][sc
     }
 
     SECTION("an object with no automation is refused") {
-        const auto scene = ac3::oba::ObjectScene::create({{.name = "silent one"}});
+        const auto scene = iclforge::oba::ObjectScene::create({{.name = "silent one"}});
         REQUIRE_FALSE(scene.has_value());
-        CHECK(scene.error().kind == ac3::oba::SceneErrorKind::kEmptyObject);
+        CHECK(scene.error().kind == iclforge::oba::SceneErrorKind::kEmptyObject);
         // The diagnostic names the object, not just its index.
         CHECK(scene.error().message.find("silent one") != std::string::npos);
     }
 
     SECTION("a non-finite value is refused") {
-        const auto scene = ac3::oba::ObjectScene::create(
+        const auto scene = iclforge::oba::ObjectScene::create(
             {{.automation = {{.time_s = std::nan(""), .position = {}}}}});
         REQUIRE_FALSE(scene.has_value());
-        CHECK(scene.error().kind == ac3::oba::SceneErrorKind::kBadValue);
+        CHECK(scene.error().kind == iclforge::oba::SceneErrorKind::kBadValue);
     }
 
     SECTION("an empty object list is a legal, empty scene") {
@@ -402,50 +405,55 @@ TEST_CASE("a scene reports its own extent and refuses to be unusable", "[oba][sc
 // ---------------------------------------------------------------------------
 
 TEST_CASE("orientation turns the scene without rendering it", "[oba][scene]") {
-    const ac3::oba::Position front{.x = 0.5, .y = 0.0, .z = 0.0};
+    const iclforge::oba::Position front{.x = 0.5, .y = 0.0, .z = 0.0};
 
     SECTION("an all-zero orientation is an exact no-op") {
-        const ac3::oba::Position odd{.x = 0.1234567890123, .y = 0.98765432109, .z = -0.33333};
-        const auto turned = ac3::oba::rotate(odd, {});
+        const iclforge::oba::Position odd{.x = 0.1234567890123, .y = 0.98765432109, .z = -0.33333};
+        const auto turned = iclforge::oba::rotate(odd, {});
         CHECK(turned.x == odd.x);
         CHECK(turned.y == odd.y);
         CHECK(turned.z == odd.z);
     }
 
     SECTION("a quarter turn sends the front wall to the right wall") {
-        const auto turned = ac3::oba::rotate(front, ac3::oba::orientation_from_degrees(90, 0, 0));
+        const auto turned =
+            iclforge::oba::rotate(front, iclforge::oba::orientation_from_degrees(90, 0, 0));
         CHECK_THAT(turned.x, WithinAbs(1.0, 1e-12));
         CHECK_THAT(turned.y, WithinAbs(0.5, 1e-12));
         CHECK_THAT(turned.z, WithinAbs(0.0, 1e-12));
     }
 
     SECTION("a half turn sends the front wall to the back") {
-        const auto turned = ac3::oba::rotate(front, ac3::oba::orientation_from_degrees(180, 0, 0));
+        const auto turned =
+            iclforge::oba::rotate(front, iclforge::oba::orientation_from_degrees(180, 0, 0));
         CHECK_THAT(turned.x, WithinAbs(0.5, 1e-12));
         CHECK_THAT(turned.y, WithinAbs(1.0, 1e-12));
     }
 
     SECTION("a full turn comes back to where it started") {
-        const ac3::oba::Position p{.x = 0.2, .y = 0.9, .z = 0.4};
-        const auto turned = ac3::oba::rotate(p, ac3::oba::orientation_from_degrees(360, 0, 0));
+        const iclforge::oba::Position p{.x = 0.2, .y = 0.9, .z = 0.4};
+        const auto turned =
+            iclforge::oba::rotate(p, iclforge::oba::orientation_from_degrees(360, 0, 0));
         CHECK_THAT(turned.x, WithinAbs(p.x, 1e-12));
         CHECK_THAT(turned.y, WithinAbs(p.y, 1e-12));
         CHECK_THAT(turned.z, WithinAbs(p.z, 1e-12));
     }
 
     SECTION("yaw leaves height alone") {
-        const ac3::oba::Position high{.x = 0.5, .y = 0.0, .z = 0.8};
-        CHECK(ac3::oba::rotate(high, ac3::oba::orientation_from_degrees(37, 0, 0)).z == 0.8);
+        const iclforge::oba::Position high{.x = 0.5, .y = 0.0, .z = 0.8};
+        CHECK(iclforge::oba::rotate(high, iclforge::oba::orientation_from_degrees(37, 0, 0)).z ==
+              0.8);
     }
 
     SECTION("pitch raises the front, roll raises the right") {
         const auto pitched =
-            ac3::oba::rotate(front, ac3::oba::orientation_from_degrees(0, 90, 0));
+            iclforge::oba::rotate(front, iclforge::oba::orientation_from_degrees(0, 90, 0));
         CHECK_THAT(pitched.z, WithinAbs(1.0, 1e-12));
         CHECK_THAT(pitched.y, WithinAbs(0.5, 1e-12));
 
-        const ac3::oba::Position right{.x = 1.0, .y = 0.5, .z = 0.0};
-        const auto rolled = ac3::oba::rotate(right, ac3::oba::orientation_from_degrees(0, 0, 90));
+        const iclforge::oba::Position right{.x = 1.0, .y = 0.5, .z = 0.0};
+        const auto rolled =
+            iclforge::oba::rotate(right, iclforge::oba::orientation_from_degrees(0, 0, 90));
         CHECK_THAT(rolled.z, WithinAbs(1.0, 1e-12));
         CHECK_THAT(rolled.x, WithinAbs(0.5, 1e-12));
     }
@@ -453,9 +461,9 @@ TEST_CASE("orientation turns the scene without rendering it", "[oba][scene]") {
     SECTION("a rotation out of the room clamps to the room, it does not leave it") {
         // A front-wall corner at full height, tipped nose-up: the rotated
         // point wants to be above the ceiling.
-        const ac3::oba::Position corner{.x = 0.0, .y = 0.0, .z = 0.9};
+        const iclforge::oba::Position corner{.x = 0.0, .y = 0.0, .z = 0.9};
         const auto turned =
-            ac3::oba::rotate(corner, ac3::oba::orientation_from_degrees(0, 80, 0));
+            iclforge::oba::rotate(corner, iclforge::oba::orientation_from_degrees(0, 80, 0));
         CHECK(turned.z <= 1.0);
         CHECK(turned.z >= -1.0);
         CHECK(turned.x >= 0.0);
@@ -467,7 +475,7 @@ TEST_CASE("orientation turns the scene without rendering it", "[oba][scene]") {
                                    .automation = {{.time_s = 0.0,
                                                    .position = {.x = 0.5, .y = 0.0, .z = 0.0}}}}});
         CHECK(scene.evaluate(0, 0.0).position.y == 0.0);
-        scene.set_orientation(ac3::oba::orientation_from_degrees(90, 0, 0));
+        scene.set_orientation(iclforge::oba::orientation_from_degrees(90, 0, 0));
         const auto turned = scene.evaluate(0, 0.0);
         CHECK_THAT(turned.position.x, WithinAbs(1.0, 1e-12));
         // Gain is a level, not a coordinate: turning the room does not touch it.
@@ -480,7 +488,7 @@ TEST_CASE("orientation turns the scene without rendering it", "[oba][scene]") {
 // ---------------------------------------------------------------------------
 
 TEST_CASE("a cursor overlays live updates on the authored timeline", "[oba][scene]") {
-    ac3::oba::SceneCursor cursor{must_create({
+    iclforge::oba::SceneCursor cursor{must_create({
         {.name = "a", .automation = {{.time_s = 0.0, .position = {.x = 0.0}, .gain = 0.4}}},
         {.name = "b", .automation = {{.time_s = 0.0, .position = {.x = 1.0}, .gain = 0.6}}},
     })};
@@ -527,7 +535,7 @@ TEST_CASE("a cursor overlays live updates on the authored timeline", "[oba][scen
     }
 
     SECTION("the scene's orientation turns live objects too") {
-        cursor.scene().set_orientation(ac3::oba::orientation_from_degrees(90, 0, 0));
+        cursor.scene().set_orientation(iclforge::oba::orientation_from_degrees(90, 0, 0));
         REQUIRE(cursor.push({.object = 0, .placement = {.position = {.x = 0.5, .y = 0.0}}}));
         const auto turned = cursor.sample(0.0);
         CHECK_THAT(turned[0].position.x, WithinAbs(1.0, 1e-12));
@@ -540,11 +548,11 @@ TEST_CASE("a cursor overlays live updates on the authored timeline", "[oba][scen
 // ---------------------------------------------------------------------------
 
 TEST_CASE("a scene round-trips through JSON bit-exactly", "[oba][scene]") {
-    using ac3::oba::Interpolation;
+    using iclforge::oba::Interpolation;
     const auto scene = must_create(
         {
             {.name = "broadcast",
-             .bed = ac3::oba::bed::kC,
+             .bed = iclforge::oba::bed::kC,
              .automation = {{.time_s = 0.0,
                              .position = {.x = 0.5, .y = 0.04, .z = 0.05},
                              .gain = 0.0,
@@ -556,13 +564,13 @@ TEST_CASE("a scene round-trips through JSON bit-exactly", "[oba][scene]") {
                              .lfe_send = 0.0625,
                              .interp = Interpolation::kHold}}},
             {.name = "comet \"tail\"\n",
-             .bed = ac3::oba::bed::kLR | ac3::oba::bed::kTflTfr,
+             .bed = iclforge::oba::bed::kLR | iclforge::oba::bed::kTflTfr,
              .automation = {{.time_s = 1e-9, .position = {.x = 1.0, .y = 0.0, .z = 1.0}}}},
         },
-        ac3::oba::orientation_from_degrees(37.5, -12.25, 4.0));
+        iclforge::oba::orientation_from_degrees(37.5, -12.25, 4.0));
 
-    const auto text = ac3::oba::to_json(scene);
-    const auto back = ac3::oba::scene_from_json(text);
+    const auto text = iclforge::oba::to_json(scene);
+    const auto back = iclforge::oba::scene_from_json(text);
     REQUIRE(back.has_value());
 
     REQUIRE(back->object_count() == scene.object_count());
@@ -589,7 +597,7 @@ TEST_CASE("a scene round-trips through JSON bit-exactly", "[oba][scene]") {
 
     // Writing what was read gives the same text: the format has one spelling
     // per scene, so a file under version control shows edits, not churn.
-    CHECK(ac3::oba::to_json(*back) == text);
+    CHECK(iclforge::oba::to_json(*back) == text);
 }
 
 TEST_CASE("awkward doubles survive the serialised form", "[oba][scene]") {
@@ -613,7 +621,7 @@ TEST_CASE("awkward doubles survive the serialised form", "[oba][scene]") {
         1e300,
     };
 
-    std::vector<ac3::oba::SceneObject> objects;
+    std::vector<iclforge::oba::SceneObject> objects;
     for (const double value : awkward) {
         // Times have to stay distinct, so the awkward value rides on the
         // coordinates and gain rather than on t.
@@ -624,7 +632,7 @@ TEST_CASE("awkward doubles survive the serialised form", "[oba][scene]") {
                                            .lfe_send = value}}});
     }
     const auto scene = must_create(std::move(objects));
-    const auto back = ac3::oba::scene_from_json(ac3::oba::to_json(scene));
+    const auto back = iclforge::oba::scene_from_json(iclforge::oba::to_json(scene));
     REQUIRE(back.has_value());
     REQUIRE(back->object_count() == awkward.size());
     for (std::size_t i = 0; i < awkward.size(); ++i) {
@@ -638,7 +646,7 @@ TEST_CASE("awkward doubles survive the serialised form", "[oba][scene]") {
 
     // The keyframe columns carry the same numbers through the same writer.
     const auto reparsed =
-        ac3::oba::scene_objects_from_keyframe_text(ac3::oba::to_keyframe_text(scene));
+        iclforge::oba::scene_objects_from_keyframe_text(iclforge::oba::to_keyframe_text(scene));
     REQUIRE(reparsed.has_value());
     REQUIRE(reparsed->size() == awkward.size());
     for (std::size_t i = 0; i < awkward.size(); ++i) {
@@ -648,18 +656,18 @@ TEST_CASE("awkward doubles survive the serialised form", "[oba][scene]") {
 
 TEST_CASE("the JSON reader accepts what it should", "[oba][scene]") {
     SECTION("a minimal scene needs only the version, one object and its points") {
-        const auto scene = ac3::oba::scene_from_json(
+        const auto scene = iclforge::oba::scene_from_json(
             R"({"ac3forge_scene":1,"objects":[{"automation":[{"t":0,"x":0.5,"y":0.5,"z":0}]}]})");
         REQUIRE(scene.has_value());
         CHECK(scene->object_count() == 1);
         CHECK(scene->objects()[0].name.empty());
         CHECK(scene->objects()[0].bed == 0);
         CHECK(scene->objects()[0].automation[0].gain == 1.0);
-        CHECK(scene->objects()[0].automation[0].interp == ac3::oba::Interpolation::kLinear);
+        CHECK(scene->objects()[0].automation[0].interp == iclforge::oba::Interpolation::kLinear);
     }
 
     SECTION("an orientation may be given in degrees instead of radians") {
-        const auto scene = ac3::oba::scene_from_json(
+        const auto scene = iclforge::oba::scene_from_json(
             R"({"ac3forge_scene":1,"orientation":{"yaw_deg":90},)"
             R"("objects":[{"automation":[{"t":0,"x":0.5,"y":0,"z":0}]}]})");
         REQUIRE(scene.has_value());
@@ -668,15 +676,15 @@ TEST_CASE("the JSON reader accepts what it should", "[oba][scene]") {
     }
 
     SECTION("bed labels name TS 103 420 Table 12's channels") {
-        const auto scene = ac3::oba::scene_from_json(
+        const auto scene = iclforge::oba::scene_from_json(
             R"({"ac3forge_scene":1,"objects":[{"bed":["lr","c","lfe","ls_rs"],)"
             R"("automation":[{"t":0,"x":0.5,"y":0.5,"z":0}]}]})");
         REQUIRE(scene.has_value());
-        CHECK(scene->objects()[0].bed == ac3::oba::bed::k51);
+        CHECK(scene->objects()[0].bed == iclforge::oba::bed::k51);
     }
 
     SECTION("string escapes and numeric forms are read as JSON defines them") {
-        const auto scene = ac3::oba::scene_from_json(
+        const auto scene = iclforge::oba::scene_from_json(
             R"({"ac3forge_scene":1,"objects":[{"name":"aé\t\"b\"",)"
             R"("automation":[{"t":1e-3,"x":5E-1,"y":-0.0,"z":0,"gain":2}]}]})");
         REQUIRE(scene.has_value());
@@ -687,7 +695,7 @@ TEST_CASE("the JSON reader accepts what it should", "[oba][scene]") {
     }
 
     SECTION("an empty objects array is a legal empty scene") {
-        const auto scene = ac3::oba::scene_from_json(R"({"ac3forge_scene":1,"objects":[]})");
+        const auto scene = iclforge::oba::scene_from_json(R"({"ac3forge_scene":1,"objects":[]})");
         REQUIRE(scene.has_value());
         CHECK(scene->object_count() == 0);
     }
@@ -702,16 +710,16 @@ TEST_CASE("every string escape and every empty form reads as JSON defines it",
     const auto scene = must_create({{.name = awkward_name,
                                      .automation = {{.time_s = 0.0,
                                                      .position = {.x = 0.5, .y = 0.5, .z = 0.0}}}}});
-    const auto text = ac3::oba::to_json(scene);
+    const auto text = iclforge::oba::to_json(scene);
     CHECK(text.find(R"(back\\slash \"q\" \r\n\t\u0001\u001f end)") != std::string::npos);
-    const auto back = ac3::oba::scene_from_json(text);
+    const auto back = iclforge::oba::scene_from_json(text);
     REQUIRE(back.has_value());
     CHECK(back->objects()[0].name == awkward_name);
 
     // The reader's side: every escape RFC 8259 §7 lists, \u in each UTF-8
     // width this format writes, and a lone surrogate replaced rather than
     // passed through as ill-formed UTF-8.
-    const auto read = ac3::oba::scene_from_json(
+    const auto read = iclforge::oba::scene_from_json(
         R"({"ac3forge_scene":1,"orientation":{},"objects":[{"name":"\/\b\f\rAé€\ud800",)"
         R"("bed":[],"automation":[{"t":0,"x":0.5,"y":0.5,"z":0}]}]})");
     REQUIRE(read.has_value());
@@ -720,7 +728,7 @@ TEST_CASE("every string escape and every empty form reads as JSON defines it",
     CHECK(read->orientation().yaw_rad == 0.0);
 
     // Degrees are accepted for all three angles, not only yaw.
-    const auto turned = ac3::oba::scene_from_json(
+    const auto turned = iclforge::oba::scene_from_json(
         R"({"ac3forge_scene":1,"orientation":{"pitch_deg":-90,"roll_deg":180},)"
         R"("objects":[{"automation":[{"t":0,"x":0.5,"y":0.5,"z":0}]}]})");
     REQUIRE(turned.has_value());
@@ -730,15 +738,15 @@ TEST_CASE("every string escape and every empty form reads as JSON defines it",
 
 TEST_CASE("the JSON reader refuses malformed escapes, numbers and empty members",
           "[oba][scene]") {
-    const auto refuses = [](std::string_view text, ac3::oba::SceneErrorKind kind,
+    const auto refuses = [](std::string_view text, iclforge::oba::SceneErrorKind kind,
                             std::string_view message) {
-        const auto scene = ac3::oba::scene_from_json(text);
+        const auto scene = iclforge::oba::scene_from_json(text);
         REQUIRE_FALSE(scene.has_value());
         INFO(scene.error().message);
         CHECK(scene.error().kind == kind);
         CHECK(scene.error().message.find(message) != std::string::npos);
     };
-    using ac3::oba::SceneErrorKind;
+    using iclforge::oba::SceneErrorKind;
     const std::string head = R"({"ac3forge_scene":1,"objects":[{"name":)";
     const std::string tail = R"(,"automation":[{"t":0,"x":0,"y":0,"z":0}]}]})";
 
@@ -784,13 +792,13 @@ TEST_CASE("the JSON reader refuses malformed escapes, numbers and empty members"
 }
 
 TEST_CASE("the JSON reader refuses what it should", "[oba][scene]") {
-    const auto refuses = [](std::string_view text, ac3::oba::SceneErrorKind kind) {
-        const auto scene = ac3::oba::scene_from_json(text);
+    const auto refuses = [](std::string_view text, iclforge::oba::SceneErrorKind kind) {
+        const auto scene = iclforge::oba::scene_from_json(text);
         REQUIRE_FALSE(scene.has_value());
         INFO(scene.error().message);
         CHECK(scene.error().kind == kind);
     };
-    using ac3::oba::SceneErrorKind;
+    using iclforge::oba::SceneErrorKind;
 
     refuses("", SceneErrorKind::kSyntax);
     refuses("[]", SceneErrorKind::kSyntax);
@@ -825,7 +833,7 @@ TEST_CASE("the JSON reader refuses what it should", "[oba][scene]") {
             SceneErrorKind::kSyntax);
 
     SECTION("an error points at the line it is on") {
-        const auto scene = ac3::oba::scene_from_json(
+        const auto scene = iclforge::oba::scene_from_json(
             "{\n  \"ac3forge_scene\": 1,\n  \"objects\": [\n    { \"wrong\": 1 }\n  ]\n}\n");
         REQUIRE_FALSE(scene.has_value());
         CHECK(scene.error().line == 4);

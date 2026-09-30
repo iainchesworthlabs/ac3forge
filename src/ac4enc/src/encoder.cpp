@@ -35,7 +35,7 @@
 #include "oamd/oamd_syntax.hpp"
 #include "iclforge/ac4core/tables/sfb_tables.hpp"
 
-namespace ac4 {
+namespace iclforge::ac4 {
 
 std::string_view describe(EncodeError error) {
     switch (error) {
@@ -5252,4 +5252,4 @@ int Encoder::decoder_delay_samples() const noexcept {
     return static_cast<int>(std::lround(delay * t.decoder_up / t.decoder_down));
 }
 
-}  // namespace ac4
+}  // namespace iclforge::ac4

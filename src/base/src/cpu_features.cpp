@@ -8,7 +8,7 @@
 
 #include "iclforge/base/detail/hardware_avx2.hpp"
 
-namespace ac3::internal::cpu {
+namespace iclforge::internal::cpu {
 
 namespace {
 
@@ -39,7 +39,7 @@ ForcedTier forced_tier() {
 
 // The two diagnostics in this file go through fmt::print, which throws std::system_error when
 // stderr cannot be written, so an escape from this noexcept function is std::terminate. That was
-// already so before {fmt} was compiled into this library (ac3::fmt_private, cmake/Fmt.cmake);
+// already so before {fmt} was compiled into this library (iclforge::fmt_private, cmake/Fmt.cmake);
 // clang-tidy only sees the path now that fmt's bodies are in this translation unit. The abort()
 // below chooses the same outcome for a forced tier this CPU cannot run.
 // NOLINTNEXTLINE(bugprone-exception-escape)
@@ -71,4 +71,4 @@ bool has_avx2() noexcept {
     return result;
 }
 
-}  // namespace ac3::internal::cpu
+}  // namespace iclforge::internal::cpu

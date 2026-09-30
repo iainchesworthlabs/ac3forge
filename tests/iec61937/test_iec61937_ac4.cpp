@@ -33,7 +33,7 @@
 
 namespace {
 
-namespace iec = ac3::iec61937;
+namespace iec = iclforge::iec61937;
 using iec::BurstDataType;
 
 std::uint8_t u8(std::span<const std::byte> bytes, std::size_t index) {
@@ -316,7 +316,7 @@ std::size_t length_code(BurstDataType type, std::size_t bytes) {
     }
 }
 
-// The whole sync frames of an .ac4 file, back to back as ac4::scan finds them.
+// The whole sync frames of an .ac4 file, back to back as iclforge::ac4::scan finds them.
 std::vector<std::vector<std::byte>> frames_of_file(const std::filesystem::path& path) {
     std::ifstream in(path, std::ios::binary);
     REQUIRE(in.good());
@@ -325,7 +325,7 @@ std::vector<std::vector<std::byte>> frames_of_file(const std::filesystem::path& 
     std::vector<std::byte> data(chars.size());
     std::transform(chars.begin(), chars.end(), data.begin(),
                    [](char c) { return static_cast<std::byte>(c); });
-    const ac4::ScanResult scanned = ac4::scan(data);
+    const iclforge::ac4::ScanResult scanned = iclforge::ac4::scan(data);
     REQUIRE_FALSE(scanned.frames.empty());
     REQUIRE_FALSE(scanned.stopped_at.has_value());
     std::vector<std::vector<std::byte>> frames;
@@ -915,7 +915,7 @@ TEST_CASE("Ac4BurstPacker: DEE's streams at four frame rates pack and read back 
         REQUIRE(carrier.has_value());
         const auto back = iec::unwrap_stream(*carrier);
         REQUIRE(back.has_value());
-        const ac4::ScanResult scanned = ac4::scan(*back);
+        const iclforge::ac4::ScanResult scanned = iclforge::ac4::scan(*back);
         CHECK(scanned.frames.size() == frames.size());
         CHECK_FALSE(scanned.stopped_at.has_value());
     }

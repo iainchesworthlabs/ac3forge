@@ -9,9 +9,9 @@
 
 #include "iclforge/sendspin/mdns.hpp"
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
-namespace ss = ac3::sendspin;
+namespace ss = iclforge::sendspin;
 
 namespace {
 
@@ -499,7 +499,7 @@ void NetworkSinks::delete_group(const std::string& group_id) {
     }
     // group's own destructor (stop(), then every member leaves) runs here,
     // outside mutex_ - this class never holds its own lock across a call
-    // into ac3::sendspin, on either side of it.
+    // into iclforge::sendspin, on either side of it.
 }
 
 void NetworkSinks::select_group(const std::string& group_id) {
@@ -1016,4 +1016,4 @@ void NetworkSinks::on_log(std::string_view line) {
     log_.emplace_back(line);
 }
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

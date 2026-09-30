@@ -6,7 +6,7 @@
 
 #include "iclforge/adm/ac3adm.hpp"
 
-// ac3adm::parse_bw64(std::istream&) (src/adm/src/adm.cpp) - the BW64/RF64
+// iclforge::adm::parse_bw64(std::istream&) (src/adm/src/adm.cpp) - the BW64/RF64
 // container walk plus the ADM XML document inside <axml>.
 //
 // The widest untrusted surface in the tree by input language: a BW64 file is
@@ -30,6 +30,6 @@
 extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size) {
     std::istringstream stream(std::string(reinterpret_cast<const char*>(data), size),
                               std::ios::binary);
-    (void)ac3adm::parse_bw64(stream);
+    (void)iclforge::adm::parse_bw64(stream);
     return 0;
 }

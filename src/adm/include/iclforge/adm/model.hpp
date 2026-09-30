@@ -18,7 +18,7 @@
 // aggregate mirroring one ADM element or one BW64 chunk, with no behaviour
 // and no opinion about what an "object" or a "bed" means in AC-3/E-AC-3/JOC
 // terms. That mapping is roadmap item B1's phase 2, a separate task - this
-// module (ac3adm::ac3adm) has no dependency on ac3::forge and does not know
+// module (iclforge::adm) has no dependency on iclforge::ac3 and does not know
 // those concepts exist. IDs are carried as ADM's own string form (e.g.
 // "AO_1001", "AC_00031001") rather than resolved into pointers/indices: BS.
 // 2076-2 clause 6 defines every ID as a formatted string used purely for
@@ -30,7 +30,7 @@
 // of the vendored third-party libraries libbw64 and libadm (see
 // src/adm/CMakeLists.txt) - and libadm's own public C++ namespace is
 // `adm`. This project's namespace here is deliberately "ac3adm", not "adm",
-// specifically to avoid colliding with that dependency: `adm::AudioObject`
+// specifically to avoid colliding with that dependency: `::adm::AudioObject`
 // (libadm's parsed-XML class) and this header's own AudioObject would
 // otherwise be the same fully-qualified name for two different types.
 // ac3adm's own types are independent of and not derived from libadm's -
@@ -38,7 +38,7 @@
 // it stays entirely inside this module's implementation, never in a public
 // header.
 
-namespace ac3adm {
+namespace iclforge::adm {
 
 // BS.2076-2 §8, Fig. 4/5: an audioBlockFormat's position is either polar
 // (azimuth/elevation/distance) or Cartesian (X/Y/Z) - "not both" (§5.8.3
@@ -83,7 +83,7 @@ enum class TypeDefinition : std::uint8_t {
 //
 // Fields cover the common sub-elements (§5.4.3, Table 11) plus the
 // typeDefinition-specific ones this phase's downstream consumer (the
-// motion-mapping phase 2, see ac3::oba::motion's KeyframePath) actually
+// motion-mapping phase 2, see iclforge::oba::motion's KeyframePath) actually
 // needs: position/width/height/depth/speakerLabel/diffuse for
 // DirectSpeakers and Objects (§§5.4.3.1, 5.4.3.3), plus HOA's order/degree/
 // normalization (§5.4.3.4). channelLock, jumpPosition/interpolationLength
@@ -220,7 +220,7 @@ struct AudioObject {
 
 // BS.2076-2 §5.7: describes what an audioObject (or set of them) contains -
 // language, dialogue/music/effect classification, loudness. Loudness
-// metadata sub-elements (§5.7.4) are not carried here: ac3::meta::loudness
+// metadata sub-elements (§5.7.4) are not carried here: iclforge::meta::loudness
 // already measures loudness independently, and this phase has no consumer
 // for a second, file-supplied copy of the same numbers.
 struct AudioContent {
@@ -277,7 +277,7 @@ struct ChnaEntry {
 };
 
 // The <data> chunk's decoded PCM, one vector per physical track in file
-// order - the same shape ac3::io::WavData uses (see ac3/io/wav.hpp), so a
+// order - the same shape iclforge::io::WavData uses (see ac3/io/wav.hpp), so a
 // caller already familiar with that convention needs nothing new here.
 // Samples are normalized to [-1, 1). Integer PCM (8/16/24/32-bit) and
 // IEEE float (32/64-bit) both read, through the vendored libbw64 directly -
@@ -308,4 +308,4 @@ struct AdmDocument {
     PcmAudio audio;
 };
 
-}  // namespace ac3adm
+}  // namespace iclforge::adm

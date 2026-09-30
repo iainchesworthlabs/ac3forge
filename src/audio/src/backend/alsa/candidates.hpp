@@ -25,7 +25,7 @@
 // only <alsa/asoundlib.h> for snd_pcm_stream_t, which for_each_pcm already
 // requires.
 
-namespace ac3::alsa {
+namespace iclforge::alsa {
 
 // A digital output found by walking the cards, before it has been probed for
 // passthrough support (that stays in passthrough.cpp - this file only finds
@@ -102,4 +102,4 @@ enum class Include : std::uint8_t {
     return candidates;
 }
 
-}  // namespace ac3::alsa
+}  // namespace iclforge::alsa

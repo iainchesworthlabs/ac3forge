@@ -52,7 +52,7 @@
 // and Main.qml's onClosing quits instead of hiding a window with no way back
 // to it.
 
-namespace ac3::crucible::ui {
+namespace iclforge::crucible::ui {
 
 bool tray_is_published() { return QSystemTrayIcon::isSystemTrayAvailable(); }
 
@@ -64,4 +64,4 @@ QString tray_absent_reason() {
                      "window quits.");
 }
 
-}  // namespace ac3::crucible::ui
+}  // namespace iclforge::crucible::ui

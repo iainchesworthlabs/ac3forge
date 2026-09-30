@@ -28,7 +28,7 @@
 // that are not syntax elements - byte_align, fill bits, skipped bytes - go
 // through skip() and align(), which emit nothing.
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 class BitReader {
    public:
@@ -235,4 +235,4 @@ class BitReader {
     mutable std::size_t cache_byte_ = std::numeric_limits<std::size_t>::max();
 };
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

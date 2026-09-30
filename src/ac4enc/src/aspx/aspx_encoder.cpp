@@ -4,7 +4,7 @@
 #include <cmath>
 #include <cstddef>
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 namespace {
 
 constexpr std::size_t kSubbands = dsp::kQmfSubbands;
@@ -1272,4 +1272,4 @@ void write_aspx_tail(BitWriter& w, bool iframe, const AspxSetup& setup, const As
                         {element.channels[0], element.channels[1]});
 }
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

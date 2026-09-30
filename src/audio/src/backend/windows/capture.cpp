@@ -24,7 +24,7 @@
 
 #include "windows_support.hpp"
 
-namespace ac3::audio {
+namespace iclforge::audio {
 
 namespace {
 
@@ -724,4 +724,4 @@ std::expected<void, CaptureError> Capture::start_process_loopback(
     return {};
 }
 
-}  // namespace ac3::audio
+}  // namespace iclforge::audio

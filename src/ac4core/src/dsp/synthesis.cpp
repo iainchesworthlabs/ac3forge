@@ -6,7 +6,7 @@
 #include "iclforge/ac4core/detail/profiling.hpp"
 #include "iclforge/ac4core/dsp/kbd.hpp"
 
-namespace ac4::detail::dsp {
+namespace iclforge::ac4::detail::dsp {
 namespace {
 
 // Block lengths are the full length halved up to four times (clause 5.5.3).
@@ -145,4 +145,4 @@ AC4CORE_ALSO_AT_DOUBLE(
     template class TransformSet<double>;
     template class ChannelSynthesis<double>;)
 
-}  // namespace ac4::detail::dsp
+}  // namespace iclforge::ac4::detail::dsp

@@ -2,7 +2,7 @@
 
 #include "iclforge/objects/oamd.hpp"
 
-namespace ac3::oba {
+namespace iclforge::oba {
 
 // One object's placement for one frame. Positions are room-anchored per
 // §4.2.1; the gain is linear and applies to the bed as well as being sent as
@@ -37,4 +37,4 @@ struct ObjectPlacement {
     bool enable_elevation = true;
 };
 
-}  // namespace ac3::oba
+}  // namespace iclforge::oba

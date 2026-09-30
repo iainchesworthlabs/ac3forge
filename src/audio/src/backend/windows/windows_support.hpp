@@ -29,7 +29,7 @@
 // render loop does not check for device loss at all today - see
 // stream_gone()'s own comment for the shape that would need.
 
-namespace ac3::windows_audio {
+namespace iclforge::windows_audio {
 
 // COM lifetime for one thread. WASAPI is apartment-sensitive, so every thread
 // that touches an interface initialises and uninitialises its own.
@@ -124,4 +124,4 @@ template <typename Error>
     return result == AUDCLNT_E_DEVICE_INVALIDATED || result == AUDCLNT_E_SERVICE_NOT_RUNNING;
 }
 
-}  // namespace ac3::windows_audio
+}  // namespace iclforge::windows_audio

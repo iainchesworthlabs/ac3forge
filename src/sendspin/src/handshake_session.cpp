@@ -14,7 +14,7 @@
 #include "iclforge/sendspin/handshake.hpp"
 #include "iclforge/sendspin/noise.hpp"
 
-namespace ac3::sendspin::handshake {
+namespace iclforge::sendspin::handshake {
 
 namespace {
 
@@ -241,4 +241,4 @@ std::optional<noise::Handshake::Transport> Initiator::take_keys() {
     return handshake_->split();
 }
 
-}  // namespace ac3::sendspin::handshake
+}  // namespace iclforge::sendspin::handshake

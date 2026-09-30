@@ -9,7 +9,7 @@
 // tools/generators/gen_ac4_tables.py from the attachments ts_103190_tables.c and
 // ts_103190_tables_part2.c and the two annexes' text; do not edit by hand.
 
-namespace ac4::detail::tables {
+namespace iclforge::ac4::detail::tables {
 
 // A.1: ASF.
 extern const Codebook kAsfHcbScalefac;  // Table A.1
@@ -118,4 +118,4 @@ extern const Codebook kAjocHcbWetFineDt;
 // Every codebook above, for a test that walks them all.
 extern const std::array<const Codebook*, 84> kAllCodebooks;
 
-}  // namespace ac4::detail::tables
+}  // namespace iclforge::ac4::detail::tables

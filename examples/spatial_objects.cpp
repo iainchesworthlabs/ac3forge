@@ -22,21 +22,21 @@
 int main() {
     // Heap-allocated: FrameEncoder carries several KB of MDCT scratch/history
     // state (PREfast's C6262).
-    auto encoder = std::make_unique<ac3::FrameEncoder>(ac3::EncoderConfig{
+    auto encoder = std::make_unique<iclforge::FrameEncoder>(iclforge::EncoderConfig{
         .bitrate_kbps = 448,
-        .acmod = ac3::Acmod::k3_2,
+        .acmod = iclforge::Acmod::k3_2,
         .lfe = true,
     });
 
-    ac3::spatial::BedRenderer renderer;
+    iclforge::spatial::BedRenderer renderer;
     // add_object allocates, so call it before rendering starts.
     const std::size_t object = renderer.add_object({.azimuth_deg = 0.0, .gain = 0.7});
 
     // The renderer works a block at a time (256 samples) because that is the
     // rate automation is clocked at; gains ramp linearly within a block, so
     // moving an object does not click.
-    std::array<float, ac3::spatial::kBlockSamples> source{};
-    std::vector<std::vector<float>> bed(6, std::vector<float>(ac3::kSamplesPerFrame));
+    std::array<float, iclforge::spatial::kBlockSamples> source{};
+    std::vector<std::vector<float>> bed(6, std::vector<float>(iclforge::kSamplesPerFrame));
 
     std::vector<std::span<const float>> bed_views;
     for (const auto& channel : bed) {
@@ -46,7 +46,7 @@ int main() {
     std::vector<std::byte> stream;
     long sample_index = 0;
     for (int frame = 0; frame < 62; ++frame) {  // two seconds
-        for (int block = 0; block < ac3::kBlocksPerFrame; ++block) {
+        for (int block = 0; block < iclforge::kBlocksPerFrame; ++block) {
             // One full turn every two seconds.
             const double seconds = static_cast<double>(sample_index) / 48000.0;
             renderer.set_target(object, {.azimuth_deg = 180.0 * seconds, .gain = 0.7});
@@ -63,8 +63,8 @@ int main() {
             std::array<std::span<float>, 6> block_out{};
             for (std::size_t ch = 0; ch < 6; ++ch) {
                 block_out[ch] = std::span<float>{bed[ch]}.subspan(
-                    static_cast<std::size_t>(block * ac3::spatial::kBlockSamples),
-                    ac3::spatial::kBlockSamples);
+                    static_cast<std::size_t>(block * iclforge::spatial::kBlockSamples),
+                    iclforge::spatial::kBlockSamples);
             }
             const std::array<std::span<const float>, 1> audio{std::span<const float>{source}};
             renderer.render_block(audio, block_out);

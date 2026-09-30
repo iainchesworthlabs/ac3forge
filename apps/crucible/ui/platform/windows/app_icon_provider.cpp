@@ -8,7 +8,7 @@
 #include <QMutexLocker>
 #include <QUrl>
 
-namespace ac3::crucible::ui {
+namespace iclforge::crucible::ui {
 
 namespace {
 
@@ -104,4 +104,4 @@ QImage AppIconProvider::requestImage(const QString& id, QSize* size, const QSize
     return image;
 }
 
-}  // namespace ac3::crucible::ui
+}  // namespace iclforge::crucible::ui

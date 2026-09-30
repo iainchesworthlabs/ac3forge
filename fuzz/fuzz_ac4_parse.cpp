@@ -8,8 +8,8 @@
 
 #include "iclforge/ac4/ac4.hpp"
 
-// ac4::scan, ac4::SyncFrameSplitter and ac4::parse_raw_frame (src/ac4/src/
-// ac4.cpp) - the AC-4 bitstream inspector.
+// iclforge::ac4::scan, iclforge::ac4::SyncFrameSplitter and iclforge::ac4::parse_raw_frame
+// (src/ac4/src/ ac4.cpp) - the AC-4 bitstream inspector.
 //
 // AC-4 reaches this project the same way AC-3 does, as bytes from a file or a
 // stream nobody here produced, and the TOC is the densest untrusted structure
@@ -48,15 +48,15 @@ namespace {
 
 // Splits `bytes` in pieces of `piece` into `capacity` bytes of storage and
 // checks the property against `scanned`.
-void split(std::span<const std::byte> bytes, const ac4::ScanResult& scanned, std::size_t piece,
-           std::size_t capacity) {
+void split(std::span<const std::byte> bytes, const iclforge::ac4::ScanResult& scanned,
+           std::size_t piece, std::size_t capacity) {
     std::vector<std::byte> storage(capacity);
-    ac4::SyncFrameSplitter splitter{storage};
+    iclforge::ac4::SyncFrameSplitter splitter{storage};
     std::size_t fed = 0;
     std::size_t matched = 0;
     for (;;) {
-        const ac4::SyncFrameSplitter::Result next = splitter.next();
-        if (next.status == ac4::SyncFrameSplitter::Status::kNeedMoreInput) {
+        const iclforge::ac4::SyncFrameSplitter::Result next = splitter.next();
+        if (next.status == iclforge::ac4::SyncFrameSplitter::Status::kNeedMoreInput) {
             if (fed == bytes.size()) {
                 splitter.finish();
                 continue;
@@ -71,16 +71,16 @@ void split(std::span<const std::byte> bytes, const ac4::ScanResult& scanned, std
             fed += n;
             continue;
         }
-        if (next.status == ac4::SyncFrameSplitter::Status::kTruncated) {
+        if (next.status == iclforge::ac4::SyncFrameSplitter::Status::kTruncated) {
             continue;
         }
-        if (next.status != ac4::SyncFrameSplitter::Status::kFrame) {
+        if (next.status != iclforge::ac4::SyncFrameSplitter::Status::kFrame) {
             break;
         }
         // A frame scan() found: the same bytes at the same place.
         if (matched < scanned.frames.size() &&
             next.frame.offset == scanned.frames[matched].offset) {
-            const ac4::SyncFrame& want = scanned.frames[matched];
+            const iclforge::ac4::SyncFrame& want = scanned.frames[matched];
             if (next.frame.sync_word != want.sync_word || next.frame.crc_ok != want.crc_ok ||
                 !std::ranges::equal(next.frame.raw_ac4_frame, want.raw_ac4_frame)) {
                 std::abort();
@@ -100,36 +100,36 @@ void split(std::span<const std::byte> bytes, const ac4::ScanResult& scanned, std
 extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size) {
     const std::span<const std::byte> bytes(reinterpret_cast<const std::byte*>(data), size);
 
-    const ac4::ScanResult scanned = ac4::scan(bytes);
+    const iclforge::ac4::ScanResult scanned = iclforge::ac4::scan(bytes);
     const std::size_t piece =
         size == 0 ? 1 : 1 + std::to_integer<std::size_t>(bytes[size - 1]) % 61;
     split(bytes, scanned, piece, 64);
     split(bytes, scanned, piece, size + 16);
-    if (const auto frame = ac4::parse_raw_frame(bytes)) {
+    if (const auto frame = iclforge::ac4::parse_raw_frame(bytes)) {
         // What an MP4 or CMAF writer makes of a table of contents it did not
         // write: the dac4 describes every presentation whole or is empty, and
         // dac4_refusal() names a reason exactly where it is empty.
-        const std::vector<std::byte> dac4 = ac4::build_dac4(frame->toc);
-        if (dac4.empty() == ac4::dac4_refusal(frame->toc).empty()) {
+        const std::vector<std::byte> dac4 = iclforge::ac4::build_dac4(frame->toc);
+        if (dac4.empty() == iclforge::ac4::dac4_refusal(frame->toc).empty()) {
             std::abort();
         }
-        (void)ac4::cmaf_refusal(frame->toc);
-        (void)ac4::rfc6381_codec_string(frame->toc);
+        (void)iclforge::ac4::cmaf_refusal(frame->toc);
+        (void)iclforge::ac4::rfc6381_codec_string(frame->toc);
         // The presentation a manifest describes is one of the table's, where
         // it has any; and a table of contents is equivalent to itself.
-        const ac4::Toc& toc = frame->toc;
+        const iclforge::ac4::Toc& toc = frame->toc;
         const std::size_t presentations = toc.presentations_v1.empty()
                                               ? toc.presentations_v0.size()
                                               : toc.presentations_v1.size();
-        const std::optional<std::size_t> signalled = ac4::signalled_presentation(toc);
+        const std::optional<std::size_t> signalled = iclforge::ac4::signalled_presentation(toc);
         if (signalled.has_value() != (presentations > 0) ||
             (signalled.has_value() && *signalled >= presentations)) {
             std::abort();
         }
-        (void)ac4::dash_channel_configuration(toc);
-        (void)ac4::dash_supplemental_properties(toc);
-        (void)ac4::presentation_channel_count(toc);
-        if (!ac4::configuration_difference(toc, toc).empty()) {
+        (void)iclforge::ac4::dash_channel_configuration(toc);
+        (void)iclforge::ac4::dash_supplemental_properties(toc);
+        (void)iclforge::ac4::presentation_channel_count(toc);
+        if (!iclforge::ac4::configuration_difference(toc, toc).empty()) {
             std::abort();
         }
     }

@@ -4,14 +4,14 @@
 
 namespace ac3gui {
 
-std::optional<double> location_azimuth_deg(ac3::eac3::chanmap::Location location) {
+std::optional<double> location_azimuth_deg(iclforge::eac3::chanmap::Location location) {
     // The one table the soundfield ring and the AC-4 pins read, in apps/common so that
     // ac3cli's atmos-encode reads it too.
-    return ac3::apps::location_azimuth_deg(location);
+    return iclforge::apps::location_azimuth_deg(location);
 }
 
-bool is_ceiling_location(ac3::eac3::chanmap::Location location) {
-    using ac3::eac3::chanmap::Location;
+bool is_ceiling_location(iclforge::eac3::chanmap::Location location) {
+    using iclforge::eac3::chanmap::Location;
     switch (location) {
         case Location::kTs:
         case Location::kVhl:
@@ -25,9 +25,9 @@ bool is_ceiling_location(ac3::eac3::chanmap::Location location) {
     }
 }
 
-std::vector<ac3::eac3::chanmap::Location> ac3_bed_locations(ac3::Acmod acmod, bool lfe) {
-    using ac3::Acmod;
-    using ac3::eac3::chanmap::Location;
+std::vector<iclforge::eac3::chanmap::Location> ac3_bed_locations(iclforge::Acmod acmod, bool lfe) {
+    using iclforge::Acmod;
+    using iclforge::eac3::chanmap::Location;
     std::vector<Location> out;
     switch (acmod) {
         case Acmod::kDualMono:

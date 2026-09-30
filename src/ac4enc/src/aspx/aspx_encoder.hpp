@@ -38,7 +38,7 @@
 // d_pcm + 577 samples on, at index 13 c(s) = y(s + 929). The decoder's
 // analysis of c then sees the compressed slots on the same axis.
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 // ac4core's own complex type: see pcm/aspx.hpp's QmfValue, the decoder's
 // identical seam.
@@ -63,7 +63,7 @@ struct AspxSetup {
     bool base_48k = true;
     FrameTiming timing{};
     // Experimental: VARVAR framing, pairs coded as sum and balance, and
-    // frequency interleaved waveform coding (ac4::EncoderConfig::Experimental).
+    // frequency interleaved waveform coding (iclforge::ac4::EncoderConfig::Experimental).
     bool varvar = false;
     bool balance = false;
     bool interleave = false;
@@ -289,4 +289,4 @@ void write_aspx_head(BitWriter& w, bool iframe, const AspxSetup& setup, const As
 // The aspx_data_1ch() or aspx_data_2ch() after it.
 void write_aspx_tail(BitWriter& w, bool iframe, const AspxSetup& setup, const AspxElement& element);
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

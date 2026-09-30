@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <string_view>
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 namespace {
 
 [[nodiscard]] std::uint64_t u(int value) noexcept {
@@ -516,4 +516,4 @@ void write_oamd_substream(BitWriter& w, const std::optional<OamdCommonFields>& c
     w.align();
 }
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

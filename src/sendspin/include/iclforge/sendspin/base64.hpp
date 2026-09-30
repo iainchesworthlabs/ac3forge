@@ -15,7 +15,7 @@
 // padding only at the end and only as much as the last group needs, nothing outside the
 // alphabet, and zero bits past the last whole byte.
 
-namespace ac3::sendspin::base64 {
+namespace iclforge::sendspin::base64 {
 
 // Characters for `bytes` bytes: 4 * ceil(n / 3).
 [[nodiscard]] constexpr std::size_t encoded_size(std::size_t bytes) {
@@ -25,4 +25,4 @@ namespace ac3::sendspin::base64 {
 [[nodiscard]] std::string encode(std::span<const std::uint8_t> bytes);
 [[nodiscard]] std::optional<std::vector<std::uint8_t>> decode(std::string_view text);
 
-}  // namespace ac3::sendspin::base64
+}  // namespace iclforge::sendspin::base64

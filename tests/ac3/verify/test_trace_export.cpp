@@ -32,9 +32,9 @@
 
 namespace {
 
-ac3::verify::StreamTrace stream_with(std::vector<std::uint8_t> exponents,
+iclforge::verify::StreamTrace stream_with(std::vector<std::uint8_t> exponents,
                                      std::vector<std::uint8_t> bap, int snr_offset) {
-    ac3::verify::StreamTrace stream;
+    iclforge::verify::StreamTrace stream;
     stream.exponents = std::move(exponents);
     stream.bap = std::move(bap);
     stream.snr_offset = snr_offset;
@@ -60,14 +60,14 @@ std::vector<std::vector<float>> tones(std::span<const double> hz, int samples,
 // Several frames of real coded AC-3 audio (CONTRIBUTING.md: silence and frame
 // 0 give false passes).
 std::vector<std::vector<std::byte>> encode_real_ac3() {
-    ac3::EncoderConfig config;
-    config.acmod = ac3::Acmod::k2_0;
+    iclforge::EncoderConfig config;
+    config.acmod = iclforge::Acmod::k2_0;
     config.bitrate_kbps = 192;
-    ac3::FrameEncoder encoder{config};
+    iclforge::FrameEncoder encoder{config};
     const std::array<double, 2> hz = {440.0, 660.0};
     std::vector<std::vector<std::byte>> out;
     for (int f = 0; f < 3; ++f) {
-        const auto pcm = tones(hz, ac3::kSamplesPerFrame);
+        const auto pcm = tones(hz, iclforge::kSamplesPerFrame);
         std::vector<std::span<const float>> views;
         for (const auto& channel : pcm) {
             views.emplace_back(channel);
@@ -79,7 +79,7 @@ std::vector<std::vector<std::byte>> encode_real_ac3() {
     return out;
 }
 
-bool any_mask_populated(const ac3::verify::FrameTrace& trace) {
+bool any_mask_populated(const iclforge::verify::FrameTrace& trace) {
     for (const auto& block : trace.blocks) {
         if (!block.allocated) {
             continue;
@@ -96,18 +96,19 @@ bool any_mask_populated(const ac3::verify::FrameTrace& trace) {
 }  // namespace
 
 TEST_CASE("trace_csv_header names every column", "[verify][trace_export]") {
-    CHECK(ac3::verify::trace_csv_header() == "frame,substream,block,stream,kind,index,value\n");
+    CHECK(iclforge::verify::trace_csv_header() ==
+          "frame,substream,block,stream,kind,index,value\n");
 }
 
 TEST_CASE("append_trace_csv writes exactly the rows a hand-built trace holds",
           "[verify][trace_export]") {
-    ac3::verify::FrameTrace trace;
+    iclforge::verify::FrameTrace trace;
     trace.blocks[0].entered = true;
     trace.blocks[0].allocated = true;
     trace.blocks[0].streams.push_back(stream_with({5, 6}, {1, 2}, 42));
 
     std::string out;
-    ac3::verify::append_trace_csv(trace, 7, out);
+    iclforge::verify::append_trace_csv(trace, 7, out);
 
     std::string expected;
     expected += "7,0,0,0,exponent,0,5\n";
@@ -123,13 +124,13 @@ TEST_CASE("append_trace_csv writes exactly the rows a hand-built trace holds",
 
 TEST_CASE("append_trace_json_lines writes exactly the rows a hand-built trace holds",
           "[verify][trace_export]") {
-    ac3::verify::FrameTrace trace;
+    iclforge::verify::FrameTrace trace;
     trace.blocks[0].entered = true;
     trace.blocks[0].allocated = true;
     trace.blocks[0].streams.push_back(stream_with({5}, {1}, 42));
 
     std::string out;
-    ac3::verify::append_trace_json_lines(trace, 3, out);
+    iclforge::verify::append_trace_json_lines(trace, 3, out);
 
     std::string expected;
     expected += R"({"frame":3,"substream":0,"block":0,"stream":0,"kind":"exponent","index":0,"value":5})"
@@ -150,46 +151,46 @@ TEST_CASE("append_trace_csv skips a block the decoder never allocated",
           "[verify][trace_export]") {
     // Default-constructed: every block's `allocated` is false, matching a
     // frame the decoder refused before running the bit allocation at all.
-    const ac3::verify::FrameTrace trace;
+    const iclforge::verify::FrameTrace trace;
     std::string out;
-    ac3::verify::append_trace_csv(trace, 0, out);
+    iclforge::verify::append_trace_csv(trace, 0, out);
     CHECK(out.empty());
 }
 
 TEST_CASE("append_trace_csv numbers E-AC-3 substreams by access-unit position",
           "[verify][trace_export]") {
-    ac3::verify::Eac3AccessUnitTrace trace;
+    iclforge::verify::Eac3AccessUnitTrace trace;
     trace.resize(2);
     trace.substream(0).blocks[0].entered = true;
     trace.substream(0).blocks[0].allocated = true;
-    ac3::verify::Eac3StreamTrace s0;
+    iclforge::verify::Eac3StreamTrace s0;
     s0.exponents = {1};
     s0.bap = {2};
     trace.substream(0).blocks[0].streams.push_back(s0);
     trace.substream(1).blocks[0].entered = true;
     trace.substream(1).blocks[0].allocated = true;
-    ac3::verify::Eac3StreamTrace s1;
+    iclforge::verify::Eac3StreamTrace s1;
     s1.exponents = {9};
     s1.bap = {8};
     trace.substream(1).blocks[0].streams.push_back(s1);
 
     std::string out;
-    ac3::verify::append_trace_csv(trace, 0, out);
+    iclforge::verify::append_trace_csv(trace, 0, out);
     CHECK(out.find("0,0,0,0,exponent,0,1\n") != std::string::npos);
     CHECK(out.find("0,1,0,0,exponent,0,9\n") != std::string::npos);
 }
 
 TEST_CASE("AC-3: attaching a trace does not change the decoded audio",
           "[decoder][verify][trace_export]") {
-    // The traced bit-allocation path (ac3::internal::compute_bit_allocation_traced)
+    // The traced bit-allocation path (iclforge::internal::compute_bit_allocation_traced)
     // is a second entry point onto the SAME routine the plain, untraced
     // decode uses (see bitalloc_internal.hpp) - this is the black-box proof
     // that capturing the masking curve alongside it changes nothing about
     // what gets decoded.
     auto frames = encode_real_ac3();
-    ac3::FrameDecoder plain;
-    ac3::verify::FrameTrace trace;
-    ac3::FrameDecoder traced{{.trace = &trace}};
+    iclforge::FrameDecoder plain;
+    iclforge::verify::FrameTrace trace;
+    iclforge::FrameDecoder traced{{.trace = &trace}};
 
     for (const auto& frame : frames) {
         const auto a = plain.decode_frame(frame);
@@ -204,8 +205,8 @@ TEST_CASE("AC-3: attaching a trace does not change the decoded audio",
 TEST_CASE("AC-3: a real decode's trace exports one row per bin/band/scalar",
           "[decoder][verify][trace_export]") {
     auto frames = encode_real_ac3();
-    ac3::verify::FrameTrace trace;
-    ac3::FrameDecoder decoder{{.trace = &trace}};
+    iclforge::verify::FrameTrace trace;
+    iclforge::FrameDecoder decoder{{.trace = &trace}};
     REQUIRE(decoder.decode_frame(frames[0]).has_value());
 
     std::size_t expected_rows = 0;
@@ -220,24 +221,24 @@ TEST_CASE("AC-3: a real decode's trace exports one row per bin/band/scalar",
     REQUIRE(expected_rows > 0);
 
     std::string csv;
-    ac3::verify::append_trace_csv(trace, 0, csv);
+    iclforge::verify::append_trace_csv(trace, 0, csv);
     const auto csv_rows = static_cast<std::size_t>(std::ranges::count(csv, '\n'));
     CHECK(csv_rows == expected_rows);
 
     std::string json;
-    ac3::verify::append_trace_json_lines(trace, 0, json);
+    iclforge::verify::append_trace_json_lines(trace, 0, json);
     const auto json_rows = static_cast<std::size_t>(std::ranges::count(json, '\n'));
     CHECK(json_rows == expected_rows);
 }
 
 TEST_CASE("E-AC-3: attaching a trace does not change the decoded audio",
           "[eac3][decoder][verify][trace_export]") {
-    ac3::eac3::FrameEncoder encoder{{.bitrate_kbps = 192, .acmod = ac3::Acmod::k2_0}};
+    iclforge::eac3::FrameEncoder encoder{{.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0}};
     const auto nchans = static_cast<std::size_t>(encoder.channel_count());
     const std::array<double, 2> hz = {440.0, 660.0};
     std::vector<std::vector<std::byte>> frames;
     for (int f = 0; f < 3; ++f) {
-        const auto pcm = tones(hz, ac3::kSamplesPerFrame);
+        const auto pcm = tones(hz, iclforge::kSamplesPerFrame);
         std::vector<std::span<const float>> views(pcm.begin(), pcm.end());
         REQUIRE(views.size() == nchans);
         auto frame = encoder.encode_frame(views);
@@ -245,9 +246,9 @@ TEST_CASE("E-AC-3: attaching a trace does not change the decoded audio",
         frames.push_back(std::move(*frame));
     }
 
-    ac3::Eac3Decoder plain;
-    ac3::verify::Eac3AccessUnitTrace trace;
-    ac3::Eac3Decoder traced{{.eac3_trace = &trace}};
+    iclforge::Eac3Decoder plain;
+    iclforge::verify::Eac3AccessUnitTrace trace;
+    iclforge::Eac3Decoder traced{{.eac3_trace = &trace}};
 
     bool mask_populated = false;
     for (const auto& frame : frames) {

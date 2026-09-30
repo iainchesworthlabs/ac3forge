@@ -51,7 +51,7 @@
 // and G'' in the core's Tsl and Tsr, and reads H to K without decoding them.
 // src/ac4dec/ERRATA.md, "The immersive element", records the readings.
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 // Object audio's layouts, numbered past the channel modes, for the elements
 // that code object audio substreams (ETSI TS 103 190-2 V1.3.1 clause 6.2.3):
@@ -170,4 +170,4 @@ struct AspxUnit {
 // and Rs in ASPX_AJCC, the one mode that sends it (Part 2 clause 4.8.3.10.3).
 [[nodiscard]] std::vector<Speaker> companded_speakers(int ch_mode, int codec_mode);
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

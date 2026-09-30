@@ -11,7 +11,7 @@
 // (AAudio has an input direction) if some later app needs it; it just is not
 // this one.
 
-namespace ac3::audio {
+namespace iclforge::audio {
 
 std::string_view describe(CaptureError error) {
     switch (error) {
@@ -60,4 +60,4 @@ std::expected<void, CaptureError> Capture::start_process_loopback(std::uint32_t,
     return std::unexpected(CaptureError::kNoBackend);
 }
 
-}  // namespace ac3::audio
+}  // namespace iclforge::audio

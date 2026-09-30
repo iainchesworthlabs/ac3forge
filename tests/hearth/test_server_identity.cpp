@@ -13,9 +13,9 @@
 // start, so a sink's pairing record - bound to the identity that made it - still
 // matches after a restart.
 
-using ac3::hearth::kServerIdentityKey;
-using ac3::hearth::load_or_make_server_identity;
-using ac3::hearth::MemorySettingsStore;
+using iclforge::hearth::kServerIdentityKey;
+using iclforge::hearth::load_or_make_server_identity;
+using iclforge::hearth::MemorySettingsStore;
 
 TEST_CASE("server identity: made once, then read back the same on the next start", "[hearth][server-identity]") {
     MemorySettingsStore first;

@@ -24,7 +24,7 @@
 // ramp's counter, its comparison, the decorrelation input matrix of objects of
 // different band counts, and the rest.
 
-namespace ac4::detail::ajoc {
+namespace iclforge::ac4::detail::ajoc {
 
 inline constexpr int kSubbands = acpl::kSubbands;
 inline constexpr int kMaxSlots = acpl::kMaxSlots;
@@ -159,4 +159,4 @@ class Reconstruction {
 
 extern template class Reconstruction<Real>;
 
-}  // namespace ac4::detail::ajoc
+}  // namespace iclforge::ac4::detail::ajoc

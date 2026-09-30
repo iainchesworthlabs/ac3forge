@@ -10,10 +10,10 @@
 // back to enumerate_render_devices()'s device-property read here - see
 // docs/platforms/macos.md.
 
-namespace ac3::audio {
+namespace iclforge::audio {
 
 std::expected<SinkAudioCapabilities, EdidError> read_sink_capabilities(const std::string&) {
     return std::unexpected(EdidError::kNoBackend);
 }
 
-}  // namespace ac3::audio
+}  // namespace iclforge::audio

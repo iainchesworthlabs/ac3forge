@@ -35,7 +35,7 @@
 // the Sources seam below: an enumeration of the test's own and no platform
 // watcher is exactly the shape ALSA runs in.
 
-namespace ac3::audio {
+namespace iclforge::audio {
 
 class RenderDeviceWatch {
 public:
@@ -133,4 +133,4 @@ private:
     std::unique_ptr<Impl> impl_;
 };
 
-}  // namespace ac3::audio
+}  // namespace iclforge::audio

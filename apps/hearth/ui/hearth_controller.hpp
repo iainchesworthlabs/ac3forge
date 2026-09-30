@@ -13,7 +13,7 @@
 
 #include "diagnostic_log.hpp"
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 class Engine;
 class MediaInspector;
 struct MediaInfo;
@@ -22,7 +22,7 @@ class PairingStore;
 class DiagnosticsHttpServer;
 }
 
-namespace ac3::hearth::ui {
+namespace iclforge::hearth::ui {
 struct TestOutputs;  // test_outputs.hpp
 }
 
@@ -51,7 +51,7 @@ struct TestOutputs;  // test_outputs.hpp
 // setup today, not one per output device - SavedSpeakerSetup's own comment
 // says why.
 
-namespace ac3::hearth::ui {
+namespace iclforge::hearth::ui {
 
 class HearthController : public QObject {
     Q_OBJECT
@@ -59,7 +59,7 @@ class HearthController : public QObject {
     QML_SINGLETON
 
     // --- about ------------------------------------------------------------
-    // Version, commit and build target, for About (ac3::version_details()).
+    // Version, commit and build target, for About (iclforge::version_details()).
     Q_PROPERTY(QString versionDetails READ versionDetails CONSTANT)
     // The third-party notices this build ships - the package's NOTICES.txt,
     // embedded at build time - for About > Licences.
@@ -145,7 +145,7 @@ class HearthController : public QObject {
     // Each device output's own name - "FL", "LFE", "SL" - for the routing
     // grid's column headers to show beside their 1-based output number
     // (Speakers.qml's own "1 FL" mockup, planning/hearth-design.md). From
-    // EngineStatus::speaker_mask (ac3::audio::speakers.hpp's output_names()),
+    // EngineStatus::speaker_mask (iclforge::audio::speakers.hpp's output_names()),
     // which falls back to the standard arrangement for routingOutputs' width
     // when the device does not report a mask; an entry is empty where even
     // that cannot name the output, and the grid shows the bare number alone.
@@ -215,7 +215,7 @@ class HearthController : public QObject {
 
     // One entry per render layout slot, in slot order (matching
     // speakerLabels): {peakDb, holdDb, rmsDb, clipped}, from
-    // MeterSnapshot::levels (ac3::analysis::ChannelLevel). Empty while no
+    // MeterSnapshot::levels (iclforge::analysis::ChannelLevel). Empty while no
     // output is open or nothing has been metered yet.
     Q_PROPERTY(QVariantList levels READ levels NOTIFY monitorChanged)
     // momentary/shortTerm/integrated (LUFS), range (LU) and truePeak (dBTP).
@@ -258,7 +258,7 @@ class HearthController : public QObject {
     // read on every poll() tick. Each entry: id, name, isDefault (bool),
     // channels (int, 0 for "not reported"), speakers (the mask's speaker
     // names, "" for "not reported"), sampleRates (a list of Hz, empty for
-    // "not reported"), supportsAc3, supportsEac3 (bool, ac3::audio::
+    // "not reported"), supportsAc3, supportsEac3 (bool, iclforge::audio::
     // RenderDeviceInfo's own probe of IEC 61937 passthrough in exclusive
     // mode - read here, not acted on: no passthrough sink is wired into this
     // engine yet).
@@ -272,7 +272,7 @@ class HearthController : public QObject {
     Q_PROPERTY(QString outputGroupName READ outputGroupName NOTIFY stateChanged)
 
     // --- settings (the Settings page) ------------------------------------
-    // Playback and network are ac3::hearth::EngineSettings, kept through a
+    // Playback and network are iclforge::hearth::EngineSettings, kept through a
     // SettingsStore this controller implements over QSettings
     // (hearth_controller.cpp's own QSettingsStore) - the way
     // apps/hearth/engine/settings_model.hpp says the window has to. Read
@@ -280,11 +280,11 @@ class HearthController : public QObject {
     // EngineSettings by value, for the same reason decoderSettings() above
     // takes a fresh read rather than a cached DecoderSettings: caching the
     // type by value would need settings_model.hpp in this header, which
-    // pulls in engine_thread.hpp and so ac3::render::OutputLayout, ahead of
+    // pulls in engine_thread.hpp and so iclforge::render::OutputLayout, ahead of
     // this header's own Qt includes - see hearth_controller.cpp's #undef
     // slots for what that collision does.
     Q_PROPERTY(bool resumeQueue READ resumeQueue WRITE setResumeQueue NOTIFY settingsChanged)
-    // "skip" or "stop" (ac3::hearth::FailurePolicy).
+    // "skip" or "stop" (iclforge::hearth::FailurePolicy).
     Q_PROPERTY(QString onFailure READ onFailure WRITE setOnFailure NOTIFY settingsChanged)
     Q_PROPERTY(QString networkName READ networkName WRITE setNetworkName NOTIFY settingsChanged)
     Q_PROPERTY(bool networkDiscover READ networkDiscover WRITE setNetworkDiscover NOTIFY settingsChanged)
@@ -435,7 +435,7 @@ public:
     // Enumerates this machine's render endpoints again and replaces
     // outputDevices() with the result - the dialog's own onOpened. Runs on
     // the calling (GUI) thread and can probe each endpoint in turn
-    // (ac3::audio::enumerate_render_devices's own comment), so it is not
+    // (iclforge::audio::enumerate_render_devices's own comment), so it is not
     // bound to a poll tick; a dialog open is an occasional, deliberate ask,
     // not a per-frame one.
     Q_INVOKABLE void refreshOutputDevices();
@@ -462,7 +462,7 @@ public:
     // back to a local device.
     Q_INVOKABLE void selectOutputGroup(const QString& groupId);
 
-    // A name ("7.1.4") or a list (ac3::render::OutputLayout::parse()'s own
+    // A name ("7.1.4") or a list (iclforge::render::OutputLayout::parse()'s own
     // grammar - the layout picker's presets and the "As text" field both call
     // this directly), parsed here so an unparseable edit is simply refused
     // with nothing posted to the engine, the same way an out-of-range trim or
@@ -556,7 +556,7 @@ private:
     // calling sync() only on a change rather than continuously.
     void save_on_quit();
 
-    std::unique_ptr<ac3::hearth::Engine> engine_;
+    std::unique_ptr<iclforge::hearth::Engine> engine_;
     QTimer poll_timer_;
     // Set only by set_test_outputs(); null in the shipped window.
     std::shared_ptr<TestOutputs> test_outputs_;
@@ -565,28 +565,28 @@ private:
     // a port; null otherwise. Stopped explicitly, first, in the destructor
     // body - not left to field order - since it owns a thread that must not
     // outlive anything its report lambda touches.
-    std::unique_ptr<ac3::hearth::DiagnosticsHttpServer> diagnostics_server_;
+    std::unique_ptr<iclforge::hearth::DiagnosticsHttpServer> diagnostics_server_;
 
     // The process-wide note ring the engine and this controller share -
     // given to the engine in start() so a diagnostics export carries what it
     // did, not just what this controller did. Declared before the settings
     // members below: it does not depend on them, and the constructor's
     // initialiser list has to follow this declaration order regardless.
-    ac3::hearth::DiagnosticLog& log_;
+    iclforge::hearth::DiagnosticLog& log_;
     // The four-argument constructor: the two-argument one always uses the
     // native store (the registry here) whatever QSettings::setDefaultFormat
     // says, which would let a QML test suite read and write the developer's
     // own settings - apps/crucible/ui/crucible_controller.cpp's own
     // constructor carries the identical comment for the identical reason.
     QSettings settings_;
-    // Implements ac3::hearth::SettingsStore over settings_
+    // Implements iclforge::hearth::SettingsStore over settings_
     // (hearth_controller.cpp's QSettingsStore); held through the base class
     // so this header never needs settings_model.hpp's full definition.
     // Declared after settings_, which it depends on.
-    std::unique_ptr<ac3::hearth::SettingsStore> store_;
+    std::unique_ptr<iclforge::hearth::SettingsStore> store_;
     // The process's one pairing store, which NetworkController pairs through
     // (shared_pairing_store.hpp says why there is only one).
-    std::shared_ptr<ac3::hearth::PairingStore> pairing_;
+    std::shared_ptr<iclforge::hearth::PairingStore> pairing_;
     QString diagnostics_message_;
 
     QVariantList queue_;
@@ -601,8 +601,8 @@ private:
     // Each on its own thread (media_inspector.hpp), so the Media page's own
     // pick never has to wait for whatever currentMedia is mid-reading, and
     // vice versa.
-    std::unique_ptr<ac3::hearth::MediaInspector> now_playing_inspector_;
-    std::unique_ptr<ac3::hearth::MediaInspector> inspected_item_inspector_;
+    std::unique_ptr<iclforge::hearth::MediaInspector> now_playing_inspector_;
+    std::unique_ptr<iclforge::hearth::MediaInspector> inspected_item_inspector_;
     QVariantMap current_media_;
     QVariantMap inspected_media_;
     QString now_playing_path_;
@@ -647,7 +647,7 @@ private:
     QString heights_realization_;
     // -20.0 here mirrors render::IdentifyTone::kDefaultLevelDb without this
     // header needing that include - see setDecoderSettings()'s own comment
-    // on why ac3::render stays out of this file. Overwritten by the first
+    // on why iclforge::render stays out of this file. Overwritten by the first
     // poll() regardless, the way speakerLabels' own comment explains.
     double identify_level_db_ = -20.0;
     int identify_slot_ = -1;
@@ -661,4 +661,4 @@ private:
     QVariantMap output_format_;
 };
 
-}  // namespace ac3::hearth::ui
+}  // namespace iclforge::hearth::ui

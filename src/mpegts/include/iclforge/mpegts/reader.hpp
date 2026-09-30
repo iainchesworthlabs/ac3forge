@@ -13,14 +13,14 @@
 #include "iclforge/mpegts/export.hpp"
 #include "iclforge/mpegts/mpegts.hpp"
 
-// The read side of mpegts::mux()/mpegts::Writer: pulling one programme's
+// The read side of iclforge::mpegts::mux()/iclforge::mpegts::Writer: pulling one programme's
 // audio back out of a transport stream.
 //
 // A container reader and nothing more, the same way the writer beside it is
 // a container writer and nothing more (see mpegts/mpegts.hpp): it locks to
 // the packet grid, follows PAT to PMT to an elementary PID, reassembles PES,
 // and hands the payloads back as opaque bytes. It links nothing from
-// ac3::forge.
+// iclforge::ac3.
 //
 // WHAT A "FRAME" IS HERE, AND WHY IT DIFFERS FROM THE SIBLINGS. A Matroska
 // SimpleBlock and an MP4 sample each hold exactly one access unit, so those
@@ -29,7 +29,7 @@
 // unbounded PES_packet_length broadcast uses - a run of them ending only
 // when the next one starts. So this reader hands back PES PAYLOADS, and what
 // they concatenate to is the elementary stream. That is exactly what
-// ac3::io::scan wants, and re-framing them into access units is its job, not
+// iclforge::io::scan wants, and re-framing them into access units is its job, not
 // this module's: doing it here would mean knowing what an AC-3 syncframe is.
 //
 // BOTH SIGNALLING PROFILES, unlike the writer. mux() implements DVB
@@ -54,7 +54,7 @@
 // and ReadOptions bounds what may be buffered. fuzz/fuzz_mpegts_demux.cpp
 // drives both entry points with arbitrary bytes.
 
-namespace mpegts {
+namespace iclforge::mpegts {
 
 namespace detail {
 // Reader's parse state, defined in src/mpegts/src/reader.cpp - a
@@ -99,7 +99,7 @@ struct ReadStream {
     // The detected grid: 188 (TS), 192 (M2TS) or 204 (TS with RS parity).
     std::size_t packet_size = 188;
     // The PMT's own AC-3/E-AC-3 audio descriptor, decoded back into the same
-    // ServiceInfo shape mpegts::mux()'s caller supplies - see mpegts.hpp's
+    // ServiceInfo shape iclforge::mpegts::mux()'s caller supplies - see mpegts.hpp's
     // own header comment on why this module's job stops at descriptor
     // syntax. std::nullopt when signalling carries no such
     // descriptor to read (kAtscStreamType's own stream_type IDs the codec
@@ -107,9 +107,9 @@ struct ReadStream {
     // descriptor at all, and ac4 never does either) or when this codec's
     // descriptor is malformed - never a guessed value. Some ServiceInfo
     // fields cannot be recovered exactly from these bytes (see
-    // mpegts::parse_service_descriptor's own comment) and are left at their
+    // iclforge::mpegts::parse_service_descriptor's own comment) and are left at their
     // ServiceInfo default rather than approximated; acmod/channels/lfe/
-    // dsurmod in particular are better read from ac3::io::scan() on the
+    // dsurmod in particular are better read from iclforge::io::scan() on the
     // elementary stream itself, the same source mux()'s caller used to fill
     // this in the first place.
     std::optional<ServiceInfo> service = std::nullopt;
@@ -157,7 +157,7 @@ struct Demuxed {
     std::span<const std::byte> file, const ReadOptions& options = {});
 
 // Incrementally reads payloads out of a transport stream as its bytes
-// arrive - mpegts::Writer's mirror image, and the natural shape for the one
+// arrive - iclforge::mpegts::Writer's mirror image, and the natural shape for the one
 // container here that was designed to be read as a stream in the first
 // place.
 //
@@ -190,4 +190,4 @@ class MPEGTS_EXPORT Reader {
     std::unique_ptr<detail::ReaderState> state_;
 };
 
-}  // namespace mpegts
+}  // namespace iclforge::mpegts

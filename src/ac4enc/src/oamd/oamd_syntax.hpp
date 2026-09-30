@@ -25,7 +25,7 @@
 // trim_balance_presence[], ext_prec_pos_presence[]) is one field, its highest
 // index first.
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 // Part 2 clause 6.2.1.10's object types.
 enum class OamdObjectKind : std::uint8_t { kBed, kDynamic, kIsf };
@@ -240,4 +240,4 @@ void write_oamd_substream(BitWriter& w, const std::optional<OamdCommonFields>& c
                           std::span<const OamdObject> objects, int n_blocks, bool oamd_ndot,
                           bool alternative, std::span<const ObjectInfoBlockFields> blocks);
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

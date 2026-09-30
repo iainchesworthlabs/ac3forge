@@ -9,7 +9,7 @@
 // when the list changes underneath it, and each is a case in
 // tests/hearth/test_queue.cpp.
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 void Queue::add(QueueItem item) {
     items_.push_back(std::move(item));
@@ -158,4 +158,4 @@ std::string describe_item(std::size_t index, std::string_view title) {
     return out;
 }
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

@@ -1,4 +1,4 @@
-// ac4::Decoder's frame-to-frame behaviour, on the committed DEE streams: what
+// iclforge::ac4::Decoder's frame-to-frame behaviour, on the committed DEE streams: what
 // a frame whose table of contents does not parse returns, when I-frame
 // configuration carried between frames is kept or forgotten, what a decode
 // begun at an I-frame or continued across a splice gives, and the concealment
@@ -26,7 +26,7 @@
 namespace {
 
 namespace fs = std::filesystem;
-using ac3::test::kSanitized;
+using iclforge::test::kSanitized;
 
 std::vector<std::byte> read_stream(const std::string& leg) {
     const fs::path path = fs::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / leg / "dee.ac4";
@@ -42,7 +42,7 @@ std::vector<std::byte> read_stream(const std::string& leg) {
 // Each sync frame's raw_ac4_frame, copied so a test can alter it.
 std::vector<std::vector<std::byte>> raw_frames(const std::vector<std::byte>& stream) {
     std::vector<std::vector<std::byte>> frames;
-    for (const ac4::SyncFrame& frame : ac4::scan(stream).frames) {
+    for (const iclforge::ac4::SyncFrame& frame : iclforge::ac4::scan(stream).frames) {
         frames.emplace_back(frame.raw_ac4_frame.begin(), frame.raw_ac4_frame.end());
     }
     return frames;
@@ -61,16 +61,16 @@ void set_sequence_counter(std::vector<std::byte>& frame, int counter) {
 // Whether the frame's single channel-coded substream is an I-frame
 // (b_audio_ndot).
 bool is_iframe(const std::vector<std::byte>& frame) {
-    const auto parsed = ac4::parse_raw_frame(frame);
+    const auto parsed = iclforge::ac4::parse_raw_frame(frame);
     REQUIRE(parsed.has_value());
     const auto& chan = parsed->toc.substream_groups.at(0).substreams.at(0).chan;
     REQUIRE(chan.has_value());
     return !chan->b_iframe.empty() && chan->b_iframe.front();
 }
 
-std::optional<ac4::DecodeError> audio_refusal(const ac4::FrameReport& report) {
-    for (const ac4::SubstreamReport& substream : report.substreams) {
-        if (substream.kind == ac4::SubstreamReport::Kind::kAudio) {
+std::optional<iclforge::ac4::DecodeError> audio_refusal(const iclforge::ac4::FrameReport& report) {
+    for (const iclforge::ac4::SubstreamReport& substream : report.substreams) {
+        if (substream.kind == iclforge::ac4::SubstreamReport::Kind::kAudio) {
             return substream.refused;
         }
     }
@@ -345,7 +345,8 @@ struct Decoded {
     std::size_t nothing = 0;  // frames that returned no output
 };
 
-Decoded decode_frames(ac4::Decoder& decoder, std::span<const std::vector<std::byte>> frames) {
+Decoded decode_frames(iclforge::ac4::Decoder& decoder,
+                      std::span<const std::vector<std::byte>> frames) {
     Decoded out;
     for (const std::vector<std::byte>& frame : frames) {
         const auto decoded = decoder.decode(frame);
@@ -355,7 +356,7 @@ Decoded decode_frames(ac4::Decoder& decoder, std::span<const std::vector<std::by
             ++out.nothing;
             continue;
         }
-        const ac4::DecodedFrame& pcm = **decoded;
+        const iclforge::ac4::DecodedFrame& pcm = **decoded;
         if (out.channels.empty()) {
             out.channels.resize(pcm.channels.size());
         }
@@ -403,9 +404,9 @@ float peak(const std::vector<std::vector<float>>& channels, std::size_t first, s
 // past the end of the substream, which decode() refuses with the table of
 // contents intact.
 void damage_audio(std::vector<std::byte>& frame) {
-    const auto parsed = ac4::parse_raw_frame(frame);
+    const auto parsed = iclforge::ac4::parse_raw_frame(frame);
     REQUIRE(parsed.has_value());
-    for (const ac4::Substream& substream : parsed->substreams) {
+    for (const iclforge::ac4::Substream& substream : parsed->substreams) {
         if (substream.is_audio) {
             frame[substream.offset] = std::byte{0xFF};
             frame[substream.offset + 1] = std::byte{0xFE};
@@ -425,23 +426,24 @@ constexpr std::size_t kQmfSpread = 640;
 
 }  // namespace
 
-TEST_CASE("ac4::Decoder fails a frame whose table of contents does not parse", "[ac4dec]") {
-    ac4::Decoder decoder;
+TEST_CASE("iclforge::ac4::Decoder fails a frame whose table of contents does not parse",
+          "[ac4dec]") {
+    iclforge::ac4::Decoder decoder;
     const std::vector<std::byte> nothing;
     const auto empty = decoder.parse(nothing);
     REQUIRE_FALSE(empty.has_value());
-    CHECK(empty.error() == ac4::DecodeError::kInvalidToc);
+    CHECK(empty.error() == iclforge::ac4::DecodeError::kInvalidToc);
 
     // bitstream_version 3 with a variable_bits(2) extension: above 2, which
     // neither part defines.
     const std::vector<std::byte> version_3{std::byte{0xC4}, std::byte{0x00}, std::byte{0x00}, std::byte{0x00}};
     const auto unsupported = decoder.parse(version_3);
     REQUIRE_FALSE(unsupported.has_value());
-    CHECK(unsupported.error() == ac4::DecodeError::kInvalidToc);
-    CHECK_FALSE(ac4::describe(ac4::DecodeError::kInvalidToc).empty());
+    CHECK(unsupported.error() == iclforge::ac4::DecodeError::kInvalidToc);
+    CHECK_FALSE(iclforge::ac4::describe(iclforge::ac4::DecodeError::kInvalidToc).empty());
 }
 
-TEST_CASE("ac4::Decoder carries I-frame configuration while sequence_counter continues", "[ac4dec]") {
+TEST_CASE("iclforge::ac4::Decoder carries I-frame configuration while sequence_counter continues", "[ac4dec]") {
     // ASPX stereo: a frame that is not an I-frame needs the aspx_config() of
     // the last I-frame.
     const auto frames = raw_frames(read_stream("ac4-20-speech-128"));
@@ -450,7 +452,7 @@ TEST_CASE("ac4::Decoder carries I-frame configuration while sequence_counter con
     const std::size_t dependent = next_non_iframe(frames, 0);
 
     SECTION("in order") {
-        ac4::Decoder decoder;
+        iclforge::ac4::Decoder decoder;
         for (std::size_t k = 0; k <= dependent; ++k) {
             const auto report = decoder.parse(frames[k]);
             REQUIRE(report.has_value());
@@ -463,18 +465,19 @@ TEST_CASE("ac4::Decoder carries I-frame configuration while sequence_counter con
         auto later = frames[dependent];
         set_sequence_counter(first, 1020);
         set_sequence_counter(later, 1);
-        ac4::Decoder decoder;
+        iclforge::ac4::Decoder decoder;
         REQUIRE(decoder.parse(first).has_value());
         const auto report = decoder.parse(later);
         REQUIRE(report.has_value());
         // A-SPX's previous border would differ had frames been skipped, but
         // the configuration is still the one the I-frame sent, so the frame
         // is read, not refused for want of an I-frame.
-        CHECK(audio_refusal(*report) != ac4::DecodeError::kMissingIFrame);
+        CHECK(audio_refusal(*report) != iclforge::ac4::DecodeError::kMissingIFrame);
     }
 }
 
-TEST_CASE("ac4::Decoder forgets I-frame configuration at a change of source", "[ac4dec]") {
+TEST_CASE("iclforge::ac4::Decoder forgets I-frame configuration at a change of source",
+          "[ac4dec]") {
     const auto frames = raw_frames(read_stream("ac4-20-speech-128"));
     REQUIRE(frames.size() > 2);
     REQUIRE(is_iframe(frames[0]));
@@ -491,27 +494,28 @@ TEST_CASE("ac4::Decoder forgets I-frame configuration at a change of source", "[
         set_sequence_counter(later, 0);
     }
 
-    ac4::Decoder decoder;
+    iclforge::ac4::Decoder decoder;
     const auto configured = decoder.parse(first);
     REQUIRE(configured.has_value());
     CHECK_FALSE(audio_refusal(*configured).has_value());
     const auto report = decoder.parse(later);
     REQUIRE(report.has_value());
-    CHECK(audio_refusal(*report) == ac4::DecodeError::kMissingIFrame);
+    CHECK(audio_refusal(*report) == iclforge::ac4::DecodeError::kMissingIFrame);
 }
 
 TEST_CASE("a substream that is both a channel and its own HSF extension resolves to audio",
           "[ac4dec]") {
-    ac4::Decoder decoder;
+    iclforge::ac4::Decoder decoder;
     const auto report = decoder.parse(self_referencing_hsf_ext_frame());
     REQUIRE(report.has_value());
-    const auto it = std::find_if(report->substreams.begin(), report->substreams.end(),
-                                  [](const ac4::SubstreamReport& s) { return s.index == 0; });
+    const auto it =
+        std::find_if(report->substreams.begin(), report->substreams.end(),
+                     [](const iclforge::ac4::SubstreamReport& s) { return s.index == 0; });
     REQUIRE(it != report->substreams.end());
-    CHECK(it->kind == ac4::SubstreamReport::Kind::kAudio);
+    CHECK(it->kind == iclforge::ac4::SubstreamReport::Kind::kAudio);
 }
 
-TEST_CASE("ac4::Decoder reads a channel's HSF extension substream alongside it",
+TEST_CASE("iclforge::ac4::Decoder reads a channel's HSF extension substream alongside it",
           "[ac4dec]") {
     bool ext_index_lower = false;
     SECTION("the extension's substream index is higher than its owner's") { ext_index_lower = false; }
@@ -519,17 +523,18 @@ TEST_CASE("ac4::Decoder reads a channel's HSF extension substream alongside it",
     const int owner_index = ext_index_lower ? 1 : 0;
     const int ext_index = ext_index_lower ? 0 : 1;
 
-    ac4::Decoder decoder;
+    iclforge::ac4::Decoder decoder;
     const auto report = decoder.parse(hsf_ext_two_substream_frame(ext_index_lower));
     REQUIRE(report.has_value());
     const auto find = [&](int index) {
-        return std::find_if(report->substreams.begin(), report->substreams.end(),
-                            [index](const ac4::SubstreamReport& s) { return s.index == index; });
+        return std::find_if(
+            report->substreams.begin(), report->substreams.end(),
+            [index](const iclforge::ac4::SubstreamReport& s) { return s.index == index; });
     };
     const auto owner = find(owner_index);
     REQUIRE(owner != report->substreams.end());
     INFO("owner refused_reason: " << owner->refused_reason);
-    CHECK(owner->kind == ac4::SubstreamReport::Kind::kAudio);
+    CHECK(owner->kind == iclforge::ac4::SubstreamReport::Kind::kAudio);
     CHECK_FALSE(owner->refused.has_value());
     // 9 bytes: 16-bit audio_size header + 33-bit audio_data_chan + 7 fill +
     // 13-bit metadata + 3 align.
@@ -538,7 +543,7 @@ TEST_CASE("ac4::Decoder reads a channel's HSF extension substream alongside it",
     const auto ext = find(ext_index);
     REQUIRE(ext != report->substreams.end());
     INFO("extension refused_reason: " << ext->refused_reason);
-    CHECK(ext->kind == ac4::SubstreamReport::Kind::kHsfExt);
+    CHECK(ext->kind == iclforge::ac4::SubstreamReport::Kind::kHsfExt);
     CHECK_FALSE(ext->refused.has_value());
     CHECK(ext->bits_read == 8);  // the 6-bit header, byte_align'd
 }
@@ -549,26 +554,26 @@ TEST_CASE("an HSF extension substream nothing names is reported as refused and u
     // a substream no ac4_hsf_ext_substream_info() named got no report at all.
     // Every substream of the index table now has one.
     // The extension's substream comes first in the table, before its owner.
-    ac4::Decoder decoder;
+    iclforge::ac4::Decoder decoder;
     const auto report = decoder.parse(hsf_ext_two_substream_frame(true, false));
     REQUIRE(report.has_value());
     REQUIRE(report->substreams.size() == 3);
-    const ac4::SubstreamReport& ext = report->substreams[0];
+    const iclforge::ac4::SubstreamReport& ext = report->substreams[0];
     CHECK(ext.index == 0);
-    CHECK(ext.kind == ac4::SubstreamReport::Kind::kOther);
+    CHECK(ext.kind == iclforge::ac4::SubstreamReport::Kind::kOther);
     REQUIRE(ext.refused.has_value());
-    CHECK(*ext.refused == ac4::DecodeError::kUnsupported);
+    CHECK(*ext.refused == iclforge::ac4::DecodeError::kUnsupported);
     CHECK_FALSE(ext.refused_reason.empty());
     CHECK(ext.bits_read == 0);
     CHECK(ext.size_bits == 8);
     // Its owner, at 96 kHz with no extension to read beside it, is refused
     // as it was.
-    const ac4::SubstreamReport& owner = report->substreams[1];
-    CHECK(owner.kind == ac4::SubstreamReport::Kind::kAudio);
+    const iclforge::ac4::SubstreamReport& owner = report->substreams[1];
+    CHECK(owner.kind == iclforge::ac4::SubstreamReport::Kind::kAudio);
     REQUIRE(owner.refused.has_value());
-    CHECK(*owner.refused == ac4::DecodeError::kUnsupported);
+    CHECK(*owner.refused == iclforge::ac4::DecodeError::kUnsupported);
     // And decode() names the owner's reason, not the unnamed substream's.
-    ac4::Decoder decoding;
+    iclforge::ac4::Decoder decoding;
     const auto decoded = decoding.decode(hsf_ext_two_substream_frame(true, false));
     REQUIRE_FALSE(decoded.has_value());
     CHECK(decoding.refusal_reason() == owner.refused_reason);
@@ -608,7 +613,7 @@ TEST_CASE("a decode begun at an I-frame gives the whole stream's output from the
         if (kSanitized) {
             frames.resize(std::min<std::size_t>(frames.size(), 34));
         }
-        ac4::Decoder whole_decoder;
+        iclforge::ac4::Decoder whole_decoder;
         const Decoded whole = decode_frames(whole_decoder, frames);
         REQUIRE(whole.lengths.size() == frames.size());
         std::size_t checked = 0;
@@ -620,7 +625,7 @@ TEST_CASE("a decode begun at an I-frame gives the whole stream's output from the
             CAPTURE(k);
             // Enough frames for the output to reach the two frames' audio.
             const std::size_t count = leg.settle + 3;
-            ac4::Decoder decoder;
+            iclforge::ac4::Decoder decoder;
             const Decoded part = decode_frames(decoder, std::span(frames).subspan(k, count));
             REQUIRE(part.lengths.size() == count);
             CHECK(peak_difference(whole.channels, from, part.channels, from - k * kFrame,
@@ -674,16 +679,16 @@ TEST_CASE("a splice at an I-frame joins the two streams' audio without a gap", "
 
         // Each stream alone: the first one frame past the splice, for the
         // audio its delay line still holds there.
-        ac4::Decoder first_decoder;
+        iclforge::ac4::Decoder first_decoder;
         const Decoded first_alone =
             decode_frames(first_decoder, std::span(first_stream).first(kSplice + 1));
-        ac4::Decoder second_decoder;
+        iclforge::ac4::Decoder second_decoder;
         const Decoded second_alone = decode_frames(second_decoder, tail);
 
         std::vector<std::vector<std::byte>> frames(first_stream.begin(),
                                                    first_stream.begin() + kSplice);
         frames.insert(frames.end(), tail.begin(), tail.end());
-        ac4::Decoder decoder;
+        iclforge::ac4::Decoder decoder;
         const Decoded spliced = decode_frames(decoder, frames);
         REQUIRE(spliced.lengths.size() == frames.size());
         // The second stream's first audio starts here.
@@ -715,11 +720,11 @@ TEST_CASE(
     const auto second_stream = raw_frames(read_stream("ac4-20-speech-128"));
     REQUIRE_FALSE(is_iframe(second_stream[50]));
     const std::vector<std::vector<std::byte>> tail(second_stream.begin() + 50, second_stream.end());
-    ac4::Decoder alone_decoder;
+    iclforge::ac4::Decoder alone_decoder;
     const Decoded alone = decode_frames(alone_decoder, tail);
     CHECK(alone.nothing == 21);  // until the I-frame at 71
 
-    ac4::Decoder decoder;
+    iclforge::ac4::Decoder decoder;
     REQUIRE(decode_frames(decoder, std::span(first_stream).first(30)).lengths.size() == 30);
     const Decoded spliced = decode_frames(decoder, tail);
     CHECK(spliced.nothing == alone.nothing);
@@ -736,7 +741,7 @@ TEST_CASE("the converter's output counts stay locked to sequence_counter across 
     REQUIRE(frames.size() > 120);
     REQUIRE(is_iframe(frames[90]));
     std::vector<std::vector<std::byte>> tail(frames.begin() + 90, frames.end());
-    ac4::Decoder decoder;
+    iclforge::ac4::Decoder decoder;
     const Decoded lead = decode_frames(decoder, std::span(frames).first(40));
     REQUIRE(lead.lengths.size() == 40);
 
@@ -768,15 +773,15 @@ TEST_CASE("without a concealment policy a frame that does not decode fails and t
     constexpr std::size_t kLost = 10;
     REQUIRE_FALSE(is_iframe(frames[kLost + 1]));
     auto damaged = frames;
-    ac4::DecodeError expected = ac4::DecodeError::kInvalidStream;
+    iclforge::ac4::DecodeError expected = iclforge::ac4::DecodeError::kInvalidStream;
     SECTION("an audio substream that does not read") {
         damage_audio(damaged[kLost]);
     }
     SECTION("a table of contents that does not read, taken to be the frame the stream expected") {
         damaged[kLost] = {std::byte{0xFF}, std::byte{0xFF}, std::byte{0xFF}};
-        expected = ac4::DecodeError::kInvalidToc;
+        expected = iclforge::ac4::DecodeError::kInvalidToc;
     }
-    ac4::Decoder decoder;
+    iclforge::ac4::Decoder decoder;
     REQUIRE(decode_frames(decoder, std::span(damaged).first(kLost)).lengths.size() == kLost);
     const auto lost = decoder.decode(damaged[kLost]);
     REQUIRE_FALSE(lost.has_value());
@@ -805,34 +810,36 @@ TEST_CASE("a concealment policy puts a frame in place of each one that does not 
         REQUIRE_FALSE(is_iframe(frames[k]));
         damage_audio(damaged[k]);
     }
-    ac4::Decoder clean_decoder;
+    iclforge::ac4::Decoder clean_decoder;
     const Decoded clean = decode_frames(clean_decoder, frames);
 
-    ac4::ConcealmentPolicy policy = ac4::ConcealmentPolicy::kMute;
-    ac4::ConcealmentAction action = ac4::ConcealmentAction::kMute;
+    iclforge::ac4::ConcealmentPolicy policy = iclforge::ac4::ConcealmentPolicy::kMute;
+    iclforge::ac4::ConcealmentAction action = iclforge::ac4::ConcealmentAction::kMute;
     SECTION("mute") {}
     SECTION("repeat and fade") {
-        policy = ac4::ConcealmentPolicy::kRepeatFade;
-        action = ac4::ConcealmentAction::kRepeatFade;
+        policy = iclforge::ac4::ConcealmentPolicy::kRepeatFade;
+        action = iclforge::ac4::ConcealmentAction::kRepeatFade;
     }
-    ac4::Decoder decoder(ac4::DecoderConfig{.syntax = {}, .output = {}, .concealment = policy});
+    iclforge::ac4::Decoder decoder(
+        iclforge::ac4::DecoderConfig{.syntax = {}, .output = {}, .concealment = policy});
     std::vector<std::vector<float>> out(2);
     for (std::size_t k = 0; k < damaged.size(); ++k) {
         CAPTURE(k);
         const auto decoded = decoder.decode(damaged[k]);
         REQUIRE(decoded.has_value());
         REQUIRE(decoded->has_value());
-        const ac4::DecodedFrame& pcm = **decoded;
+        const iclforge::ac4::DecodedFrame& pcm = **decoded;
         const bool lost = k >= kLost && k < kLost + kLosses;
         REQUIRE(pcm.concealed.has_value() == lost);
         if (lost) {
-            CHECK(pcm.concealed->error == ac4::DecodeError::kInvalidStream);
+            CHECK(pcm.concealed->error == iclforge::ac4::DecodeError::kInvalidStream);
             CHECK(pcm.concealed->action == action);
             CHECK_FALSE(decoder.refusal_reason().empty());
         }
         CHECK(pcm.sequence_counter == clean.counters[k]);
         CHECK(pcm.sample_rate_hz == 48000);
-        CHECK(pcm.speakers == std::vector<ac4::Speaker>{ac4::Speaker::kLeft, ac4::Speaker::kRight});
+        CHECK(pcm.speakers == std::vector<iclforge::ac4::Speaker>{iclforge::ac4::Speaker::kLeft,
+                                                                  iclforge::ac4::Speaker::kRight});
         REQUIRE(pcm.channels.size() == 2);
         for (std::size_t c = 0; c < 2; ++c) {
             REQUIRE(pcm.channels[c].size() == kFrame);
@@ -857,7 +864,7 @@ TEST_CASE("a concealment policy puts a frame in place of each one that does not 
     const float second = peak(out, (kLost + 1) * kFrame + kDelay + kFrame / 2, half);
     const float third = peak(out, (kLost + 2) * kFrame + kDelay + kFrame / 2, half);
     CAPTURE(second, third);
-    if (policy == ac4::ConcealmentPolicy::kMute) {
+    if (policy == iclforge::ac4::ConcealmentPolicy::kMute) {
         CHECK(second == 0.0F);
         CHECK(third == 0.0F);
     } else {
@@ -871,11 +878,11 @@ TEST_CASE("a concealment policy has nothing to conceal from before a frame has d
           "[ac4dec][pcm]") {
     auto frames = raw_frames(read_stream("ac4-20-tones-192"));
     damage_audio(frames[0]);
-    ac4::Decoder decoder(ac4::DecoderConfig{
-        .syntax = {}, .output = {}, .concealment = ac4::ConcealmentPolicy::kRepeatFade});
+    iclforge::ac4::Decoder decoder(iclforge::ac4::DecoderConfig{
+        .syntax = {}, .output = {}, .concealment = iclforge::ac4::ConcealmentPolicy::kRepeatFade});
     const auto first = decoder.decode(frames[0]);
     REQUIRE_FALSE(first.has_value());
-    CHECK(first.error() == ac4::DecodeError::kInvalidStream);
+    CHECK(first.error() == iclforge::ac4::DecodeError::kInvalidStream);
     // DEE's second frame is an I-frame, and decodes.
     const auto second = decoder.decode(frames[1]);
     REQUIRE(second.has_value());
@@ -890,21 +897,21 @@ TEST_CASE("a concealed frame whose table of contents did not read keeps the conv
     auto frames = raw_frames(read_stream("ac4-ims-music-64-2997"));
     constexpr std::size_t kLost = 40;
     REQUIRE_FALSE(is_iframe(frames[kLost]));
-    const auto parsed = ac4::parse_raw_frame(frames[kLost]);
+    const auto parsed = iclforge::ac4::parse_raw_frame(frames[kLost]);
     REQUIRE(parsed.has_value());
     const int counter = parsed->toc.sequence_counter;
     frames[kLost] = {std::byte{0xFF}, std::byte{0xFF}, std::byte{0xFF}};
-    ac4::Decoder decoder(ac4::DecoderConfig{
-        .syntax = {}, .output = {}, .concealment = ac4::ConcealmentPolicy::kMute});
+    iclforge::ac4::Decoder decoder(iclforge::ac4::DecoderConfig{
+        .syntax = {}, .output = {}, .concealment = iclforge::ac4::ConcealmentPolicy::kMute});
     for (std::size_t k = 0; k < frames.size(); ++k) {
         CAPTURE(k);
         const auto decoded = decoder.decode(frames[k]);
         REQUIRE(decoded.has_value());
         REQUIRE(decoded->has_value());
-        const ac4::DecodedFrame& pcm = **decoded;
+        const iclforge::ac4::DecodedFrame& pcm = **decoded;
         REQUIRE(pcm.concealed.has_value() == (k == kLost));
         if (k == kLost) {
-            CHECK(pcm.concealed->error == ac4::DecodeError::kInvalidToc);
+            CHECK(pcm.concealed->error == iclforge::ac4::DecodeError::kInvalidToc);
             CHECK(pcm.sequence_counter == counter);
         }
         CHECK(pcm.channels.front().size() ==
@@ -919,12 +926,12 @@ TEST_CASE("a concealment policy fills the frames that wait for an I-frame after 
     const auto frames = raw_frames(read_stream("ac4-20-tones-192"));
     REQUIRE(is_iframe(frames[71]));
     const std::vector<std::vector<std::byte>> tail(frames.begin() + 50, frames.end());
-    ac4::Decoder alone_decoder;
+    iclforge::ac4::Decoder alone_decoder;
     const Decoded alone = decode_frames(alone_decoder, tail);
     REQUIRE(alone.nothing == 21);
 
-    ac4::Decoder decoder(ac4::DecoderConfig{
-        .syntax = {}, .output = {}, .concealment = ac4::ConcealmentPolicy::kMute});
+    iclforge::ac4::Decoder decoder(iclforge::ac4::DecoderConfig{
+        .syntax = {}, .output = {}, .concealment = iclforge::ac4::ConcealmentPolicy::kMute});
     REQUIRE(decode_frames(decoder, std::span(frames).first(20)).lengths.size() == 20);
     std::vector<std::vector<float>> out(2);
     for (std::size_t k = 0; k < tail.size(); ++k) {
@@ -932,10 +939,10 @@ TEST_CASE("a concealment policy fills the frames that wait for an I-frame after 
         const auto decoded = decoder.decode(tail[k]);
         REQUIRE(decoded.has_value());
         REQUIRE(decoded->has_value());
-        const ac4::DecodedFrame& pcm = **decoded;
+        const iclforge::ac4::DecodedFrame& pcm = **decoded;
         REQUIRE(pcm.concealed.has_value() == (k < alone.nothing));
         if (pcm.concealed) {
-            CHECK(pcm.concealed->error == ac4::DecodeError::kMissingIFrame);
+            CHECK(pcm.concealed->error == iclforge::ac4::DecodeError::kMissingIFrame);
             CHECK(pcm.channels.front().size() == kFrame);
             continue;
         }

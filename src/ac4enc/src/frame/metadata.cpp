@@ -12,7 +12,7 @@
 #include "iclforge/ac4core/tables/huffman_codes.hpp"
 #include "iclforge/ac4core/tables/huffman_tables.hpp"
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 namespace {
 
 // An 11-bit loudness value (Part 1 clauses 4.3.12.3.8 to 4.3.12.3.30):
@@ -979,4 +979,4 @@ void write_alternative(BitWriter& w, const AlternativeCodes& codes) {
     }
 }
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

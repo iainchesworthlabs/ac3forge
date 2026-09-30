@@ -114,7 +114,7 @@
 
 #include "coreaudio_support.hpp"
 
-namespace ac3::audio {
+namespace iclforge::audio {
 
 namespace {
 
@@ -334,4 +334,4 @@ void DeviceWatcher::stop() {
     impl_->known.clear();
 }
 
-}  // namespace ac3::audio
+}  // namespace iclforge::audio

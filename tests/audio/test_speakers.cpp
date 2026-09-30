@@ -7,7 +7,7 @@
 #include "iclforge/audio/speakers.hpp"
 #include "iclforge/ac3/core/eac3_tables.hpp"
 
-// ac3::audio's speaker mask: WAVEFORMATEXTENSIBLE's positions against the
+// iclforge::audio's speaker mask: WAVEFORMATEXTENSIBLE's positions against the
 // renderer's locations (src/audio/src/speakers.cpp).
 //
 // Nothing here touches a device. The one judgement worth testing at all is the
@@ -19,17 +19,17 @@
 
 namespace {
 
-using ac3::eac3::chanmap::Location;
+using iclforge::eac3::chanmap::Location;
 
 std::vector<Location> locations(std::uint32_t mask) {
-    return ac3::audio::locations_of(mask);
+    return iclforge::audio::locations_of(mask);
 }
 
 }  // namespace
 
 TEST_CASE("speakers: a mask's positions are the renderer's locations, in interleave order",
           "[audio-backend][speakers]") {
-    using namespace ac3::audio;
+    using namespace iclforge::audio;
 
     CHECK(speaker_count(0) == 0);
     CHECK(speaker_count(kSpeakersStereo) == 2);
@@ -61,7 +61,7 @@ TEST_CASE("speakers: a mask's positions are the renderer's locations, in interle
 }
 
 TEST_CASE("speakers: one bit at a time, and the bits with no location", "[audio-backend][speakers]") {
-    using namespace ac3::audio;
+    using namespace iclforge::audio;
 
     CHECK(location_of(kSpeakerFrontLeft) == Location::kLeft);
     CHECK(location_of(kSpeakerFrontCentre) == Location::kCentre);
@@ -91,7 +91,7 @@ TEST_CASE("speakers: one bit at a time, and the bits with no location", "[audio-
 
 TEST_CASE("speakers: a layout's locations make the mask that reads them back",
           "[audio-backend][speakers]") {
-    using namespace ac3::audio;
+    using namespace iclforge::audio;
 
     const std::vector<Location> five_one{Location::kLeft,          Location::kRight,
                                          Location::kCentre,        Location::kLfe,
@@ -114,7 +114,7 @@ TEST_CASE("speakers: a layout's locations make the mask that reads them back",
 
 TEST_CASE("speakers: the arrangement a width implies, and the widths it does not",
           "[audio-backend][speakers]") {
-    using namespace ac3::audio;
+    using namespace iclforge::audio;
 
     CHECK(default_speakers(1) == kSpeakersMono);
     CHECK(default_speakers(2) == kSpeakersStereo);
@@ -133,7 +133,7 @@ TEST_CASE("speakers: the arrangement a width implies, and the widths it does not
 }
 
 TEST_CASE("speakers: a mask reads back as the names a report shows", "[audio-backend][speakers]") {
-    using namespace ac3::audio;
+    using namespace iclforge::audio;
 
     CHECK(describe_speakers(kSpeakersStereo) == "L R");
     CHECK(describe_speakers(kSpeakers5_1) == "L R C LFE Ls Rs");
@@ -147,7 +147,7 @@ TEST_CASE("speakers: a mask reads back as the names a report shows", "[audio-bac
 
 TEST_CASE("speakers: one bit's own output name, unlike a rendered location",
           "[audio-backend][speakers]") {
-    using namespace ac3::audio;
+    using namespace iclforge::audio;
 
     CHECK(mask_position_name(kSpeakerFrontLeft) == "FL");
     CHECK(mask_position_name(kSpeakerLowFrequency) == "LFE");
@@ -169,7 +169,7 @@ TEST_CASE("speakers: one bit's own output name, unlike a rendered location",
 
 TEST_CASE("speakers: the routing grid's per-output names, in interleave order",
           "[audio-backend][speakers]") {
-    using namespace ac3::audio;
+    using namespace iclforge::audio;
 
     // The mockup's own 8-output case (docs/hearth/design/screenshots/
     // speakers-setup.png, "03 Routing"): "1 FL" .. "8 SR".

@@ -16,7 +16,7 @@
 #include "iclforge/sendspin/noise.hpp"
 #include "store.hpp"
 
-namespace ac3::hearth::testserver {
+namespace iclforge::hearth::testserver {
 
 namespace {
 
@@ -141,4 +141,4 @@ bool FileServerStore::save() const {
     return !error;
 }
 
-}  // namespace ac3::hearth::testserver
+}  // namespace iclforge::hearth::testserver

@@ -8,7 +8,7 @@
 // windows.h must precede shellapi.h.
 #include <shellapi.h>
 
-namespace ac3::crucible {
+namespace iclforge::crucible {
 
 namespace {
 
@@ -54,4 +54,4 @@ std::shared_ptr<Foreground> platform_foreground() {
     return std::make_shared<WindowsForeground>();
 }
 
-}  // namespace ac3::crucible
+}  // namespace iclforge::crucible

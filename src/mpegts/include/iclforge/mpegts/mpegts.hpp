@@ -17,9 +17,9 @@
 //
 // This is a container writer and nothing more: it lays out 188-byte TS
 // packets and takes each access unit as opaque bytes. It has NO dependency
-// on ac3::forge beyond the caller telling it AC-3 vs. E-AC-3 (AudioCodec,
+// on iclforge::ac3 beyond the caller telling it AC-3 vs. E-AC-3 (AudioCodec,
 // below) - which is the point of keeping it a separate library, the same
-// shape as matroska::matroska (src/matroska/). A caller muxing E-AC-3 hands
+// shape as iclforge::matroska (src/matroska/). A caller muxing E-AC-3 hands
 // over whole access units; the module knows nothing about what is inside
 // them.
 //
@@ -68,10 +68,10 @@
 // this module maps them onto whichever registry's tables the chosen profile
 // uses. That mapping - EN 300 468 Tables D.1-D.5, A/52 Tables A4.2-A4.6 and
 // G.2-G.4 - is descriptor syntax, which is this module's job; reading those
-// values off the bitstream is ac3::io::scan's, which is why ServiceInfo is
-// plain integers and this module still has no dependency on ac3::forge.
+// values off the bitstream is iclforge::io::scan's, which is why ServiceInfo is
+// plain integers and this module still has no dependency on iclforge::ac3.
 
-namespace mpegts {
+namespace iclforge::mpegts {
 
 enum class AudioCodec : std::uint8_t {
     kAc3,
@@ -119,7 +119,7 @@ struct SubstreamService {
     bool substream_priority = false;
 };
 
-// A/52 bitstream field values, exactly as ac3::io::scan reads them off the
+// A/52 bitstream field values, exactly as iclforge::io::scan reads them off the
 // elementary stream, plus the handful of identification values that are an
 // authoring decision rather than anything the bitstream carries. Every
 // optional descriptor field either derives from one of these or is omitted;
@@ -170,7 +170,7 @@ struct ServiceInfo {
     // A/52 Annex G §3.5 / EN 300 468 D.5 mixinfoexists. E-AC-3 only.
     bool mix_metadata = false;
     // Bit n set when independent substream n is present (§E2.3.1.2),
-    // as ac3::io::ScannedStream::independent_substreams reports it. This is
+    // as iclforge::io::ScannedStream::independent_substreams reports it. This is
     // what answers EN 300 468 Table D.5's "elementary stream contains
     // multiple programmes carried in independent substreams", which no
     // single substream's own description can.
@@ -230,7 +230,7 @@ struct ServiceInfo {
 //     a range, not one value), so guessing a specific acmod back out of it
 //     would invent a channel layout the descriptor never actually claimed.
 //     A caller that has the elementary stream already has the exact values
-//     from ac3::io::scan() - the same source mux()'s own caller used.
+//     from iclforge::io::scan() - the same source mux()'s own caller used.
 [[nodiscard]] MPEGTS_EXPORT std::optional<ServiceInfo> parse_service_descriptor(
     std::uint8_t tag, std::span<const std::byte> body);
 
@@ -277,7 +277,7 @@ struct MuxOptions {
 
 // Mux access units into a complete .ts, returned as bytes. No file I/O here,
 // so this stays testable without touching a disk. Access units arrive as
-// views (matroska::mux's own reasoning); the vector-list overload below
+// views (iclforge::matroska::mux's own reasoning); the vector-list overload below
 // forwards for owned lists.
 [[nodiscard]] MPEGTS_EXPORT std::expected<std::vector<std::byte>, MuxError> mux(
     const AudioTrack& track, std::span<const std::span<const std::byte>> frames,
@@ -288,14 +288,14 @@ struct MuxOptions {
     const MuxOptions& options = {});
 
 // Incrementally muxes access units into a transport stream as they arrive -
-// matroska::Writer's sibling, for a session whose length is not known up
+// iclforge::matroska::Writer's sibling, for a session whose length is not known up
 // front. A transport stream is the born-streamable container: the only
 // state that crosses access units is three continuity counters and the
 // index the 90 kHz clock derives from, so the bytes push() hands back,
 // written in order, are IDENTICAL to what mux() produces for the same
 // frames - that equality is this class's contract and its test.
 //
-// No file I/O, matching matroska::Writer: push() hands back bytes for the
+// No file I/O, matching iclforge::matroska::Writer: push() hands back bytes for the
 // caller to write. Two shape differences from the Matroska sibling, both
 // forced by the format itself: there is no header() (PSI - PAT and PMT -
 // repeats every options.psi_repeat_every_au access units and rides inside
@@ -333,4 +333,4 @@ class MPEGTS_EXPORT Writer {
     std::uint8_t audio_cc_ = 0;
 };
 
-}  // namespace mpegts
+}  // namespace iclforge::mpegts

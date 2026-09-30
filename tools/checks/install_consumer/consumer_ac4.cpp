@@ -6,9 +6,9 @@
 // libraries do not export stops it here.
 //
 // It splits the stream given on its command line with the inspector's SyncFrameSplitter, reading
-// it a block at a time as a network client would, and decodes every frame with ac4::Decoder,
-// then reads the presentations and the metadata back: the calls a player makes, each across the
-// boundary of the library that defines it. The stream is a committed DEE one
+// it a block at a time as a network client would, and decodes every frame with
+// iclforge::ac4::Decoder, then reads the presentations and the metadata back: the calls a player
+// makes, each across the boundary of the library that defines it. The stream is a committed DEE one
 // (tests/golden/external-baseline/ac4-51-film-96/dee.ac4, 5.1 at 48 kHz) whose every frame
 // decodes.
 
@@ -42,9 +42,9 @@ int main(int argc, char** argv) {
         return fail("the stream does not open");
     }
 
-    std::vector<std::byte> storage(ac4::kSplitterRecommendedBuffer);
-    ac4::SyncFrameSplitter splitter{storage};
-    ac4::Decoder decoder;
+    std::vector<std::byte> storage(iclforge::ac4::kSplitterRecommendedBuffer);
+    iclforge::ac4::SyncFrameSplitter splitter{storage};
+    iclforge::ac4::Decoder decoder;
     std::size_t frames = 0;
     std::size_t decoded = 0;
     std::size_t samples = 0;
@@ -53,7 +53,7 @@ int main(int argc, char** argv) {
 
     for (;;) {
         const auto next = splitter.next();
-        if (next.status == ac4::SyncFrameSplitter::Status::kNeedMoreInput) {
+        if (next.status == iclforge::ac4::SyncFrameSplitter::Status::kNeedMoreInput) {
             // 4 KiB at a time, so that frames arrive in pieces.
             std::span<std::byte> space = splitter.writable();
             if (space.size() > 4096) {
@@ -69,8 +69,8 @@ int main(int argc, char** argv) {
             }
             continue;
         }
-        if (next.status != ac4::SyncFrameSplitter::Status::kFrame) {
-            if (next.status != ac4::SyncFrameSplitter::Status::kEndOfStream) {
+        if (next.status != iclforge::ac4::SyncFrameSplitter::Status::kFrame) {
+            if (next.status != iclforge::ac4::SyncFrameSplitter::Status::kEndOfStream) {
                 return fail("the splitter stopped before the end of the stream");
             }
             break;

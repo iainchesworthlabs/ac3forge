@@ -2,7 +2,7 @@
 //
 // A decoder that VALIDATES the EMDF container's protection field treats its
 // sync word as a commitment to object decoding and refuses the whole stream
-// if the tag does not check out (see ac3::signing and
+// if the tag does not check out (see iclforge::signing and
 // docs/concepts/object-signing.md for how a licensed decoder is satisfied).
 // With the container left out entirely there is no sync word for such a
 // decoder to find, so it falls back to the 5.1 bed underneath exactly as it
@@ -34,30 +34,32 @@ constexpr int kFrames = 31;  // one second
 
 // Encodes the same two-object programme under the given config and returns
 // the assembled stream plus the last frame's decoded 5.1 bed.
-std::pair<std::vector<std::byte>, ac3::DecodedAccessUnit> run(const ac3::oba::AtmosConfig& config) {
-    ac3::oba::AtmosEncoder encoder{config, kObjects};
+std::pair<std::vector<std::byte>, iclforge::DecodedAccessUnit> run(
+    const iclforge::oba::AtmosConfig& config) {
+    iclforge::oba::AtmosEncoder encoder{config, kObjects};
     // Heap-allocated (PREfast's C6262, alert #69): Eac3Decoder grew several
     // KB of per-block scratch members (alert #63's fix), which pushed this
     // one-shot stack declaration over the threshold - same pattern as PR #50.
-    auto decoder = std::make_unique<ac3::Eac3Decoder>();
+    auto decoder = std::make_unique<iclforge::Eac3Decoder>();
 
-    std::vector<std::vector<float>> sources(kObjects, std::vector<float>(ac3::kSamplesPerFrame));
+    std::vector<std::vector<float>> sources(kObjects,
+                                            std::vector<float>(iclforge::kSamplesPerFrame));
     std::vector<std::span<const float>> views;
     for (const auto& source : sources) {
         views.emplace_back(source);
     }
-    const std::array<ac3::oba::ObjectPlacement, kObjects> placement{{
+    const std::array<iclforge::oba::ObjectPlacement, kObjects> placement{{
         {.position = {.x = 0.25, .y = 0.6, .z = 0.0}, .gain = 0.8},
         {.position = {.x = 0.75, .y = 0.6, .z = 0.0}, .gain = 0.8},
     }};
     constexpr std::array<double, kObjects> tones{440.0, 880.0};
 
     std::vector<std::byte> stream;
-    ac3::DecodedAccessUnit bed;
+    iclforge::DecodedAccessUnit bed;
     for (int frame = 0; frame < kFrames; ++frame) {
         for (std::size_t obj = 0; obj < kObjects; ++obj) {
-            for (int n = 0; n < ac3::kSamplesPerFrame; ++n) {
-                const double t = (frame * ac3::kSamplesPerFrame + n) / 48000.0;
+            for (int n = 0; n < iclforge::kSamplesPerFrame; ++n) {
+                const double t = (frame * iclforge::kSamplesPerFrame + n) / 48000.0;
                 sources[obj][static_cast<std::size_t>(n)] =
                     static_cast<float>(0.3 * std::sin(2.0 * std::numbers::pi * tones[obj] * t));
             }
@@ -112,15 +114,15 @@ int main() {
                 with_container.size(), max_bed_diff);
 
     // TS 103 420 §8.3.1's addbsi object marker follows the container, because
-    // it is the only thing a reader has to go on: ac3::io::scan reports it as
-    // oba_complexity_index, ac3::io::build_codec_config_box turns it into the
+    // it is the only thing a reader has to go on: iclforge::io::scan reports it as
+    // oba_complexity_index, iclforge::io::build_codec_config_box turns it into the
     // dec3 box's Dolby Atmos extension, `ac3cli fmp4` writes it as an HLS
     // CHANNELS="<N>/JOC" attribute, and FFmpeg reports "Dolby Digital Plus +
     // Dolby Atmos" off it. Left on the container-less stream, all four would
     // claim an object layer that is not there - an empty promise, the same
     // thing an empty container would be.
-    const auto scan_with = ac3::io::scan(with_container);
-    const auto scan_without = ac3::io::scan(without_container);
+    const auto scan_with = iclforge::io::scan(with_container);
+    const auto scan_without = iclforge::io::scan(without_container);
     const bool marker_with = scan_with && scan_with->oba_complexity_index.has_value();
     const bool marker_without = scan_without && scan_without->oba_complexity_index.has_value();
     std::printf("object marker: %s with the container, %s without it\n",

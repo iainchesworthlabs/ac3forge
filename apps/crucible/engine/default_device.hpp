@@ -29,7 +29,7 @@
 // with a reason saying why it does not need to - which the UI shows in place
 // of a button, rather than offering an action that would do nothing.
 
-namespace ac3::crucible {
+namespace iclforge::crucible {
 
 struct RenderEndpoint {
     std::string id;
@@ -74,4 +74,4 @@ public:
     virtual void open_sound_settings() = 0;
 };
 
-}  // namespace ac3::crucible
+}  // namespace iclforge::crucible

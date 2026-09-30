@@ -3,7 +3,7 @@
 #include <chrono>
 #include <thread>
 
-// Waiting on an ac3::audio sink without waiting for ever.
+// Waiting on an iclforge::audio sink without waiting for ever.
 //
 // A sink's submit() refuses for two reasons. Its queue is full, which time
 // cures: the caller is ahead of real time and should wait. Or it is not
@@ -19,7 +19,7 @@
 // helpers against a sink that stops on cue: no command reaches its wait
 // without a render device, and no device can be pulled on a CI runner.
 
-namespace ac3::apps {
+namespace iclforge::apps {
 
 // Offers `payload` to sink.submit() until the sink takes it, sleeping `pause`
 // between offers. False, having queued nothing, once the sink is not running.
@@ -50,4 +50,4 @@ template <typename Sink, typename Done>
     return true;
 }
 
-}  // namespace ac3::apps
+}  // namespace iclforge::apps

@@ -13,7 +13,7 @@
 // oamd_timing_data() the sample at which each block takes effect and the ramp
 // that leads to it (clause 5.9.2). The syntax is syntax/oamd.hpp's.
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 // One object's metadata as its blocks have set it: the properties of the last
 // block, and the standard precision position a difference refers to - pos3D_X
@@ -46,4 +46,4 @@ struct BlockTiming {
 // screen edge pair, and the 22.2 layout's).
 [[nodiscard]] std::optional<Speaker> speaker_of_index(int table_a27_index) noexcept;
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

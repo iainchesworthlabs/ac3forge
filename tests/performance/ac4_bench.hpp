@@ -25,16 +25,16 @@ inline constexpr int kFrameRateIndex = 13;
 inline constexpr std::size_t kSamplesPerFrame = 2048;
 
 // Indices into the WAV's own channel order (FL FR FC LFE BL BR), which is
-// already the order ac4::Encoder takes (L R C LFE Ls Rs) - unlike
+// already the order iclforge::ac4::Encoder takes (L R C LFE Ls Rs) - unlike
 // perf::FrameSource, no permutation to A/52 Table 5.8 order.
 inline constexpr std::array<std::size_t, 2> kStereoChannels = {0, 1};
 inline constexpr std::array<std::size_t, 6> kFiveOneChannels = {0, 1, 2, 3, 4, 5};
 
-inline ::ac4::EncoderConfig stereo_config() {
+inline ::iclforge::ac4::EncoderConfig stereo_config() {
     return {.channels = 2, .frame_rate_index = kFrameRateIndex, .bitrate_kbps = 192};
 }
 
-inline ::ac4::EncoderConfig five_one_config() {
+inline ::iclforge::ac4::EncoderConfig five_one_config() {
     return {.channels = 6, .frame_rate_index = kFrameRateIndex, .bitrate_kbps = 448};
 }
 
@@ -42,7 +42,7 @@ inline ::ac4::EncoderConfig five_one_config() {
 // does, so every frame of a 200-frame run is real audio.
 class FrameSource {
 public:
-    FrameSource(const ac3::io::WavData& wav, std::span<const std::size_t> channels) {
+    FrameSource(const iclforge::io::WavData& wav, std::span<const std::size_t> channels) {
         ordered_.reserve(channels.size());
         for (const std::size_t ch : channels) {
             ordered_.push_back(&wav.channels[ch % wav.channels.size()]);
@@ -69,10 +69,9 @@ private:
 
 // The raw_ac4_frame()s `frames` frames of input encode to, flushed so the
 // encoder's delay holds none back. Empty if the encoder refuses.
-inline std::vector<std::vector<std::byte>> encode_frames(FrameSource& source,
-                                                         const ::ac4::EncoderConfig& config,
-                                                         int frames) {
-    auto encoder = ::ac4::Encoder::create(config);
+inline std::vector<std::vector<std::byte>> encode_frames(
+    FrameSource& source, const ::iclforge::ac4::EncoderConfig& config, int frames) {
+    auto encoder = ::iclforge::ac4::Encoder::create(config);
     if (!encoder) {
         return {};
     }

@@ -14,7 +14,7 @@
 // The speech spectral frontend is refused where sf_info or sf_data would
 // select it (DecodeError::kUnsupported); see ac4dec/decoder.hpp.
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 inline constexpr int kMaxWindows = 16;       // 4.3.6.2.6: num_windows is at most 16
 inline constexpr int kMaxSfb = 64;           // max_sfb is at most 6 bits
@@ -209,4 +209,4 @@ struct ChparamInfo {
 // n_side_bits for a transform length index at this frame_len_base (Table 106).
 [[nodiscard]] int n_side_bits(const SubstreamContext& ctx, int transform_index) noexcept;
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

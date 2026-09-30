@@ -15,7 +15,7 @@
 //
 // PCM needs nothing. FLAC and Opus come from libFLAC and Opus through vcpkg's hearth feature.
 
-namespace ac3::sendspin::codec {
+namespace iclforge::sendspin::codec {
 
 // What one audio chunk carries: whole PCM frames, whole FLAC frames, or one Opus packet.
 struct Unit {
@@ -74,4 +74,4 @@ struct EncoderOptions {
 // Nothing for a format no decoder here reads, or a FLAC stream whose codec_header is not one.
 [[nodiscard]] std::unique_ptr<Decoder> make_decoder(const messages::PlayerStream& stream);
 
-}  // namespace ac3::sendspin::codec
+}  // namespace iclforge::sendspin::codec

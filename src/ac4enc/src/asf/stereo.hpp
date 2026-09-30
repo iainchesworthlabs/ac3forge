@@ -28,7 +28,7 @@
 // race 1 dB of SNR on music at 192 kbps. Each frame takes the sap_mode whose
 // bands and side information cost least.
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 struct StereoChoice {
     int sap_mode = 0;                        // Table 47: 0 L/R, 1 M/S per band, 2 all M/S, 3 prediction
@@ -74,4 +74,4 @@ void write_chparam_info(BitWriter& w, const StereoChoice& choice);
 
 [[nodiscard]] std::size_t chparam_info_bits(const StereoChoice& choice);
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

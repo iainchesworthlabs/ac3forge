@@ -58,7 +58,7 @@
 // visualizer@v1's stream and frames on the player's clock; and source@v1's commands, input stream
 // and chunks.
 
-namespace ac3::sendspin {
+namespace iclforge::sendspin {
 
 struct PlayerConfig {
     noise::KeyPair identity;
@@ -364,4 +364,4 @@ class PlayerSession {
     bool source_stream_open_ = false;
 };
 
-}  // namespace ac3::sendspin
+}  // namespace iclforge::sendspin

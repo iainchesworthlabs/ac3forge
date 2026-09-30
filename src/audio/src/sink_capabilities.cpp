@@ -1,12 +1,12 @@
 #include "iclforge/audio/sink_capabilities.hpp"
 
-// The one platform-independent piece of ac3::audio::sink_capabilities - see
+// The one platform-independent piece of iclforge::audio::sink_capabilities - see
 // the header for the shape this is describing errors for. Compiled on every
-// platform, the same way ac3::iec61937's byte framing is platform-independent
+// platform, the same way iclforge::iec61937's byte framing is platform-independent
 // while PassthroughSink's delivery of it is not; read_sink_capabilities()
 // itself is implemented once per backend/<platform>/sink_capabilities.cpp.
 
-namespace ac3::audio {
+namespace iclforge::audio {
 
 std::string_view describe(EdidError error) {
     switch (error) {
@@ -23,4 +23,4 @@ std::string_view describe(EdidError error) {
     return "unknown EDID error";
 }
 
-}  // namespace ac3::audio
+}  // namespace iclforge::audio

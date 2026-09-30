@@ -14,12 +14,12 @@
 //
 // This is the one piece of platform-specific code ac3cli needs - see this
 // directory's CMakeLists.txt entry for the WIN32/else split that selects
-// between platform/windows/ and platform/posix/, the same shape ac3::audio's
+// between platform/windows/ and platform/posix/, the same shape iclforge::audio's
 // own platform tree uses (src/audio/CMakeLists.txt) scaled down to one
 // function, so main.cpp itself never has to ask which OS it is running on.
 
-namespace ac3::cli::platform {
+namespace iclforge::cli::platform {
 
 void set_stdio_binary();
 
-}  // namespace ac3::cli::platform
+}  // namespace iclforge::cli::platform

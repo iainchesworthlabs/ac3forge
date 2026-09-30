@@ -17,16 +17,16 @@
 #include "session.hpp"
 #include "stream_decoder.hpp"
 
-// ac3::hearth::Session (apps/hearth/engine/session.cpp) against a stream whose
+// iclforge::hearth::Session (apps/hearth/engine/session.cpp) against a stream whose
 // decoder runs a frame behind: what a handover to a new decoder has to
 // release rather than drop.
 
 namespace {
 
-using ac3::hearth::ItemLoader;
-using ac3::hearth::LoadedItem;
-using ac3::hearth::Session;
-using ac3::hearth::StreamDecoder;
+using iclforge::hearth::ItemLoader;
+using iclforge::hearth::LoadedItem;
+using iclforge::hearth::Session;
+using iclforge::hearth::StreamDecoder;
 
 constexpr int kFrames = 12;
 
@@ -34,15 +34,15 @@ constexpr int kFrames = 12;
 // late in frame 2, and a tone after it. Once the tool engages, the decoder
 // holds each unit back until the next one arrives.
 std::vector<std::vector<std::byte>> held_back_frames() {
-    ac3::eac3::FrameConfig config;
+    iclforge::eac3::FrameConfig config;
     config.bitrate_kbps = 192;
-    config.acmod = ac3::Acmod::k2_0;
+    config.acmod = iclforge::Acmod::k2_0;
     config.transient_prenoise = true;
     config.dither = false;
-    ac3::eac3::FrameEncoder encoder{config};
+    iclforge::eac3::FrameEncoder encoder{config};
     std::vector<std::vector<std::byte>> out;
     for (int f = 0; f < kFrames; ++f) {
-        std::vector<float> samples(ac3::kSamplesPerFrame, 0.0F);
+        std::vector<float> samples(iclforge::kSamplesPerFrame, 0.0F);
         for (std::size_t n = 0; n < samples.size(); ++n) {
             const bool onset = f == 2 && n >= 960;
             if (onset || f > 2) {
@@ -73,7 +73,7 @@ std::vector<std::byte> joined(const std::vector<std::vector<std::byte>>& frames)
 TEST_CASE("session: a handover releases the unit the old decoder was holding, and loses nothing",
           "[hearth][session]") {
     const auto frames = held_back_frames();
-    const auto layout = ac3::render::OutputLayout::parse("2.0");
+    const auto layout = iclforge::render::OutputLayout::parse("2.0");
     REQUIRE(layout.has_value());
 
     // The premise, checked on its own: from some unit on, each decode hands
@@ -88,7 +88,7 @@ TEST_CASE("session: a handover releases the unit the old decoder was holding, an
     }
     const std::size_t released_at_end = probe.finish(count);
     REQUIRE(per_call[2] == 0);
-    REQUIRE(released_at_end == ac3::kSamplesPerFrame);
+    REQUIRE(released_at_end == iclforge::kSamplesPerFrame);
 
     const std::vector<std::byte> stream = joined(frames);
     const ItemLoader loader = [&stream](const std::string&) -> std::expected<LoadedItem, std::string> {
@@ -105,20 +105,20 @@ TEST_CASE("session: a handover releases the unit the old decoder was holding, an
 
     // Six frames' worth: past the transient, so the decoder is a unit behind
     // and holding the last one it decoded.
-    const auto first = session->render(*decoder, deliver, 6 * ac3::kSamplesPerFrame);
+    const auto first = session->render(*decoder, deliver, 6 * iclforge::kSamplesPerFrame);
     REQUIRE(first.has_value());
     const std::uint64_t before_handover = delivered;
 
     session->hand_over(*decoder, deliver);
     // The held unit came out through the handover.
-    CHECK(delivered == before_handover + ac3::kSamplesPerFrame);
+    CHECK(delivered == before_handover + iclforge::kSamplesPerFrame);
     decoder.emplace(*layout, 48000);
 
     while (!session->finished()) {
-        REQUIRE(session->render(*decoder, deliver, 4 * ac3::kSamplesPerFrame).has_value());
+        REQUIRE(session->render(*decoder, deliver, 4 * iclforge::kSamplesPerFrame).has_value());
     }
     // Every frame of the stream, once.
-    CHECK(delivered == static_cast<std::uint64_t>(kFrames) * ac3::kSamplesPerFrame);
+    CHECK(delivered == static_cast<std::uint64_t>(kFrames) * iclforge::kSamplesPerFrame);
     CHECK(session->position_samples() == session->total_samples());
 }
 
@@ -126,13 +126,14 @@ TEST_CASE("session: each unit the item plays is reported with its frames, and no
           "[hearth][session]") {
     // The same stream a frame behind, with the start and the end trimmed off.
     const std::vector<std::byte> stream = joined(held_back_frames());
-    constexpr std::uint64_t kTotal = static_cast<std::uint64_t>(kFrames) * ac3::kSamplesPerFrame;
+    constexpr std::uint64_t kTotal =
+        static_cast<std::uint64_t>(kFrames) * iclforge::kSamplesPerFrame;
     const ItemLoader loader = [&stream](const std::string&) -> std::expected<LoadedItem, std::string> {
         return LoadedItem{.bytes = stream, .skip_samples = 700, .play_samples = kTotal - 700 - 1000};
     };
     auto session = Session::open("trimmed", loader);
     REQUIRE(session.has_value());
-    const auto layout = ac3::render::OutputLayout::parse("2.0");
+    const auto layout = iclforge::render::OutputLayout::parse("2.0");
     REQUIRE(layout.has_value());
     StreamDecoder decoder{*layout, 48000};
 
@@ -140,12 +141,12 @@ TEST_CASE("session: each unit the item plays is reported with its frames, and no
     std::vector<std::size_t> reported;
     const StreamDecoder::BlockFn deliver = [&delivered](std::span<const std::span<const float>>,
                                                         std::size_t n) { delivered += n; };
-    const Session::ReportFn report = [&reported](const ac3::hearth::UnitReport&, std::size_t frames) {
+    const Session::ReportFn report = [&reported](const iclforge::hearth::UnitReport&, std::size_t frames) {
         reported.push_back(frames);
     };
     const auto play_to_end = [&] {
         while (!session->finished()) {
-            REQUIRE(session->render(decoder, deliver, 4 * ac3::kSamplesPerFrame, report).has_value());
+            REQUIRE(session->render(decoder, deliver, 4 * iclforge::kSamplesPerFrame, report).has_value());
         }
     };
 
@@ -153,8 +154,8 @@ TEST_CASE("session: each unit the item plays is reported with its frames, and no
     CHECK(delivered == session->total_samples());
     // Every unit plays some of its frames, the first and the last only part.
     REQUIRE(reported.size() == static_cast<std::size_t>(kFrames));
-    CHECK(reported.front() == static_cast<std::size_t>(ac3::kSamplesPerFrame) - 700);
-    CHECK(reported.back() == static_cast<std::size_t>(ac3::kSamplesPerFrame) - 1000);
+    CHECK(reported.front() == static_cast<std::size_t>(iclforge::kSamplesPerFrame) - 700);
+    CHECK(reported.back() == static_cast<std::size_t>(iclforge::kSamplesPerFrame) - 1000);
     std::uint64_t sum = 0;
     for (const std::size_t frames : reported) {
         sum += frames;

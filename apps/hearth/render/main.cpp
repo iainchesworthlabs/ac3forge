@@ -41,11 +41,11 @@
 namespace {
 
 namespace fs = std::filesystem;
-using ac3::hearth::DecoderSettings;
-using ac3::hearth::LoadedItem;
-using ac3::hearth::OpenOutputFormat;
-using ac3::hearth::OutputMode;
-using ac3::hearth::PcmSink;
+using iclforge::hearth::DecoderSettings;
+using iclforge::hearth::LoadedItem;
+using iclforge::hearth::OpenOutputFormat;
+using iclforge::hearth::OutputMode;
+using iclforge::hearth::PcmSink;
 
 constexpr std::string_view kUsage = R"(usage: ac3hearth-render INPUT OUTPUT.wav [setting=value]...
 
@@ -110,11 +110,11 @@ class CaptureSink final : public PcmSink {
         log_->played += frames;
         return true;
     }
-    [[nodiscard]] std::optional<ac3::audio::MonitorPosition> position() const override {
+    [[nodiscard]] std::optional<iclforge::audio::MonitorPosition> position() const override {
         if (!log_->open) {
             return std::nullopt;
         }
-        return ac3::audio::MonitorPosition{
+        return iclforge::audio::MonitorPosition{
             .frames_played = log_->played, .frames_queued = 0, .latency_frames = 0};
     }
     void flush() override {
@@ -163,24 +163,24 @@ std::optional<bool> switched(std::string_view text) {
     return std::nullopt;
 }
 
-std::optional<ac4::DrcMode> drc_mode(std::string_view text) {
+std::optional<iclforge::ac4::DrcMode> drc_mode(std::string_view text) {
     if (text == "auto") {
-        return ac4::DrcMode::kDefault;
+        return iclforge::ac4::DrcMode::kDefault;
     }
     if (text == "home-theatre") {
-        return ac4::DrcMode::kHomeTheatre;
+        return iclforge::ac4::DrcMode::kHomeTheatre;
     }
     if (text == "flat-panel-tv") {
-        return ac4::DrcMode::kFlatPanelTv;
+        return iclforge::ac4::DrcMode::kFlatPanelTv;
     }
     if (text == "portable-speakers") {
-        return ac4::DrcMode::kPortableSpeakers;
+        return iclforge::ac4::DrcMode::kPortableSpeakers;
     }
     if (text == "portable-headphones") {
-        return ac4::DrcMode::kPortableHeadphones;
+        return iclforge::ac4::DrcMode::kPortableHeadphones;
     }
     if (text == "off") {
-        return ac4::DrcMode::kOff;
+        return iclforge::ac4::DrcMode::kOff;
     }
     return std::nullopt;
 }
@@ -188,7 +188,7 @@ std::optional<ac4::DrcMode> drc_mode(std::string_view text) {
 // One setting=value onto `settings` or `layout`; false where it is not one.
 bool apply(std::string_view key, std::string_view value, DecoderSettings& settings,
            std::optional<std::string>& layout) {
-    ac3::hearth::Ac4Settings& ac4 = settings.ac4;
+    iclforge::hearth::Ac4Settings& ac4 = settings.ac4;
     const auto set_number = [&value](double& field) {
         const std::optional<double> parsed = number(value);
         if (parsed) {
@@ -222,7 +222,7 @@ bool apply(std::string_view key, std::string_view value, DecoderSettings& settin
             return false;
         }
         settings.stereo_fold =
-            value == "ltrt" ? ac3::DownmixTarget::kLtRt : ac3::DownmixTarget::kLoRo;
+            value == "ltrt" ? iclforge::DownmixTarget::kLtRt : iclforge::DownmixTarget::kLoRo;
         return true;
     }
     if (key == "lfe") {
@@ -232,11 +232,11 @@ bool apply(std::string_view key, std::string_view value, DecoderSettings& settin
     }
     if (key == "concealment") {
         if (value == "stop") {
-            settings.concealment = ac3::ConcealmentPolicy::kNone;
+            settings.concealment = iclforge::ConcealmentPolicy::kNone;
         } else if (value == "repeat-fade") {
-            settings.concealment = ac3::ConcealmentPolicy::kRepeatFade;
+            settings.concealment = iclforge::ConcealmentPolicy::kRepeatFade;
         } else if (value == "mute") {
-            settings.concealment = ac3::ConcealmentPolicy::kMute;
+            settings.concealment = iclforge::ConcealmentPolicy::kMute;
         } else {
             return false;
         }
@@ -249,7 +249,7 @@ bool apply(std::string_view key, std::string_view value, DecoderSettings& settin
         return set_number(ac4.output_level_dbfs);
     }
     if (key == "drc") {
-        const std::optional<ac4::DrcMode> mode = drc_mode(value);
+        const std::optional<iclforge::ac4::DrcMode> mode = drc_mode(value);
         if (mode) {
             ac4.drc = *mode;
         }
@@ -361,7 +361,7 @@ int main(int argc, char** argv) {
     // The stream as coded: no normalisation and no compression.
     DecoderSettings settings;
     settings.ac4.normalise = false;
-    settings.ac4.drc = ac4::DrcMode::kOff;
+    settings.ac4.drc = iclforge::ac4::DrcMode::kOff;
     std::optional<std::string> layout_text;
     for (std::size_t i = 2; i < args.size(); ++i) {
         const std::size_t equals = args[i].find('=');
@@ -372,10 +372,10 @@ int main(int argc, char** argv) {
             return 2;
         }
     }
-    const ac3::hearth::ItemLoader loader = load;
+    const iclforge::hearth::ItemLoader loader = load;
     if (!layout_text) {
-        auto session = ac3::hearth::Session::open(input, loader, std::nullopt,
-                                                  ac3::hearth::presentation_choice(settings));
+        auto session = iclforge::hearth::Session::open(input, loader, std::nullopt,
+                                                  iclforge::hearth::presentation_choice(settings));
         if (!session) {
             std::cerr << "ac3hearth-render: " << session.error() << "\n";
             return 1;
@@ -387,21 +387,21 @@ int main(int argc, char** argv) {
             return 2;
         }
     }
-    const std::optional<ac3::render::OutputLayout> layout =
-        ac3::render::OutputLayout::parse(*layout_text);
+    const std::optional<iclforge::render::OutputLayout> layout =
+        iclforge::render::OutputLayout::parse(*layout_text);
     if (!layout) {
         std::cerr << "ac3hearth-render: \"" << *layout_text << "\" is not a speaker layout\n";
         return 2;
     }
 
     auto log = std::make_shared<CaptureSink::Log>();
-    ac3::hearth::Player player(std::make_unique<CaptureSink>(log), loader, *layout, settings);
-    player.add(ac3::hearth::QueueItem{.path = input, .title = input, .facts = {}});
+    iclforge::hearth::Player player(std::make_unique<CaptureSink>(log), loader, *layout, settings);
+    player.add(iclforge::hearth::QueueItem{.path = input, .title = input, .facts = {}});
     player.play();
     int status = 0;
     std::string last_note;
     for (std::uint64_t pumps = 0; player.active(); ++pumps) {
-        const ac3::hearth::PumpReport report = player.pump();
+        const iclforge::hearth::PumpReport report = player.pump();
         if (!report.note.empty() && report.note != last_note) {
             std::cerr << "ac3hearth-render: " << report.note << "\n";
             last_note = report.note;
@@ -421,7 +421,7 @@ int main(int argc, char** argv) {
         std::cerr << "ac3hearth-render: the item did not play\n";
         return 1;
     }
-    const ac3::hearth::PlayedItem& played = player.history().front();
+    const iclforge::hearth::PlayedItem& played = player.history().front();
     if (played.frames != played.expected_frames) {
         std::cerr << "ac3hearth-render: " << played.frames << " frames put out, "
                   << played.expected_frames << " coded\n";

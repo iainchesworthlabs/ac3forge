@@ -4,7 +4,7 @@
 #include <cmath>
 #include <numbers>
 
-namespace ac4::detail::ajcc {
+namespace iclforge::ac4::detail::ajcc {
 namespace {
 
 [[nodiscard]] std::size_t at(int index) noexcept {
@@ -188,4 +188,4 @@ template void accumulate<Real>(std::span<const Real>, std::span<const dsp::Compl
                                std::span<dsp::Complex<Real>>, int) noexcept;
 template class PreModification<Real>;
 
-}  // namespace ac4::detail::ajcc
+}  // namespace iclforge::ac4::detail::ajcc

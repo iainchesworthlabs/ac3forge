@@ -16,7 +16,7 @@
 // Opus for player@v1: one 20 ms packet a unit, no header, configured from the format's rate and
 // channels (roles/player/v1.md, Codec framing).
 
-namespace ac3::sendspin::codec {
+namespace iclforge::sendspin::codec {
 
 namespace {
 
@@ -189,4 +189,4 @@ std::unique_ptr<Decoder> make_opus_decoder(const messages::AudioFormat& format) 
     return decoder;
 }
 
-}  // namespace ac3::sendspin::codec
+}  // namespace iclforge::sendspin::codec

@@ -13,35 +13,35 @@
 // burst_output.cpp's, which a player needs as much as a test sink does; the
 // end-of-stream path is the part only a player needs.
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
-eac3::chanmap::Layout ac4_bed(std::span<const ac4::Speaker> speakers) {
+eac3::chanmap::Layout ac4_bed(std::span<const iclforge::ac4::Speaker> speakers) {
     using eac3::chanmap::Location;
     eac3::chanmap::Layout bed;
-    for (const ac4::Speaker speaker : speakers) {
+    for (const iclforge::ac4::Speaker speaker : speakers) {
         if (bed.count >= eac3::chanmap::kMaxChannels) {
             break;
         }
         Location location = Location::kLeft;
         // clang-format off
         switch (speaker) {
-            case ac4::Speaker::kLeft: location = Location::kLeft; break;
-            case ac4::Speaker::kRight: location = Location::kRight; break;
-            case ac4::Speaker::kCentre: location = Location::kCentre; break;
-            case ac4::Speaker::kLfe: location = Location::kLfe; break;
-            case ac4::Speaker::kLeftSurround: location = Location::kLeftSurround; break;
-            case ac4::Speaker::kRightSurround: location = Location::kRightSurround; break;
-            case ac4::Speaker::kLeftBack: location = Location::kLrs; break;
-            case ac4::Speaker::kRightBack: location = Location::kRrs; break;
-            case ac4::Speaker::kLeftWide: location = Location::kLw; break;
-            case ac4::Speaker::kRightWide: location = Location::kRw; break;
-            case ac4::Speaker::kTopFrontLeft: location = Location::kVhl; break;
-            case ac4::Speaker::kTopFrontRight: location = Location::kVhr; break;
-            case ac4::Speaker::kTopBackLeft:
-            case ac4::Speaker::kTopSideLeft: location = Location::kLts; break;
-            case ac4::Speaker::kTopBackRight:
-            case ac4::Speaker::kTopSideRight: location = Location::kRts; break;
-            case ac4::Speaker::kLfe2: location = Location::kLfe2; break;
+            case iclforge::ac4::Speaker::kLeft: location = Location::kLeft; break;
+            case iclforge::ac4::Speaker::kRight: location = Location::kRight; break;
+            case iclforge::ac4::Speaker::kCentre: location = Location::kCentre; break;
+            case iclforge::ac4::Speaker::kLfe: location = Location::kLfe; break;
+            case iclforge::ac4::Speaker::kLeftSurround: location = Location::kLeftSurround; break;
+            case iclforge::ac4::Speaker::kRightSurround: location = Location::kRightSurround; break;
+            case iclforge::ac4::Speaker::kLeftBack: location = Location::kLrs; break;
+            case iclforge::ac4::Speaker::kRightBack: location = Location::kRrs; break;
+            case iclforge::ac4::Speaker::kLeftWide: location = Location::kLw; break;
+            case iclforge::ac4::Speaker::kRightWide: location = Location::kRw; break;
+            case iclforge::ac4::Speaker::kTopFrontLeft: location = Location::kVhl; break;
+            case iclforge::ac4::Speaker::kTopFrontRight: location = Location::kVhr; break;
+            case iclforge::ac4::Speaker::kTopBackLeft:
+            case iclforge::ac4::Speaker::kTopSideLeft: location = Location::kLts; break;
+            case iclforge::ac4::Speaker::kTopBackRight:
+            case iclforge::ac4::Speaker::kTopSideRight: location = Location::kRts; break;
+            case iclforge::ac4::Speaker::kLfe2: location = Location::kLfe2; break;
         }
         // clang-format on
         bed.items[static_cast<std::size_t>(bed.count++)] = location;
@@ -49,17 +49,17 @@ eac3::chanmap::Layout ac4_bed(std::span<const ac4::Speaker> speakers) {
     return bed;
 }
 
-Acmod ac4_acmod(std::span<const ac4::Speaker> speakers) {
-    const auto has = [&speakers](ac4::Speaker speaker) {
+Acmod ac4_acmod(std::span<const iclforge::ac4::Speaker> speakers) {
+    const auto has = [&speakers](iclforge::ac4::Speaker speaker) {
         return std::ranges::find(speakers, speaker) != speakers.end();
     };
-    if (!has(ac4::Speaker::kLeft)) {
+    if (!has(iclforge::ac4::Speaker::kLeft)) {
         return Acmod::k1_0;
     }
-    if (has(ac4::Speaker::kLeftSurround)) {
-        return has(ac4::Speaker::kCentre) ? Acmod::k3_2 : Acmod::k2_2;
+    if (has(iclforge::ac4::Speaker::kLeftSurround)) {
+        return has(iclforge::ac4::Speaker::kCentre) ? Acmod::k3_2 : Acmod::k2_2;
     }
-    return has(ac4::Speaker::kCentre) ? Acmod::k3_0 : Acmod::k2_0;
+    return has(iclforge::ac4::Speaker::kCentre) ? Acmod::k3_0 : Acmod::k2_0;
 }
 
 namespace {
@@ -183,9 +183,9 @@ void report_unit(const DecodedAccessUnit& unit, UnitReport& out) {
 // What an AC-4 frame's concealment did, in the report's terms. Its error is
 // AC-4's, which the report's own type does not name; the action is what the
 // Play page shows.
-[[nodiscard]] Concealment concealment_of(const ac4::Concealment& concealed) {
+[[nodiscard]] Concealment concealment_of(const iclforge::ac4::Concealment& concealed) {
     return Concealment{.error = DecodeError::kInvalidStream,
-                       .action = concealed.action == ac4::ConcealmentAction::kRepeatFade
+                       .action = concealed.action == iclforge::ac4::ConcealmentAction::kRepeatFade
                                      ? ConcealmentAction::kRepeatFade
                                      : ConcealmentAction::kMute};
 }
@@ -442,19 +442,19 @@ std::expected<std::size_t, std::string> StreamDecoder::decode_ac4(std::span<cons
         deliver_silence(unit_samples, deliver);
         return delivered_;
     }
-    const ac4::DecodedFrame& pcm = **decoded;
+    const iclforge::ac4::DecodedFrame& pcm = **decoded;
     place_ac4_frame(pcm, deliver);
     report_ac4(pcm, unit.size(), reported);
     return delivered_;
 }
 
 void StreamDecoder::flush_ac4(const BlockFn& /*deliver*/) {
-    // decode_ac4() now reads whole frames through ac4::Decoder::decode() and place_ac4_frame()
-    // delivers every one of a frame's samples before returning, so there is never anything left
-    // for ac4::Decoder::decode_by_block()'s own internal buffering to hold - that mechanism is
-    // simply not exercised any more. Kept as a named no-op rather than removed so decode_ac4()'s
-    // and finish()'s call sites, and their comments on what "everything before this frame" means,
-    // do not have to special-case AC-4 for a distinction that no longer exists.
+    // decode_ac4() now reads whole frames through iclforge::ac4::Decoder::decode() and
+    // place_ac4_frame() delivers every one of a frame's samples before returning, so there is never
+    // anything left for iclforge::ac4::Decoder::decode_by_block()'s own internal buffering to hold
+    // - that mechanism is simply not exercised any more. Kept as a named no-op rather than removed
+    // so decode_ac4()'s and finish()'s call sites, and their comments on what "everything before
+    // this frame" means, do not have to special-case AC-4 for a distinction that no longer exists.
 }
 
 void StreamDecoder::deliver_silence(std::size_t frames, const BlockFn& deliver) {
@@ -471,12 +471,13 @@ void StreamDecoder::deliver_silence(std::size_t frames, const BlockFn& deliver) 
     }
 }
 
-void StreamDecoder::place_ac4_frame(const ac4::DecodedFrame& pcm, const BlockFn& deliver) {
+void StreamDecoder::place_ac4_frame(const iclforge::ac4::DecodedFrame& pcm,
+                                    const BlockFn& deliver) {
     // A presentation with objects renders both its objects and any channels beside them together,
     // through the same layout renderer ac3cli's own 'decode' plays AC-4 objects with
     // (apps/common/ac4_object_render.hpp); one without takes the decoder's own channels as before
     // this control existed.
-    std::span<const ac4::Speaker> speakers;
+    std::span<const iclforge::ac4::Speaker> speakers;
     std::span<const std::vector<float>> channels;
     if (!pcm.objects.empty()) {
         const auto rate = static_cast<std::uint32_t>(pcm.sample_rate_hz);
@@ -510,8 +511,8 @@ void StreamDecoder::place_ac4_frame(const ac4::DecodedFrame& pcm, const BlockFn&
     ac4_channel_spans_.resize(channels.size());
     const std::size_t total =
         std::min<std::size_t>(pcm.samples, channels.empty() ? 0 : channels[0].size());
-    for (std::size_t offset = 0; offset < total; offset += ac4::kBlockSamples) {
-        const std::size_t n = std::min<std::size_t>(ac4::kBlockSamples, total - offset);
+    for (std::size_t offset = 0; offset < total; offset += iclforge::ac4::kBlockSamples) {
+        const std::size_t n = std::min<std::size_t>(iclforge::ac4::kBlockSamples, total - offset);
         for (std::size_t ch = 0; ch < channels.size(); ++ch) {
             ac4_channel_spans_[ch] = std::span<const float>(channels[ch]).subspan(offset, n);
         }
@@ -541,15 +542,16 @@ void StreamDecoder::place_ac4_frame(const ac4::DecodedFrame& pcm, const BlockFn&
     }
 }
 
-void StreamDecoder::report_ac4(const ac4::DecodedFrame& info, std::size_t unit_bytes,
+void StreamDecoder::report_ac4(const iclforge::ac4::DecodedFrame& info, std::size_t unit_bytes,
                                const UnitFn& reported) {
     if (!reported) {
         return;
     }
     UnitReport& out = report_;
     out.acmod = ac4_acmod(info.speakers);
-    out.lfe = std::ranges::find(info.speakers, ac4::Speaker::kLfe) != info.speakers.end();
-    const std::span<const ac4::PresentationInfo> presentations = ac4_decoder_->presentations();
+    out.lfe = std::ranges::find(info.speakers, iclforge::ac4::Speaker::kLfe) != info.speakers.end();
+    const std::span<const iclforge::ac4::PresentationInfo> presentations =
+        ac4_decoder_->presentations();
     out.substreams = info.presentation < presentations.size()
                          ? static_cast<int>(std::max<std::size_t>(
                                presentations[info.presentation].members.size(), 1))
@@ -567,7 +569,7 @@ void StreamDecoder::report_ac4(const ac4::DecodedFrame& info, std::size_t unit_b
     out.concealed =
         info.concealed ? std::optional<Concealment>{concealment_of(*info.concealed)} : std::nullopt;
     out.objects.reset();
-    const ac4::PresentationMetadata& metadata = ac4_decoder_->metadata();
+    const iclforge::ac4::PresentationMetadata& metadata = ac4_decoder_->metadata();
     out.ac4 = Ac4UnitReport{.presentation = info.presentation,
                             .presentation_id = info.presentation_id,
                             .dialnorm_dbfs = metadata.loudness.dialnorm_dbfs,
@@ -731,4 +733,4 @@ std::size_t StreamDecoder::render_flushed(std::span<DecodedSubstream> substreams
     return frames;
 }
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

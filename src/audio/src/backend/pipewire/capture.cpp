@@ -13,7 +13,7 @@
 //
 // Unlike ALSA's raw hw: devices, a PipeWire node negotiates through its own
 // audioadapter, which resamples and remixes on the node's behalf - so where
-// ac3::alsa::choose_format() and its _near negotiation exist because a raw
+// iclforge::alsa::choose_format() and its _near negotiation exist because a raw
 // device offers what the hardware can do and nothing else, this backend
 // simply asks for float32 at the preferred rate and channel count and gets
 // it, almost always exactly. What it does NOT get from the graph is a
@@ -56,12 +56,12 @@
 
 #include "pipewire_support.hpp"
 
-namespace ac3::audio {
+namespace iclforge::audio {
 
 namespace {
 
-using ac3::pipewire::Stream;
-using ac3::pipewire::ThreadLoop;
+using iclforge::pipewire::Stream;
+using iclforge::pipewire::ThreadLoop;
 
 constexpr std::uint32_t kPreferredRate = 48000;
 constexpr std::uint32_t kPreferredChannels = 2;
@@ -170,7 +170,7 @@ struct Capture::Impl {
         if (!impl.loopback || impl.channels == 0) {
             return;
         }
-        // Cover a suspended sink's silence the same way ac3::alsa's
+        // Cover a suspended sink's silence the same way iclforge::alsa's
         // snd-aloop path does - see this file's header comment.
         const auto elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() -
                                                              impl.started)
@@ -232,15 +232,16 @@ std::string_view describe(CaptureError error) {
 std::expected<std::vector<DeviceInfo>, CaptureError> enumerate_devices() {
     std::vector<DeviceInfo> devices;
 
-    ac3::pipewire::for_each_audio_node([&devices](std::uint32_t /*id*/, const spa_dict& props) {
-        const bool is_source = ac3::pipewire::is_audio_source(props);
-        const bool is_sink = ac3::pipewire::is_audio_sink(props);
+    iclforge::pipewire::for_each_audio_node([&devices](std::uint32_t /*id*/,
+                                                       const spa_dict& props) {
+        const bool is_source = iclforge::pipewire::is_audio_source(props);
+        const bool is_sink = iclforge::pipewire::is_audio_sink(props);
         if (!is_source && !is_sink) {
             return;
         }
         DeviceInfo info{
-            .id = ac3::pipewire::node_id(props),
-            .name = ac3::pipewire::node_friendly_name(props),
+            .id = iclforge::pipewire::node_id(props),
+            .name = iclforge::pipewire::node_friendly_name(props),
             .kind = is_sink ? DeviceKind::kLoopback : DeviceKind::kInput,
             .sample_rate = 0,
             .channels = 0,
@@ -415,7 +416,7 @@ std::expected<void, CaptureError> Capture::start(const std::string& device_id, D
     if (running()) {
         return std::unexpected(CaptureError::kAlreadyRunning);
     }
-    ac3::pipewire::ensure_initialized();
+    iclforge::pipewire::ensure_initialized();
     return impl_->connect_stream(device_id, kind == DeviceKind::kLoopback, kPreferredRate,
                                  kPreferredChannels, ring_capacity_samples);
 }
@@ -434,7 +435,7 @@ bool process_loopback_available() {
     // A session with no nodes in it yet is still a session that can be
     // tapped once something starts playing, so what is looked for is the
     // session, not any particular node - hence a visitor that does nothing.
-    return ac3::pipewire::for_each_audio_node([](std::uint32_t, const spa_dict&) {});
+    return iclforge::pipewire::for_each_audio_node([](std::uint32_t, const spa_dict&) {});
 }
 
 std::expected<void, CaptureError> Capture::start_process_loopback(
@@ -452,7 +453,7 @@ std::expected<void, CaptureError> Capture::start_process_loopback(
         return std::unexpected(CaptureError::kProcessLoopbackUnavailable);
     }
 
-    ac3::pipewire::ensure_initialized();
+    iclforge::pipewire::ensure_initialized();
 
     // Which node to link to. An application can own several streams; the
     // first is taken, which is the same choice the Windows backend makes by
@@ -465,7 +466,7 @@ std::expected<void, CaptureError> Capture::start_process_loopback(
     // and the pid, never an icon name, and this runs on the caller's frame
     // thread, where the binds the identity needs cost about a second on a
     // Raspberry Pi (measured; see that function's comment).
-    const auto streams = ac3::pipewire::output_stream_nodes();
+    const auto streams = iclforge::pipewire::output_stream_nodes();
     std::string target;
     for (const auto& stream : streams) {
         if (stream.pid == process_id && !stream.target.empty()) {
@@ -473,7 +474,7 @@ std::expected<void, CaptureError> Capture::start_process_loopback(
             break;
         }
     }
-    if (streams.empty() && !ac3::pipewire::for_each_audio_node(
+    if (streams.empty() && !iclforge::pipewire::for_each_audio_node(
                                [](std::uint32_t, const spa_dict&) {})) {
         return std::unexpected(CaptureError::kProcessLoopbackUnavailable);
     }
@@ -489,4 +490,4 @@ std::expected<void, CaptureError> Capture::start_process_loopback(
                                  ring_capacity_samples);
 }
 
-}  // namespace ac3::audio
+}  // namespace iclforge::audio

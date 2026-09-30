@@ -36,7 +36,7 @@ std::array<std::uint8_t, 253> loud_everywhere(std::uint8_t exponent) {
 
 // The same, but silent (kMaxExponent) above `bin`.
 std::array<std::uint8_t, 253> loud_below(int bin, std::uint8_t exponent) {
-    std::array<std::uint8_t, 253> exps = loud_everywhere(ac3::kMaxExponent);
+    std::array<std::uint8_t, 253> exps = loud_everywhere(iclforge::kMaxExponent);
     for (int i = 0; i < bin && i < 253; ++i) {
         exps[static_cast<std::size_t>(i)] = exponent;
     }
@@ -45,7 +45,7 @@ std::array<std::uint8_t, 253> loud_below(int bin, std::uint8_t exponent) {
 
 std::vector<float> band_limited_noise(std::uint64_t& n, double top_hz, double amplitude,
                                       int partials) {
-    std::vector<float> samples(ac3::kSamplesPerFrame);
+    std::vector<float> samples(iclforge::kSamplesPerFrame);
     for (auto& s : samples) {
         double acc = 0.0;
         // A comb of partials up to top_hz - deterministic, and its spectrum
@@ -61,8 +61,9 @@ std::vector<float> band_limited_noise(std::uint64_t& n, double top_hz, double am
     return samples;
 }
 
-std::vector<std::byte> encode_ac3(const ac3::EncoderConfig& config, double top_hz, int frames) {
-    ac3::FrameEncoder encoder(config);
+std::vector<std::byte> encode_ac3(const iclforge::EncoderConfig& config, double top_hz,
+                                  int frames) {
+    iclforge::FrameEncoder encoder(config);
     std::uint64_t n = 0;
     std::vector<std::byte> last;
     for (int f = 0; f < frames; ++f) {
@@ -83,7 +84,7 @@ std::vector<std::byte> encode_ac3(const ac3::EncoderConfig& config, double top_h
 // that has nothing to do with bandwidth.
 int ac3_chbwcod(std::span<const std::byte> frame) {
     constexpr int kNfchans = 2;
-    ac3::BitReader r{frame};
+    iclforge::BitReader r{frame};
     r.skip(40);                // syncinfo: syncword, crc1, fscod, frmsizecod
     r.skip(27);                // bsi for 2/0 without LFE, through addbsie
     r.skip(kNfchans * 2 + 1);  // blksw, dithflag, dynrnge
@@ -102,10 +103,10 @@ int ac3_chbwcod(std::span<const std::byte> frame) {
 // tool-set question - the same reasoning quality_race's decode_scores_ours
 // documents - and it is enough here, because both sides of the comparison
 // run through the identical decoder.
-double decode_snr_eac3(const ac3::eac3::FrameConfig& config, double top_hz) {
+double decode_snr_eac3(const iclforge::eac3::FrameConfig& config, double top_hz) {
     constexpr int kFrames = 10;
-    ac3::eac3::FrameEncoder encoder(config);
-    ac3::Eac3Decoder decoder;
+    iclforge::eac3::FrameEncoder encoder(config);
+    iclforge::Eac3Decoder decoder;
     std::uint64_t n = 0;
     std::vector<float> source;
     std::vector<float> decoded;
@@ -123,8 +124,8 @@ double decode_snr_eac3(const ac3::eac3::FrameConfig& config, double top_hz) {
     }
     // 256 samples of encode+decode transform delay, and a warm-up frame
     // dropped at each end rather than scored against the ramp.
-    constexpr std::size_t kDelay = ac3::kSamplesPerBlock;
-    constexpr std::size_t kSkip = ac3::kSamplesPerFrame;
+    constexpr std::size_t kDelay = iclforge::kSamplesPerBlock;
+    constexpr std::size_t kSkip = iclforge::kSamplesPerFrame;
     double signal = 0.0;
     double noise = 0.0;
     for (std::size_t i = kSkip; i + kSkip < std::min(source.size(), decoded.size()); ++i) {
@@ -139,8 +140,8 @@ double decode_snr_eac3(const ac3::eac3::FrameConfig& config, double top_hz) {
 }  // namespace
 
 TEST_CASE("chbwcod_for_endmant rounds up onto the transmitted grid") {
-    using ac3::encoder::chbwcod_for_endmant;
-    using ac3::encoder::endmant_for_chbwcod;
+    using iclforge::encoder::chbwcod_for_endmant;
+    using iclforge::encoder::endmant_for_chbwcod;
     // §7.1.3's own grid round-trips exactly.
     for (int code = 0; code <= 60; ++code) {
         CHECK(chbwcod_for_endmant(endmant_for_chbwcod(code)) == code);
@@ -157,8 +158,8 @@ TEST_CASE("chbwcod_for_endmant rounds up onto the transmitted grid") {
 }
 
 TEST_CASE("audible_endmant keeps a band above the hearing threshold") {
-    using ac3::encoder::audible_endmant;
-    const auto rate = ac3::SampleRate::k48000;
+    using iclforge::encoder::audible_endmant;
+    const auto rate = iclforge::SampleRate::k48000;
 
     // Exponent 0 is full scale in every band, which is far above Table 7.15
     // even at its 17 kHz step: nothing is dropped.
@@ -171,24 +172,24 @@ TEST_CASE("audible_endmant keeps a band above the hearing threshold") {
         CHECK(endmant >= bin);
         CHECK(endmant < 253);
         // ...and it is a real band edge, not an arbitrary bin.
-        const int band = ac3::tables::kMaskTab[static_cast<std::size_t>(endmant - 1)];
-        CHECK(endmant == ac3::tables::kBandStart[static_cast<std::size_t>(band)] +
-                             ac3::tables::kBandSize[static_cast<std::size_t>(band)]);
+        const int band = iclforge::tables::kMaskTab[static_cast<std::size_t>(endmant - 1)];
+        CHECK(endmant == iclforge::tables::kBandStart[static_cast<std::size_t>(band)] +
+                             iclforge::tables::kBandSize[static_cast<std::size_t>(band)]);
     }
 
     // Silence has nothing above the threshold anywhere, and still does not
     // collapse the band to zero - the floor is chbwcod 0.
-    CHECK(audible_endmant(loud_everywhere(ac3::kMaxExponent), rate) ==
-          ac3::encoder::endmant_for_chbwcod(0));
+    CHECK(audible_endmant(loud_everywhere(iclforge::kMaxExponent), rate) ==
+          iclforge::encoder::endmant_for_chbwcod(0));
 }
 
 TEST_CASE("choose_chbwcod holds the rate ceiling and rate-limits narrowing") {
-    using ac3::encoder::choose_chbwcod;
-    using ac3::encoder::kMaxNarrowStep;
-    using ac3::encoder::rate_ceiling_chbwcod;
-    const auto rate = ac3::SampleRate::k48000;
+    using iclforge::encoder::choose_chbwcod;
+    using iclforge::encoder::kMaxNarrowStep;
+    using iclforge::encoder::rate_ceiling_chbwcod;
+    const auto rate = iclforge::SampleRate::k48000;
     const auto full = loud_everywhere(0);
-    const auto quiet = loud_everywhere(ac3::kMaxExponent);
+    const auto quiet = loud_everywhere(iclforge::kMaxExponent);
 
     // The ceiling is the pre-EQ7 AC-3 curve, unchanged.
     CHECK(rate_ceiling_chbwcod(192, 5) == 25);   // 38 kbit/s per channel
@@ -217,11 +218,11 @@ TEST_CASE("choose_chbwcod holds the rate ceiling and rate-limits narrowing") {
 }
 
 TEST_CASE("choose_chbwcod stops consulting the content when bits are plentiful") {
-    using ac3::encoder::choose_chbwcod;
-    using ac3::encoder::kContentNarrowingCeiling;
-    using ac3::encoder::rate_ceiling_chbwcod;
-    const auto rate = ac3::SampleRate::k48000;
-    const auto quiet = loud_everywhere(ac3::kMaxExponent);
+    using iclforge::encoder::choose_chbwcod;
+    using iclforge::encoder::kContentNarrowingCeiling;
+    using iclforge::encoder::rate_ceiling_chbwcod;
+    const auto rate = iclforge::SampleRate::k48000;
+    const auto quiet = loud_everywhere(iclforge::kMaxExponent);
 
     // 640 kbit/s 5.1 is 128 per channel, exactly the ceiling: an entirely
     // empty spectrum still gets the full band, because there is nothing the
@@ -239,7 +240,7 @@ TEST_CASE("AC-3 narrows chbwcod to the content under the rate ceiling") {
     // 192 kbit/s stereo is 96 per channel: under the ceiling above which
     // the content is not consulted, and the rate ceiling there is already
     // 60 - so whatever chbwcod comes out is the content's own answer.
-    const ac3::EncoderConfig config{.bitrate_kbps = 192, .acmod = ac3::Acmod::k2_0};
+    const iclforge::EncoderConfig config{.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0};
     const int wide_code = ac3_chbwcod(encode_ac3(config, 20000.0, 8));
     const int narrow_code = ac3_chbwcod(encode_ac3(config, 8000.0, 8));
 
@@ -248,20 +249,20 @@ TEST_CASE("AC-3 narrows chbwcod to the content under the rate ceiling") {
     CHECK(narrow_code < wide_code);
     // ...and that it stopped at the content rather than below it: 8 kHz of
     // partials reach bin 85, and the band holding them has to survive.
-    CHECK(ac3::encoder::endmant_for_chbwcod(narrow_code) >= 85);
+    CHECK(iclforge::encoder::endmant_for_chbwcod(narrow_code) >= 85);
 
     // A pinned chbwcod still overrides the whole decision.
-    const ac3::EncoderConfig pinned{
-        .bitrate_kbps = 192, .chbwcod = 44, .acmod = ac3::Acmod::k2_0};
+    const iclforge::EncoderConfig pinned{
+        .bitrate_kbps = 192, .chbwcod = 44, .acmod = iclforge::Acmod::k2_0};
     CHECK(ac3_chbwcod(encode_ac3(pinned, 8000.0, 4)) == 44);
 }
 
 TEST_CASE("AC-3 keeps the rate ceiling whatever the content") {
     // 192 kbit/s 5.1 is 38 per channel: the ceiling is 24, and full-band
     // content must not buy a band the frame cannot afford.
-    const ac3::EncoderConfig config{
-        .bitrate_kbps = 192, .acmod = ac3::Acmod::k3_2, .lfe = true};
-    ac3::FrameEncoder encoder(config);
+    const iclforge::EncoderConfig config{
+        .bitrate_kbps = 192, .acmod = iclforge::Acmod::k3_2, .lfe = true};
+    iclforge::FrameEncoder encoder(config);
     std::uint64_t n = 0;
     std::vector<std::byte> last;
     for (int f = 0; f < 6; ++f) {
@@ -271,7 +272,7 @@ TEST_CASE("AC-3 keeps the rate ceiling whatever the content") {
         REQUIRE(frame.has_value());
         last = *frame;
     }
-    CHECK(ac3::encoder::rate_ceiling_chbwcod(192, 5) == 25);
+    CHECK(iclforge::encoder::rate_ceiling_chbwcod(192, 5) == 25);
     // 3/2 + LFE couples at this rate, which removes chbwcod from the stream
     // entirely (§5.4.3.8) - so the check that matters is that the frame is
     // legal and decodes, and the ceiling itself is pinned by the unit test
@@ -289,8 +290,8 @@ TEST_CASE("E-AC-3 narrows the coded bandwidth where it used to send 60") {
     // chbwcod, the thing under test here, never consulted. Forcing both
     // tools off isolates chbwcod's own behaviour from whatever `auto`
     // otherwise decides.
-    ac3::eac3::FrameConfig auto_bw{.bitrate_kbps = 192, .acmod = ac3::Acmod::k2_0};
-    ac3::eac3::FrameConfig fixed_60 = auto_bw;
+    iclforge::eac3::FrameConfig auto_bw{.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0};
+    iclforge::eac3::FrameConfig fixed_60 = auto_bw;
     fixed_60.chbwcod = 60;
 
     // Band-limited material: everything above 8 kHz is inaudible by Table
@@ -304,7 +305,7 @@ TEST_CASE("E-AC-3 narrows the coded bandwidth where it used to send 60") {
     CHECK(narrowed > full);
 
     // The default is auto, so a caller that says nothing gets the narrowing.
-    CHECK(ac3::eac3::FrameConfig{}.chbwcod == -1);
+    CHECK(iclforge::eac3::FrameConfig{}.chbwcod == -1);
 }
 
 TEST_CASE("accumulate_peak_exponents' float form agrees with the double one") {
@@ -322,10 +323,10 @@ TEST_CASE("accumulate_peak_exponents' float form agrees with the double one") {
         std::copy(coefficients.begin(), coefficients.end(), out.begin());
         return out;
     }();
-    std::vector<std::uint8_t> from_float(256, static_cast<std::uint8_t>(ac3::kMaxExponent));
-    std::vector<std::uint8_t> from_double(256, static_cast<std::uint8_t>(ac3::kMaxExponent));
-    ac3::encoder::accumulate_peak_exponents(std::span<const float>{coefficients}, from_float);
-    ac3::encoder::accumulate_peak_exponents(std::span<const double>{widened}, from_double);
+    std::vector<std::uint8_t> from_float(256, static_cast<std::uint8_t>(iclforge::kMaxExponent));
+    std::vector<std::uint8_t> from_double(256, static_cast<std::uint8_t>(iclforge::kMaxExponent));
+    iclforge::encoder::accumulate_peak_exponents(std::span<const float>{coefficients}, from_float);
+    iclforge::encoder::accumulate_peak_exponents(std::span<const double>{widened}, from_double);
     CHECK(from_float == from_double);
     CHECK(from_float[0] == 0);  // the loudest bin sits in the top exponent
 }

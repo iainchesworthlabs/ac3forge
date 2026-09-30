@@ -7,7 +7,7 @@
 // The portable (no-SIMD) member of the arch seam.
 //
 // One of src/arithmetic/arch/{generic,x86_64,aarch64}/ is put on
-// the include path by src/arithmetic/CMakeLists.txt (ac3::arithmetic's INTERFACE), so every
+// the include path by src/arithmetic/CMakeLists.txt (iclforge::arithmetic's INTERFACE), so every
 // `#include "ac3/internal/arch/simd.hpp"` in the codec core resolves to
 // exactly one of these three identically-pathed headers - the mechanism
 // src/internal/profiling/tracy_{enabled,disabled}/ already uses for the
@@ -54,7 +54,7 @@
 // and no other member of the seam makes a promise about it.
 // ---------------------------------------------------------------------------
 
-namespace ac3::internal::arch {
+namespace iclforge::internal::arch {
 
 // Reported by version_details() (`--version`) so a binary says which of the
 // three directories it was built from, and printed by
@@ -187,4 +187,4 @@ template <int Bits>
     return i32x4{a.v0 << Bits, a.v1 << Bits, a.v2 << Bits, a.v3 << Bits};
 }
 
-}  // namespace ac3::internal::arch
+}  // namespace iclforge::internal::arch

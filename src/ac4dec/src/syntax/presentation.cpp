@@ -9,7 +9,7 @@
 #include <utility>
 #include <vector>
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 namespace {
 
@@ -430,8 +430,8 @@ int superset_ch_mode_core(int a, int b) noexcept {
     return superset_in(kChModeCoreChannels, a, b);
 }
 
-PresentationContext presentation_context_v1(const ac4::Toc& toc,
-                                            const ac4::PresentationInfoV1& presentation) {
+PresentationContext presentation_context_v1(const iclforge::ac4::Toc& toc,
+                                            const iclforge::ac4::PresentationInfoV1& presentation) {
     PresentationContext ctx;
     ctx.b_alternative = presentation.b_alternative;
     ctx.b_pres_ndot = presentation.b_pres_ndot;
@@ -479,14 +479,14 @@ PresentationContext presentation_context_v1(const ac4::Toc& toc,
             continue;
         }
         counted[static_cast<std::size_t>(group_index)] = true;
-        const ac4::SubstreamGroupInfo& group =
+        const iclforge::ac4::SubstreamGroupInfo& group =
             toc.substream_groups[static_cast<std::size_t>(group_index)];
-        for (const ac4::GroupSubstream& substream : group.substreams) {
+        for (const iclforge::ac4::GroupSubstream& substream : group.substreams) {
             ++ctx.n_substreams_in_presentation;
             switch (substream.kind) {
-                case ac4::GroupSubstream::Kind::kChan:
+                case iclforge::ac4::GroupSubstream::Kind::kChan:
                     if (substream.chan) {
-                        const ac4::ChannelSubstreamInfo& chan = *substream.chan;
+                        const iclforge::ac4::ChannelSubstreamInfo& chan = *substream.chan;
                         if (chan.ch_mode) {
                             const int mode = *chan.ch_mode;
                             pres_ch_mode = superset_ch_mode(pres_ch_mode, mode);
@@ -501,7 +501,7 @@ PresentationContext presentation_context_v1(const ac4::Toc& toc,
                                 superset_ch_mode_core(pres_ch_mode_core, mode_core);
                         }
                         if (chan.original_content) {
-                            const ac4::OriginalContent& content = *chan.original_content;
+                            const iclforge::ac4::OriginalContent& content = *chan.original_content;
                             ctx.b_pres_4_back_channels_present =
                                 ctx.b_pres_4_back_channels_present ||
                                 content.b_4_back_channels_present;
@@ -513,7 +513,7 @@ PresentationContext presentation_context_v1(const ac4::Toc& toc,
                         }
                     }
                     break;
-                case ac4::GroupSubstream::Kind::kAjoc:
+                case iclforge::ac4::GroupSubstream::Kind::kAjoc:
                     b_obj_or_ajoc = true;
                     if (substream.ajoc && substream.ajoc->b_static_dmx) {
                         pres_ch_mode_core = superset_ch_mode_core(
@@ -522,7 +522,7 @@ PresentationContext presentation_context_v1(const ac4::Toc& toc,
                         b_obj_or_ajoc_adaptive = true;
                     }
                     break;
-                case ac4::GroupSubstream::Kind::kObj:
+                case iclforge::ac4::GroupSubstream::Kind::kObj:
                     b_obj_or_ajoc = true;
                     b_obj_or_ajoc_adaptive = true;
                     break;
@@ -738,4 +738,4 @@ ParseResult parse_presentation_substream(BitReader& r, const PresentationContext
     return check(r);
 }
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

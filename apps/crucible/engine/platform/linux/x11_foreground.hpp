@@ -16,7 +16,7 @@
 // no_xcb_window_reader.cpp when the build was configured without it, whose
 // connect() says so. No X header is named here; only the xcb reader has one.
 
-namespace ac3::crucible {
+namespace iclforge::crucible {
 
 struct X11ActiveWindow {
     std::uint32_t window = 0;          // the XID _NET_ACTIVE_WINDOW names; 0: none
@@ -74,4 +74,4 @@ private:
 // Exactly one definition is compiled, chosen by CMake.
 [[nodiscard]] std::unique_ptr<X11WindowReader> make_x11_window_reader();
 
-}  // namespace ac3::crucible
+}  // namespace iclforge::crucible

@@ -28,7 +28,7 @@
 // signal), and folding it into the fronts would put bass where a bass-managed
 // receiver has already decided it does not belong.
 
-namespace ac3::crucible {
+namespace iclforge::crucible {
 
 // Per-frame scratch for one application's fold, sized once.
 struct BedMix {
@@ -61,4 +61,4 @@ void fold_to_pair(std::span<const float> interleaved, std::uint16_t channels,
 void add_to_bed(std::span<const float> interleaved, std::uint16_t channels, float gain,
                 BedMix& bed);
 
-}  // namespace ac3::crucible
+}  // namespace iclforge::crucible

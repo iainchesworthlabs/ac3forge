@@ -58,7 +58,7 @@
 // conditional. That hoisting is why this cannot share decode_frame's loop:
 // the two syntaxes agree only on the payload underneath.
 
-namespace ac3 {
+namespace iclforge {
 
 
 namespace {
@@ -863,7 +863,7 @@ DecodedSubstream join_frames(std::vector<DecodedSubstream>& parts) {
 }  // namespace
 
 // Every private data member, following the same pimpl pattern as
-// ac3::io::WavStreamReader/Writer and ac3::FrameEncoder. The lazy per-
+// iclforge::io::WavStreamReader/Writer and iclforge::FrameEncoder. The lazy per-
 // substream-slot unique_ptr arrays (delay_/joc_state_/retained_) stay
 // exactly as they were - a laziness optimization independent of this pimpl.
 struct Eac3Decoder::Impl {
@@ -1476,7 +1476,7 @@ std::expected<DecodedSubstream, DecodeError> Eac3Decoder::decode_ac3_core(
     // is bsid 6 - the AC-3-syntax equivalent of a genuine substream's
     // `mixing` above, carried the same way every other field on this line is:
     // straight off the core FrameDecoder's own read, unmodified. Resolving
-    // them into the coefficients the §7.8 fold needs is `ac3::mix_levels()`'s
+    // them into the coefficients the §7.8 fold needs is `iclforge::mix_levels()`'s
     // job (via resolve_mix_levels below), same as it always was for a bare
     // AC-3 stream through FrameDecoder - only the plumbing to reach an
     // assembled E-AC-3 programme's fold is new here.
@@ -4061,7 +4061,7 @@ namespace {
 // `mixing` branch, exactly as it did before this function existed.
 //
 // This is the same resolution FrameDecoder applies to a bare AC-3 stream
-// (ac3::mix_levels(), the acmod/cmixlev/surmixlev/alternate_bsi overload
+// (iclforge::mix_levels(), the acmod/cmixlev/surmixlev/alternate_bsi overload
 // PR #691 added); the only thing new here is reaching it from an assembled
 // E-AC-3 programme or a still-pending substream instead of a lone AC-3 frame.
 // A dependent's own `mixing`, if it sent one, is not consulted either way -
@@ -4802,4 +4802,4 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
     return UnitResult(std::in_place, std::in_place, std::move(out));
 }
 
-}  // namespace ac3
+}  // namespace iclforge

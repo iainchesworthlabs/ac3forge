@@ -16,7 +16,7 @@
 // ST 2067-201:2021 to find one IAB Track File's single clip-wrapped essence KLV - see mxf.hpp's
 // own header comment for the overall design and what is deliberately out of scope.
 
-namespace ac3iab {
+namespace iclforge::iab {
 
 namespace {
 
@@ -191,4 +191,4 @@ std::expected<std::vector<IABitstreamFrame>, IabError> parse_mxf_iab(const std::
     return parse_mxf_iab(in);
 }
 
-}  // namespace ac3iab
+}  // namespace iclforge::iab

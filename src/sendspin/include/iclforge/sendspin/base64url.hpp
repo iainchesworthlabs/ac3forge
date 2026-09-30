@@ -16,7 +16,7 @@
 // the bits a final character carries beyond the last whole byte must be zero. A
 // client_id compared as text then agrees with the key compared as bytes.
 
-namespace ac3::sendspin::base64url {
+namespace iclforge::sendspin::base64url {
 
 // Characters for `bytes` bytes: ceil(4n / 3).
 [[nodiscard]] constexpr std::size_t encoded_size(std::size_t bytes) {
@@ -32,4 +32,4 @@ void encode_to(std::span<const std::uint8_t> bytes, std::string& out);
 // bytes. For fixed-size values such as a 32-byte key.
 [[nodiscard]] bool decode_exact(std::string_view text, std::span<std::uint8_t> out);
 
-}  // namespace ac3::sendspin::base64url
+}  // namespace iclforge::sendspin::base64url

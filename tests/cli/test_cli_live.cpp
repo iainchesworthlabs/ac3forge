@@ -54,7 +54,7 @@ namespace {
 
 // See tests/cli/test_cli.cpp's own scratch_dir for the reasoning this copy
 // shares, including the PID fold; the leaf name below is this file's own.
-std::string scratch_pid_suffix() { return ac3::test::platform::process_id(); }
+std::string scratch_pid_suffix() { return iclforge::test::platform::process_id(); }
 
 fs::path scratch_dir() {
     auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("cli_live_" + scratch_pid_suffix());
@@ -67,7 +67,7 @@ fs::path scratch_dir() {
 // `redirects` follows the arguments on the command line.
 int run_cli_redirected(const std::string& args, const std::string& redirects) {
     const std::string command = "\"" + std::string(AC3CLI_EXE) + "\" " + args + redirects;
-    return ac3::test::platform::run_shell(command);
+    return iclforge::test::platform::run_shell(command);
 }
 
 int run_cli(const std::string& args, const fs::path& log) {
@@ -92,14 +92,15 @@ std::string read_log(const fs::path& log) {
 // audio. This is for the program shapes this project's own encoder never
 // writes - AtmosEncoder's programs are always dynamic objects plus the bed's
 // LFE.
-void write_oamd_stream(const fs::path& path, const ac3::oba::Program& program,
-                       std::span<const ac3::oba::DynamicObject> objects) {
-    const auto payload = ac3::oba::build_payload(program, objects);
-    const std::vector<ac3::emdf::Payload> payloads = {
-        {.id = ac3::emdf::kPayloadIdOamd, .bytes = payload}};
-    const auto container = ac3::emdf::build_container(payloads);
+void write_oamd_stream(const fs::path& path, const iclforge::oba::Program& program,
+                       std::span<const iclforge::oba::DynamicObject> objects) {
+    const auto payload = iclforge::oba::build_payload(program, objects);
+    const std::vector<iclforge::emdf::Payload> payloads = {
+        {.id = iclforge::emdf::kPayloadIdOamd, .bytes = payload}};
+    const auto container = iclforge::emdf::build_container(payloads);
 
-    ac3::eac3::FrameEncoder encoder{{.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true}};
+    iclforge::eac3::FrameEncoder encoder{
+        {.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true}};
     const std::vector<float> silence(static_cast<std::size_t>(encoder.samples_per_frame()), 0.0F);
     const std::vector<std::span<const float>> channels(
         static_cast<std::size_t>(encoder.channel_count()), silence);
@@ -123,25 +124,27 @@ void write_oamd_stream(const fs::path& path, const ac3::oba::Program& program,
 // AC-3 has no skip-field syntax at all - which is exactly why a real
 // legacy-core Atmos delivery puts its object layer in the dependent instead
 // (decoder.hpp's DecodedAccessUnit::object_metadata comment).
-void write_legacy_core_oamd_stream(const fs::path& path, const ac3::oba::Program& program,
-                                   std::span<const ac3::oba::DynamicObject> objects) {
-    const auto payload = ac3::oba::build_payload(program, objects);
-    const std::vector<ac3::emdf::Payload> payloads = {
-        {.id = ac3::emdf::kPayloadIdOamd, .bytes = payload}};
-    const auto container = ac3::emdf::build_container(payloads);
+void write_legacy_core_oamd_stream(const fs::path& path, const iclforge::oba::Program& program,
+                                   std::span<const iclforge::oba::DynamicObject> objects) {
+    const auto payload = iclforge::oba::build_payload(program, objects);
+    const std::vector<iclforge::emdf::Payload> payloads = {
+        {.id = iclforge::emdf::kPayloadIdOamd, .bytes = payload}};
+    const auto container = iclforge::emdf::build_container(payloads);
 
-    ac3::FrameEncoder core{{.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true}};
-    ac3::eac3::FrameEncoder dependent{{.bitrate_kbps = 192,
-                                       .acmod = ac3::Acmod::k2_2,
-                                       .strmtyp = ac3::eac3::StreamType::kDependent,
+    iclforge::FrameEncoder core{{.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true}};
+    iclforge::eac3::FrameEncoder dependent{{.bitrate_kbps = 192,
+                                       .acmod = iclforge::Acmod::k2_2,
+                                       .strmtyp = iclforge::eac3::StreamType::kDependent,
                                        .substreamid = 0,
-                                       .chanmap = ac3::eac3::chanmap::k71Rear,
+                                       .chanmap = iclforge::eac3::chanmap::k71Rear,
                                        .last_dependent = true}};
 
-    const std::vector<float> core_silence(static_cast<std::size_t>(ac3::kSamplesPerFrame), 0.0F);
+    const std::vector<float> core_silence(static_cast<std::size_t>(iclforge::kSamplesPerFrame),
+                                          0.0F);
     const std::vector<std::span<const float>> core_channels(
         static_cast<std::size_t>(core.channel_count()), core_silence);
-    const std::vector<float> dep_silence(static_cast<std::size_t>(ac3::kSamplesPerFrame), 0.0F);
+    const std::vector<float> dep_silence(static_cast<std::size_t>(iclforge::kSamplesPerFrame),
+                                         0.0F);
     const std::vector<std::span<const float>> dep_channels(
         static_cast<std::size_t>(dependent.channel_count()), dep_silence);
 
@@ -206,7 +209,8 @@ void patch_bits(std::vector<std::byte>& frame, std::size_t offset, int count,
         target = set != 0 ? (target | std::byte{mask}) : (target & static_cast<std::byte>(~mask));
     }
     const auto bytes = frame.size();
-    const std::uint16_t crc2 = ac3::crc16(std::span<const std::byte>{frame}.subspan(2, bytes - 4));
+    const std::uint16_t crc2 =
+        iclforge::crc16(std::span<const std::byte>{frame}.subspan(2, bytes - 4));
     frame[bytes - 2] = static_cast<std::byte>(crc2 >> 8);
     frame[bytes - 1] = static_cast<std::byte>(crc2 & 0xFF);
 }
@@ -260,7 +264,7 @@ TEST_CASE("identify walks an output's speakers, or refuses by name",
 TEST_CASE("identify refuses an out-of-range device index before touching a layout or a patch",
           "[cli][audio-io]") {
     // 99999 can never be a valid index: either enumeration itself fails
-    // (reported by ac3::audio::describe()) or it succeeds with far fewer
+    // (reported by iclforge::audio::describe()) or it succeeds with far fewer
     // entries than that (run_identify's own "no render endpoint with index"
     // refusal) - deterministic either way, with or without real render
     // hardware, and reached before layout/routing parsing or any device open.
@@ -431,8 +435,8 @@ TEST_CASE("monitor describes a stream's object layer the way decode does",
     // decode's report is checked on every machine. monitor prints its own only
     // once a render endpoint opens; without one, the check is that it spoke.
     const auto dir = scratch_dir();
-    const auto check_both = [&dir](const std::string& name, const ac3::oba::Program& program,
-                                   std::span<const ac3::oba::DynamicObject> objects,
+    const auto check_both = [&dir](const std::string& name, const iclforge::oba::Program& program,
+                                   std::span<const iclforge::oba::DynamicObject> objects,
                                    const std::string& line) {
         const auto stream = dir / (name + ".ec3");
         write_oamd_stream(stream, program, objects);
@@ -454,14 +458,14 @@ TEST_CASE("monitor describes a stream's object layer the way decode does",
             CHECK(monitored.find(line) != std::string::npos);
         }
     };
-    const std::array<ac3::oba::DynamicObject, 2> objects{{
+    const std::array<iclforge::oba::DynamicObject, 2> objects{{
         {.position = {.x = 0.25, .y = 0.5, .z = 0.0}, .gain_db = 0.0},
         {.position = {.x = 0.75, .y = 0.5, .z = 0.0}, .gain_db = 0.0},
     }};
 
     SECTION("a bed program, as channel-based immersive content is, names its bed") {
         constexpr auto k514 = static_cast<std::uint16_t>(
-            ac3::oba::bed::k51 | ac3::oba::bed::kTflTfr | ac3::oba::bed::kTblTbr);
+            iclforge::oba::bed::k51 | iclforge::oba::bed::kTflTfr | iclforge::oba::bed::kTblTbr);
         check_both("monitor_bed_program",
                    {.dynamic_only = false, .bed = k514, .dynamic_objects = 2}, objects,
                    "  bed [L R C LFE Ls Rs Tfl Tfr Tbl Tbr] + 2 dynamic objects = 12 objects, "
@@ -491,7 +495,7 @@ TEST_CASE("spatial reads a legacy-core stream instead of refusing it as plain AC
     // this stream must never hit, not merely "some" refusal.
     const auto dir = scratch_dir();
     const auto stream = dir / "spatial_legacy_core.ec3";
-    const std::array<ac3::oba::DynamicObject, 2> objects{{
+    const std::array<iclforge::oba::DynamicObject, 2> objects{{
         {.position = {.x = 0.25, .y = 0.5, .z = 0.0}, .gain_db = 0.0},
         {.position = {.x = 0.75, .y = 0.5, .z = 0.0}, .gain_db = 0.0},
     }};
@@ -691,7 +695,7 @@ TEST_CASE("monitor reports a decode failure by name, distinct from a device refu
           "[cli][audio-io]") {
     // A semantically invalid but framing-correct, CRC-correct E-AC-3 access
     // unit - spxbegf placed past spxendf, collapsing the spectral extension
-    // region to nothing (see ac3::describe(DecodeError::kInvalidStream)) -
+    // region to nothing (see iclforge::describe(DecodeError::kInvalidStream)) -
     // the exact vector tests/ac3/decoder/test_eac3_decoder.cpp's "the E-AC-3
     // decoder rejects malformed spectral extension streams" test already
     // validates bit-for-bit at the library level, reused here through the
@@ -699,17 +703,17 @@ TEST_CASE("monitor reports a decode failure by name, distinct from a device refu
     // MonitorSink::start() (that only happens once a decode actually
     // succeeds), so unlike every other 'monitor' case in this file, this one
     // never depends on what render hardware is present.
-    ac3::eac3::AccessUnitEncoder encoder{{.independent = {.bitrate_kbps = 448,
-                                                          .acmod = ac3::Acmod::k3_2,
+    iclforge::eac3::AccessUnitEncoder encoder{{.independent = {.bitrate_kbps = 448,
+                                                          .acmod = iclforge::Acmod::k3_2,
                                                           .lfe = true,
                                                           .spx = true,
                                                           .spx_atten = false}}};
     REQUIRE(encoder.channel_count() == 6);
     std::vector<std::vector<float>> pcm(
-        6, std::vector<float>(static_cast<std::size_t>(ac3::kSamplesPerFrame)));
+        6, std::vector<float>(static_cast<std::size_t>(iclforge::kSamplesPerFrame)));
     const double tones[6] = {1000.0, 800.0, 1200.0, 600.0, 1400.0, 60.0};
     for (std::size_t ch = 0; ch < pcm.size(); ++ch) {
-        for (int i = 0; i < ac3::kSamplesPerFrame; ++i) {
+        for (int i = 0; i < iclforge::kSamplesPerFrame; ++i) {
             pcm[ch][static_cast<std::size_t>(i)] = static_cast<float>(
                 0.3 * std::sin(2.0 * std::numbers::pi * tones[ch] * static_cast<double>(i) /
                               48000.0));

@@ -20,13 +20,13 @@
 
 namespace fs = std::filesystem;
 
-using ac3::crucible::ui::AppIdentity;
-using ac3::crucible::ui::DesktopEntry;
-using ac3::crucible::ui::desktop_icon_for;
-using ac3::crucible::ui::exec_binary_of;
-using ac3::crucible::ui::icon_name_without_extension;
-using ac3::crucible::ui::read_desktop_entries;
-using ac3::crucible::ui::xdg_data_dirs;
+using iclforge::crucible::ui::AppIdentity;
+using iclforge::crucible::ui::DesktopEntry;
+using iclforge::crucible::ui::desktop_icon_for;
+using iclforge::crucible::ui::exec_binary_of;
+using iclforge::crucible::ui::icon_name_without_extension;
+using iclforge::crucible::ui::read_desktop_entries;
+using iclforge::crucible::ui::xdg_data_dirs;
 
 namespace {
 
@@ -36,7 +36,7 @@ namespace {
 // previous run's files cannot pass a case. The leaf also carries this
 // process's own PID - see tests/cli/test_cli.cpp's own scratch_dir comment
 // for why that is needed on top of the build-tree root.
-std::string scratch_pid_suffix() { return ac3::test::platform::process_id(); }
+std::string scratch_pid_suffix() { return iclforge::test::platform::process_id(); }
 
 fs::path scratch_dir() {
     const auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("crucible_icons_" + scratch_pid_suffix());

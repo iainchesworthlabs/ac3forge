@@ -15,7 +15,7 @@
 // on, and hands the newest one out once the clock - less the output path's
 // delay - has passed it.
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 class UnitReports {
 public:
@@ -48,4 +48,4 @@ private:
     std::size_t count_ = 0;
 };
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

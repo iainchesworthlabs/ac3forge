@@ -9,7 +9,7 @@
 #include <string_view>
 #include <vector>
 
-namespace ac3::verify {
+namespace iclforge::verify {
 
 namespace {
 
@@ -241,4 +241,4 @@ std::string report(std::span<const Mismatch> mismatches, int fbw_channels, int c
     return out;
 }
 
-}  // namespace ac3::verify
+}  // namespace iclforge::verify

@@ -25,15 +25,15 @@ struct Ac4PresentationRow {
 
 // "0: L R C LFE Ls Rs, en, id 3" - the position, the channels, and the
 // language and presentation_id where the stream sends them.
-[[nodiscard]] std::string ac4_presentation_label(const ac4::PresentationInfo& info);
+[[nodiscard]] std::string ac4_presentation_label(const iclforge::ac4::PresentationInfo& info);
 
 // The presentations the first frame that parses reports; empty where none
 // does.
 [[nodiscard]] std::vector<Ac4PresentationRow> ac4_presentation_rows(
-    std::span<const ac4::SyncFrame> frames);
+    std::span<const iclforge::ac4::SyncFrame> frames);
 
 // The channel names ac3gui shows for AC-4 speakers (A/52 Table E2.5's short
 // names, as the player's meters name them).
-[[nodiscard]] std::string ac4_speaker_names(std::span<const ac4::Speaker> speakers);
+[[nodiscard]] std::string ac4_speaker_names(std::span<const iclforge::ac4::Speaker> speakers);
 
 }  // namespace ac3gui

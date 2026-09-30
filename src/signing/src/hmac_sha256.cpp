@@ -4,7 +4,7 @@
 
 #include "sha256.hpp"
 
-namespace ac3::signing {
+namespace iclforge::signing {
 
 std::array<std::byte, 32> hmac_sha256(std::span<const std::byte> key,
                                       std::span<const std::byte> message) {
@@ -43,4 +43,4 @@ std::array<std::byte, 32> hmac_sha256(std::span<const std::byte> key,
     return out;
 }
 
-}  // namespace ac3::signing
+}  // namespace iclforge::signing

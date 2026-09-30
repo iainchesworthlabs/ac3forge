@@ -7,7 +7,7 @@
 // under src/internal/scalar/float64/ for what this seam is; the float variant
 // under src/internal/scalar/float32/ is the ESP32-S3's.
 
-namespace ac3::internal {
+namespace iclforge::internal {
 
 // Fixed32 (src/forge/src/core/fixed32.hpp): Q7.24 in a 32-bit integer, for a
 // part with no floating-point unit at all - the ESP32-C3, a Cortex-M3 - where
@@ -22,4 +22,4 @@ namespace ac3::internal {
 // gate.
 using decode_scalar_t = Fixed32;
 
-}  // namespace ac3::internal
+}  // namespace iclforge::internal

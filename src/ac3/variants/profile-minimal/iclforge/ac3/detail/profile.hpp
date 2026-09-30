@@ -13,7 +13,7 @@
 // reference transform is present finds out the way any caller does - by
 // asking for it and being refused (DecodeError::kNoReferenceTransform).
 
-namespace ac3::internal {
+namespace iclforge::internal {
 
 // AC3FORGE_MINIMAL_DECODER. True here: this build is decode-only, has no
 // direct-form transform tables, and is compiled without exceptions or RTTI.
@@ -31,4 +31,4 @@ inline constexpr bool kReferenceTransformAvailable = false;
 // to measure it against. See that header.
 
 
-} // namespace ac3::internal
+} // namespace iclforge::internal

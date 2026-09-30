@@ -11,7 +11,7 @@
 #include "isobmff_detail.hpp"
 #include "obu_detail.hpp"
 
-namespace iamf {
+namespace iclforge::iamf {
 
 namespace {
 
@@ -150,10 +150,10 @@ std::expected<std::vector<std::byte>, MuxError> mux(const AudioTrack& track,
     const std::uint64_t total_samples =
         static_cast<std::uint64_t>(frames.size()) * track.samples_per_frame;
 
-    // Same two-pass layout mp4::mux() uses: stco's chunk offsets are absolute file positions,
-    // which depend on moov's size, which is already fixed (box sizes are self-describing)
-    // regardless of what those offset VALUES turn out to be - so moov is built once with
-    // placeholder offsets purely to measure it, then again with the real ones.
+    // Same two-pass layout iclforge::mp4::mux() uses: stco's chunk offsets are absolute file
+    // positions, which depend on moov's size, which is already fixed (box sizes are
+    // self-describing) regardless of what those offset VALUES turn out to be - so moov is built
+    // once with placeholder offsets purely to measure it, then again with the real ones.
     const std::vector<std::uint32_t> placeholder_offsets(samples.size(), 0);
     const Bytes moov_measured =
         build_moov(track, config_obus, samples, placeholder_offsets, total_samples);
@@ -186,4 +186,4 @@ std::expected<std::vector<std::byte>, MuxError> mux(const AudioTrack& track,
     return file;
 }
 
-}  // namespace iamf
+}  // namespace iclforge::iamf

@@ -43,23 +43,23 @@
 
 namespace {
 
-using ac3::oba::joc::Domain;
-using ac3::render::LayoutRenderer;
-using ac3::render::OutputLayout;
-using Location = ac3::eac3::chanmap::Location;
+using iclforge::oba::joc::Domain;
+using iclforge::render::LayoutRenderer;
+using iclforge::render::OutputLayout;
+using Location = iclforge::eac3::chanmap::Location;
 
-constexpr std::uint16_t k51 = ac3::eac3::chanmap::acmod_map(ac3::Acmod::k3_2, true);
+constexpr std::uint16_t k51 = iclforge::eac3::chanmap::acmod_map(iclforge::Acmod::k3_2, true);
 // A genuinely different bed from k51's: the LFE sits at coded index 7 rather
 // than 5 (test_layout.cpp's "a channel the layout lacks is panned..." case
 // has the same figures), used to tell set_bed() apart from a mere repeat.
 constexpr std::uint16_t k71 =
-    static_cast<std::uint16_t>(k51 | ac3::eac3::chanmap::k71Rear);
+    static_cast<std::uint16_t>(k51 | iclforge::eac3::chanmap::k71Rear);
 
 constexpr int kFrames = 8;
 // Frame 3, as tests/ac3/decoder/test_latency.cpp places its marker: past every
 // encoder's and decoder's priming, and early enough that the longest delay
 // here still leaves the pulse well inside the stream.
-constexpr int kPulseAt = 3 * ac3::kSamplesPerFrame + 512;
+constexpr int kPulseAt = 3 * iclforge::kSamplesPerFrame + 512;
 // The stretch the correlations run over: the pulse, and everything the chain
 // can have moved it to.
 constexpr int kWindowFrom = kPulseAt - 2048;
@@ -145,40 +145,41 @@ struct Rendered {
 // do, and renders every block onto 5.1 - placing the objects when `objects`,
 // the bed otherwise.
 Rendered encode_decode_render(std::span<const float> in, Domain domain, bool objects) {
-    ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448, .joc_domain = domain}, 1};
-    const ac3::oba::ObjectPlacement placement{
+    iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 448, .joc_domain = domain}, 1};
+    const iclforge::oba::ObjectPlacement placement{
         .position = {.x = 0.5, .y = 0.0, .z = 0.0}, .gain = 1.0, .lfe_send = 1.0};
 
     const OutputLayout layout = *OutputLayout::named("5.1");
-    const ac3::render::Serving serving = ac3::render::serve(
-        layout, ac3::DownmixTarget::kLoRo,
-        objects ? ac3::render::ObjectsPolicy::kAlways : ac3::render::ObjectsPolicy::kNever);
+    const iclforge::render::Serving serving =
+        iclforge::render::serve(layout, iclforge::DownmixTarget::kLoRo,
+                                objects ? iclforge::render::ObjectsPolicy::kAlways
+                                        : iclforge::render::ObjectsPolicy::kNever);
     REQUIRE_FALSE(serving.fold.has_value());
     REQUIRE(serving.reconstruct == objects);
-    ac3::DecoderConfig config;
+    iclforge::DecoderConfig config;
     config.joc_domain = domain;
-    ac3::render::configure_decoder(serving, config);
-    ac3::Eac3Decoder decoder{config};
+    iclforge::render::configure_decoder(serving, config);
+    iclforge::Eac3Decoder decoder{config};
 
-    const ac3::eac3::chanmap::Layout bed = ac3::eac3::chanmap::expand(k51);
+    const iclforge::eac3::chanmap::Layout bed = iclforge::eac3::chanmap::expand(k51);
     LayoutRenderer renderer{layout};
     renderer.set_joc_domain(domain);
     renderer.set_bed(bed);
 
     const auto lfe_slot = static_cast<std::size_t>(layout.index_of(Location::kLfe));
-    std::vector<std::array<float, ac3::kSamplesPerBlock>> block(layout.slots());
+    std::vector<std::array<float, iclforge::kSamplesPerBlock>> block(layout.slots());
     std::vector<std::span<float>> spans(block.begin(), block.end());
 
     Rendered out;
-    const auto frame = static_cast<std::size_t>(ac3::kSamplesPerFrame);
+    const auto frame = static_cast<std::size_t>(iclforge::kSamplesPerFrame);
     for (std::size_t start = 0; start < in.size(); start += frame) {
         const std::array<std::span<const float>, 1> audio{in.subspan(start, frame)};
-        const std::array<ac3::oba::ObjectPlacement, 1> placements{placement};
+        const std::array<iclforge::oba::ObjectPlacement, 1> placements{placement};
         const auto unit = encoder.encode_frame(audio, placements);
         REQUIRE(unit.has_value());
         bool carried_objects = false;
         const auto decoded =
-            decoder.decode_access_unit_by_block(unit->bytes, [&](const ac3::PcmBlock& pcm) {
+            decoder.decode_access_unit_by_block(unit->bytes, [&](const iclforge::PcmBlock& pcm) {
                 if (pcm.index == 0 && serving.reconstruct) {
                     renderer.set_objects(pcm.object_metadata, pcm.objects.size());
                 }
@@ -198,7 +199,7 @@ Rendered encode_decode_render(std::span<const float> in, Domain domain, bool obj
             });
         REQUIRE(decoded.has_value());
         REQUIRE(decoded->has_value());
-        const ac3::DecodedAccessUnit& au = **decoded;
+        const iclforge::DecodedAccessUnit& au = **decoded;
         REQUIRE(au.layout.count == bed.count);
         REQUIRE(au.layout.index_of(Location::kLfe) == bed.index_of(Location::kLfe));
         ++out.units;
@@ -215,14 +216,14 @@ Rendered encode_decode_render(std::span<const float> in, Domain domain, bool obj
 // 10000 + n + 1 for a second one), and an object that is the negated ramp. A
 // delay then shows as exactly which sample came out.
 struct Ramps {
-    ac3::eac3::chanmap::Layout coded;
+    iclforge::eac3::chanmap::Layout coded;
     std::vector<std::vector<float>> channels;  // coded order
     std::vector<float> object;
 };
 
 Ramps ramps(std::uint16_t map, std::size_t samples) {
     Ramps out;
-    out.coded = ac3::eac3::chanmap::expand(map);
+    out.coded = iclforge::eac3::chanmap::expand(map);
     out.channels.assign(static_cast<std::size_t>(out.coded.count),
                         std::vector<float>(samples, 0.0F));
     for (int c = 0; c < out.coded.count; ++c) {
@@ -265,7 +266,7 @@ std::vector<std::vector<float>> play(LayoutRenderer& renderer, const Ramps& in, 
             spans.emplace_back(slot.data() + start, n);
         }
         const bool carried = carries(index);
-        const ac3::PcmBlock pcm{
+        const iclforge::PcmBlock pcm{
             .index = 0,
             .blocks = 1,
             .channels = channels,
@@ -296,8 +297,8 @@ long first_difference(const std::vector<float>& got, Want want) {
     return -1;
 }
 
-std::array<ac3::oba::DisplayObject, 1> at_the_centre() {
-    ac3::oba::DisplayObject object;
+std::array<iclforge::oba::DisplayObject, 1> at_the_centre() {
+    iclforge::oba::DisplayObject object;
     object.position = {.x = 0.5, .y = 0.0, .z = 0.0};
     return {object};
 }
@@ -309,34 +310,36 @@ TEST_CASE("the bed's LFE and its other channels arrive together", "[render][late
     // coded, and everything in it shares the one transform delay. The LFE
     // channel's narrow coded band does not move where a correlation finds the
     // pulse - which is what makes the measurement below mean anything.
-    const auto in = programme(kFrames * ac3::kSamplesPerFrame, kPulseAt);
+    const auto in = programme(kFrames * iclforge::kSamplesPerFrame, kPulseAt);
     const Rendered bed = encode_decode_render(in, Domain::kQmf, false);
     REQUIRE(bed.units_with_objects == 0);
     REQUIRE(peak(bed.speakers) > 0.25F);
     REQUIRE(peak(bed.lfe) > 0.25F);
 
-    CHECK(best_lag(in, bed.speakers, 0, 2 * ac3::kSamplesPerFrame) ==
-          ac3::kTransformDelaySamples);
-    CHECK(best_lag(in, bed.lfe, 0, 2 * ac3::kSamplesPerFrame) == ac3::kTransformDelaySamples);
-    CHECK(best_lag(bed.lfe, bed.speakers, -ac3::kSamplesPerFrame, ac3::kSamplesPerFrame) == 0);
+    CHECK(best_lag(in, bed.speakers, 0, 2 * iclforge::kSamplesPerFrame) ==
+          iclforge::kTransformDelaySamples);
+    CHECK(best_lag(in, bed.lfe, 0, 2 * iclforge::kSamplesPerFrame) ==
+          iclforge::kTransformDelaySamples);
+    CHECK(best_lag(bed.lfe, bed.speakers, -iclforge::kSamplesPerFrame,
+                   iclforge::kSamplesPerFrame) == 0);
 }
 
 TEST_CASE("the objects' LFE arrives with the objects", "[render][latency]") {
     const Domain domain = GENERATE(Domain::kQmf, Domain::kMdctBand);
     const int object_lag =
-        ac3::kTransformDelaySamples + ac3::oba::joc::reconstruction_delay(domain);
+        iclforge::kTransformDelaySamples + iclforge::oba::joc::reconstruction_delay(domain);
     CAPTURE(domain == Domain::kQmf ? "kQmf" : "kMdctBand", object_lag);
 
-    const auto in = programme(kFrames * ac3::kSamplesPerFrame, kPulseAt);
+    const auto in = programme(kFrames * iclforge::kSamplesPerFrame, kPulseAt);
     const Rendered placed = encode_decode_render(in, domain, true);
     REQUIRE(placed.units_with_objects == placed.units);
     REQUIRE(peak(placed.speakers) > 0.25F);
     REQUIRE(peak(placed.lfe) > 0.25F);
 
-    const int to_speakers = best_lag(in, placed.speakers, 0, 2 * ac3::kSamplesPerFrame);
-    const int to_lfe = best_lag(in, placed.lfe, 0, 2 * ac3::kSamplesPerFrame);
-    const int lfe_to_speakers =
-        best_lag(placed.lfe, placed.speakers, -ac3::kSamplesPerFrame, ac3::kSamplesPerFrame);
+    const int to_speakers = best_lag(in, placed.speakers, 0, 2 * iclforge::kSamplesPerFrame);
+    const int to_lfe = best_lag(in, placed.lfe, 0, 2 * iclforge::kSamplesPerFrame);
+    const int lfe_to_speakers = best_lag(placed.lfe, placed.speakers, -iclforge::kSamplesPerFrame,
+                                         iclforge::kSamplesPerFrame);
     CAPTURE(to_speakers, to_lfe, lfe_to_speakers);
     // The objects are where test_latency.cpp says a reconstructed object is.
     CHECK(to_speakers == object_lag);
@@ -347,8 +350,9 @@ TEST_CASE("the objects' LFE arrives with the objects", "[render][latency]") {
 
 TEST_CASE("the renderer's lag is the one the decoder's default domain has", "[render]") {
     const LayoutRenderer renderer{*OutputLayout::named("5.1")};
-    CHECK(renderer.object_lag() == static_cast<std::size_t>(ac3::oba::joc::reconstruction_delay(
-                                       ac3::DecoderConfig{}.joc_domain)));
+    CHECK(renderer.object_lag() ==
+          static_cast<std::size_t>(
+              iclforge::oba::joc::reconstruction_delay(iclforge::DecoderConfig{}.joc_domain)));
 }
 
 TEST_CASE("render holds the bed's LFE back by the objects' lag, whatever the block length",
@@ -356,7 +360,7 @@ TEST_CASE("render holds the bed's LFE back by the objects' lag, whatever the blo
     const Domain domain = GENERATE(Domain::kQmf, Domain::kMdctBand);
     // A block's worth, one that divides neither lag, and one longer than both.
     const std::size_t block = GENERATE(std::size_t{256}, std::size_t{100}, std::size_t{2048});
-    const auto lag = static_cast<std::size_t>(ac3::oba::joc::reconstruction_delay(domain));
+    const auto lag = static_cast<std::size_t>(iclforge::oba::joc::reconstruction_delay(domain));
     CAPTURE(lag, block);
 
     LayoutRenderer renderer{*OutputLayout::named("5.1")};  // L C R Ls Rs LFE
@@ -408,7 +412,7 @@ TEST_CASE("a renderer not asked for objects plays the LFE as it arrives", "[rend
 
 TEST_CASE("each LFE has its own line", "[render]") {
     // Two coded LFEs to a room with two feeds; coded order puts LFE2 first.
-    const auto map = static_cast<std::uint16_t>(k51 | ac3::eac3::chanmap::kLfe2Bit);
+    const auto map = static_cast<std::uint16_t>(k51 | iclforge::eac3::chanmap::kLfe2Bit);
     LayoutRenderer renderer{*OutputLayout::named("5.2")};
     const std::size_t lag = renderer.object_lag();
     const Ramps in = ramps(map, 4096);
@@ -501,7 +505,7 @@ TEST_CASE("two renderers of the same programme agree whether or not the caller r
         }
         const std::array<std::span<const float>, 1> object{
             std::span<const float>(in.object.data() + start, kUnitSamples)};
-        const ac3::PcmBlock pcm{.index = 0,
+        const iclforge::PcmBlock pcm{.index = 0,
                                 .blocks = 1,
                                 .channels = channels,
                                 .objects = object,

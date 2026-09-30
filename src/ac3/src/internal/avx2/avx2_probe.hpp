@@ -24,7 +24,7 @@
 // public ac3/ API, exactly like ac3/internal/profiling.hpp beside it.
 // ---------------------------------------------------------------------------
 
-namespace ac3::internal::avx2 {
+namespace iclforge::internal::avx2 {
 
 // Computes a small, fixed result using real AVX2 intrinsics and compares it
 // against the same result computed by ordinary scalar arithmetic in the
@@ -32,8 +32,8 @@ namespace ac3::internal::avx2 {
 // nothing to do with the codec's bit-exactness promise (it is not a codec
 // kernel); it exists purely to prove AVX2 instructions execute correctly on
 // whatever CPU calls it. Callers MUST confirm
-// ac3::internal::cpu::has_avx2() first - calling this on incapable hardware
+// iclforge::internal::cpu::has_avx2() first - calling this on incapable hardware
 // is exactly the illegal-instruction fault that check exists to prevent.
 [[nodiscard]] bool avx2_probe_matches_expected() noexcept;
 
-} // namespace ac3::internal::avx2
+} // namespace iclforge::internal::avx2

@@ -38,7 +38,7 @@
 // Several sinks run side by side in one process or several, with distinct names, ports and state
 // directories.
 
-namespace ac3::hearth::testsink {
+namespace iclforge::hearth::testsink {
 
 enum class CodeMethod : std::uint8_t {
     kNone,
@@ -66,7 +66,7 @@ struct SinkOptions {
     // applied") - for a server-side test of a sink that takes settings.
     // Off by default: the sink manages nothing (see Sink's config).
     bool accept_settings = false;
-    // The speaker layout the extension role's streams are rendered to, in ac3::render::OutputLayout's
+    // The speaker layout the extension role's streams are rendered to, in iclforge::render::OutputLayout's
     // grammar.
     std::string layout = "7.1.4";
     // Roles beyond the playback roles to list, for testing a server's: any of controller@v1,
@@ -192,4 +192,4 @@ class Sink {
     std::unique_ptr<sendspin::discovery::Advertiser> advertiser_;
 };
 
-}  // namespace ac3::hearth::testsink
+}  // namespace iclforge::hearth::testsink

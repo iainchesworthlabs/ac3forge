@@ -17,13 +17,13 @@
 
 namespace {
 
-using ac3::sendspin::crypto::Digest32;
-using ac3::sendspin::crypto::Digest64;
-using ac3::sendspin::crypto::Key32;
-using ac3::sendspin::Dialect;
-using ac3::sendspin::pairing::TokenVersion;
-using ac3::sendspin::test::from_hex;
-using ac3::sendspin::test::to_hex;
+using iclforge::sendspin::crypto::Digest32;
+using iclforge::sendspin::crypto::Digest64;
+using iclforge::sendspin::crypto::Key32;
+using iclforge::sendspin::Dialect;
+using iclforge::sendspin::pairing::TokenVersion;
+using iclforge::sendspin::test::from_hex;
+using iclforge::sendspin::test::to_hex;
 
 std::array<std::uint8_t, 32> counting(std::uint8_t first) {
     std::array<std::uint8_t, 32> out{};
@@ -45,10 +45,11 @@ TEST_CASE("pairing: pairing.md's token vectors", "[sendspin][pairing]") {
     const Key32 pairing_psk = counting(0xE0);
     payload0.insert(payload0.end(), client_key.begin(), client_key.end());
     payload0.insert(payload0.end(), pairing_psk.begin(), pairing_psk.end());
-    CHECK(ac3::sendspin::pairing::encode_token(TokenVersion::kPairingPsk, payload0) == kToken0);
+    CHECK(iclforge::sendspin::pairing::encode_token(TokenVersion::kPairingPsk, payload0) ==
+          kToken0);
 
-    const std::optional<ac3::sendspin::pairing::PairingPskToken> decoded =
-        ac3::sendspin::pairing::decode_pairing_psk_token(kToken0);
+    const std::optional<iclforge::sendspin::pairing::PairingPskToken> decoded =
+        iclforge::sendspin::pairing::decode_pairing_psk_token(kToken0);
     REQUIRE(decoded.has_value());
     CHECK(decoded->client_key == client_key);
     CHECK(decoded->pairing_psk == pairing_psk);
@@ -57,15 +58,16 @@ TEST_CASE("pairing: pairing.md's token vectors", "[sendspin][pairing]") {
     for (std::size_t i = 0; i < payload1.size(); ++i) {
         payload1[i] = static_cast<std::uint8_t>(0xE0 + i);
     }
-    CHECK(ac3::sendspin::pairing::encode_token(TokenVersion::kDynamicCode, payload1) == kToken1);
-    const auto token1 = ac3::sendspin::pairing::decode_token(kToken1);
+    CHECK(iclforge::sendspin::pairing::encode_token(TokenVersion::kDynamicCode, payload1) ==
+          kToken1);
+    const auto token1 = iclforge::sendspin::pairing::decode_token(kToken1);
     REQUIRE(token1.has_value());
     CHECK(token1->version == TokenVersion::kDynamicCode);
     CHECK(token1->payload == payload1);
 }
 
 TEST_CASE("pairing: token decoding is lenient with operator input", "[sendspin][pairing]") {
-    using ac3::sendspin::pairing::decode_token;
+    using iclforge::sendspin::pairing::decode_token;
     std::string lower(kToken1);
     for (char& c : lower) {
         if (c >= 'A' && c <= 'Z') {
@@ -81,13 +83,13 @@ TEST_CASE("pairing: token decoding is lenient with operator input", "[sendspin][
     CHECK(bare->payload == from_lower->payload);
     // Payload bytes past the version's are kept for the caller to ignore.
     std::vector<std::uint8_t> longer(30, 0x5A);
-    const auto extended = decode_token(ac3::sendspin::pairing::encode_token(TokenVersion::kDynamicCode, longer));
+    const auto extended = decode_token(iclforge::sendspin::pairing::encode_token(TokenVersion::kDynamicCode, longer));
     REQUIRE(extended.has_value());
     CHECK(extended->payload.size() == 30);
 }
 
 TEST_CASE("pairing: malformed tokens are refused", "[sendspin][pairing]") {
-    using ac3::sendspin::pairing::decode_token;
+    using iclforge::sendspin::pairing::decode_token;
     CHECK_FALSE(decode_token("").has_value());
     CHECK_FALSE(decode_token("SP:").has_value());
     CHECK_FALSE(decode_token("SP:2" + std::string(kToken1.substr(4))).has_value());  // version
@@ -95,11 +97,11 @@ TEST_CASE("pairing: malformed tokens are refused", "[sendspin][pairing]") {
     CHECK_FALSE(decode_token("SP:14DQ6FY7E4XTOP9HJ5LV6Z3PO57YPD4XT6T97N58").has_value());  // 8
     CHECK_FALSE(decode_token("SP:14DQ6FY7E4XTOP9HJ5LV6Z3PO57YPD4XT6T97N5").has_value());  // length
     CHECK_FALSE(decode_token("SP:14DQ6FY7E4XTOP").has_value());                             // short
-    CHECK_FALSE(ac3::sendspin::pairing::decode_pairing_psk_token(kToken1).has_value());
+    CHECK_FALSE(iclforge::sendspin::pairing::decode_pairing_psk_token(kToken1).has_value());
 }
 
 TEST_CASE("pairing: the dynamic code in both dialects", "[sendspin][pairing]") {
-    using ac3::sendspin::pairing::derive_digits;
+    using iclforge::sendspin::pairing::derive_digits;
     const Digest32 h = counting(0);
     const Key32 nonce_a = counting(32);
     const Key32 nonce_b = counting(64);
@@ -113,36 +115,36 @@ TEST_CASE("pairing: the dynamic code in both dialects", "[sendspin][pairing]") {
     CHECK_FALSE(derive_digits(Dialect::kAiosendspin911, h, nonce_a, nonce_b, 3).has_value());
     CHECK_FALSE(derive_digits(Dialect::kAiosendspin911, h, nonce_a, nonce_b, 13).has_value());
 
-    const auto qr = ac3::sendspin::pairing::derive_qr_code(h, nonce_a, nonce_b);
+    const auto qr = iclforge::sendspin::pairing::derive_qr_code(h, nonce_a, nonce_b);
     REQUIRE(qr.has_value());
     CHECK(to_hex(*qr) == "9f26c48e69443b7fab8d1be2052017a0f69b4a1f0e49033d");
 
-    const auto commitment = ac3::sendspin::pairing::commit(nonce_b);
+    const auto commitment = iclforge::sendspin::pairing::commit(nonce_b);
     REQUIRE(commitment.has_value());
     CHECK(to_hex(*commitment) == "f6d431646ea17a4488f6008d0da4dbd79b7c0a898c3631453fb6ffc912d29c18");
 }
 
 TEST_CASE("pairing: the CPace session id with and without the round", "[sendspin][pairing]") {
     const Digest32 h = counting(0);
-    const std::vector<std::uint8_t> spec = ac3::sendspin::pairing::pake_sid(Dialect::kSpecification, h, 2, 3);
+    const std::vector<std::uint8_t> spec = iclforge::sendspin::pairing::pake_sid(Dialect::kSpecification, h, 2, 3);
     CHECK(spec.size() == 61);
     CHECK(to_hex(spec) ==
           "73656e647370696e2d706169722d70616b652d7631000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f0000000200000003");
-    const std::vector<std::uint8_t> legacy = ac3::sendspin::pairing::pake_sid(Dialect::kAiosendspin911, h, 2, 3);
+    const std::vector<std::uint8_t> legacy = iclforge::sendspin::pairing::pake_sid(Dialect::kAiosendspin911, h, 2, 3);
     CHECK(legacy.size() == 57);
     CHECK(to_hex(legacy) == to_hex(std::span<const std::uint8_t>(spec).first(57)));
 }
 
 TEST_CASE("pairing: wrapping the long-term PSK under K_wrap", "[sendspin][pairing]") {
-    using ac3::sendspin::pairing::Wrapped;
+    using iclforge::sendspin::pairing::Wrapped;
     const Digest32 h = counting(0);
-    const std::vector<std::uint8_t> sid = ac3::sendspin::pairing::pake_sid(Dialect::kSpecification, h, 2, 3);
+    const std::vector<std::uint8_t> sid = iclforge::sendspin::pairing::pake_sid(Dialect::kSpecification, h, 2, 3);
     Digest64 isk{};
     for (std::size_t i = 0; i < isk.size(); ++i) {
         isk[i] = static_cast<std::uint8_t>(i);
     }
-    const auto psk_key = ac3::sendspin::pairing::wrap_key(Wrapped::kLongTermPsk, sid, isk);
-    const auto nonce_key = ac3::sendspin::pairing::wrap_key(Wrapped::kNonceB, sid, isk);
+    const auto psk_key = iclforge::sendspin::pairing::wrap_key(Wrapped::kLongTermPsk, sid, isk);
+    const auto nonce_key = iclforge::sendspin::pairing::wrap_key(Wrapped::kNonceB, sid, isk);
     REQUIRE(psk_key.has_value());
     REQUIRE(nonce_key.has_value());
     CHECK(to_hex(*psk_key) == "21e436f00cefc78881d5d7a8dfb014f2da98f5d066dd31068995a2f52e4d39e0");
@@ -150,27 +152,27 @@ TEST_CASE("pairing: wrapping the long-term PSK under K_wrap", "[sendspin][pairin
 
     const Key32 psk = counting(0xA0);
     const struct {
-        ac3::sendspin::noise::Suite suite;
+        iclforge::sendspin::noise::Suite suite;
         std::string_view wrapped;
     } cases[] = {
-        {ac3::sendspin::noise::Suite::kChaChaPolySha256,
+        {iclforge::sendspin::noise::Suite::kChaChaPolySha256,
          "c3eed9c184cb747b2950c98c1fe9827a3d739d2cc32682fa411762aa19c40b6497528027ec915193ad9e21921a0cea9e"},
-        {ac3::sendspin::noise::Suite::kAesGcmSha256,
+        {iclforge::sendspin::noise::Suite::kAesGcmSha256,
          "19ad3fb531731fe54c31fcb49d2470942ed169b4085c5056a00f31e93881477316a077e1d2145369e8dcd34484981776"},
     };
     for (const auto& c : cases) {
         INFO(c.wrapped);
-        const auto wrapped = ac3::sendspin::pairing::wrap(c.suite, *psk_key, psk);
+        const auto wrapped = iclforge::sendspin::pairing::wrap(c.suite, *psk_key, psk);
         REQUIRE(wrapped.has_value());
         CHECK(to_hex(*wrapped) == c.wrapped);
-        const auto unwrapped = ac3::sendspin::pairing::unwrap(c.suite, *psk_key, *wrapped);
+        const auto unwrapped = iclforge::sendspin::pairing::unwrap(c.suite, *psk_key, *wrapped);
         REQUIRE(unwrapped.has_value());
         CHECK(*unwrapped == psk);
 
         auto tampered = *wrapped;
         tampered[0] ^= 1U;
-        CHECK_FALSE(ac3::sendspin::pairing::unwrap(c.suite, *psk_key, tampered).has_value());
-        CHECK_FALSE(ac3::sendspin::pairing::unwrap(c.suite, *nonce_key, *wrapped).has_value());
-        CHECK_FALSE(ac3::sendspin::pairing::unwrap(c.suite, *psk_key, std::span<const std::uint8_t>(*wrapped).first(47)).has_value());
+        CHECK_FALSE(iclforge::sendspin::pairing::unwrap(c.suite, *psk_key, tampered).has_value());
+        CHECK_FALSE(iclforge::sendspin::pairing::unwrap(c.suite, *nonce_key, *wrapped).has_value());
+        CHECK_FALSE(iclforge::sendspin::pairing::unwrap(c.suite, *psk_key, std::span<const std::uint8_t>(*wrapped).first(47)).has_value());
     }
 }

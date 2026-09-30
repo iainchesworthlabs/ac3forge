@@ -7,7 +7,7 @@
 
 // What an owner reads from a service browsing found: its TXT values and the URL to dial.
 
-using ac3::sendspin::discovery::Service;
+using iclforge::sendspin::discovery::Service;
 
 TEST_CASE("discovery: a service's TXT values and URL", "[sendspin][discovery]") {
     Service service{.instance = "Kitchen",

@@ -16,11 +16,11 @@
 #include "iclforge/sendspin/crypto.hpp"
 #include "iclforge/sendspin/json.hpp"
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 namespace {
 
-namespace json = ac3::sendspin::json;
+namespace json = iclforge::sendspin::json;
 
 // GET /firmware is about 1.3 KB, so a few hundred values; the cap only keeps a
 // hostile answer from sizing the token store.
@@ -140,7 +140,7 @@ constexpr std::array<TargetChip, 10> kTargets{{
 }
 
 [[nodiscard]] bool sha256_of(std::span<const std::uint8_t> bytes, std::array<std::uint8_t, 32>& out) {
-    return ac3::sendspin::crypto::sha256({bytes}, out);
+    return iclforge::sendspin::crypto::sha256({bytes}, out);
 }
 
 [[nodiscard]] bool is_new_image(const ac3forge::FirmwareSlot* running, const FirmwareFile& file,
@@ -868,7 +868,8 @@ SinkFirmware::Worker::Answer SinkFirmware::Worker::put_image(const FirmwareFile&
     httplib::Client http = client(timing_.upload_answer);
     const httplib::Headers headers{
         {"Host", host_header(host_, port_)},
-        {"Content-Digest", "sha-256=:" + ac3::sendspin::base64::encode(file.file_sha256) + ":"},
+        {"Content-Digest",
+         "sha-256=:" + iclforge::sendspin::base64::encode(file.file_sha256) + ":"},
     };
     sent = 0;
     const auto progress = [&](std::size_t current, std::size_t total) {
@@ -1110,4 +1111,4 @@ bool SinkFirmware::restart() { return worker_->start(Worker::Job::kRestart, std:
 
 bool SinkFirmware::busy() const { return worker_->busy(); }
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

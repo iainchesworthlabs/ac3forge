@@ -12,7 +12,7 @@
 // mdns.h does: starting the socket library, the IPv4 interfaces, the host name, and the socket
 // calls whose types differ between platforms. One file per platform, chosen by CMake.
 
-namespace ac3::sendspin::discovery::mdns_platform {
+namespace iclforge::sendspin::discovery::mdns_platform {
 
 using Ipv4 = std::array<std::uint8_t, 4>;
 
@@ -46,4 +46,4 @@ bool send_to(int socket, std::span<const std::uint8_t> bytes, const Endpoint& to
 
 void close_socket(int socket);
 
-}  // namespace ac3::sendspin::discovery::mdns_platform
+}  // namespace iclforge::sendspin::discovery::mdns_platform

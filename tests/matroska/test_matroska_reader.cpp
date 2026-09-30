@@ -13,7 +13,7 @@
 
 // The reader's tests come in two halves, for two different questions.
 //
-// Round-trip (against matroska::mux/Writer) answers "does the reader
+// Round-trip (against iclforge::matroska::mux/Writer) answers "does the reader
 // understand what this project writes". That is the cheap half, and on its
 // own it proves very little: a reader and a writer that share a
 // misunderstanding round-trip perfectly.
@@ -199,12 +199,12 @@ std::vector<Bytes> owned(std::span<const std::span<const std::byte>> frames) {
     return out;
 }
 
-// Drives matroska::Reader over `file` in fixed-size chunks, returning the
+// Drives iclforge::matroska::Reader over `file` in fixed-size chunks, returning the
 // frames it produced. Chunk sizes that do not divide any element cleanly are
 // the point: an element must survive being split across pushes.
 std::vector<Bytes> read_in_chunks(std::span<const std::byte> file, std::size_t chunk,
-                                  const matroska::ReadOptions& options = {}) {
-    matroska::Reader reader{options};
+                                  const iclforge::matroska::ReadOptions& options = {}) {
+    iclforge::matroska::Reader reader{options};
     std::vector<Bytes> got;
     const auto sink = [&got](std::span<const std::byte> frame) {
         got.emplace_back(frame.begin(), frame.end());
@@ -222,15 +222,16 @@ std::vector<Bytes> read_in_chunks(std::span<const std::byte> file, std::size_t c
 TEST_CASE("Matroska round-trips mux()'s frames back byte-for-byte", "[matroska][reader]") {
     const std::vector<Bytes> frames{frame_of(700, 0x11), frame_of(512, 0x22),
                                     frame_of(1024, 0x33), frame_of(64, 0x44)};
-    const matroska::AudioTrack track{.codec_id = std::string{matroska::kCodecEac3},
-                                     .sample_rate = 48000,
-                                     .channels = 6,
-                                     .samples_per_frame = 1536,
-                                     .language = "eng"};
-    const auto file = matroska::mux(track, views_of(frames));
+    const iclforge::matroska::AudioTrack track{
+        .codec_id = std::string{iclforge::matroska::kCodecEac3},
+        .sample_rate = 48000,
+        .channels = 6,
+        .samples_per_frame = 1536,
+        .language = "eng"};
+    const auto file = iclforge::matroska::mux(track, views_of(frames));
     REQUIRE(file.has_value());
 
-    const auto out = matroska::demux(*file);
+    const auto out = iclforge::matroska::demux(*file);
     REQUIRE(out.has_value());
     CHECK(out->track.codec_id == "A_EAC3");
     CHECK(out->track.sample_rate == 48000);
@@ -247,13 +248,13 @@ TEST_CASE("Matroska reads back a Writer's unknown-size Segment", "[matroska][rea
     const std::vector<Bytes> frames{frame_of(300, 0xA0), frame_of(300, 0xA1),
                                     frame_of(300, 0xA2), frame_of(300, 0xA3),
                                     frame_of(300, 0xA4)};
-    auto writer = matroska::Writer::create(
-        matroska::AudioTrack{.codec_id = std::string{matroska::kCodecAc3},
+    auto writer = iclforge::matroska::Writer::create(
+        iclforge::matroska::AudioTrack{.codec_id = std::string{iclforge::matroska::kCodecAc3},
                              .sample_rate = 44100,
                              .channels = 2,
                              .samples_per_frame = 1536,
                              .language = "und"},
-        matroska::MuxOptions{.cluster_ms = 100, .writing_app = "ac3forge"});
+        iclforge::matroska::MuxOptions{.cluster_ms = 100, .writing_app = "ac3forge"});
     REQUIRE(writer.has_value());
 
     Bytes file = writer->header();
@@ -265,7 +266,7 @@ TEST_CASE("Matroska reads back a Writer's unknown-size Segment", "[matroska][rea
     const auto tail = writer->finalize();
     file.insert(file.end(), tail.begin(), tail.end());
 
-    const auto out = matroska::demux(file);
+    const auto out = iclforge::matroska::demux(file);
     REQUIRE(out.has_value());
     CHECK(out->track.codec_id == "A_AC3");
     CHECK(out->track.sample_rate == 44100);
@@ -277,13 +278,14 @@ TEST_CASE("Matroska Reader over arbitrary chunk boundaries matches demux()",
           "[matroska][reader]") {
     const std::vector<Bytes> frames{frame_of(700, 0x11), frame_of(3, 0x22), frame_of(1500, 0x33),
                                     frame_of(64, 0x44), frame_of(900, 0x55)};
-    const auto file = matroska::mux(
-        matroska::AudioTrack{.codec_id = std::string{matroska::kCodecEac3},
-                             .sample_rate = 48000,
-                             .channels = 6,
-                             .samples_per_frame = 1536,
-                             .language = "und"},
-        views_of(frames), matroska::MuxOptions{.cluster_ms = 50, .writing_app = "ac3forge"});
+    const auto file = iclforge::matroska::mux(
+        iclforge::matroska::AudioTrack{.codec_id = std::string{iclforge::matroska::kCodecEac3},
+                                       .sample_rate = 48000,
+                                       .channels = 6,
+                                       .samples_per_frame = 1536,
+                                       .language = "und"},
+        views_of(frames),
+        iclforge::matroska::MuxOptions{.cluster_ms = 50, .writing_app = "ac3forge"});
     REQUIRE(file.has_value());
 
     // 1 byte at a time splits every id, every size vint and every frame;
@@ -297,16 +299,16 @@ TEST_CASE("Matroska Reader over arbitrary chunk boundaries matches demux()",
 
 TEST_CASE("Matroska Reader reports the track and frame count it read", "[matroska][reader]") {
     const std::vector<Bytes> frames{frame_of(100, 1), frame_of(100, 2), frame_of(100, 3)};
-    const auto file =
-        matroska::mux(matroska::AudioTrack{.codec_id = std::string{matroska::kCodecEac3},
-                                           .sample_rate = 48000,
-                                           .channels = 2,
-                                           .samples_per_frame = 1536,
-                                           .language = "und"},
-                      views_of(frames));
+    const auto file = iclforge::matroska::mux(
+        iclforge::matroska::AudioTrack{.codec_id = std::string{iclforge::matroska::kCodecEac3},
+                                       .sample_rate = 48000,
+                                       .channels = 2,
+                                       .samples_per_frame = 1536,
+                                       .language = "und"},
+        views_of(frames));
     REQUIRE(file.has_value());
 
-    matroska::Reader reader{};
+    iclforge::matroska::Reader reader{};
     CHECK_FALSE(reader.track_found());
     const auto sink = [](std::span<const std::byte>) {};
     REQUIRE(reader.push(*file, sink).has_value());
@@ -317,7 +319,7 @@ TEST_CASE("Matroska Reader reports the track and frame count it read", "[matrosk
 }
 
 TEST_CASE("Matroska reads every lacing form", "[matroska][reader][lacing]") {
-    // matroska::mux never laces. Every one of these blocks is hand-built,
+    // iclforge::matroska::mux never laces. Every one of these blocks is hand-built,
     // because a file from another muxer is where lacing actually comes from.
     const Bytes a = frame_of(5, 0xA1);
     const Bytes b = frame_of(9, 0xB2);
@@ -362,7 +364,7 @@ TEST_CASE("Matroska reads every lacing form", "[matroska][reader][lacing]") {
         put_bytes(segment, clusters);
         put_element(file, kSegment, segment);
 
-        const auto out = matroska::demux(file);
+        const auto out = iclforge::matroska::demux(file);
         REQUIRE(out.has_value());
         REQUIRE(owned(out->frames) == std::vector<Bytes>{big, c});
         return;
@@ -404,7 +406,7 @@ TEST_CASE("Matroska reads every lacing form", "[matroska][reader][lacing]") {
         put_bytes(segment, clusters);
         put_element(file, kSegment, segment);
 
-        const auto out = matroska::demux(file);
+        const auto out = iclforge::matroska::demux(file);
         REQUIRE(out.has_value());
         REQUIRE(owned(out->frames) ==
                 std::vector<Bytes>{a, frame_of(5, 0xB2), frame_of(5, 0xC3)});
@@ -419,7 +421,7 @@ TEST_CASE("Matroska reads every lacing form", "[matroska][reader][lacing]") {
     put_bytes(segment, clusters);
     put_element(file, kSegment, segment);
 
-    const auto out = matroska::demux(file);
+    const auto out = iclforge::matroska::demux(file);
     REQUIRE(out.has_value());
     CHECK(owned(out->frames) == std::vector<Bytes>{a, b, c});
 }
@@ -445,7 +447,7 @@ TEST_CASE("Matroska reads a BlockGroup-wrapped Block", "[matroska][reader]") {
     put_element(segment, kCluster, cluster);
     put_element(file, kSegment, segment);
 
-    const auto out = matroska::demux(file);
+    const auto out = iclforge::matroska::demux(file);
     REQUIRE(out.has_value());
     REQUIRE(out->frames.size() == 1);
     CHECK(owned(out->frames)[0] == frame);
@@ -475,7 +477,7 @@ TEST_CASE("Matroska track selection picks the audio AC-3 track", "[matroska][rea
     put_element(file, kSegment, segment);
 
     SECTION("auto-selection takes the E-AC-3 track and nothing else") {
-        const auto out = matroska::demux(file);
+        const auto out = iclforge::matroska::demux(file);
         REQUIRE(out.has_value());
         CHECK(out->track.track_number == 3);
         CHECK(out->track.channels == 8);
@@ -484,7 +486,8 @@ TEST_CASE("Matroska track selection picks the audio AC-3 track", "[matroska][rea
     }
 
     SECTION("an explicit track number overrides the codec filter") {
-        const auto out = matroska::demux(file, matroska::ReadOptions{.track_number = 2});
+        const auto out =
+            iclforge::matroska::demux(file, iclforge::matroska::ReadOptions{.track_number = 2});
         REQUIRE(out.has_value());
         CHECK(out->track.codec_id == "A_AAC");
         REQUIRE(out->frames.size() == 1);
@@ -492,9 +495,10 @@ TEST_CASE("Matroska track selection picks the audio AC-3 track", "[matroska][rea
     }
 
     SECTION("a track number nothing matches is kNoAudioTrack") {
-        const auto out = matroska::demux(file, matroska::ReadOptions{.track_number = 99});
+        const auto out =
+            iclforge::matroska::demux(file, iclforge::matroska::ReadOptions{.track_number = 99});
         REQUIRE_FALSE(out.has_value());
-        CHECK(out.error() == matroska::DemuxError::kNoAudioTrack);
+        CHECK(out.error() == iclforge::matroska::DemuxError::kNoAudioTrack);
     }
 }
 
@@ -511,7 +515,7 @@ TEST_CASE("Matroska reads a 32-bit SamplingFrequency and a defaulted track", "[m
         put_element(segment, kCluster, cluster);
         put_element(file, kSegment, segment);
 
-        const auto out = matroska::demux(file);
+        const auto out = iclforge::matroska::demux(file);
         REQUIRE(out.has_value());
         CHECK(out->track.sample_rate == 32000);
     }
@@ -533,7 +537,7 @@ TEST_CASE("Matroska reads a 32-bit SamplingFrequency and a defaulted track", "[m
         put_element(segment, kCluster, cluster);
         put_element(file, kSegment, segment);
 
-        const auto out = matroska::demux(file);
+        const auto out = iclforge::matroska::demux(file);
         REQUIRE(out.has_value());
         CHECK(out->track.sample_rate == 8000);
         CHECK(out->track.channels == 1);
@@ -559,7 +563,7 @@ TEST_CASE("Matroska skips elements it has no use for", "[matroska][reader]") {
     put_element(segment, kCluster, cluster);
     put_element(file, kSegment, segment);
 
-    const auto out = matroska::demux(file);
+    const auto out = iclforge::matroska::demux(file);
     REQUIRE(out.has_value());
     REQUIRE(out->frames.size() == 1);
     CHECK(owned(out->frames)[0] == frame);
@@ -592,7 +596,7 @@ TEST_CASE("Matroska reads an unknown-size Cluster ended by its sibling", "[matro
 
     put_element(file, kSegment, segment);
 
-    const auto out = matroska::demux(file);
+    const auto out = iclforge::matroska::demux(file);
     REQUIRE(out.has_value());
     CHECK(owned(out->frames) == std::vector<Bytes>{first, second});
     CHECK(read_in_chunks(file, 5) == std::vector<Bytes>{first, second});
@@ -604,18 +608,18 @@ TEST_CASE("Matroska truncated mid-cluster keeps the frames before the cut", "[ma
     // before the track was ever described has nothing to give back.
     const std::vector<Bytes> frames{frame_of(400, 0x11), frame_of(400, 0x22),
                                     frame_of(400, 0x33)};
-    const auto complete =
-        matroska::mux(matroska::AudioTrack{.codec_id = std::string{matroska::kCodecEac3},
-                                           .sample_rate = 48000,
-                                           .channels = 2,
-                                           .samples_per_frame = 1536,
-                                           .language = "und"},
-                      views_of(frames), matroska::MuxOptions{.cluster_ms = 30});
+    const auto complete = iclforge::matroska::mux(
+        iclforge::matroska::AudioTrack{.codec_id = std::string{iclforge::matroska::kCodecEac3},
+                                       .sample_rate = 48000,
+                                       .channels = 2,
+                                       .samples_per_frame = 1536,
+                                       .language = "und"},
+        views_of(frames), iclforge::matroska::MuxOptions{.cluster_ms = 30});
     REQUIRE(complete.has_value());
 
     SECTION("cut after some frames") {
         const Bytes cut{complete->begin(), complete->end() - 300};
-        const auto out = matroska::demux(cut);
+        const auto out = iclforge::matroska::demux(cut);
         REQUIRE(out.has_value());
         CHECK(out->frames.size() < frames.size());
         for (std::size_t i = 0; i < out->frames.size(); ++i) {
@@ -625,41 +629,41 @@ TEST_CASE("Matroska truncated mid-cluster keeps the frames before the cut", "[ma
 
     SECTION("cut before the track is described") {
         const Bytes cut{complete->begin(), complete->begin() + 30};
-        const auto out = matroska::demux(cut);
+        const auto out = iclforge::matroska::demux(cut);
         REQUIRE_FALSE(out.has_value());
-        CHECK(out.error() == matroska::DemuxError::kTruncated);
+        CHECK(out.error() == iclforge::matroska::DemuxError::kTruncated);
     }
 }
 
 TEST_CASE("Matroska refuses what is not Matroska", "[matroska][reader]") {
     SECTION("empty input") {
-        const auto out = matroska::demux({});
+        const auto out = iclforge::matroska::demux({});
         REQUIRE_FALSE(out.has_value());
-        CHECK(out.error() == matroska::DemuxError::kNotMatroska);
+        CHECK(out.error() == iclforge::matroska::DemuxError::kNotMatroska);
     }
 
     SECTION("an MP4 file's ftyp") {
         const Bytes ftyp{std::byte{0}, std::byte{0},   std::byte{0},   std::byte{0x18},
                          std::byte{'f'}, std::byte{'t'}, std::byte{'y'}, std::byte{'p'}};
-        const auto out = matroska::demux(ftyp);
+        const auto out = iclforge::matroska::demux(ftyp);
         REQUIRE_FALSE(out.has_value());
         // A leading 0x00 has no EBML id marker at all.
-        CHECK(out.error() == matroska::DemuxError::kMalformed);
+        CHECK(out.error() == iclforge::matroska::DemuxError::kMalformed);
     }
 
     SECTION("a valid element that is not the EBML header") {
         Bytes file;
         put_element(file, kSegment, {});
-        const auto out = matroska::demux(file);
+        const auto out = iclforge::matroska::demux(file);
         REQUIRE_FALSE(out.has_value());
-        CHECK(out.error() == matroska::DemuxError::kNotMatroska);
+        CHECK(out.error() == iclforge::matroska::DemuxError::kNotMatroska);
     }
 
     SECTION("an EBML header but no tracks") {
         const auto file = ebml_header();
-        const auto out = matroska::demux(file);
+        const auto out = iclforge::matroska::demux(file);
         REQUIRE_FALSE(out.has_value());
-        CHECK(out.error() == matroska::DemuxError::kTruncated);
+        CHECK(out.error() == iclforge::matroska::DemuxError::kTruncated);
     }
 
     SECTION("tracks that hold nothing selectable") {
@@ -669,9 +673,9 @@ TEST_CASE("Matroska refuses what is not Matroska", "[matroska][reader]") {
         Bytes segment;
         put_element(segment, kTracks, tracks);
         put_element(file, kSegment, segment);
-        const auto out = matroska::demux(file);
+        const auto out = iclforge::matroska::demux(file);
         REQUIRE_FALSE(out.has_value());
-        CHECK(out.error() == matroska::DemuxError::kNoAudioTrack);
+        CHECK(out.error() == iclforge::matroska::DemuxError::kNoAudioTrack);
     }
 }
 
@@ -695,9 +699,9 @@ TEST_CASE("Matroska rejects malformed and hostile layouts", "[matroska][reader]"
         Bytes cluster;
         put_uint_element(cluster, kClusterTimestamp, 0);
         put_element(cluster, kSimpleBlock, block_payload(1, 0, 0x80 | 0x02, laced));
-        const auto out = matroska::demux(with_cluster(cluster));
+        const auto out = iclforge::matroska::demux(with_cluster(cluster));
         REQUIRE_FALSE(out.has_value());
-        CHECK(out.error() == matroska::DemuxError::kMalformed);
+        CHECK(out.error() == iclforge::matroska::DemuxError::kMalformed);
     }
 
     SECTION("a fixed-size lace that does not divide evenly") {
@@ -707,9 +711,9 @@ TEST_CASE("Matroska rejects malformed and hostile layouts", "[matroska][reader]"
         Bytes cluster;
         put_uint_element(cluster, kClusterTimestamp, 0);
         put_element(cluster, kSimpleBlock, block_payload(1, 0, 0x80 | 0x04, laced));
-        const auto out = matroska::demux(with_cluster(cluster));
+        const auto out = iclforge::matroska::demux(with_cluster(cluster));
         REQUIRE_FALSE(out.has_value());
-        CHECK(out.error() == matroska::DemuxError::kMalformed);
+        CHECK(out.error() == iclforge::matroska::DemuxError::kMalformed);
     }
 
     SECTION("an EBML lace whose delta drives a size negative") {
@@ -721,18 +725,18 @@ TEST_CASE("Matroska rejects malformed and hostile layouts", "[matroska][reader]"
         Bytes cluster;
         put_uint_element(cluster, kClusterTimestamp, 0);
         put_element(cluster, kSimpleBlock, block_payload(1, 0, 0x80 | 0x06, laced));
-        const auto out = matroska::demux(with_cluster(cluster));
+        const auto out = iclforge::matroska::demux(with_cluster(cluster));
         REQUIRE_FALSE(out.has_value());
-        CHECK(out.error() == matroska::DemuxError::kMalformed);
+        CHECK(out.error() == iclforge::matroska::DemuxError::kMalformed);
     }
 
     SECTION("a block too short to hold its own header") {
         Bytes cluster;
         put_uint_element(cluster, kClusterTimestamp, 0);
         put_element(cluster, kSimpleBlock, frame_of(2, 0x81));
-        const auto out = matroska::demux(with_cluster(cluster));
+        const auto out = iclforge::matroska::demux(with_cluster(cluster));
         REQUIRE_FALSE(out.has_value());
-        CHECK(out.error() == matroska::DemuxError::kMalformed);
+        CHECK(out.error() == iclforge::matroska::DemuxError::kMalformed);
     }
 
     SECTION("a wanted leaf claiming more bytes than the limit allows") {
@@ -748,9 +752,9 @@ TEST_CASE("Matroska rejects malformed and hostile layouts", "[matroska][reader]"
         put_vint(cluster, 4ULL << 30);
         put_element(segment, kCluster, cluster);
         put_element(file, kSegment, segment);
-        const auto out = matroska::demux(file);
+        const auto out = iclforge::matroska::demux(file);
         REQUIRE_FALSE(out.has_value());
-        CHECK(out.error() == matroska::DemuxError::kLimitExceeded);
+        CHECK(out.error() == iclforge::matroska::DemuxError::kLimitExceeded);
     }
 
     SECTION("nesting past max_depth") {
@@ -769,9 +773,9 @@ TEST_CASE("Matroska rejects malformed and hostile layouts", "[matroska][reader]"
         put_element(segment, kTracks, tracks);
         put_element(segment, kCluster, inner);
         put_element(file, kSegment, segment);
-        const auto out = matroska::demux(file);
+        const auto out = iclforge::matroska::demux(file);
         REQUIRE_FALSE(out.has_value());
-        CHECK(out.error() == matroska::DemuxError::kLimitExceeded);
+        CHECK(out.error() == iclforge::matroska::DemuxError::kLimitExceeded);
     }
 
     SECTION("an unknown size on an element that may not have one") {
@@ -780,9 +784,9 @@ TEST_CASE("Matroska rejects malformed and hostile layouts", "[matroska][reader]"
         put_id(segment, kTracks);
         put_vint_width(segment, (std::uint64_t{1} << 56) - 1, 8);
         put_element(file, kSegment, segment);
-        const auto out = matroska::demux(file);
+        const auto out = iclforge::matroska::demux(file);
         REQUIRE_FALSE(out.has_value());
-        CHECK(out.error() == matroska::DemuxError::kMalformed);
+        CHECK(out.error() == iclforge::matroska::DemuxError::kMalformed);
     }
 
     SECTION("a Channels value no layout could mean") {
@@ -799,18 +803,18 @@ TEST_CASE("Matroska rejects malformed and hostile layouts", "[matroska][reader]"
         Bytes segment;
         put_element(segment, kTracks, tracks);
         put_element(file, kSegment, segment);
-        const auto out = matroska::demux(file);
+        const auto out = iclforge::matroska::demux(file);
         REQUIRE_FALSE(out.has_value());
-        CHECK(out.error() == matroska::DemuxError::kMalformed);
+        CHECK(out.error() == iclforge::matroska::DemuxError::kMalformed);
     }
 }
 
 TEST_CASE("Matroska describe() names every demux error", "[matroska][reader]") {
     for (const auto error :
-         {matroska::DemuxError::kNotMatroska, matroska::DemuxError::kTruncated,
-          matroska::DemuxError::kMalformed, matroska::DemuxError::kNoAudioTrack,
-          matroska::DemuxError::kLimitExceeded}) {
-        CHECK_FALSE(matroska::describe(error).empty());
-        CHECK(matroska::describe(error) != "unknown error");
+         {iclforge::matroska::DemuxError::kNotMatroska, iclforge::matroska::DemuxError::kTruncated,
+          iclforge::matroska::DemuxError::kMalformed, iclforge::matroska::DemuxError::kNoAudioTrack,
+          iclforge::matroska::DemuxError::kLimitExceeded}) {
+        CHECK_FALSE(iclforge::matroska::describe(error).empty());
+        CHECK(iclforge::matroska::describe(error) != "unknown error");
     }
 }

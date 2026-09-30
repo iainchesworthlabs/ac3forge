@@ -169,9 +169,9 @@ std::vector<std::byte> frame_with(int config, const std::vector<int>& groups) {
 
 void check_frame(int config, const std::vector<int>& groups) {
     const auto data = frame_with(config, groups);
-    const auto frame = ac4::parse_raw_frame(data);
+    const auto frame = iclforge::ac4::parse_raw_frame(data);
     REQUIRE(frame.has_value());
-    const ac4::Toc& toc = frame->toc;
+    const iclforge::ac4::Toc& toc = frame->toc;
     REQUIRE(toc.presentations_v1.size() == 2);
 
     const auto& first = toc.presentations_v1[0];

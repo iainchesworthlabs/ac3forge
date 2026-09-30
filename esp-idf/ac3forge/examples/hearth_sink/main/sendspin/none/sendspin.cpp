@@ -10,7 +10,7 @@ namespace player {
 
 bool sendspin_built() { return false; }
 
-void sendspin_start(const ac3::render::OutputLayout& /*layout*/) {}
+void sendspin_start(const iclforge::render::OutputLayout& /*layout*/) {}
 
 bool sendspin_running() { return false; }
 
@@ -18,7 +18,7 @@ bool sendspin_playing() { return false; }
 
 void sendspin_set_external(bool /*external*/) {}
 
-bool sendspin_set_layout(const ac3::render::OutputLayout& /*layout*/) { return true; }
+bool sendspin_set_layout(const iclforge::render::OutputLayout& /*layout*/) { return true; }
 
 void sendspin_board_changed() {}
 

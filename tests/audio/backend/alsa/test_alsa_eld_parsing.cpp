@@ -15,7 +15,7 @@
 // does not would fail only on the receiver end, nowhere this project's own
 // test suite would ever see it.
 
-using ac3::alsa::parse_eld_proc_text;
+using iclforge::alsa::parse_eld_proc_text;
 
 namespace {
 
@@ -104,25 +104,25 @@ TEST_CASE("a compressed-only descriptor leaves the PCM fields at unknown") {
 TEST_CASE("monitor_present 0 reports no descriptor, not a parse failure") {
     const auto caps = parse_eld_proc_text(kMonitorNotPresent);
     REQUIRE_FALSE(caps.has_value());
-    CHECK(caps.error() == ac3::audio::EdidError::kNoEdid);
+    CHECK(caps.error() == iclforge::audio::EdidError::kNoEdid);
 }
 
 TEST_CASE("eld_valid 0 reports no descriptor even when a monitor is present") {
     const auto caps = parse_eld_proc_text(kEldInvalid);
     REQUIRE_FALSE(caps.has_value());
-    CHECK(caps.error() == ac3::audio::EdidError::kNoEdid);
+    CHECK(caps.error() == iclforge::audio::EdidError::kNoEdid);
 }
 
 TEST_CASE("text with neither monitor_present nor eld_valid is a parse failure") {
     const auto caps = parse_eld_proc_text("garbage that is not an eld proc file at all\n");
     REQUIRE_FALSE(caps.has_value());
-    CHECK(caps.error() == ac3::audio::EdidError::kParseFailed);
+    CHECK(caps.error() == iclforge::audio::EdidError::kParseFailed);
 }
 
 TEST_CASE("empty text is a parse failure") {
     const auto caps = parse_eld_proc_text("");
     REQUIRE_FALSE(caps.has_value());
-    CHECK(caps.error() == ac3::audio::EdidError::kParseFailed);
+    CHECK(caps.error() == iclforge::audio::EdidError::kParseFailed);
 }
 
 TEST_CASE("a final line with no trailing newline is still read") {

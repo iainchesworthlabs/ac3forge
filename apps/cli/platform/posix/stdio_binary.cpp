@@ -7,10 +7,10 @@
 // - see src/audio/src/backend/posix/ for the same shape applied to a bigger
 // surface.
 
-namespace ac3::cli::platform {
+namespace iclforge::cli::platform {
 
 void set_stdio_binary() {
     // No-op: see the file comment above.
 }
 
-}  // namespace ac3::cli::platform
+}  // namespace iclforge::cli::platform

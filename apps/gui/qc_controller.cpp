@@ -40,14 +40,14 @@ QString to_qstring(std::string_view sv) {
 // token) is what programmes()'s "id" field reports instead, matched against
 // QML's objectName-keying convention (see SegmentedControl.qml's own
 // comment on why a stable per-value id matters for Qt Quick Test).
-QString preset_display_name(ac3::meta::QcPresetId id) {
+QString preset_display_name(iclforge::meta::QcPresetId id) {
     switch (id) {
-        case ac3::meta::QcPresetId::kEbuR128S2: return QStringLiteral("EBU R 128 s2");
-        case ac3::meta::QcPresetId::kAtscA85: return QStringLiteral("ATSC A/85");
-        case ac3::meta::QcPresetId::kAtscA85Streaming:
+        case iclforge::meta::QcPresetId::kEbuR128S2: return QStringLiteral("EBU R 128 s2");
+        case iclforge::meta::QcPresetId::kAtscA85: return QStringLiteral("ATSC A/85");
+        case iclforge::meta::QcPresetId::kAtscA85Streaming:
             return QStringLiteral("ATSC A/85 streaming");
-        case ac3::meta::QcPresetId::kNetflix: return QStringLiteral("Netflix");
-        case ac3::meta::QcPresetId::kAppleMusicAtmos:
+        case iclforge::meta::QcPresetId::kNetflix: return QStringLiteral("Netflix");
+        case iclforge::meta::QcPresetId::kAppleMusicAtmos:
             return QStringLiteral("Apple Music Atmos");
     }
     return QString();
@@ -63,17 +63,17 @@ struct MeasureOutcome {
 
 // AC-3 (bsid <= 8): mirrors apps/cli/main.cpp's measure_qc_ac3 exactly -
 // same per-frame decode loop, same dual-mono split, feeding
-// ac3::meta::LoudnessMeter instead of printing anything. Kept in step with
+// iclforge::meta::LoudnessMeter instead of printing anything. Kept in step with
 // the CLI's own reference implementation deliberately, per this change's own
 // brief: run_qc is "exactly what to measure" and "how to read embedded
 // metadata off a decoded stream".
 std::optional<RawResult> measure_ac3(std::span<const std::byte> stream, QString& error) {
-    const auto frames = ac3::split_frames(stream);
+    const auto frames = iclforge::split_frames(stream);
     if (!frames || frames->empty()) {
         error = QStringLiteral("Not a valid AC-3 stream.");
         return std::nullopt;
     }
-    ac3::FrameDecoder decoder;
+    iclforge::FrameDecoder decoder;
     RawResult result;
     result.codec_label = QStringLiteral("AC-3");
     result.unit_label = QStringLiteral("frame(s)");
@@ -81,24 +81,24 @@ std::optional<RawResult> measure_ac3(std::span<const std::byte> stream, QString&
 
     bool have_first = false;
     bool dual_mono = false;
-    std::optional<ac3::meta::LoudnessMeter> meter;      // whole programme
-    std::optional<ac3::meta::LoudnessMeter> meter_ch1;  // dual mono only
-    std::optional<ac3::meta::LoudnessMeter> meter_ch2;
+    std::optional<iclforge::meta::LoudnessMeter> meter;      // whole programme
+    std::optional<iclforge::meta::LoudnessMeter> meter_ch1;  // dual mono only
+    std::optional<iclforge::meta::LoudnessMeter> meter_ch2;
 
     for (const auto& frame : *frames) {
         const auto decoded = decoder.decode_frame(frame);
         if (!decoded) {
-            error = QStringLiteral("Decode failed: %1").arg(to_qstring(ac3::describe(decoded.error())));
+            error = QStringLiteral("Decode failed: %1").arg(to_qstring(iclforge::describe(decoded.error())));
             return std::nullopt;
         }
         if (!have_first) {
             have_first = true;
-            dual_mono = decoded->acmod == ac3::Acmod::kDualMono;
+            dual_mono = decoded->acmod == iclforge::Acmod::kDualMono;
             result.sample_rate_hz = sample_rate_hz(decoded->sample_rate);
             if (dual_mono) {
                 result.layout_label = QStringLiteral("1+1 dual mono");
-                meter_ch1.emplace(decoded->sample_rate, ac3::Acmod::k1_0, false);
-                meter_ch2.emplace(decoded->sample_rate, ac3::Acmod::k1_0, false);
+                meter_ch1.emplace(decoded->sample_rate, iclforge::Acmod::k1_0, false);
+                meter_ch2.emplace(decoded->sample_rate, iclforge::Acmod::k1_0, false);
                 result.programmes.push_back(RawProgramme{.label = QStringLiteral("Ch1"),
                                                           .dialnorm = decoded->dialnorm,
                                                           .compr = decoded->compr});
@@ -107,7 +107,7 @@ std::optional<RawResult> measure_ac3(std::span<const std::byte> stream, QString&
                                 .dialnorm = decoded->dialnorm2.value_or(31),
                                 .compr = decoded->compr2});
             } else {
-                result.layout_label = to_qstring(ac3::analysis::layout_name(decoded->acmod, decoded->lfe));
+                result.layout_label = to_qstring(iclforge::analysis::layout_name(decoded->acmod, decoded->lfe));
                 meter.emplace(decoded->sample_rate, decoded->acmod, decoded->lfe);
                 result.programmes.push_back(
                     RawProgramme{.dialnorm = decoded->dialnorm, .compr = decoded->compr});
@@ -152,7 +152,7 @@ std::optional<RawResult> measure_ac3(std::span<const std::byte> stream, QString&
         result.programmes[0].true_peak_dbtp = meter->true_peak_dbtp();
     }
     result.seconds = static_cast<double>(result.unit_count) *
-                     static_cast<double>(ac3::kSamplesPerFrame) /
+                     static_cast<double>(iclforge::kSamplesPerFrame) /
                      static_cast<double>(result.sample_rate_hz);
     return result;
 }
@@ -162,7 +162,7 @@ std::optional<RawResult> measure_ac3(std::span<const std::byte> stream, QString&
 // comment gives (matching measured_dialnorm's pre-encode pass and, unlike a
 // plain decode-and-play, never a dependent's channels).
 std::optional<RawResult> measure_eac3(std::span<const std::byte> stream, QString& error) {
-    const auto frames = ac3::split_frames(stream);
+    const auto frames = iclforge::split_frames(stream);
     if (!frames || frames->empty()) {
         error = QStringLiteral("Not a valid E-AC-3 stream.");
         return std::nullopt;
@@ -170,29 +170,29 @@ std::optional<RawResult> measure_eac3(std::span<const std::byte> stream, QString
     // Heap-allocated (PREfast's C6262, alert #91): Eac3Decoder's per-block
     // scratch members pushed this stack declaration over the threshold -
     // same pattern as examples/atmos_objects.cpp (PR #295).
-    auto decoder = std::make_unique<ac3::Eac3Decoder>();
+    auto decoder = std::make_unique<iclforge::Eac3Decoder>();
     RawResult result;
     result.codec_label = QStringLiteral("E-AC-3");
     result.unit_label = QStringLiteral("access unit(s)");
 
     bool have_first = false;
     bool dual_mono = false;
-    std::optional<ac3::meta::LoudnessMeter> meter;
-    std::optional<ac3::meta::LoudnessMeter> meter_ch1;
-    std::optional<ac3::meta::LoudnessMeter> meter_ch2;
+    std::optional<iclforge::meta::LoudnessMeter> meter;
+    std::optional<iclforge::meta::LoudnessMeter> meter_ch1;
+    std::optional<iclforge::meta::LoudnessMeter> meter_ch2;
 
-    const auto ingest = [&](const ac3::DecodedSubstream& sub) {
-        if (sub.strmtyp == ac3::eac3::StreamType::kDependent) {
+    const auto ingest = [&](const iclforge::DecodedSubstream& sub) {
+        if (sub.strmtyp == iclforge::eac3::StreamType::kDependent) {
             return;
         }
         if (!have_first) {
             have_first = true;
-            dual_mono = sub.acmod == ac3::Acmod::kDualMono;
+            dual_mono = sub.acmod == iclforge::Acmod::kDualMono;
             result.sample_rate_hz = sample_rate_hz(sub.sample_rate);
             if (dual_mono) {
                 result.layout_label = QStringLiteral("1+1 dual mono");
-                meter_ch1.emplace(sub.sample_rate, ac3::Acmod::k1_0, false);
-                meter_ch2.emplace(sub.sample_rate, ac3::Acmod::k1_0, false);
+                meter_ch1.emplace(sub.sample_rate, iclforge::Acmod::k1_0, false);
+                meter_ch2.emplace(sub.sample_rate, iclforge::Acmod::k1_0, false);
                 result.programmes.push_back(RawProgramme{
                     .label = QStringLiteral("Ch1"), .dialnorm = sub.dialnorm, .compr = sub.compr});
                 result.programmes.push_back(
@@ -200,7 +200,8 @@ std::optional<RawResult> measure_eac3(std::span<const std::byte> stream, QString
                                 .dialnorm = sub.dialnorm2.value_or(31),
                                 .compr = sub.compr2});
             } else {
-                result.layout_label = to_qstring(ac3::analysis::layout_name(sub.acmod, sub.lfe));
+                result.layout_label =
+                    to_qstring(iclforge::analysis::layout_name(sub.acmod, sub.lfe));
                 meter.emplace(sub.sample_rate, sub.acmod, sub.lfe);
                 result.programmes.push_back(
                     RawProgramme{.dialnorm = sub.dialnorm, .compr = sub.compr});
@@ -266,7 +267,7 @@ std::optional<RawResult> measure_eac3(std::span<const std::byte> stream, QString
         result.programmes[0].true_peak_dbtp = meter->true_peak_dbtp();
     }
     result.seconds = static_cast<double>(result.unit_count) *
-                     static_cast<double>(ac3::kSamplesPerFrame) /
+                     static_cast<double>(iclforge::kSamplesPerFrame) /
                      static_cast<double>(result.sample_rate_hz);
     return result;
 }
@@ -279,14 +280,14 @@ std::optional<RawResult> measure_eac3(std::span<const std::byte> stream, QString
 // the dialnorm and stated loudness the stream sends.
 std::optional<RawResult> measure_ac4(std::span<const std::byte> stream,
                                      std::optional<std::size_t> presentation, QString& error) {
-    const ac4::ScanResult scan = ac4::scan(stream);
+    const iclforge::ac4::ScanResult scan = iclforge::ac4::scan(stream);
     if (scan.frames.empty()) {
         error = QStringLiteral("Not a valid AC-4 stream.");
         return std::nullopt;
     }
-    ac4::DecoderConfig config;
+    iclforge::ac4::DecoderConfig config;
     config.presentation.index = presentation;
-    ac4::Decoder decoder(config);
+    iclforge::ac4::Decoder decoder(config);
     RawResult result;
     result.codec_label = QStringLiteral("AC-4");
     result.unit_label = QStringLiteral("frame(s)");
@@ -294,13 +295,13 @@ std::optional<RawResult> measure_ac4(std::span<const std::byte> stream,
     for (const auto& row : ac3gui::ac4_presentation_rows(scan.frames)) {
         result.presentations.append(QString::fromStdString(row.label));
     }
-    std::optional<ac3::meta::LoudnessMeter> meter;
+    std::optional<iclforge::meta::LoudnessMeter> meter;
     std::vector<std::size_t> order;
-    std::vector<ac4::Speaker> layout;
+    std::vector<iclforge::ac4::Speaker> layout;
     std::uint64_t samples = 0;
     std::vector<std::span<const float>> views;
     std::size_t number = 0;
-    for (const ac4::SyncFrame& frame : scan.frames) {
+    for (const iclforge::ac4::SyncFrame& frame : scan.frames) {
         ++number;
         const auto decoded = decoder.decode(frame.raw_ac4_frame);
         if (!decoded.has_value()) {
@@ -312,22 +313,24 @@ std::optional<RawResult> measure_ac4(std::span<const std::byte> stream,
         if (!decoded->has_value()) {
             continue;  // waiting for an I-frame
         }
-        const ac4::DecodedFrame& pcm = **decoded;
+        const iclforge::ac4::DecodedFrame& pcm = **decoded;
         if (!meter) {
             layout = pcm.speakers;
             result.sample_rate_hz = static_cast<std::uint32_t>(pcm.sample_rate_hz);
             result.presentation = pcm.presentation;
-            order = ac3::apps::ac4_order(std::span{pcm.speakers}, ac3::apps::ac4_meter_rank);
+            order =
+                iclforge::apps::ac4_order(std::span{pcm.speakers}, iclforge::apps::ac4_meter_rank);
             std::erase_if(order, [&](std::size_t c) {
-                return ac3::apps::ac4_meter_rank(pcm.speakers[c]) >= 99;
+                return iclforge::apps::ac4_meter_rank(pcm.speakers[c]) >= 99;
             });
             const bool lfe =
-                std::ranges::find(pcm.speakers, ac4::Speaker::kLfe) != pcm.speakers.end();
-            const ac3::Acmod acmod = ac3::apps::ac4_bed_acmod(pcm.speakers);
-            const ac3::SampleRate rate = pcm.sample_rate_hz == 44100 ? ac3::SampleRate::k44100
-                                                                     : ac3::SampleRate::k48000;
+                std::ranges::find(pcm.speakers, iclforge::ac4::Speaker::kLfe) != pcm.speakers.end();
+            const iclforge::Acmod acmod = iclforge::apps::ac4_bed_acmod(pcm.speakers);
+            const iclforge::SampleRate rate = pcm.sample_rate_hz == 44100
+                                                  ? iclforge::SampleRate::k44100
+                                                  : iclforge::SampleRate::k48000;
             meter.emplace(rate, acmod, lfe);
-            result.layout_label = to_qstring(ac3::analysis::layout_name(acmod, lfe));
+            result.layout_label = to_qstring(iclforge::analysis::layout_name(acmod, lfe));
         } else if (pcm.speakers != layout ||
                    static_cast<std::uint32_t>(pcm.sample_rate_hz) != result.sample_rate_hz) {
             error = QStringLiteral(
@@ -347,7 +350,7 @@ std::optional<RawResult> measure_ac4(std::span<const std::byte> stream,
         error = QStringLiteral("No frame decoded; the stream sent no I-frame.");
         return std::nullopt;
     }
-    const ac4::PresentationMetadata& metadata = decoder.metadata();
+    const iclforge::ac4::PresentationMetadata& metadata = decoder.metadata();
     result.programmes.push_back(RawProgramme{.integrated_lkfs = meter->integrated_lkfs(),
                                              .lra_lu = meter->loudness_range(),
                                              .true_peak_dbtp = meter->true_peak_dbtp(),
@@ -382,7 +385,7 @@ MeasureOutcome measure_file(const QString& path, std::optional<std::size_t> pres
     // container readers (mkv/mp4/ts): the file itself unchanged if it is not a container this
     // build reads, or the first AC-3/E-AC-3 track demuxed out of one - the
     // same sniff-and-demux ac3cli's own decode/qc/levels/play/monitor use.
-    auto demuxed = ac3::apps::elementary_stream_from_bytes(file_bytes);
+    auto demuxed = iclforge::apps::elementary_stream_from_bytes(file_bytes);
     if (!demuxed.error.empty()) {
         outcome.error = QStringLiteral("%1 is a %2").arg(path, to_qstring(demuxed.error));
         return outcome;
@@ -390,7 +393,7 @@ MeasureOutcome measure_file(const QString& path, std::optional<std::size_t> pres
     const auto stream = std::move(demuxed.bytes);
 
     QString error;
-    if (ac3::apps::is_ac4_stream(stream)) {
+    if (iclforge::apps::is_ac4_stream(stream)) {
         auto measured = measure_ac4(stream, presentation, error);
         if (!measured) {
             outcome.error = error;
@@ -399,7 +402,7 @@ MeasureOutcome measure_file(const QString& path, std::optional<std::size_t> pres
         outcome.result = std::move(*measured);
         return outcome;
     }
-    const auto bsid = ac3::stream_bsid(stream);
+    const auto bsid = iclforge::stream_bsid(stream);
     if (!bsid) {
         outcome.error = QStringLiteral("%1 is too short to hold a syncframe.").arg(path);
         return outcome;
@@ -434,14 +437,14 @@ QString QcController::summaryLine() const {
 
 QStringList QcController::presetNames() const {
     QStringList names{QStringLiteral("All presets")};
-    for (const auto id : ac3::meta::kQcPresetIds) {
+    for (const auto id : iclforge::meta::kQcPresetIds) {
         names.append(preset_display_name(id));
     }
     return names;
 }
 
 void QcController::setPresetIndex(int index) {
-    const int clamped = std::clamp(index, 0, static_cast<int>(ac3::meta::kQcPresetIds.size()));
+    const int clamped = std::clamp(index, 0, static_cast<int>(iclforge::meta::kQcPresetIds.size()));
     if (clamped == preset_index_) {
         return;
     }
@@ -469,7 +472,7 @@ QVariantList QcController::programmes() const {
         row[QStringLiteral("truePeakDbtp")] = p.true_peak_dbtp.value_or(0.0);
         row[QStringLiteral("hasCompr")] = p.compr.has_value();
         row[QStringLiteral("comprDb")] =
-            p.compr ? ac3::meta::to_db(ac3::meta::compr_gain(*p.compr)) : 0.0;
+            p.compr ? iclforge::meta::to_db(iclforge::meta::compr_gain(*p.compr)) : 0.0;
         row[QStringLiteral("hasStatedLkfs")] = p.stated_lkfs.has_value();
         row[QStringLiteral("statedLkfs")] = p.stated_lkfs.value_or(0.0);
         if (p.ac4) {
@@ -494,7 +497,7 @@ QVariantList QcController::programmes() const {
             row[QStringLiteral("hasDialnorm")] = true;
             row[QStringLiteral("dialnorm")] = p.dialnorm;
             row[QStringLiteral("claimedLkfs")] = claimed_lkfs;
-            const int implied = ac3::meta::dialnorm_from_lkfs(*p.integrated_lkfs);
+            const int implied = iclforge::meta::dialnorm_from_lkfs(*p.integrated_lkfs);
             row[QStringLiteral("deltaDb")] = *p.integrated_lkfs - claimed_lkfs;
             row[QStringLiteral("impliedDialnorm")] = implied;
             row[QStringLiteral("dialnormMatches")] = implied == p.dialnorm;
@@ -508,12 +511,12 @@ QVariantList QcController::programmes() const {
         }
 
         QVariantList presets;
-        const auto add_preset = [&](ac3::meta::QcPresetId id) {
-            const auto preset = ac3::meta::qc_preset(id);
+        const auto add_preset = [&](iclforge::meta::QcPresetId id) {
+            const auto preset = iclforge::meta::qc_preset(id);
             const auto verdict =
-                ac3::meta::evaluate_qc_gate(preset, p.integrated_lkfs, p.true_peak_dbtp);
+                iclforge::meta::evaluate_qc_gate(preset, p.integrated_lkfs, p.true_peak_dbtp);
             QVariantMap preset_row;
-            preset_row[QStringLiteral("id")] = to_qstring(ac3::meta::qc_preset_name(id));
+            preset_row[QStringLiteral("id")] = to_qstring(iclforge::meta::qc_preset_name(id));
             preset_row[QStringLiteral("name")] = preset_display_name(id);
             preset_row[QStringLiteral("targetLkfs")] = preset.target_lkfs;
             preset_row[QStringLiteral("toleranceLu")] = preset.tolerance_lu;
@@ -525,7 +528,7 @@ QVariantList QcController::programmes() const {
             // on. See ac3/meta/qc.hpp.
             preset_row[QStringLiteral("source")] = to_qstring(preset.source);
             preset_row[QStringLiteral("loudnessIsCeiling")] =
-                preset.loudness_limit == ac3::meta::QcLoudnessLimit::kCeiling;
+                preset.loudness_limit == iclforge::meta::QcLoudnessLimit::kCeiling;
             preset_row[QStringLiteral("loudnessDelta")] = verdict.loudness_delta_lu.value_or(0.0);
             preset_row[QStringLiteral("loudnessPass")] = verdict.loudness_pass;
             preset_row[QStringLiteral("truePeakMargin")] =
@@ -535,11 +538,11 @@ QVariantList QcController::programmes() const {
             presets.append(preset_row);
         };
         if (preset_index_ == 0) {
-            for (const auto id : ac3::meta::kQcPresetIds) {
+            for (const auto id : iclforge::meta::kQcPresetIds) {
                 add_preset(id);
             }
         } else {
-            add_preset(ac3::meta::kQcPresetIds[static_cast<std::size_t>(preset_index_ - 1)]);
+            add_preset(iclforge::meta::kQcPresetIds[static_cast<std::size_t>(preset_index_ - 1)]);
         }
         row[QStringLiteral("presets")] = presets;
 

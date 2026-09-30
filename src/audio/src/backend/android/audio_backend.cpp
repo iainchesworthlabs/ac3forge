@@ -22,7 +22,7 @@
 // enumerate_render_devices()'s RenderDeviceInfo, not by this static report -
 // exactly as WASAPI's IsFormatSupported answers it per-device on Windows.
 
-namespace ac3::audio {
+namespace iclforge::audio {
 
 const AudioBackend& audio_backend() {
     static constexpr AudioBackend kBackend{
@@ -46,4 +46,4 @@ const AudioBackend& audio_backend() {
     return kBackend;
 }
 
-}  // namespace ac3::audio
+}  // namespace iclforge::audio

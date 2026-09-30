@@ -14,7 +14,7 @@
 // See probe_json.hpp. Moved here from apps/cli/commands/probe.cpp, which
 // writes the same document it always did through these.
 
-namespace ac3::apps::probe_json {
+namespace iclforge::apps::probe_json {
 
 // --- naming ----------------------------------------------------------------
 // Every label here is fixed text keyed off a transmitted value. They are the
@@ -321,8 +321,8 @@ void write_stream(JsonSink& json, const io::ProbeReport& report) {
 
 // --- AC-4 ---------------------------------------------------------------
 //
-// A separate walk from everything above, over ac4::scan()/parse_raw_frame()
-// rather than ac3::io::Prober - AC-4 is a different codec with a different
+// A separate walk from everything above, over iclforge::ac4::scan()/parse_raw_frame()
+// rather than iclforge::io::Prober - AC-4 is a different codec with a different
 // bitstream (see src/ac4/include/iclforge/ac4/ac4.hpp's own scope note: TOC/
 // presentation/substream-group framing, not audio decode), so none of the
 // AC-3/E-AC-3-specific fields above (acmod, bsmod, chanmap, dialnorm,
@@ -338,13 +338,13 @@ void write_stream(JsonSink& json, const io::ProbeReport& report) {
 // AC-4 streams do not change presentation/substream-group layout frame to
 // frame), alongside file-wide CRC and parse-failure counts.
 
-std::string_view ac4_error_token(ac4::Error error) {
+std::string_view ac4_error_token(iclforge::ac4::Error error) {
     switch (error) {
-        case ac4::Error::kTruncated:
+        case iclforge::ac4::Error::kTruncated:
             return "truncated";
-        case ac4::Error::kLostSync:
+        case iclforge::ac4::Error::kLostSync:
             return "lost_sync";
-        case ac4::Error::kUnsupportedBitstreamVersion:
+        case iclforge::ac4::Error::kUnsupportedBitstreamVersion:
             return "unsupported_bitstream_version";
     }
     return "unknown";
@@ -352,28 +352,28 @@ std::string_view ac4_error_token(ac4::Error error) {
 
 Ac4Summary summarize_ac4(std::span<const std::byte> data) {
     Ac4Summary summary;
-    const auto scanned = ac4::scan(data);
+    const auto scanned = iclforge::ac4::scan(data);
     summary.sync_frames = scanned.frames.size();
     // The decoder reads every substream of every frame, for the names that
     // arrive in chunks, the metadata the I-frames send and the common data of
     // the OAMD substreams.
-    ac4::Decoder decoder;
+    iclforge::ac4::Decoder decoder;
     std::uint64_t raw_bytes = 0;
     std::optional<int> previous_counter;
     std::optional<std::size_t> last_iframe;
     for (std::size_t f = 0; f < scanned.frames.size(); ++f) {
-        const ac4::SyncFrame& frame = scanned.frames[f];
+        const iclforge::ac4::SyncFrame& frame = scanned.frames[f];
         summary.bytes += frame.raw_ac4_frame.size() + (frame.crc_ok ? 6 : 4);
         raw_bytes += frame.raw_ac4_frame.size();
         if (frame.crc_ok.has_value() && !*frame.crc_ok) {
             ++summary.crc_failures;
         }
-        auto parsed = ac4::parse_raw_frame(frame.raw_ac4_frame);
+        auto parsed = iclforge::ac4::parse_raw_frame(frame.raw_ac4_frame);
         if (!parsed && !summary.parse_error.has_value()) {
             summary.parse_error = parsed.error();
         }
         if (parsed) {
-            const ac4::Toc& toc = parsed->toc;
+            const iclforge::ac4::Toc& toc = parsed->toc;
             // ETSI TS 103 190-1 clause 4.3.3.2.2: the counter continues from
             // the last, wraps from 1020 to 1, or follows a splice mark of 0.
             if (previous_counter) {
@@ -401,7 +401,7 @@ Ac4Summary summarize_ac4(std::span<const std::byte> data) {
             summary.first_frame = std::move(*parsed);
         }
         if (const auto report = decoder.parse(frame.raw_ac4_frame)) {
-            for (const ac4::SubstreamReport& substream : report->substreams) {
+            for (const iclforge::ac4::SubstreamReport& substream : report->substreams) {
                 if (substream.oamd_common_data) {
                     summary.oamd_common_data.try_emplace(substream.index,
                                                          *substream.oamd_common_data);
@@ -413,14 +413,14 @@ Ac4Summary summarize_ac4(std::span<const std::byte> data) {
         summary.parse_error = scanned.stopped_at;
     }
     if (summary.first_frame.has_value()) {
-        summary.frame_rate = ac4::frame_rate(summary.first_frame->toc);
+        summary.frame_rate = iclforge::ac4::frame_rate(summary.first_frame->toc);
         if (summary.frame_rate && summary.sync_frames > 0) {
             const double seconds =
                 static_cast<double>(summary.sync_frames) / summary.frame_rate->frames_per_second;
             summary.bitrate_kbps = static_cast<double>(raw_bytes) * 8.0 / seconds / 1000.0;
         }
     }
-    const std::span<const ac4::PresentationInfo> presentations = decoder.presentations();
+    const std::span<const iclforge::ac4::PresentationInfo> presentations = decoder.presentations();
     summary.presentations.assign(presentations.begin(), presentations.end());
     if (decoder.metadata().presentation.has_value()) {
         summary.metadata = decoder.metadata();
@@ -428,27 +428,27 @@ Ac4Summary summarize_ac4(std::span<const std::byte> data) {
     return summary;
 }
 
-std::string_view object_kind_token(ac4::ObjectKind kind) {
+std::string_view object_kind_token(iclforge::ac4::ObjectKind kind) {
     switch (kind) {
-        case ac4::ObjectKind::kBed: return "bed";
-        case ac4::ObjectKind::kDyn: return "dyn";
-        case ac4::ObjectKind::kIsf: return "isf";
+        case iclforge::ac4::ObjectKind::kBed: return "bed";
+        case iclforge::ac4::ObjectKind::kDyn: return "dyn";
+        case iclforge::ac4::ObjectKind::kIsf: return "isf";
     }
     return "unknown";
 }
 
 // One line per §6.2.1.6 substream, whichever of chan/ajoc/obj it is - the
 // human-readable counterpart to write_ac4_group_substream()'s JSON.
-std::string describe_group_substream(const ac4::GroupSubstream& sub) {
+std::string describe_group_substream(const iclforge::ac4::GroupSubstream& sub) {
     switch (sub.kind) {
-        case ac4::GroupSubstream::Kind::kChan:
+        case iclforge::ac4::GroupSubstream::Kind::kChan:
             if (!sub.chan.has_value()) {
                 break;
             }
             return fmt::format(
                 "{}{}", sub.chan->channel_mode_name,
                 sub.chan->bitrate_kbps ? fmt::format(", {} kbit/s", *sub.chan->bitrate_kbps) : "");
-        case ac4::GroupSubstream::Kind::kAjoc:
+        case iclforge::ac4::GroupSubstream::Kind::kAjoc:
             if (!sub.ajoc.has_value()) {
                 break;
             }
@@ -456,7 +456,7 @@ std::string describe_group_substream(const ac4::GroupSubstream& sub) {
                 "A-JOC, {} dmx + {} upmix signal(s){}", sub.ajoc->n_fullband_dmx_signals,
                 sub.ajoc->n_fullband_upmix_signals,
                 sub.ajoc->bitrate_kbps ? fmt::format(", {} kbit/s", *sub.ajoc->bitrate_kbps) : "");
-        case ac4::GroupSubstream::Kind::kObj:
+        case iclforge::ac4::GroupSubstream::Kind::kObj:
             if (!sub.obj.has_value()) {
                 break;
             }
@@ -471,7 +471,7 @@ std::string describe_group_substream(const ac4::GroupSubstream& sub) {
 namespace {
 
 // A channel-coded substream's members, for the caller's own object.
-void write_ac4_substream_members(JsonSink& json, const ac4::ChannelSubstreamInfo& sub) {
+void write_ac4_substream_members(JsonSink& json, const iclforge::ac4::ChannelSubstreamInfo& sub) {
     json.member("channel_mode", static_cast<std::int64_t>(sub.channel_mode));
     json.member("channel_mode_name", sub.channel_mode_name);
     if (sub.ch_mode.has_value()) {
@@ -506,13 +506,14 @@ void write_ac4_substream_members(JsonSink& json, const ac4::ChannelSubstreamInfo
     }
 }
 
-void write_ac4_substream_info(JsonSink& json, const ac4::ChannelSubstreamInfo& sub) {
+void write_ac4_substream_info(JsonSink& json, const iclforge::ac4::ChannelSubstreamInfo& sub) {
     json.begin_object();
     write_ac4_substream_members(json, sub);
     json.end_object();
 }
 
-void write_ac4_object_entries(JsonSink& json, const std::vector<ac4::ObjectEntry>& objects) {
+void write_ac4_object_entries(JsonSink& json,
+                              const std::vector<iclforge::ac4::ObjectEntry>& objects) {
     json.begin_array();
     for (const auto& obj : objects) {
         json.begin_object();
@@ -528,7 +529,7 @@ void write_ac4_object_entries(JsonSink& json, const std::vector<ac4::ObjectEntry
 // oamd_substream() carries it - additive to the probe schema (planning/ac4.md, I5): the top-level
 // fields in full, and a presence flag for each of the three optional nested groups (trim,
 // bed_render_info, headphone), whose own many sub-fields stay text-only for now.
-void write_ac4_oamd_common(JsonSink& json, const ac4::OamdCommonData& common) {
+void write_ac4_oamd_common(JsonSink& json, const iclforge::ac4::OamdCommonData& common) {
     json.begin_object();
     json.member("b_default_screen_size_ratio", common.b_default_screen_size_ratio);
     if (common.master_screen_size_ratio_code.has_value()) {
@@ -544,7 +545,7 @@ void write_ac4_oamd_common(JsonSink& json, const ac4::OamdCommonData& common) {
     json.end_object();
 }
 
-void write_ac4_ajoc_substream_info(JsonSink& json, const ac4::AjocSubstreamInfo& sub) {
+void write_ac4_ajoc_substream_info(JsonSink& json, const iclforge::ac4::AjocSubstreamInfo& sub) {
     json.begin_object();
     json.member("b_lfe", sub.b_lfe);
     json.member("b_static_dmx", sub.b_static_dmx);
@@ -578,7 +579,7 @@ void write_ac4_ajoc_substream_info(JsonSink& json, const ac4::AjocSubstreamInfo&
     json.end_object();
 }
 
-void write_ac4_obj_substream_info(JsonSink& json, const ac4::ObjSubstreamInfo& sub) {
+void write_ac4_obj_substream_info(JsonSink& json, const iclforge::ac4::ObjSubstreamInfo& sub) {
     json.begin_object();
     json.key("objects");
     write_ac4_object_entries(json, sub.objects);
@@ -602,18 +603,18 @@ void write_ac4_obj_substream_info(JsonSink& json, const ac4::ObjSubstreamInfo& s
 }
 
 // One entry of a substream group's own substream list (§6.2.1.6) - a tagged
-// union in JSON the same way ac4::GroupSubstream is in C++: "kind" says
+// union in JSON the same way iclforge::ac4::GroupSubstream is in C++: "kind" says
 // which of "chan"/"ajoc"/"obj" is non-null.
-void write_ac4_group_substream(JsonSink& json, const ac4::GroupSubstream& sub) {
+void write_ac4_group_substream(JsonSink& json, const iclforge::ac4::GroupSubstream& sub) {
     json.begin_object();
     switch (sub.kind) {
-        case ac4::GroupSubstream::Kind::kChan:
+        case iclforge::ac4::GroupSubstream::Kind::kChan:
             json.member("kind", "chan");
             break;
-        case ac4::GroupSubstream::Kind::kAjoc:
+        case iclforge::ac4::GroupSubstream::Kind::kAjoc:
             json.member("kind", "ajoc");
             break;
-        case ac4::GroupSubstream::Kind::kObj:
+        case iclforge::ac4::GroupSubstream::Kind::kObj:
             json.member("kind", "obj");
             break;
     }
@@ -640,11 +641,12 @@ void write_ac4_group_substream(JsonSink& json, const ac4::GroupSubstream& sub) {
 
 // --- What the decoder reports (planning/ac4.md, "Media information") ------
 
-void write_speakers(JsonSink& json, std::string_view name, std::span<const ac4::Speaker> speakers) {
+void write_speakers(JsonSink& json, std::string_view name,
+                    std::span<const iclforge::ac4::Speaker> speakers) {
     json.key(name);
     json.begin_array();
-    for (const ac4::Speaker speaker : speakers) {
-        json.value(ac4::describe(speaker));
+    for (const iclforge::ac4::Speaker speaker : speakers) {
+        json.value(iclforge::ac4::describe(speaker));
     }
     json.end_array();
 }
@@ -666,24 +668,24 @@ void write_optional(JsonSink& json, std::string_view name, const std::optional<d
     }
 }
 
-std::string_view role_token(ac4::SubstreamRole role) {
+std::string_view role_token(iclforge::ac4::SubstreamRole role) {
     switch (role) {
-        case ac4::SubstreamRole::kMain:
+        case iclforge::ac4::SubstreamRole::kMain:
             return "main";
-        case ac4::SubstreamRole::kMusicAndEffects:
+        case iclforge::ac4::SubstreamRole::kMusicAndEffects:
             return "music_and_effects";
-        case ac4::SubstreamRole::kDialogue:
+        case iclforge::ac4::SubstreamRole::kDialogue:
             return "dialogue";
-        case ac4::SubstreamRole::kDialogueEnhancement:
+        case iclforge::ac4::SubstreamRole::kDialogueEnhancement:
             return "dialogue_enhancement";
-        case ac4::SubstreamRole::kAssociated:
+        case iclforge::ac4::SubstreamRole::kAssociated:
             return "associated";
     }
     return "unknown";
 }
 
 // What the decoder read of a presentation.
-void write_ac4_presentation_members(JsonSink& json, const ac4::PresentationInfo& info) {
+void write_ac4_presentation_members(JsonSink& json, const iclforge::ac4::PresentationInfo& info) {
     json.member("index", static_cast<std::uint64_t>(info.index));
     write_optional(json, "presentation_id", info.presentation_id);
     json.member("presentation_version", static_cast<std::int64_t>(info.presentation_version));
@@ -705,7 +707,7 @@ void write_ac4_presentation_members(JsonSink& json, const ac4::PresentationInfo&
     json.member("selectable", info.selectable);
     json.key("members");
     json.begin_array();
-    for (const ac4::PresentationMember& member : info.members) {
+    for (const iclforge::ac4::PresentationMember& member : info.members) {
         json.begin_object();
         json.member("substream", static_cast<std::int64_t>(member.substream));
         json.member("role", role_token(member.role));
@@ -718,27 +720,27 @@ void write_ac4_presentation_members(JsonSink& json, const ac4::PresentationInfo&
     json.end_array();
 }
 
-std::string_view compression_token(ac4::DrcModeInfo::Compression compression) {
+std::string_view compression_token(iclforge::ac4::DrcModeInfo::Compression compression) {
     switch (compression) {
-        case ac4::DrcModeInfo::Compression::kDefaultProfile:
+        case iclforge::ac4::DrcModeInfo::Compression::kDefaultProfile:
             return "default_profile";
-        case ac4::DrcModeInfo::Compression::kCurve:
+        case iclforge::ac4::DrcModeInfo::Compression::kCurve:
             return "curve";
-        case ac4::DrcModeInfo::Compression::kGains:
+        case iclforge::ac4::DrcModeInfo::Compression::kGains:
             return "gains";
     }
     return "unknown";
 }
 
-std::string_view preferred_token(ac4::DownmixInfo::Preferred preferred) {
+std::string_view preferred_token(iclforge::ac4::DownmixInfo::Preferred preferred) {
     switch (preferred) {
-        case ac4::DownmixInfo::Preferred::kNotIndicated:
+        case iclforge::ac4::DownmixInfo::Preferred::kNotIndicated:
             return "not_indicated";
-        case ac4::DownmixInfo::Preferred::kLoRo:
+        case iclforge::ac4::DownmixInfo::Preferred::kLoRo:
             return "lo_ro";
-        case ac4::DownmixInfo::Preferred::kLtRt:
+        case iclforge::ac4::DownmixInfo::Preferred::kLtRt:
             return "lt_rt";
-        case ac4::DownmixInfo::Preferred::kLtRtProLogicII:
+        case iclforge::ac4::DownmixInfo::Preferred::kLtRtProLogicII:
             return "lt_rt_pro_logic_ii";
     }
     return "unknown";
@@ -746,14 +748,14 @@ std::string_view preferred_token(ac4::DownmixInfo::Preferred preferred) {
 
 // The selected presentation's metadata. A gain of 0, -infinity dB, is null,
 // as JSON writes no infinity.
-void write_ac4_metadata(JsonSink& json, const ac4::PresentationMetadata& metadata) {
+void write_ac4_metadata(JsonSink& json, const iclforge::ac4::PresentationMetadata& metadata) {
     json.begin_object();
     if (metadata.presentation) {
         json.member("presentation", static_cast<std::uint64_t>(*metadata.presentation));
     } else {
         json.member_null("presentation");
     }
-    const ac4::LoudnessInfo& l = metadata.loudness;
+    const iclforge::ac4::LoudnessInfo& l = metadata.loudness;
     json.key("loudness");
     json.begin_object();
     write_optional(json, "dialnorm_dbfs", l.dialnorm_dbfs, 2);
@@ -778,7 +780,7 @@ void write_ac4_metadata(JsonSink& json, const ac4::PresentationMetadata& metadat
         json.member("eac3_profile", static_cast<std::int64_t>(metadata.drc->eac3_profile));
         json.key("modes");
         json.begin_array();
-        for (const ac4::DrcModeInfo& mode : metadata.drc->modes) {
+        for (const iclforge::ac4::DrcModeInfo& mode : metadata.drc->modes) {
             json.begin_object();
             json.member("id", static_cast<std::int64_t>(mode.id));
             write_optional(json, "output_level_from_db", mode.output_level_from_db);
@@ -796,7 +798,7 @@ void write_ac4_metadata(JsonSink& json, const ac4::PresentationMetadata& metadat
     }
     json.key("dialogue_enhancement");
     if (metadata.dialogue_enhancement) {
-        const ac4::DialogueEnhancementInfo& de = *metadata.dialogue_enhancement;
+        const iclforge::ac4::DialogueEnhancementInfo& de = *metadata.dialogue_enhancement;
         json.begin_object();
         json.member("method", static_cast<std::int64_t>(de.method));
         json.member("left", de.left);
@@ -809,7 +811,7 @@ void write_ac4_metadata(JsonSink& json, const ac4::PresentationMetadata& metadat
     }
     json.key("downmix");
     if (metadata.downmix) {
-        const ac4::DownmixInfo& d = *metadata.downmix;
+        const iclforge::ac4::DownmixInfo& d = *metadata.downmix;
         json.begin_object();
         json.member("loro_centre_db", d.loro_centre_db, 1);
         json.member("loro_surround_db", d.loro_surround_db, 1);
@@ -954,7 +956,7 @@ void write_ac4_stream(JsonSink& json, const Ac4Summary& summary) {
     json.key("presentations_v1");
     json.begin_array();
     if (toc.bitstream_version >= 2) {
-        for (const ac4::PresentationInfo& info : summary.presentations) {
+        for (const iclforge::ac4::PresentationInfo& info : summary.presentations) {
             json.begin_object();
             write_ac4_presentation_members(json, info);
             json.end_object();
@@ -1085,4 +1087,4 @@ void write_container(JsonSink& json, const ContainerFacts& facts) {
     json.end_object();
 }
 
-}  // namespace ac3::apps::probe_json
+}  // namespace iclforge::apps::probe_json

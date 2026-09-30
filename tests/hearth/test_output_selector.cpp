@@ -10,7 +10,7 @@
 #include "iclforge/audio/sink_capabilities.hpp"
 #include "output_selector.hpp"
 
-// ac3::hearth::OutputSelector (apps/hearth/engine/output_selector.cpp): the
+// iclforge::hearth::OutputSelector (apps/hearth/engine/output_selector.cpp): the
 // rows the output decision is asked about, and when they are read.
 //
 // The decision itself is test_output_decision.cpp's. What is checked here is
@@ -21,18 +21,18 @@
 
 namespace {
 
-using ac3::audio::BitstreamFormat;
-using ac3::audio::EdidError;
-using ac3::audio::RenderDeviceInfo;
-using ac3::audio::SinkAudioCapabilities;
-using ac3::hearth::CapabilitySource;
-using ac3::hearth::EndpointReading;
-using ac3::hearth::HeldOutput;
-using ac3::hearth::ItemFacts;
-using ac3::hearth::OutputMode;
-using ac3::hearth::OutputPreferences;
-using ac3::hearth::OutputSelector;
-using ac3::hearth::endpoint_facts;
+using iclforge::audio::BitstreamFormat;
+using iclforge::audio::EdidError;
+using iclforge::audio::RenderDeviceInfo;
+using iclforge::audio::SinkAudioCapabilities;
+using iclforge::hearth::CapabilitySource;
+using iclforge::hearth::EndpointReading;
+using iclforge::hearth::HeldOutput;
+using iclforge::hearth::ItemFacts;
+using iclforge::hearth::OutputMode;
+using iclforge::hearth::OutputPreferences;
+using iclforge::hearth::OutputSelector;
+using iclforge::hearth::endpoint_facts;
 
 RenderDeviceInfo hdmi(bool ac3, bool eac3) {
     RenderDeviceInfo device;

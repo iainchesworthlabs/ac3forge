@@ -154,42 +154,42 @@
         <translation>لا إخراج</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="752"/>
+        <location filename="../ui/crucible_controller.cpp" line="753"/>
         <source>This build carries no embedded notices file (:/notices/NOTICES.txt was not compiled in); the NOTICES.txt beside the application and the repository&apos;s LICENSE say what it ships.</source>
         <translation>لا يحمل هذا البناء ملف إشعارات مضمَّنًا (لم يُصرَّف :/notices/NOTICES.txt ضمنه)؛ وملف NOTICES.txt المجاور للتطبيق وملف LICENSE في المستودع يوضّحان ما يشحنه.</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="1245"/>
+        <location filename="../ui/crucible_controller.cpp" line="1247"/>
         <source>saved to %1</source>
         <translation>حُفظ في %1</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="1248"/>
+        <location filename="../ui/crucible_controller.cpp" line="1250"/>
         <source>could not write %1: %2</source>
         <translation>تعذّرت كتابة %1: %2</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="1038"/>
+        <location filename="../ui/crucible_controller.cpp" line="1039"/>
         <source>installing, answer the elevation prompt ...</source>
         <translation>جارٍ التثبيت، أجب على طلب رفع الصلاحيات…</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="1053"/>
+        <location filename="../ui/crucible_controller.cpp" line="1054"/>
         <source>removing, answer the elevation prompt ...</source>
         <translation>جارٍ الإزالة، أجب على طلب رفع الصلاحيات…</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="1073"/>
+        <location filename="../ui/crucible_controller.cpp" line="1074"/>
         <source>installed</source>
         <translation>تم التثبيت</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="1073"/>
+        <location filename="../ui/crucible_controller.cpp" line="1074"/>
         <source>removed</source>
         <translation>تمت الإزالة</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="1077"/>
+        <location filename="../ui/crucible_controller.cpp" line="1078"/>
         <source>%1 failed (exit code %2)</source>
         <translation>فشل %1 (رمز الخروج %2)</translation>
     </message>

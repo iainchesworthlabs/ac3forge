@@ -28,7 +28,7 @@
 // thread because enumerating processes and reading version resources cost
 // 48 ms on the frame thread (windows-demo.md, "The application review").
 
-namespace ac3::crucible {
+namespace iclforge::crucible {
 
 struct AppSession {
     AppId app = 0;               // the root process of the tree
@@ -78,4 +78,4 @@ public:
     [[nodiscard]] virtual std::string listing_rule() const = 0;
 };
 
-}  // namespace ac3::crucible
+}  // namespace iclforge::crucible

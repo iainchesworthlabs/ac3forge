@@ -25,18 +25,18 @@
 namespace ac4dec_test {
 namespace {
 
-using ac4::detail::AjocFields;
-using ac4::detail::AjocObjectFields;
-using ac4::detail::AjocSetFields;
-using ac4::detail::BitWriter;
-using ac4::detail::FrameLayout;
-using ac4::detail::OamdObject;
-using ac4::detail::OamdObjectKind;
-using ac4::detail::OamdTimingFields;
-using ac4::detail::ObjectInfoBlockFields;
-using ac4::detail::RenderStatus;
-using ac4::detail::TocObjectAssignment;
-using ac4::detail::TocObjectSubstream;
+using iclforge::ac4::detail::AjocFields;
+using iclforge::ac4::detail::AjocObjectFields;
+using iclforge::ac4::detail::AjocSetFields;
+using iclforge::ac4::detail::BitWriter;
+using iclforge::ac4::detail::FrameLayout;
+using iclforge::ac4::detail::OamdObject;
+using iclforge::ac4::detail::OamdObjectKind;
+using iclforge::ac4::detail::OamdTimingFields;
+using iclforge::ac4::detail::ObjectInfoBlockFields;
+using iclforge::ac4::detail::RenderStatus;
+using iclforge::ac4::detail::TocObjectAssignment;
+using iclforge::ac4::detail::TocObjectSubstream;
 using Lines = std::vector<double>;
 
 constexpr int kFrameLength = 2048;
@@ -138,7 +138,7 @@ constexpr double kFineStep = 0.10009765625;
     } else if (o >= m && ch == (o + 1) % m) {
         base = -3;
     }
-    if (base == 0 || ac4::detail::ajoc_band_count(c.bands_code) == 1) {
+    if (base == 0 || iclforge::ac4::detail::ajoc_band_count(c.bands_code) == 1) {
         return base;
     }
     return base + pb % 3 - 1;
@@ -192,7 +192,7 @@ constexpr double kFineStep = 0.10009765625;
 // The quantised values of an object's coefficient on an input or decorrelator,
 // band by band: the steps plus the range's centre.
 [[nodiscard]] std::vector<int> quantised(const ObjectCase& c, int o, int index, bool wet) {
-    const int bands = ac4::detail::ajoc_band_count(c.bands_code);
+    const int bands = iclforge::ac4::detail::ajoc_band_count(c.bands_code);
     const int centre = (nquant(wet, c.quant) - 1) / 2;
     std::vector<int> q;
     for (int pb = 0; pb < bands; ++pb) {
@@ -329,10 +329,11 @@ void add_extras(ObjectInfoBlockFields& block, int object, bool dynamic) {
         r.div_table = 1;
         r.div_code = 26;
     }
-    ac4::detail::AddPerObjectFields add;
+    iclforge::ac4::detail::AddPerObjectFields add;
     add.trim_disable = true;
     if (dynamic) {
-        add.ext_prec_pos = ac4::detail::ExtPrecPosFields{.presence = 0b110, .xyz = {1, 3, 0}};
+        add.ext_prec_pos =
+            iclforge::ac4::detail::ExtPrecPosFields{.presence = 0b110, .xyz = {1, 3, 0}};
     }
     add.headphone = std::pair{2, true};
     block.add_table = add;
@@ -396,7 +397,7 @@ void add_extras(ObjectInfoBlockFields& block, int object, bool dynamic) {
 // --- Audio -------------------------------------------------------------------
 
 // A track's lines: `hz` at kAmplitude, continuous from frame to frame.
-[[nodiscard]] Lines tone_lines(ac4::detail::Analysis& analysis, const FrameLayout& layout,
+[[nodiscard]] Lines tone_lines(iclforge::ac4::detail::Analysis& analysis, const FrameLayout& layout,
                                double hz, int frame) {
     std::vector<double> samples(2 * kFrameLength);
     const double w = 2.0 * std::numbers::pi * hz / kRate;
@@ -410,9 +411,10 @@ void add_extras(ObjectInfoBlockFields& block, int object, bool dynamic) {
 }
 
 // One track coded finely: each band's step a 2^-12 of its peak.
-[[nodiscard]] ac4::detail::CodedTrack code(const Lines& lines, const FrameLayout& layout,
+[[nodiscard]] iclforge::ac4::detail::CodedTrack code(const Lines& lines, const FrameLayout& layout,
                                            int max_sfb) {
-    const ac4::detail::Grouped grouped = ac4::detail::regroup(lines, layout, {max_sfb, max_sfb});
+    const iclforge::ac4::detail::Grouped grouped =
+        iclforge::ac4::detail::regroup(lines, layout, {max_sfb, max_sfb});
     std::vector<std::vector<int>> sf(grouped.offset.size());
     for (std::size_t g = 0; g < grouped.offset.size(); ++g) {
         for (std::size_t b = 0; b + 1 < grouped.offset[g].size(); ++b) {
@@ -424,7 +426,7 @@ void add_extras(ObjectInfoBlockFields& block, int object, bool dynamic) {
             sf[g].push_back(static_cast<int>(std::lround(100.0 + 4.0 * std::log2(step))));
         }
     }
-    return ac4::detail::code_track(grouped, sf, 0, layout);
+    return iclforge::ac4::detail::code_track(grouped, sf, 0, layout);
 }
 
 // The Part 1 data elements, their tracks each a tone, without stereo
@@ -432,12 +434,12 @@ void add_extras(ObjectInfoBlockFields& block, int object, bool dynamic) {
 // (three_channel_data() of chel_matsel 0 and sap_mode 0).
 class TrackWriter {
    public:
-    TrackWriter(BitWriter& w, ac4::detail::Analysis& analysis, int frame)
+    TrackWriter(BitWriter& w, iclforge::ac4::detail::Analysis& analysis, int frame)
         : w_(w),
           analysis_(analysis),
           frame_(frame),
-          layout_(ac4::detail::long_layout(kFrameLength)) {
-        const auto offsets = ac4::detail::band_offsets(kFrameLength);
+          layout_(iclforge::ac4::detail::long_layout(kFrameLength)) {
+        const auto offsets = iclforge::ac4::detail::band_offsets(kFrameLength);
         while (max_sfb_ + 1 < static_cast<int>(offsets.size()) &&
                offsets[at(max_sfb_)] < kTopLine) {
             ++max_sfb_;
@@ -482,9 +484,9 @@ class TrackWriter {
         info();
         w_.write(4, 0, "chel_matsel");
         for (int k = 0; k < 2; ++k) {
-            ac4::detail::StereoChoice choice;
+            iclforge::ac4::detail::StereoChoice choice;
             choice.sap_mode = 0;
-            ac4::detail::write_chparam_info(w_, choice);
+            iclforge::ac4::detail::write_chparam_info(w_, choice);
         }
         data(a, max_sfb_);
         data(b, max_sfb_);
@@ -492,30 +494,31 @@ class TrackWriter {
     }
 
    private:
-    void info() { ac4::detail::write_sf_info(w_, layout_, {max_sfb_, max_sfb_}); }
+    void info() { iclforge::ac4::detail::write_sf_info(w_, layout_, {max_sfb_, max_sfb_}); }
 
     void data(double hz, int max_sfb) {
-        ac4::detail::write_sf_data(
+        iclforge::ac4::detail::write_sf_data(
             w_, code(tone_lines(analysis_, layout_, hz, frame_), layout_, max_sfb), layout_);
     }
 
     BitWriter& w_;
-    ac4::detail::Analysis& analysis_;
+    iclforge::ac4::detail::Analysis& analysis_;
     int frame_ = 0;
     FrameLayout layout_;
     int max_sfb_ = 0;
 };
 
 // A silent A-SPX envelope: one FIXFIX envelope with no signal and no noise.
-[[nodiscard]] ac4::detail::AspxChannelFields silent_aspx(const ac4::detail::AspxSetup& setup) {
-    ac4::detail::AspxChannelFields ch;
-    ch.framing.int_class = ac4::detail::AspxIntervalClass::kFixFix;
+[[nodiscard]] iclforge::ac4::detail::AspxChannelFields silent_aspx(
+    const iclforge::ac4::detail::AspxSetup& setup) {
+    iclforge::ac4::detail::AspxChannelFields ch;
+    ch.framing.int_class = iclforge::ac4::detail::AspxIntervalClass::kFixFix;
     ch.framing.tmp_num_env = 0;
     if (setup.config.freq_res_mode == 0) {
         ch.framing.freq_res = {1};
     }
     ch.qmode_env = 0;
-    const std::vector<int> borders = ac4::detail::interval_borders(ch.framing, 0);
+    const std::vector<int> borders = iclforge::ac4::detail::interval_borders(ch.framing, 0);
     bool high = true;
     switch (setup.config.freq_res_mode) {
         case 0:
@@ -525,7 +528,7 @@ class TrackWriter {
             high = false;
             break;
         case 2:
-            high = ac4::detail::envelope_high_res(borders, 0, ch.framing.tsg_ptr);
+            high = iclforge::ac4::detail::envelope_high_res(borders, 0, ch.framing.tsg_ptr);
             break;
         default:
             break;
@@ -537,7 +540,7 @@ class TrackWriter {
         if (!values.empty()) {
             values.front() = first;
         }
-        return ac4::detail::AspxEnvelopeFields{.delta_dir = 0, .values = values};
+        return iclforge::ac4::detail::AspxEnvelopeFields{.delta_dir = 0, .values = values};
     };
     ch.sig = {flat(bands, 0)};
     ch.noise = {flat(setup.counts.num_sbg_noise, kNoNoise)};
@@ -548,17 +551,17 @@ class TrackWriter {
 // var_channel_element(b_iframe, n_dmx_signals, b_has_lfe), Part 2 clause
 // 6.2.4.4: fullband track k (in syntax order) carries object_tone_hz(k).
 void write_var_element(BitWriter& w, TrackWriter& t, const ObjectCase& c, bool iframe,
-                       const ac4::detail::AspxSetup& setup) {
+                       const iclforge::ac4::detail::AspxSetup& setup) {
     const int n = c.dmx;
     w.write(1, c.aspx ? 1U : 0U, "var_codec_mode");
     if (c.aspx) {
         if (iframe) {
-            ac4::detail::write_aspx_config(w, setup.config);
+            iclforge::ac4::detail::write_aspx_config(w, setup.config);
         }
         if (n <= 5) {
-            ac4::detail::CompandingFields companding;
+            iclforge::ac4::detail::CompandingFields companding;
             companding.num_chan = n;
-            ac4::detail::write_companding_control(w, companding);
+            iclforge::ac4::detail::write_companding_control(w, companding);
         }
     }
     if (c.lfe) {
@@ -589,13 +592,14 @@ void write_var_element(BitWriter& w, TrackWriter& t, const ObjectCase& c, bool i
     }
     if (c.aspx) {
         for (int p = 0; p < pairs; ++p) {
-            ac4::detail::write_aspx_data_2ch(w, iframe, setup.xover_subband_offset, setup.config,
-                                             setup.counts, false,
-                                             {silent_aspx(setup), silent_aspx(setup)});
+            iclforge::ac4::detail::write_aspx_data_2ch(w, iframe, setup.xover_subband_offset,
+                                                       setup.config, setup.counts, false,
+                                                       {silent_aspx(setup), silent_aspx(setup)});
         }
         if (n % 2 != 0) {
-            ac4::detail::write_aspx_data_1ch(w, iframe, setup.xover_subband_offset, setup.config,
-                                             setup.counts, silent_aspx(setup));
+            iclforge::ac4::detail::write_aspx_data_1ch(w, iframe, setup.xover_subband_offset,
+                                                       setup.config, setup.counts,
+                                                       silent_aspx(setup));
         }
     }
 }
@@ -658,9 +662,12 @@ void write_metadata(BitWriter& w, bool dialog) {
 }
 
 // ac4_substream(): audio_size, `audio` byte-aligned, then metadata().
-[[nodiscard]] std::vector<std::byte> audio_substream(const BitWriter& audio, int index, bool dialog,
-                                                     std::vector<ac4::SyntaxRecord>& trace) {
-    const auto keep = [&trace](const ac4::SyntaxRecord& record) { trace.push_back(record); };
+[[nodiscard]] std::vector<std::byte> audio_substream(
+    const BitWriter& audio, int index, bool dialog,
+    std::vector<iclforge::ac4::SyntaxRecord>& trace) {
+    const auto keep = [&trace](const iclforge::ac4::SyntaxRecord& record) {
+        trace.push_back(record);
+    };
     BitWriter w(index, keep);
     const std::size_t bytes = (audio.bit_position() + 7) / 8;
     w.write(15, bytes & 0x7FFFU, "audio_size_value");
@@ -681,9 +688,11 @@ void write_metadata(BitWriter& w, bool dialog) {
 // substream over a static 5.X downmix, pres_ch_mode_core is 3 or 4 (Table 71):
 // custom_dmx_data() then sends b_stereo_dmx_coeff and loud_corr() the core's
 // two b_loud_comp.
-[[nodiscard]] std::vector<std::byte> presentation_substream(int index, bool static_core,
-                                                            std::vector<ac4::SyntaxRecord>& trace) {
-    const auto keep = [&trace](const ac4::SyntaxRecord& record) { trace.push_back(record); };
+[[nodiscard]] std::vector<std::byte> presentation_substream(
+    int index, bool static_core, std::vector<iclforge::ac4::SyntaxRecord>& trace) {
+    const auto keep = [&trace](const iclforge::ac4::SyntaxRecord& record) {
+        trace.push_back(record);
+    };
     BitWriter w(index, keep);
     w.write(1, 0, "b_additional_data");
     w.write(7, 124, "dialnorm_bits");
@@ -721,12 +730,12 @@ void write_metadata(BitWriter& w, bool dialog) {
 
 // The common data the case's table of contents or OAMD substream sends:
 // trim, bed render and headphone data with the extras, else the defaults.
-[[nodiscard]] ac4::detail::OamdCommonFields common_of(const ObjectCase& c) {
-    ac4::detail::OamdCommonFields f;
+[[nodiscard]] iclforge::ac4::detail::OamdCommonFields common_of(const ObjectCase& c) {
+    iclforge::ac4::detail::OamdCommonFields f;
     f.screen_size_ratio_code = 20;
     f.bed_object_chan_distribute = true;
     if (c.extras) {
-        ac4::detail::TrimFields trim;
+        iclforge::ac4::detail::TrimFields trim;
         trim.warp_mode = 1;
         trim.global_trim_mode = 0b10;
         trim.configs[0] = {.default_trim = false,
@@ -741,8 +750,8 @@ void write_metadata(BitWriter& w, bool dialog) {
                            .lis_amount = 2};
         trim.configs[1] = {.default_trim = false, .disable = true};
         f.trim = trim;
-        ac4::detail::BedRenderFields bed;
-        bed.stereo_dmx = ac4::detail::BedRenderFields::StereoDmx{.loro_centre = 2,
+        iclforge::ac4::detail::BedRenderFields bed;
+        bed.stereo_dmx = iclforge::ac4::detail::BedRenderFields::StereoDmx{.loro_centre = 2,
                                                                  .loro_surround = 3,
                                                                  .ltrt = std::array<int, 2>{4, 5},
                                                                  .lfe = 6,
@@ -751,13 +760,14 @@ void write_metadata(BitWriter& w, bool dialog) {
         bed.gain_w_to_f = 2;
         bed.tm_ch_present = true;
         bed.t2_to_f_s_b =
-            ac4::detail::GainToolFields{.to_front = false, .to_side = true, .gain = 3};
+            iclforge::ac4::detail::GainToolFields{.to_front = false, .to_side = true, .gain = 3};
         bed.tf_ch_present = true;
-        bed.tf_to_f_s = ac4::detail::GainToolFields{.to_front = true, .to_side = false, .gain = 1};
+        bed.tf_to_f_s =
+            iclforge::ac4::detail::GainToolFields{.to_front = true, .to_side = false, .gain = 1};
         bed.gain_tfb_to_tm = 4;
         f.bed_render = bed;
-        f.headphone =
-            ac4::detail::HeadphoneFields{.operation_mode = 0b010, .head_track_disable_all = true};
+        f.headphone = iclforge::ac4::detail::HeadphoneFields{.operation_mode = 0b010,
+                                                             .head_track_disable_all = true};
     }
     return f;
 }
@@ -781,8 +791,8 @@ void write_metadata(BitWriter& w, bool dialog) {
 
 struct Frame {
     std::vector<std::vector<std::byte>> substreams;
-    std::vector<std::vector<ac4::SyntaxRecord>> traces;  // per substream
-    ac4::detail::TocGroup group;
+    std::vector<std::vector<iclforge::ac4::SyntaxRecord>> traces;  // per substream
+    iclforge::ac4::detail::TocGroup group;
     int oamd_index = -1;
     int presentation_index = 0;
     std::optional<OamdTimingFields>
@@ -790,8 +800,8 @@ struct Frame {
 };
 
 void build_ajoc_frame(const ObjectCase& c, int frame, int frames, bool iframe,
-                      ac4::detail::Analysis& analysis, const ac4::detail::AspxSetup& setup,
-                      Frame& out) {
+                      iclforge::ac4::detail::Analysis& analysis,
+                      const iclforge::ac4::detail::AspxSetup& setup, Frame& out) {
     const bool is_static = c.kind == ObjectCase::Kind::kAjocStatic;
     const int m = num_dmx(c);
     const std::vector<OamdObject> dmx_objects = portion(m, c.lfe);
@@ -810,26 +820,26 @@ void build_ajoc_frame(const ObjectCase& c, int frame, int frames, bool iframe,
         audio.write(1, own ? 1U : 0U, "b_dmx_timing");
         if (own) {
             dmx_timing = timing_of(c, frame);
-            ac4::detail::write_oamd_timing_data(audio, *dmx_timing);
+            iclforge::ac4::detail::write_oamd_timing_data(audio, *dmx_timing);
         }
         const std::vector<ObjectInfoBlockFields> blocks =
             blocks_of(c, dmx_objects, frame, frames, iframe);
-        ac4::detail::write_oamd_dyndata(audio, dmx_objects, c.blocks, iframe, blocks, false,
-                                        nullptr);
+        iclforge::ac4::detail::write_oamd_dyndata(audio, dmx_objects, c.blocks, iframe, blocks,
+                                                  false, nullptr);
         audio.write(1, c.bed_info ? 1U : 0U, "b_oamd_extension_present");
         if (c.bed_info) {
             // skip_bits: one byte, ajoc_bed_info() and the rest skip_data.
             audio.write_variable_bits(3, 0, "skip_bits");
             BitWriter info = BitWriter::buffered();
-            ac4::detail::write_ajoc_bed_info(info, 3);
+            iclforge::ac4::detail::write_ajoc_bed_info(info, 3);
             audio.append(info);
             audio.write_zero_run(8 - info.bit_position(), "skip_data");
         }
     }
-    ac4::detail::write_ajoc(audio, m, ajoc_fields(c, iframe));
+    iclforge::ac4::detail::write_ajoc(audio, m, ajoc_fields(c, iframe));
     // ajoc_dmx_de_data(): the configuration and coefficients in I-frames, and
     // the coefficients kept in the others.
-    ac4::detail::AjocDmxDeFields de;
+    iclforge::ac4::detail::AjocDmxDeFields de;
     de.cfg = iframe;
     de.keep_coeffs = !iframe;
     de.max_gain = 2;
@@ -840,7 +850,7 @@ void build_ajoc_frame(const ObjectCase& c, int frame, int frames, bool iframe,
             de.coeff.push_back(static_cast<std::uint8_t>(dialogue_coeff_code(ch)));
         }
     }
-    ac4::detail::write_ajoc_dmx_de_data(audio, m, de, c.dialogue ? 1 : 0);
+    iclforge::ac4::detail::write_ajoc_dmx_de_data(audio, m, de, c.dialogue ? 1 : 0);
     // The upmix's timing: its own in even frames, the downmix's in odd ones,
     // or the group's where an OAMD substream sends it.
     if (c.oamd_substream || is_static) {
@@ -848,14 +858,14 @@ void build_ajoc_frame(const ObjectCase& c, int frame, int frames, bool iframe,
         audio.write(1, own ? 1U : 0U, "b_umx_timing");
         if (own) {
             out.full_timing = timing_of(c, frame);
-            ac4::detail::write_oamd_timing_data(audio, *out.full_timing);
+            iclforge::ac4::detail::write_oamd_timing_data(audio, *out.full_timing);
         } else {
             audio.write(1, 0, "b_derive_timing_from_dmx");
         }
     } else if (frame % 2 == 0) {
         audio.write(1, 1, "b_umx_timing");
         out.full_timing = timing_of(c, frame + 1);
-        ac4::detail::write_oamd_timing_data(audio, *out.full_timing);
+        iclforge::ac4::detail::write_oamd_timing_data(audio, *out.full_timing);
     } else {
         audio.write(1, 0, "b_umx_timing");
         audio.write(1, 1, "b_derive_timing_from_dmx");
@@ -863,8 +873,8 @@ void build_ajoc_frame(const ObjectCase& c, int frame, int frames, bool iframe,
     }
     const std::vector<ObjectInfoBlockFields> umx_blocks =
         blocks_of(c, umx_objects, frame, frames, iframe);
-    ac4::detail::write_oamd_dyndata(audio, umx_objects, c.blocks, iframe, umx_blocks, false,
-                                    nullptr);
+    iclforge::ac4::detail::write_oamd_dyndata(audio, umx_objects, c.blocks, iframe, umx_blocks,
+                                              false, nullptr);
 
     // Substream 0 the A-JOC substream, then the OAMD substream, then the
     // presentation substream.
@@ -886,7 +896,7 @@ void build_ajoc_frame(const ObjectCase& c, int frame, int frames, bool iframe,
     ++index;
     if (c.oamd_substream) {
         out.traces.emplace_back();
-        const auto keep = [&out](const ac4::SyntaxRecord& record) {
+        const auto keep = [&out](const iclforge::ac4::SyntaxRecord& record) {
             out.traces.back().push_back(record);
         };
         BitWriter w(index, keep);
@@ -894,7 +904,7 @@ void build_ajoc_frame(const ObjectCase& c, int frame, int frames, bool iframe,
         for (OamdObject& o : group) {
             o.ajoc_coded = true;
         }
-        std::optional<ac4::detail::OamdCommonFields> common;
+        std::optional<iclforge::ac4::detail::OamdCommonFields> common;
         if (c.common && iframe) {
             common = common_of(c);
         }
@@ -903,7 +913,8 @@ void build_ajoc_frame(const ObjectCase& c, int frame, int frames, bool iframe,
             timing = timing_of(c, frame);
             out.full_timing = timing;
         }
-        ac4::detail::write_oamd_substream(w, common, timing, group, c.blocks, iframe, false, {});
+        iclforge::ac4::detail::write_oamd_substream(w, common, timing, group, c.blocks, iframe,
+                                                    false, {});
         out.substreams.push_back(w.bytes());
         out.group.oamd_substream = index;
         out.group.oamd_iframe = iframe;
@@ -1004,7 +1015,7 @@ struct DirectSubstream {
 }
 
 void build_direct_frame(const ObjectCase& c, int frame, int frames, bool iframe,
-                        ac4::detail::Analysis& analysis, Frame& out) {
+                        iclforge::ac4::detail::Analysis& analysis, Frame& out) {
     int index = 0;
     for (DirectSubstream& s : direct_substreams(c)) {
         BitWriter audio = BitWriter::buffered();
@@ -1023,12 +1034,12 @@ void build_direct_frame(const ObjectCase& c, int frame, int frames, bool iframe,
         ++index;
     }
     out.traces.emplace_back();
-    const auto keep = [&out](const ac4::SyntaxRecord& record) {
+    const auto keep = [&out](const iclforge::ac4::SyntaxRecord& record) {
         out.traces.back().push_back(record);
     };
     BitWriter w(index, keep);
     const std::vector<OamdObject> objects = direct_objects(c);
-    std::optional<ac4::detail::OamdCommonFields> common;
+    std::optional<iclforge::ac4::detail::OamdCommonFields> common;
     if (c.common && iframe) {
         common = common_of(c);
     }
@@ -1040,7 +1051,8 @@ void build_direct_frame(const ObjectCase& c, int frame, int frames, bool iframe,
         out.full_timing = timing;
     }
     const std::vector<ObjectInfoBlockFields> blocks = blocks_of(c, objects, frame, frames, iframe);
-    ac4::detail::write_oamd_substream(w, common, timing, objects, c.blocks, iframe, false, blocks);
+    iclforge::ac4::detail::write_oamd_substream(w, common, timing, objects, c.blocks, iframe, false,
+                                                blocks);
     out.substreams.push_back(w.bytes());
     out.group.oamd_substream = index;
     out.group.oamd_iframe = iframe;
@@ -1059,7 +1071,7 @@ void expect(const ObjectCase& c, int frames, BuiltObjectStream& out) {
     };
     if (c.kind == ObjectCase::Kind::kAjoc || c.kind == ObjectCase::Kind::kAjocStatic) {
         const int m = num_dmx(c);
-        const int bands = ac4::detail::ajoc_band_count(c.bands_code);
+        const int bands = iclforge::ac4::detail::ajoc_band_count(c.bands_code);
         const bool is_static = c.kind == ObjectCase::Kind::kAjocStatic;
         if (c.lfe) {
             out.full.push_back({.lfe = true, .tones = {{kLfeToneHz, kAmplitude}}});
@@ -1116,8 +1128,8 @@ void expect(const ObjectCase& c, int frames, BuiltObjectStream& out) {
 }  // namespace
 
 double ajoc_dry_coefficient(const ObjectCase& c, int o, int ch) {
-    const int pb =
-        band_of(ac4::detail::ajoc_band_count(c.bands_code), tone_subband(qin_track(c, ch)));
+    const int pb = band_of(iclforge::ac4::detail::ajoc_band_count(c.bands_code),
+                           tone_subband(qin_track(c, ch)));
     return dry_steps(c, o, ch, pb) * step_of(c);
 }
 
@@ -1135,12 +1147,12 @@ double object_tone_hz(int k) {
 
 BuiltObjectStream build_objects(const ObjectCase& c, int frames) {
     BuiltObjectStream out;
-    const std::optional<ac4::detail::AspxSetup> setup =
-        ac4::detail::aspx_setup_for(kAspxKbpsPerChannel, kRate);
+    const std::optional<iclforge::ac4::detail::AspxSetup> setup =
+        iclforge::ac4::detail::aspx_setup_for(kAspxKbpsPerChannel, kRate);
     if (!setup) {
         throw std::runtime_error("no A-SPX configuration at 48 kHz");
     }
-    ac4::detail::Analysis analysis(kFrameLength, 1);
+    iclforge::ac4::detail::Analysis analysis(kFrameLength, 1);
     std::optional<OamdTimingFields> carried;
     for (int f = 0; f < frames; ++f) {
         const bool iframe = f % 4 == 0;
@@ -1155,10 +1167,10 @@ BuiltObjectStream build_objects(const ObjectCase& c, int frames) {
                                                           c.kind == ObjectCase::Kind::kAjocStatic,
                                                           frame.traces.back()));
 
-        ac4::detail::TocLayout layout;
+        iclforge::ac4::detail::TocLayout layout;
         layout.sequence_counter = f + 1;
         layout.iframe_global = iframe;
-        ac4::detail::TocPresentation p;
+        iclforge::ac4::detail::TocPresentation p;
         p.groups = {0};
         p.md_compat = 3;
         p.pres_ndot = iframe;
@@ -1169,14 +1181,14 @@ BuiltObjectStream build_objects(const ObjectCase& c, int frames) {
             carried = frame.full_timing;
         }
         out.update_samples.push_back(carried ? update_samples_of(*carried) : std::vector<int>{});
-        auto raw = ac4::detail::assemble_frame(layout, frame.substreams);
+        auto raw = iclforge::ac4::detail::assemble_frame(layout, frame.substreams);
         if (!raw) {
             throw std::runtime_error("the table of contents writer refused a frame");
         }
         out.frames.push_back(std::move(*raw));
         // The decoder reads the OAMD substream first, then the rest in index
         // order.
-        std::vector<ac4::SyntaxRecord>& trace = out.traces.emplace_back();
+        std::vector<iclforge::ac4::SyntaxRecord>& trace = out.traces.emplace_back();
         if (frame.oamd_index >= 0) {
             const auto& oamd = frame.traces[at(frame.oamd_index)];
             trace.insert(trace.end(), oamd.begin(), oamd.end());
@@ -1194,7 +1206,7 @@ BuiltObjectStream build_objects(const ObjectCase& c, int frames) {
 std::vector<std::byte> sync_framed(const BuiltObjectStream& stream) {
     std::vector<std::byte> out;
     for (const auto& frame : stream.frames) {
-        const std::vector<std::byte> framed = ac4::sync_frame(frame, true);
+        const std::vector<std::byte> framed = iclforge::ac4::sync_frame(frame, true);
         out.insert(out.end(), framed.begin(), framed.end());
     }
     return out;

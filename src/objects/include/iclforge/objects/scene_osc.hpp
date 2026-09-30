@@ -11,7 +11,7 @@
 // The OSC 1.0 wire form of a live scene update - the third reader of a
 // per-object placement, beside the JSON and keyframe-text forms in scene.hpp
 // (scene_json.cpp, scene.cpp's own scene_objects_from_keyframe_text). Where
-// those two AUTHOR a timeline up front, this one feeds ac3::oba::SceneCursor
+// those two AUTHOR a timeline up front, this one feeds iclforge::oba::SceneCursor
 // while a session is running: parse one UDP datagram from a show-control rig
 // or a DAW into zero or more updates, merge each onto the object's current
 // placement, push the result.
@@ -37,7 +37,7 @@
 // unboundedly on any input - see parse_osc_packet's own comment for the
 // specific bounds - and is covered by fuzz/fuzz_osc_parse.cpp accordingly.
 
-namespace ac3::oba {
+namespace iclforge::oba {
 
 // One object's fields as one OSC message (or one bundle's worth of them)
 // carried them. Per-field optional, DELIBERATELY: SceneCursor::push replaces
@@ -121,4 +121,4 @@ struct OscParseStats {
 [[nodiscard]] ICLFORGE_OBJECTS_EXPORT std::optional<ObjectPlacement> apply(
     const SceneOscUpdate& update, const ObjectPlacement& base);
 
-}  // namespace ac3::oba
+}  // namespace iclforge::oba

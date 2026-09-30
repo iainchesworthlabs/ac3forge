@@ -18,10 +18,10 @@
 // smoothed the same way, so a slot that just got an application fades in
 // rather than switching on.
 
-namespace ac3::crucible {
+namespace iclforge::crucible {
 
 struct PlacementTarget {
-    ac3::oba::Position position{0.5, 0.5, 0.0};
+    iclforge::oba::Position position{0.5, 0.5, 0.0};
     double gain = 0.0;  // 0 = silent slot
     // Isotropic extent, 0 (a point) to 1 (the whole room), carried to the
     // OAMD payload for the receiver's renderer (TS 103 420 §5.6.1.2); the
@@ -47,7 +47,7 @@ public:
 
     // Advances every slot one frame and writes all kObjectSlots placements:
     // the positioned ones as smoothed, the bed ones pinned.
-    void step(std::span<ac3::oba::ObjectPlacement> out);
+    void step(std::span<iclforge::oba::ObjectPlacement> out);
 
     [[nodiscard]] const PlacementTarget& current(int positioned_slot) const {
         return current_[static_cast<std::size_t>(positioned_slot)];
@@ -59,4 +59,4 @@ private:
     std::array<PlacementTarget, kPositionedSlots> current_{};
 };
 
-}  // namespace ac3::crucible
+}  // namespace iclforge::crucible

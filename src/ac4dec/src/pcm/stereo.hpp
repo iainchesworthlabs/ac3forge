@@ -22,7 +22,7 @@
 // stray copy of the one inside the sap_mode 3 branch (src/ac4dec/ERRATA.md,
 // "Pseudocode 59's stray block").
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 struct StereoParameters {
     // a, b, c, d per group and band, as Pseudocode 59 sets them; 1, 0, 0, 1
@@ -67,4 +67,4 @@ void align_tracks(const SubstreamContext& ctx, const AsfPsyInfo& psy, const SfDa
                   const SfData& second, std::vector<Real>& track0, std::vector<Real>& track1,
                   SfData& common);
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

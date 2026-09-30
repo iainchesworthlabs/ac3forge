@@ -31,7 +31,7 @@
 // channel reads -3.01 LKFS, as BS.1770 has it. That level and the gain are
 // smoothed as clause 5.7.9.3.1.2 gives, with the time constants of the mode.
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 // A compression curve and its time constants, in dB2 and ms (Table 166, or
 // Table 162 for a default profile).
@@ -133,4 +133,4 @@ class DrcStage {
     double last_gain_ = 1.0;
 };
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

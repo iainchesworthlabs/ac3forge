@@ -32,7 +32,7 @@
 // and dialogue enhancement parameters, and the values it carries from one
 // frame to the next. Meaning is for the phases that apply them.
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 // --- Part 2 clause 6.2.7.3 further_loudness_info ----------------------------
 
@@ -419,4 +419,4 @@ struct MetadataState {
 // when the run does not fit in what is left of the substream.
 [[nodiscard]] ParseResult read_bit_run(BitReader& r, std::uint64_t bits, std::string_view name);
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

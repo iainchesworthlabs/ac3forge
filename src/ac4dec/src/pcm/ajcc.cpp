@@ -5,7 +5,7 @@
 #include <numbers>
 #include <span>
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 namespace {
 
 using S = Speaker;
@@ -299,4 +299,4 @@ void AjccStage::apply(DecodingMode decoding, const AjccFrameValues& values, int 
     }
 }
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

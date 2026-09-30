@@ -27,7 +27,7 @@
 // (BitAllocCodes - dbpbcod's knee, fgaincod/sgaincod's leak rates), or
 // correct it per band by up to +-3 steps (§7.2.2.6 delta bit allocation).
 // This model exists to price those choices: it produces, per band, the
-// noise power that band can actually hide, which ac3::quality's measured
+// noise power that band can actually hide, which iclforge::quality's measured
 // reconstruction noise can then be compared against.
 //
 // THE MODEL. Johnston's perceptual-entropy formulation (J. D. Johnston,
@@ -40,7 +40,7 @@
 //   1. Band energy over A/52 Table 7.13's own 50 bands - deliberately the
 //      codec's banding rather than a separate critical-band partition, so
 //      that a threshold lands exactly where a delta bit allocation segment
-//      can act on it and in the same bands ac3::quality::BandNoise
+//      can act on it and in the same bands iclforge::quality::BandNoise
 //      measures.
 //   2. Tonality from inter-block spectral unpredictability (Annex D.2.4):
 //      this block's magnitude spectrum against a linear extrapolation of
@@ -74,7 +74,7 @@
 // it is. tests/ac3/quality/test_perceptual.cpp pins the behaviour that matters
 // - tones score tonal, noise and clicks do not.
 
-namespace ac3::quality {
+namespace iclforge::quality {
 
 // The calibration between the encoder's coefficient domain and sound
 // pressure level, needed only by the absolute threshold.
@@ -224,4 +224,4 @@ struct NoiseToMask {
 [[nodiscard]] ICLFORGE_AC3_EXPORT NoiseToMask noise_to_mask(const BandNoise& measured,
                                                         std::span<const double> threshold);
 
-}  // namespace ac3::quality
+}  // namespace iclforge::quality

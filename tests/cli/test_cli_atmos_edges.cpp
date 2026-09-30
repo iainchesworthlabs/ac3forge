@@ -34,7 +34,7 @@ namespace {
 // See tests/cli/test_cli.cpp's own scratch_dir for the reasoning this copy
 // shares, including the PID fold; the leaf name below is this file's own.
 std::string scratch_pid_suffix() {
-    return ac3::test::platform::process_id();
+    return iclforge::test::platform::process_id();
 }
 
 fs::path scratch_dir() {
@@ -46,7 +46,7 @@ fs::path scratch_dir() {
 int run_cli(const std::string& args, const fs::path& log) {
     const std::string command =
         "\"" + std::string(AC3CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
-    return ac3::test::platform::run_shell(command);
+    return iclforge::test::platform::run_shell(command);
 }
 
 std::string read_log(const fs::path& log) {
@@ -69,7 +69,7 @@ fs::path tone_wav(const fs::path& path, std::size_t channels) {
                                    static_cast<double>(n) / kRate));
             }
         }
-        REQUIRE(ac3::io::write_wav_f32(path.string(), data, kRate).has_value());
+        REQUIRE(iclforge::io::write_wav_f32(path.string(), data, kRate).has_value());
     }
     return path;
 }

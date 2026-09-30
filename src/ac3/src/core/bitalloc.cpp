@@ -19,7 +19,7 @@
 #include "bitalloc_internal.hpp"
 #include "iclforge/arithmetic/scalar_math.hpp"
 
-namespace ac3 {
+namespace iclforge {
 
 namespace {
 
@@ -167,8 +167,8 @@ std::array<int, 50> band_psd(std::span<const int> psd, int start, int end) {
     return bndpsd;
 }
 
-// Shared by the exported ac3::compute_bit_allocation and
-// ac3::internal::compute_bit_allocation_traced below - the same routine
+// Shared by the exported iclforge::compute_bit_allocation and
+// iclforge::internal::compute_bit_allocation_traced below - the same routine
 // either way, `mask_out` null on the public path (see bitalloc_internal.hpp
 // for why that one is not just an added parameter on the public signature).
 namespace {
@@ -190,7 +190,7 @@ namespace {
 //
 // No encode path produces either, and the assert in the callers still says
 // so for a caller's benefit. But `exps` reaches here, through both the
-// decoder and ac3::signing's own frame walk, sized by a field value a hostile
+// decoder and iclforge::signing's own frame walk, sized by a field value a hostile
 // stream picks - and this project has been here before (8386c8f: a decoder
 // shifting by an unvalidated exponent). A contract that only a debug assert
 // enforces is not enforced in the builds that ship.
@@ -614,9 +614,9 @@ DeltaSegments choose_delta_segments(std::span<const float> coefficients,
     return choose_delta_segments_over<float>(coefficients, exps, start);
 }
 
-}  // namespace ac3
+}  // namespace iclforge
 
-namespace ac3::internal {
+namespace iclforge::internal {
 
 void compute_bit_allocation_traced(std::span<const std::uint8_t> exps, SampleRate sample_rate,
                                    const BitAllocCodes& codes, int csnroffst, int fsnroffst,
@@ -625,4 +625,4 @@ void compute_bit_allocation_traced(std::span<const std::uint8_t> exps, SampleRat
     compute_bit_allocation_impl(exps, sample_rate, codes, csnroffst, fsnroffst, bap, region, &mask);
 }
 
-}  // namespace ac3::internal
+}  // namespace iclforge::internal

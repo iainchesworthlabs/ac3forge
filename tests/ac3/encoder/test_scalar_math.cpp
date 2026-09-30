@@ -12,10 +12,10 @@
 
 #include "iclforge/arithmetic/scalar_math.hpp"
 
-using ac3::internal::scalar_exp;
-using ac3::internal::scalar_exp2;
-using ac3::internal::scalar_log;
-using ac3::internal::scalar_log2;
+using iclforge::internal::scalar_exp;
+using iclforge::internal::scalar_exp2;
+using iclforge::internal::scalar_log;
+using iclforge::internal::scalar_log2;
 
 TEST_CASE("float scalar_log2 tracks std::log2 across the normal range", "[encoder][scalar_math]") {
     // Log-spaced sweep over ~60 decades, with a prime step so the mantissa

@@ -11,7 +11,7 @@
 #include "iclforge/sendspin/server_host.hpp"
 #include "iclforge/sendspin/session_driver.hpp"
 
-// The NetworkGroupSink over a real ac3::sendspin::Group: everything here is a
+// The NetworkGroupSink over a real iclforge::sendspin::Group: everything here is a
 // translation between the two interfaces, as passthrough_sink.cpp and
 // device_sink.cpp are for their own sinks. What differs is that a group is
 // resolved by name at open() rather than held fixed from construction (see
@@ -20,7 +20,7 @@
 // offered) rather than the all-or-nothing bool PcmSink::submit() is -
 // Player's own drain_group() (player.cpp) is what retries the remainder.
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 namespace {
 
@@ -189,4 +189,4 @@ std::unique_ptr<NetworkGroupSink> make_group_sink(GroupResolver resolve) {
     return std::make_unique<GroupSink>(std::move(resolve));
 }
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

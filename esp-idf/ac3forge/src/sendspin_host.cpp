@@ -46,7 +46,7 @@
 namespace ac3forge {
 namespace {
 
-namespace ss = ac3::sendspin;
+namespace ss = iclforge::sendspin;
 namespace m = ss::messages;
 namespace ac = ss::ac3forge;
 namespace pm = ss::pairing_messages;

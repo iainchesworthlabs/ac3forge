@@ -24,8 +24,8 @@
 // This is a bitstream INSPECTOR, not a decoder: audio_data and metadata()
 // payloads are reported as byte ranges (Substream::audio_size, Substream
 // itself), never decoded. It is deliberately codec-blind in the same sense
-// mpegts::/mp4::/matroska:: are - it depends on nothing under ac3::forge,
-// and knows nothing about AC-3, E-AC-3 or Atmos.
+// iclforge::mpegts::/iclforge::mp4::/iclforge::matroska:: are - it depends on nothing under
+// iclforge::ac3, and knows nothing about AC-3, E-AC-3 or Atmos.
 //
 // Scope covers both channel-coded and object/A-JOC-coded substream groups
 // (b_channel_coded 1 or 0): TOC/presentation/substream-group/substream-info
@@ -40,7 +40,7 @@
 // (oamd_substream(), §6.2.2.4 - which embeds a second, independent
 // oamd_common_data() of its own) was never in scope of this inspector either
 // way - like every non-audio substream, it is reported as a byte range only.
-// ac4::Decoder (src/ac4dec) reads it.
+// iclforge::ac4::Decoder (src/ac4dec) reads it.
 //
 // The bitstream_version >= 2 path (TS 103 190-2 clause 6, presentation_v1
 // and substream-group framing) is cross-checked against real Dolby
@@ -71,7 +71,7 @@
 // tools/references/ac4_parse.py, each built by an independent bit writer
 // in neither module - see tests/ac4/test_ac4.cpp. See docs/verification.md.
 
-namespace ac4 {
+namespace iclforge::ac4 {
 
 enum class Error : std::uint8_t {
     kTruncated,
@@ -120,18 +120,18 @@ inline constexpr std::size_t kSplitterRecommendedBuffer = 65536 + 16;
 // is in. The same framing as scan(), applied incrementally: each frame comes
 // out once all of it has arrived, and a partial frame is held between reads.
 // It owns no memory and allocates none; the caller's storage holds the frame
-// being assembled, in the pattern of ac3::io::AccessUnitAccumulator:
+// being assembled, in the pattern of iclforge::io::AccessUnitAccumulator:
 //
-//     std::vector<std::byte> storage(ac4::kSplitterRecommendedBuffer);
-//     ac4::SyncFrameSplitter splitter{storage};
+//     std::vector<std::byte> storage(iclforge::ac4::kSplitterRecommendedBuffer);
+//     iclforge::ac4::SyncFrameSplitter splitter{storage};
 //     for (;;) {
 //         const auto next = splitter.next();
-//         if (next.status == ac4::SyncFrameSplitter::Status::kNeedMoreInput) {
+//         if (next.status == iclforge::ac4::SyncFrameSplitter::Status::kNeedMoreInput) {
 //             const std::size_t n = read_from_somewhere(splitter.writable());
 //             n == 0 ? splitter.finish() : splitter.commit(n);
 //             continue;
 //         }
-//         if (next.status != ac4::SyncFrameSplitter::Status::kFrame) break;
+//         if (next.status != iclforge::ac4::SyncFrameSplitter::Status::kFrame) break;
 //         decoder.decode(next.frame.raw_ac4_frame);
 //     }
 //
@@ -261,7 +261,7 @@ struct ObjectEntry {
 
 // Annex F.2 to F.10, and add_per_object_md()'s data (TS 103 190-2 clause
 // 6.3.9.11): what one block update of an object's metadata sets (clause
-// 6.3.9), which ac4::Decoder reports and ac4::Encoder writes.
+// 6.3.9), which iclforge::ac4::Decoder reports and iclforge::ac4::Encoder writes.
 struct ObjectProperties {
     // Whether the object's essence carries sound (!b_object_not_active).
     bool active = true;
@@ -616,7 +616,7 @@ struct RawFrame {
 // bytes, so a caller pays for exactly one parse however many it needs.
 
 // The 'dac4' box payload - ac4_dsi_v1 (Annex E.6), box header excluded, the
-// same contract as mp4::AudioTrack::codec_config ("payload only").
+// same contract as iclforge::mp4::AudioTrack::codec_config ("payload only").
 //
 // TOC-level fields are carried in full: ac4_dsi_version 1, the stream's own
 // bitstream_version / fs_index / frame_rate_index, n_presentations, and for
@@ -657,7 +657,7 @@ struct RawFrame {
 [[nodiscard]] AC4_EXPORT std::string_view cmaf_refusal(const Toc& toc);
 
 // Samples per AC-4 frame at the stream's own sample rate - what
-// mp4::AudioTrack::samples_per_frame and an MPEG-TS PTS cadence need.
+// iclforge::mp4::AudioTrack::samples_per_frame and an MPEG-TS PTS cadence need.
 // Table 84: most frame rates divide the sample rate exactly; the
 // 1000/1001-family entries whose frame length alternates between two values
 // (29.97/59.94/119.88 fps) have no single answer and return nullopt;
@@ -756,4 +756,4 @@ struct ManifestDescriptor {
 // where they are, else a string literal naming the first that differs.
 [[nodiscard]] AC4_EXPORT std::string_view configuration_difference(const Toc& a, const Toc& b);
 
-}  // namespace ac4
+}  // namespace iclforge::ac4

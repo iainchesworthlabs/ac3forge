@@ -48,20 +48,20 @@ struct InspectOutcome {
 // qc_controller.cpp's own dual-mono split contributes to only the
 // programme(s) actually present.
 std::optional<RawResult> measure_eac3_objects(std::span<const std::byte> stream, QString& error) {
-    const auto frames = ac3::split_frames(stream);
+    const auto frames = iclforge::split_frames(stream);
     if (!frames || frames->empty()) {
         error = QStringLiteral("Not a valid E-AC-3 stream.");
         return std::nullopt;
     }
-    ac3::Eac3Decoder decoder;
+    iclforge::Eac3Decoder decoder;
     RawResult result;
     result.codec_label = QStringLiteral("E-AC-3");
 
     bool have_first = false;
     double time_s = 0.0;
 
-    const auto ingest = [&](const ac3::DecodedSubstream& sub) {
-        if (sub.strmtyp == ac3::eac3::StreamType::kDependent) {
+    const auto ingest = [&](const iclforge::DecodedSubstream& sub) {
+        if (sub.strmtyp == iclforge::eac3::StreamType::kDependent) {
             return;  // object audio only ever rides in the independent bed
         }
         if (!have_first) {
@@ -69,7 +69,7 @@ std::optional<RawResult> measure_eac3_objects(std::span<const std::byte> stream,
             result.sample_rate_hz = sample_rate_hz(sub.sample_rate);
         }
         if (result.sample_rate_hz > 0) {
-            time_s += static_cast<double>(ac3::kSamplesPerFrame) /
+            time_s += static_cast<double>(iclforge::kSamplesPerFrame) /
                       static_cast<double>(result.sample_rate_hz);
         }
         if (!sub.object_metadata) {
@@ -79,7 +79,7 @@ std::optional<RawResult> measure_eac3_objects(std::span<const std::byte> stream,
         // Every JOC output, not just the dynamic objects: a bed programme has
         // none of the latter and eleven of the former, and used to show as an
         // empty dialog.
-        const auto described = ac3::oba::describe_objects(*sub.object_metadata);
+        const auto described = iclforge::oba::describe_objects(*sub.object_metadata);
 
         RawFrame f;
         f.time_s = time_s;
@@ -108,7 +108,7 @@ std::optional<RawResult> measure_eac3_objects(std::span<const std::byte> stream,
 
         result.dynamic_object_count = static_cast<int>(described.size());
         result.dynamic_only = program.dynamic_only;
-        result.has_lfe = ac3::oba::has_lfe(program);
+        result.has_lfe = iclforge::oba::has_lfe(program);
 
         if (result.object_audio.size() != described.size()) {
             result.object_audio.assign(described.size(), {});
@@ -163,14 +163,14 @@ std::optional<RawResult> measure_eac3_objects(std::span<const std::byte> stream,
     return result;
 }
 
-// AC-4: what ac4::Decoder reports of the stream, read-only - the table of
+// AC-4: what iclforge::ac4::Decoder reports of the stream, read-only - the table of
 // contents' presentations, and for the one it chooses with no preference its
 // channels and, frame by frame, its objects (Part 2 Annex F's properties, as
 // DecodedFrame::objects gives them), a bed object at its speaker and labelled
 // with it. Every frame's objects are recorded, and their audio kept for the
 // dialog's audition as E-AC-3's JOC objects' is.
 std::optional<RawResult> measure_ac4_objects(std::span<const std::byte> stream, QString& error) {
-    const ac4::ScanResult scan = ac4::scan(stream);
+    const iclforge::ac4::ScanResult scan = iclforge::ac4::scan(stream);
     if (scan.frames.empty()) {
         error = QStringLiteral("Not a valid AC-4 stream.");
         return std::nullopt;
@@ -181,11 +181,11 @@ std::optional<RawResult> measure_ac4_objects(std::span<const std::byte> stream, 
     for (const auto& row : ac3gui::ac4_presentation_rows(scan.frames)) {
         result.presentations.append(QString::fromStdString(row.label));
     }
-    ac4::Decoder decoder;
+    iclforge::ac4::Decoder decoder;
     double time_s = 0.0;
     std::size_t number = 0;
     bool have_first = false;
-    for (const ac4::SyncFrame& frame : scan.frames) {
+    for (const iclforge::ac4::SyncFrame& frame : scan.frames) {
         ++number;
         const auto decoded = decoder.decode(frame.raw_ac4_frame);
         if (!decoded.has_value()) {
@@ -197,14 +197,14 @@ std::optional<RawResult> measure_ac4_objects(std::span<const std::byte> stream, 
         if (!decoded->has_value()) {
             continue;  // waiting for an I-frame
         }
-        const ac4::DecodedFrame& pcm = **decoded;
+        const iclforge::ac4::DecodedFrame& pcm = **decoded;
         if (!have_first) {
             have_first = true;
             result.sample_rate_hz = static_cast<std::uint32_t>(pcm.sample_rate_hz);
             result.presentation = pcm.presentation;
             result.layout_label = to_qstring(ac3gui::ac4_speaker_names(pcm.speakers));
             result.has_lfe =
-                std::ranges::find(pcm.speakers, ac4::Speaker::kLfe) != pcm.speakers.end();
+                std::ranges::find(pcm.speakers, iclforge::ac4::Speaker::kLfe) != pcm.speakers.end();
         }
         time_s += static_cast<double>(pcm.samples) / static_cast<double>(pcm.sample_rate_hz);
         ++result.unit_count;
@@ -214,8 +214,8 @@ std::optional<RawResult> measure_ac4_objects(std::span<const std::byte> stream, 
         RawFrame f;
         f.time_s = time_s;
         int beds = 0;
-        for (const ac4::DecodedObject& object : pcm.objects) {
-            const ac4::ObjectProperties& p = object.properties;
+        for (const iclforge::ac4::DecodedObject& object : pcm.objects) {
+            const iclforge::ac4::ObjectProperties& p = object.properties;
             f.x.push_back(p.position[0]);
             f.y.push_back(p.position[1]);
             f.z.push_back(p.position[2]);
@@ -224,11 +224,11 @@ std::optional<RawResult> measure_ac4_objects(std::span<const std::byte> stream, 
             f.depth.push_back(p.width[1]);
             f.height.push_back(p.width[2]);
             f.snap.push_back(p.snap);
-            const bool bed = object.kind == ac4::ObjectKind::kBed;
+            const bool bed = object.kind == iclforge::ac4::ObjectKind::kBed;
             beds += bed ? 1 : 0;
             f.labels.push_back(bed && object.speaker
-                                   ? to_qstring(ac3::eac3::chanmap::name(
-                                         ac3::apps::ac4_location(*object.speaker)))
+                                   ? to_qstring(iclforge::eac3::chanmap::name(
+                                         iclforge::apps::ac4_location(*object.speaker)))
                                    : QString());
         }
         result.ac4_bed_objects = beds;
@@ -277,7 +277,7 @@ InspectOutcome inspect_file(const QString& path) {
     // container readers (mkv/mp4/ts): the file itself unchanged if it is not a container this
     // build reads, or the first AC-3/E-AC-3 track demuxed out of one - the
     // same sniff-and-demux ac3cli's own decode/qc/levels/play/monitor use.
-    auto demuxed = ac3::apps::elementary_stream_from_bytes(file_bytes);
+    auto demuxed = iclforge::apps::elementary_stream_from_bytes(file_bytes);
     if (!demuxed.error.empty()) {
         outcome.error =
             QStringLiteral("%1 is a %2").arg(path, QString::fromStdString(demuxed.error));
@@ -285,7 +285,7 @@ InspectOutcome inspect_file(const QString& path) {
     }
     const auto stream = std::move(demuxed.bytes);
 
-    if (ac3::apps::is_ac4_stream(stream)) {
+    if (iclforge::apps::is_ac4_stream(stream)) {
         QString error;
         auto measured = measure_ac4_objects(stream, error);
         if (!measured) {
@@ -295,7 +295,7 @@ InspectOutcome inspect_file(const QString& path) {
         outcome.result = std::move(*measured);
         return outcome;
     }
-    const auto bsid = ac3::stream_bsid(stream);
+    const auto bsid = iclforge::stream_bsid(stream);
     if (!bsid) {
         outcome.error = QStringLiteral("%1 is too short to hold a syncframe.").arg(path);
         return outcome;
@@ -321,7 +321,7 @@ InspectOutcome inspect_file(const QString& path) {
 
 ObjectDecodeController::ObjectDecodeController(QObject* parent) : QObject(parent) {}
 
-// Out-of-line: audition_sink_ is a unique_ptr<ac3::audio::MonitorSink>, and
+// Out-of-line: audition_sink_ is a unique_ptr<iclforge::audio::MonitorSink>, and
 // MonitorSink is only forward-declared in the header (see its own comment on
 // why) - the destructor needs the complete type, which this translation unit's
 // #include "ac3/audio/monitor.hpp" above provides. Same shape as
@@ -423,11 +423,11 @@ void ObjectDecodeController::auditionObject(int index) {
         return;
     }
 
-    audition_sink_ = std::make_unique<ac3::audio::MonitorSink>();
+    audition_sink_ = std::make_unique<iclforge::audio::MonitorSink>();
     const auto started =
         audition_sink_->start(std::string{}, result_->sample_rate_hz, /*channels=*/1);
     if (!started) {
-        const auto why = ac3::audio::describe(started.error());
+        const auto why = iclforge::audio::describe(started.error());
         audition_sink_.reset();
         error_ = QStringLiteral("Could not open the audition output: %1").arg(to_qstring(why));
         emit resultChanged();

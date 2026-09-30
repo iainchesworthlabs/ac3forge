@@ -1,12 +1,12 @@
 // Parses the same Immersive Audio Bitstream (SMPTE ST 2098-2:2022) content two ways: once as a
-// bare elementary `.iab` file (ac3iab::parse_iabitstream, IAB reader phase 1) and once wrapped in
-// a synthetic MXF IAB Track File (ac3iab::parse_mxf_iab, IAB reader phase 2), printing what each
-// found to show the two agree - the point being that SMPTE ST 2067-201 clip-wraps the whole
-// IABitstream as a single Generic Container KLV Value, so an MXF Track File's essence really is
-// the identical byte sequence an elementary `.iab` file already has (see
+// bare elementary `.iab` file (iclforge::iab::parse_iabitstream, IAB reader phase 1) and once
+// wrapped in a synthetic MXF IAB Track File (iclforge::iab::parse_mxf_iab, IAB reader phase 2),
+// printing what each found to show the two agree - the point being that SMPTE ST 2067-201
+// clip-wraps the whole IABitstream as a single Generic Container KLV Value, so an MXF Track File's
+// essence really is the identical byte sequence an elementary `.iab` file already has (see
 // src/iab/src/mxf_reader.cpp's own header comment for the full citation trail).
 //
-// ac3iab::ac3iab is codec-blind - this program does not either, it only proves both parsed graphs
+// iclforge::iab is codec-blind - this program does not either, it only proves both parsed graphs
 // are navigable and agree. A real IAB Track File is a production Dolby Atmos cinema/IMF master
 // this project has no license to embed, so - like examples/read_adm.cpp for its own container -
 // this writes its own tiny-but-valid fixtures to temp files first.
@@ -125,21 +125,21 @@ int main() {
         return 1;
     }
 
-    const auto elementary = ac3iab::parse_iabitstream(elementary_path);
-    const auto mxf = ac3iab::parse_mxf_iab(mxf_path);
+    const auto elementary = iclforge::iab::parse_iabitstream(elementary_path);
+    const auto mxf = iclforge::iab::parse_mxf_iab(mxf_path);
     std::filesystem::remove(elementary_path);
     std::filesystem::remove(mxf_path);
 
     if (!elementary) {
         fmt::printf("parse_iabitstream failed: %.*s\n",
-                    static_cast<int>(ac3iab::describe(elementary.error()).size()),
-                    ac3iab::describe(elementary.error()).data());
+                    static_cast<int>(iclforge::iab::describe(elementary.error()).size()),
+                    iclforge::iab::describe(elementary.error()).data());
         return 1;
     }
     if (!mxf) {
         fmt::printf("parse_mxf_iab failed: %.*s\n",
-                    static_cast<int>(ac3iab::describe(mxf.error()).size()),
-                    ac3iab::describe(mxf.error()).data());
+                    static_cast<int>(iclforge::iab::describe(mxf.error()).size()),
+                    iclforge::iab::describe(mxf.error()).data());
         return 1;
     }
 

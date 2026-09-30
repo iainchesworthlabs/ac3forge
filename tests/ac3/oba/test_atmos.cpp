@@ -24,7 +24,7 @@
 
 namespace {
 
-constexpr int kFrame = ac3::kSamplesPerFrame;
+constexpr int kFrame = iclforge::kSamplesPerFrame;
 
 // Objects that are actually distinguishable: different frequencies, different
 // phases, and none of them silent. Silence would make the covariance singular
@@ -55,7 +55,7 @@ std::complex<double> project(std::span<const float> x, double hz) {
 // Nyquist evenly, so at 48 kHz each is 375 Hz wide, and Table 54 groups them.
 int band_of(double hz, int num_bands_idx) {
     const auto subband = static_cast<std::size_t>(hz / (24000.0 / 64.0));
-    return ac3::oba::joc::kSubbandToBand[static_cast<std::size_t>(num_bands_idx)][subband];
+    return iclforge::oba::joc::kSubbandToBand[static_cast<std::size_t>(num_bands_idx)][subband];
 }
 
 // §6.6.6, evaluated at one frequency. The decoder applies the matrix band by
@@ -66,7 +66,7 @@ int band_of(double hz, int num_bands_idx) {
 //
 // The matrix here is the one the encoder computed rather than one read back
 // off the wire, so this measures the SOLVE; test_oba covers the coding.
-std::complex<double> reconstruct_at(const ac3::oba::AtmosEncoder& encoder, int object,
+std::complex<double> reconstruct_at(const iclforge::oba::AtmosEncoder& encoder, int object,
                                     double hz, int num_bands_idx) {
     constexpr std::array<int, 5> kAc3FromJoc = {0, 2, 1, 3, 4};
     const int band = band_of(hz, num_bands_idx);
@@ -91,16 +91,16 @@ double error_db(std::complex<double> got, std::complex<double> want) {
 TEST_CASE("room positions fold onto the ring at the right angle", "[atmos][spatial]") {
     // §4.2.1: (0,5; 0) is the centre of the front wall, x grows to the right
     // and y grows towards the back.
-    const auto front = ac3::spatial::pan_room(0.5, 0.0);
+    const auto front = iclforge::spatial::pan_room(0.5, 0.0);
     CHECK(front[1] > 0.99);  // C dominates
 
-    const auto left = ac3::spatial::pan_room(0.0, 0.5);
+    const auto left = iclforge::spatial::pan_room(0.0, 0.5);
     CHECK(left[0] > 0.0);    // L
     CHECK(left[3] > 0.0);    // SL
     CHECK(left[2] == 0.0);   // nothing on the right
     CHECK(left[4] == 0.0);
 
-    const auto right = ac3::spatial::pan_room(1.0, 0.5);
+    const auto right = iclforge::spatial::pan_room(1.0, 0.5);
     CHECK(right[2] > 0.0);   // R
     CHECK(right[4] > 0.0);   // SR
     CHECK(right[0] == 0.0);
@@ -109,8 +109,8 @@ TEST_CASE("room positions fold onto the ring at the right angle", "[atmos][spati
     // Height is not in the pan at all, so a raised object lands exactly where
     // its ground-level twin does. That is the premise the object layer exists
     // to work around, so it had better be true.
-    const auto low = ac3::spatial::pan_room(0.2, 0.3);
-    const auto high = ac3::spatial::pan_room(0.2, 0.3);
+    const auto low = iclforge::spatial::pan_room(0.2, 0.3);
+    const auto high = iclforge::spatial::pan_room(0.2, 0.3);
     CHECK(low == high);
 
     // Energy preservation carries over from pan_azimuth.
@@ -127,8 +127,8 @@ TEST_CASE("well-separated objects come back out of the bed", "[atmos]") {
     // Four objects at four corners of the room: the panning gains are far
     // apart, so the downmix matrix is well conditioned and the least-squares
     // inverse should be very close to exact.
-    ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 640}, 4};
-    const std::array<ac3::oba::ObjectPlacement, 4> placement{{
+    iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 640}, 4};
+    const std::array<iclforge::oba::ObjectPlacement, 4> placement{{
         {.position = {.x = 0.0, .y = 0.0, .z = 0.0}},   // front left
         {.position = {.x = 1.0, .y = 0.0, .z = 0.0}},   // front right
         {.position = {.x = 0.0, .y = 1.0, .z = 1.0}},   // back left, overhead
@@ -193,8 +193,8 @@ TEST_CASE("objects sharing a direction split rather than blow up", "[atmos]") {
     // behaviour is a bounded matrix that hands each one its share, not a
     // singular solve - and "bounded" matters, because the quantizer tops out
     // at about 9,6 and would silently clamp anything larger.
-    ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 640}, 2};
-    const std::array<ac3::oba::ObjectPlacement, 2> placement{{
+    iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 640}, 2};
+    const std::array<iclforge::oba::ObjectPlacement, 2> placement{{
         {.position = {.x = 0.2, .y = 0.4, .z = 0.0}},
         {.position = {.x = 0.2, .y = 0.4, .z = 1.0}},  // straight above the first
     }};
@@ -253,7 +253,7 @@ TEST_CASE("band_energy consults its fast flag, and both paths agree", "[atmos][f
     // Broadband content on purpose: tones alone leave most of the nine bands
     // only window leakage, whose relative error says nothing. A deterministic
     // LCG keeps the "noise" reproducible, and two tones keep it real-ish.
-    const auto& mapping = ac3::oba::joc::kSubbandToBand[4];  // 9 bands
+    const auto& mapping = iclforge::oba::joc::kSubbandToBand[4];  // 9 bands
     std::uint32_t lcg = 0x2545F491u;
     bool any_difference = false;
     for (int frame = 0; frame < 3; ++frame) {
@@ -271,8 +271,8 @@ TEST_CASE("band_energy consults its fast flag, and both paths agree", "[atmos][f
         }
         std::array<double, 9> direct{};
         std::array<double, 9> fast{};
-        ac3::oba::band_energy(signal, mapping, direct, /*fast=*/false);
-        ac3::oba::band_energy(signal, mapping, fast, /*fast=*/true);
+        iclforge::oba::band_energy(signal, mapping, direct, /*fast=*/false);
+        iclforge::oba::band_energy(signal, mapping, fast, /*fast=*/true);
         for (int band = 0; band < 9; ++band) {
             CAPTURE(frame, band);
             REQUIRE(direct[static_cast<std::size_t>(band)] > 0.0);
@@ -295,9 +295,9 @@ TEST_CASE("the JOC matrix is indifferent to which MDCT path fed it", "[atmos][fa
     // uniform power wobble cancels and would prove nothing). The bed is
     // rendered from panning gains before any transform runs, so the matrix
     // is the entire surface band_energy can influence.
-    ac3::oba::AtmosEncoder direct_encoder{{.bitrate_kbps = 640, .fast_mdct = false}, 2};
-    ac3::oba::AtmosEncoder fast_encoder{{.bitrate_kbps = 640, .fast_mdct = true}, 2};
-    const std::array<ac3::oba::ObjectPlacement, 2> placement{{
+    iclforge::oba::AtmosEncoder direct_encoder{{.bitrate_kbps = 640, .fast_mdct = false}, 2};
+    iclforge::oba::AtmosEncoder fast_encoder{{.bitrate_kbps = 640, .fast_mdct = true}, 2};
+    const std::array<iclforge::oba::ObjectPlacement, 2> placement{{
         {.position = {.x = 0.2, .y = 0.4, .z = 0.0}},
         {.position = {.x = 0.2, .y = 0.4, .z = 1.0}},
     }};
@@ -341,19 +341,19 @@ TEST_CASE("the JOC matrix is indifferent to which MDCT path fed it", "[atmos][fa
 }
 
 TEST_CASE("an Atmos frame is a plain 5.1 frame with metadata bolted on", "[atmos]") {
-    ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, 3};
-    const std::array<ac3::oba::ObjectPlacement, 3> placement{{
+    iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, 3};
+    const std::array<iclforge::oba::ObjectPlacement, 3> placement{{
         {.position = {.x = 0.1, .y = 0.2, .z = 0.5}},
         {.position = {.x = 0.9, .y = 0.2, .z = 0.5}, .gain = 0.5},
         {.position = {.x = 0.5, .y = 0.9, .z = -0.5}, .lfe_send = 0.3},
     }};
     // The bed's LFE plus three dynamic objects.
-    CHECK(ac3::oba::object_count(encoder.program()) == 4);
+    CHECK(iclforge::oba::object_count(encoder.program()) == 4);
     CHECK(encoder.parameters().objects == 3);
 
     std::vector<std::vector<float>> essences;
     std::vector<std::span<const float>> views(3);
-    ac3::eac3::AccessUnit unit;
+    iclforge::eac3::AccessUnit unit;
     for (int frame = 0; frame < 3; ++frame) {
         const auto start = static_cast<std::uint64_t>(frame) * kFrame;
         essences = {tone(440.0, 0.3, 0.0, start), tone(880.0, 0.3, 0.5, start),
@@ -371,7 +371,7 @@ TEST_CASE("an Atmos frame is a plain 5.1 frame with metadata bolted on", "[atmos
     // and every shipping profile allows none for a 5.1 downmix).
     REQUIRE(unit.substream_count() == 1);
     const auto frame = unit.substream(0);
-    CHECK(ac3::crc16(frame.subspan(2)) == 0x0000);
+    CHECK(iclforge::crc16(frame.subspan(2)) == 0x0000);
 
     // The lfe_send actually reached the LFE, so the bed is 5.1 in substance
     // and not just in acmod.
@@ -383,19 +383,19 @@ TEST_CASE("an Atmos frame is a plain 5.1 frame with metadata bolted on", "[atmos
     CHECK(lfe_energy > 0.0);
 
     // The EMDF container is in there, and it holds both payloads.
-    ac3::BitReader r{frame};
+    iclforge::BitReader r{frame};
     std::size_t at = static_cast<std::size_t>(-1);
     for (std::size_t bit = 0; bit + 16 <= frame.size() * 8; ++bit) {
-        ac3::BitReader probe{frame};
+        iclforge::BitReader probe{frame};
         probe.skip(bit);
-        if (probe.read(16) == ac3::emdf::kSyncWord) {
+        if (probe.read(16) == iclforge::emdf::kSyncWord) {
             at = bit;
             break;
         }
     }
     REQUIRE(at != static_cast<std::size_t>(-1));
     r.skip(at + 16 + 16 + 2 + 3);  // sync, length, emdf_version, key_id
-    CHECK(r.read(5) == ac3::emdf::kPayloadIdOamd);
+    CHECK(r.read(5) == iclforge::emdf::kPayloadIdOamd);
 }
 
 namespace {
@@ -403,25 +403,25 @@ namespace {
 // Scans `frame` for the EMDF sync word and returns the OAMD/JOC payload
 // bytes found there, or nullopt if either is missing/malformed. Mirrors
 // exactly what Eac3Decoder's own skip-field handling does internally
-// (capture the skipfld bytes, then ac3::emdf::parse_container), duplicated
+// (capture the skipfld bytes, then iclforge::emdf::parse_container), duplicated
 // here so JOC's decode+reconstruct path can be tested against a real wire
 // frame ahead of task #7 wiring it into Eac3Decoder's own public API.
 std::optional<std::vector<std::byte>> find_payload(std::span<const std::byte> frame, int id) {
     const std::size_t total = frame.size() * 8;
     for (std::size_t bit = 0; bit + 16 <= total; ++bit) {
-        ac3::BitReader probe{frame};
+        iclforge::BitReader probe{frame};
         probe.skip(bit);
-        if (probe.read(16) != ac3::emdf::kSyncWord) {
+        if (probe.read(16) != iclforge::emdf::kSyncWord) {
             continue;
         }
         const auto length = probe.read(16);
         std::vector<std::byte> container_bytes(4 + length);
-        ac3::BitReader raw{frame};
+        iclforge::BitReader raw{frame};
         raw.skip(bit);
         for (auto& byte : container_bytes) {
             byte = static_cast<std::byte>(raw.read(8));
         }
-        const auto container = ac3::emdf::parse_container(container_bytes);
+        const auto container = iclforge::emdf::parse_container(container_bytes);
         if (!container.has_value() || !container->has_value()) {
             continue;
         }
@@ -442,8 +442,8 @@ TEST_CASE("oba::joc::reconstruct recovers well-separated objects through the rea
     // own in-memory matrix separates these cleanly - this test proves the
     // same thing about the DECODE path: real encoded bytes, through
     // emdf::parse_container + oba::joc::parse_payload + oba::joc::reconstruct.
-    ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 640}, 4};
-    const std::array<ac3::oba::ObjectPlacement, 4> placement{{
+    iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 640}, 4};
+    const std::array<iclforge::oba::ObjectPlacement, 4> placement{{
         {.position = {.x = 0.0, .y = 0.0, .z = 0.0}},
         {.position = {.x = 1.0, .y = 0.0, .z = 0.0}},
         {.position = {.x = 0.0, .y = 1.0, .z = 1.0}},
@@ -452,16 +452,16 @@ TEST_CASE("oba::joc::reconstruct recovers well-separated objects through the rea
     const std::array<double, 4> hz{311.0, 997.0, 2200.0, 5000.0};
     const std::array<double, 4> amplitude{0.30, 0.25, 0.20, 0.22};
 
-    constexpr std::array<int, ac3::oba::joc::kNumChannels5X> kAc3FromJoc = {0, 2, 1, 3, 4};
+    constexpr std::array<int, iclforge::oba::joc::kNumChannels5X> kAc3FromJoc = {0, 2, 1, 3, 4};
 
-    ac3::Eac3Decoder decoder;
-    ac3::oba::joc::ReconstructionState state;
+    iclforge::Eac3Decoder decoder;
+    iclforge::oba::joc::ReconstructionState state;
     std::vector<std::span<const float>> views(4);
 
     // The shipped default on both sides. The domain pair is compared
     // head-to-head in "QMF-domain JOC reconstructs objects at least as well
     // as the MDCT-band path" below; this one just has to run what ships.
-    constexpr auto kDomain = ac3::oba::joc::Domain::kQmf;
+    constexpr auto kDomain = iclforge::oba::joc::Domain::kQmf;
     constexpr int kFrames = 6;
     std::array<std::vector<float>, 4> source;   // the whole run, per object
     std::array<std::vector<float>, 4> recovered;  // ditto, aligned index for index
@@ -492,17 +492,17 @@ TEST_CASE("oba::joc::reconstruct recovers well-separated objects through the rea
         REQUIRE(decoded->has_value());
         const auto& sub = **decoded;
 
-        const auto joc_bytes = find_payload(frame_bytes, ac3::emdf::kPayloadIdJoc);
+        const auto joc_bytes = find_payload(frame_bytes, iclforge::emdf::kPayloadIdJoc);
         REQUIRE(joc_bytes.has_value());
-        const auto params = ac3::oba::joc::parse_payload(*joc_bytes);
+        const auto params = iclforge::oba::joc::parse_payload(*joc_bytes);
         REQUIRE(params.has_value());
 
-        std::array<std::span<const float>, ac3::oba::joc::kNumChannels5X> bed_joc_order{};
-        for (int jc = 0; jc < ac3::oba::joc::kNumChannels5X; ++jc) {
+        std::array<std::span<const float>, iclforge::oba::joc::kNumChannels5X> bed_joc_order{};
+        for (int jc = 0; jc < iclforge::oba::joc::kNumChannels5X; ++jc) {
             bed_joc_order[static_cast<std::size_t>(jc)] =
                 sub.channels[static_cast<std::size_t>(kAc3FromJoc[static_cast<std::size_t>(jc)])];
         }
-        const auto reconstructed = ac3::oba::joc::reconstruct(
+        const auto reconstructed = iclforge::oba::joc::reconstruct(
             bed_joc_order, *params, state, /*fast_mdct=*/false, /*fast_imdct=*/false, kDomain);
         REQUIRE(reconstructed.size() == 4);
         for (std::size_t i = 0; i < 4; ++i) {
@@ -521,7 +521,7 @@ TEST_CASE("oba::joc::reconstruct recovers well-separated objects through the rea
     // mostly measuring this codebase's own well-understood, expected
     // transform-pair latency.
     const std::size_t kDelay =
-        static_cast<std::size_t>(256 + ac3::oba::joc::reconstruction_delay(kDomain));
+        static_cast<std::size_t>(256 + iclforge::oba::joc::reconstruction_delay(kDomain));
     constexpr std::size_t kSkip = static_cast<std::size_t>(kFrame);  // one frame's warm-up/cool-down
     for (int object = 0; object < 4; ++object) {
         CAPTURE(object);
@@ -561,11 +561,11 @@ TEST_CASE("QMF-domain JOC reconstructs objects at least as well as the MDCT-band
     // for it: 256 samples of encode+decode either way, plus the JOC
     // transform pair's own oba::joc::reconstruction_delay(domain) on top - 256
     // for the MDCT pair, 576 for the filterbank.
-    const auto measure = [](ac3::oba::joc::Domain encode_domain, ac3::oba::joc::Domain decode_domain) {
+    const auto measure = [](iclforge::oba::joc::Domain encode_domain, iclforge::oba::joc::Domain decode_domain) {
         constexpr int kObjects = 4;
-        ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 640, .joc_domain = encode_domain},
+        iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 640, .joc_domain = encode_domain},
                                        kObjects};
-        const std::array<ac3::oba::ObjectPlacement, kObjects> placement{{
+        const std::array<iclforge::oba::ObjectPlacement, kObjects> placement{{
             {.position = {.x = 0.0, .y = 0.0, .z = 0.0}},
             {.position = {.x = 1.0, .y = 0.0, .z = 0.0}},
             {.position = {.x = 0.0, .y = 1.0, .z = 1.0}},
@@ -574,9 +574,9 @@ TEST_CASE("QMF-domain JOC reconstructs objects at least as well as the MDCT-band
         const std::array<double, kObjects> hz{311.0, 997.0, 2200.0, 5000.0};
         const std::array<double, kObjects> amplitude{0.30, 0.25, 0.20, 0.22};
 
-        constexpr std::array<int, ac3::oba::joc::kNumChannels5X> kAc3FromJoc = {0, 2, 1, 3, 4};
-        ac3::Eac3Decoder decoder;
-        ac3::oba::joc::ReconstructionState state;
+        constexpr std::array<int, iclforge::oba::joc::kNumChannels5X> kAc3FromJoc = {0, 2, 1, 3, 4};
+        iclforge::Eac3Decoder decoder;
+        iclforge::oba::joc::ReconstructionState state;
         std::vector<std::span<const float>> views(kObjects);
 
         constexpr int kFrames = 10;
@@ -601,17 +601,17 @@ TEST_CASE("QMF-domain JOC reconstructs objects at least as well as the MDCT-band
             REQUIRE(decoded->has_value());
             const auto& sub = **decoded;
 
-            const auto joc_bytes = find_payload(frame_bytes, ac3::emdf::kPayloadIdJoc);
+            const auto joc_bytes = find_payload(frame_bytes, iclforge::emdf::kPayloadIdJoc);
             REQUIRE(joc_bytes.has_value());
-            const auto params = ac3::oba::joc::parse_payload(*joc_bytes);
+            const auto params = iclforge::oba::joc::parse_payload(*joc_bytes);
             REQUIRE(params.has_value());
 
-            std::array<std::span<const float>, ac3::oba::joc::kNumChannels5X> bed_joc_order{};
-            for (int jc = 0; jc < ac3::oba::joc::kNumChannels5X; ++jc) {
+            std::array<std::span<const float>, iclforge::oba::joc::kNumChannels5X> bed_joc_order{};
+            for (int jc = 0; jc < iclforge::oba::joc::kNumChannels5X; ++jc) {
                 bed_joc_order[static_cast<std::size_t>(jc)] = sub.channels[static_cast<std::size_t>(
                     kAc3FromJoc[static_cast<std::size_t>(jc)])];
             }
-            const auto out = ac3::oba::joc::reconstruct(bed_joc_order, *params, state,
+            const auto out = iclforge::oba::joc::reconstruct(bed_joc_order, *params, state,
                                                    /*fast_mdct=*/false, /*fast_imdct=*/false,
                                                    decode_domain);
             REQUIRE(out.size() == kObjects);
@@ -621,7 +621,7 @@ TEST_CASE("QMF-domain JOC reconstructs objects at least as well as the MDCT-band
         }
 
         const auto delay =
-            static_cast<std::size_t>(256 + ac3::oba::joc::reconstruction_delay(decode_domain));
+            static_cast<std::size_t>(256 + iclforge::oba::joc::reconstruction_delay(decode_domain));
         const std::size_t skip = static_cast<std::size_t>(2 * kFrame);
         std::array<double, kObjects> snr{};
         for (std::size_t object = 0; object < kObjects; ++object) {
@@ -646,8 +646,9 @@ TEST_CASE("QMF-domain JOC reconstructs objects at least as well as the MDCT-band
         return total / static_cast<double>(snr.size());
     };
 
-    const auto mdct = measure(ac3::oba::joc::Domain::kMdctBand, ac3::oba::joc::Domain::kMdctBand);
-    const auto qmf = measure(ac3::oba::joc::Domain::kQmf, ac3::oba::joc::Domain::kQmf);
+    const auto mdct =
+        measure(iclforge::oba::joc::Domain::kMdctBand, iclforge::oba::joc::Domain::kMdctBand);
+    const auto qmf = measure(iclforge::oba::joc::Domain::kQmf, iclforge::oba::joc::Domain::kQmf);
 
     for (std::size_t object = 0; object < mdct.size(); ++object) {
         CAPTURE(object, mdct[object], qmf[object]);
@@ -690,9 +691,9 @@ TEST_CASE("QMF-domain JOC reconstructs objects at least as well as the MDCT-band
     // the block boundary, so per-band power read off it is noisy in a way
     // a complex subband's magnitude is not.
     const double cross_mdct_qmf =
-        mean(measure(ac3::oba::joc::Domain::kMdctBand, ac3::oba::joc::Domain::kQmf));
+        mean(measure(iclforge::oba::joc::Domain::kMdctBand, iclforge::oba::joc::Domain::kQmf));
     const double cross_qmf_mdct =
-        mean(measure(ac3::oba::joc::Domain::kQmf, ac3::oba::joc::Domain::kMdctBand));
+        mean(measure(iclforge::oba::joc::Domain::kQmf, iclforge::oba::joc::Domain::kMdctBand));
     CAPTURE(cross_mdct_qmf, cross_qmf_mdct);
     CHECK(cross_mdct_qmf < qmf_mean);
     CHECK(cross_qmf_mdct < qmf_mean);
@@ -708,10 +709,10 @@ TEST_CASE("JOC bed analysis's fast forward MDCT agrees with the direct form", "[
     // refuses). Real encoded-and-decoded bytes through Eac3Decoder, not a
     // synthetic bed, so quantized coefficients and real bit-allocated PCM
     // feed the transform exactly as a real decode would.
-    constexpr auto kDomain = ac3::oba::joc::Domain::kMdctBand;
+    constexpr auto kDomain = iclforge::oba::joc::Domain::kMdctBand;
     constexpr int kObjects = 3;
-    ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 640, .joc_domain = kDomain}, kObjects};
-    const std::array<ac3::oba::ObjectPlacement, kObjects> placement{{
+    iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 640, .joc_domain = kDomain}, kObjects};
+    const std::array<iclforge::oba::ObjectPlacement, kObjects> placement{{
         {.position = {.x = 0.1, .y = 0.3, .z = 0.0}},
         {.position = {.x = 0.9, .y = 0.3, .z = 0.5}},
         {.position = {.x = 0.5, .y = 0.9, .z = 1.0}},
@@ -719,10 +720,10 @@ TEST_CASE("JOC bed analysis's fast forward MDCT agrees with the direct form", "[
     const std::array<double, kObjects> hz{233.0, 1500.0, 4200.0};
     const std::array<double, kObjects> amplitude{0.28, 0.24, 0.20};
 
-    constexpr std::array<int, ac3::oba::joc::kNumChannels5X> kAc3FromJoc = {0, 2, 1, 3, 4};
-    ac3::Eac3Decoder decoder;
-    ac3::oba::joc::ReconstructionState direct_state;
-    ac3::oba::joc::ReconstructionState fast_state;
+    constexpr std::array<int, iclforge::oba::joc::kNumChannels5X> kAc3FromJoc = {0, 2, 1, 3, 4};
+    iclforge::Eac3Decoder decoder;
+    iclforge::oba::joc::ReconstructionState direct_state;
+    iclforge::oba::joc::ReconstructionState fast_state;
     std::vector<std::span<const float>> views(kObjects);
 
     constexpr int kFrames = 8;
@@ -747,20 +748,20 @@ TEST_CASE("JOC bed analysis's fast forward MDCT agrees with the direct form", "[
         REQUIRE(decoded->has_value());
         const auto& sub = **decoded;
 
-        const auto joc_bytes = find_payload(frame_bytes, ac3::emdf::kPayloadIdJoc);
+        const auto joc_bytes = find_payload(frame_bytes, iclforge::emdf::kPayloadIdJoc);
         REQUIRE(joc_bytes.has_value());
-        const auto params = ac3::oba::joc::parse_payload(*joc_bytes);
+        const auto params = iclforge::oba::joc::parse_payload(*joc_bytes);
         REQUIRE(params.has_value());
 
-        std::array<std::span<const float>, ac3::oba::joc::kNumChannels5X> bed_joc_order{};
-        for (int jc = 0; jc < ac3::oba::joc::kNumChannels5X; ++jc) {
+        std::array<std::span<const float>, iclforge::oba::joc::kNumChannels5X> bed_joc_order{};
+        for (int jc = 0; jc < iclforge::oba::joc::kNumChannels5X; ++jc) {
             bed_joc_order[static_cast<std::size_t>(jc)] = sub.channels[static_cast<std::size_t>(
                 kAc3FromJoc[static_cast<std::size_t>(jc)])];
         }
-        const auto direct_out = ac3::oba::joc::reconstruct(bed_joc_order, *params, direct_state,
-                                                       /*fast_mdct=*/false, /*fast_imdct=*/true,
-                                                       kDomain);
-        const auto fast_out = ac3::oba::joc::reconstruct(bed_joc_order, *params, fast_state,
+        const auto direct_out =
+            iclforge::oba::joc::reconstruct(bed_joc_order, *params, direct_state,
+                                            /*fast_mdct=*/false, /*fast_imdct=*/true, kDomain);
+        const auto fast_out = iclforge::oba::joc::reconstruct(bed_joc_order, *params, fast_state,
                                                      /*fast_mdct=*/true, /*fast_imdct=*/true,
                                                      kDomain);
         REQUIRE(direct_out.size() == kObjects);
@@ -807,8 +808,8 @@ TEST_CASE("JOC bed analysis's fast forward MDCT agrees with the direct form", "[
 }
 
 TEST_CASE("Eac3Decoder recovers the object positions AtmosEncoder wrote", "[atmos][decoder]") {
-    ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, 3};
-    const std::array<ac3::oba::ObjectPlacement, 3> placement{{
+    iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, 3};
+    const std::array<iclforge::oba::ObjectPlacement, 3> placement{{
         {.position = {.x = 0.1, .y = 0.2, .z = 0.5}},
         {.position = {.x = 0.9, .y = 0.2, .z = 0.5}, .gain = 0.5},
         {.position = {.x = 0.5, .y = 0.9, .z = -0.5}, .lfe_send = 0.3},
@@ -828,7 +829,7 @@ TEST_CASE("Eac3Decoder recovers the object positions AtmosEncoder wrote", "[atmo
 
     std::vector<std::vector<float>> essences;
     std::vector<std::span<const float>> views(3);
-    ac3::eac3::AccessUnit unit;
+    iclforge::eac3::AccessUnit unit;
     for (int frame = 0; frame < 3; ++frame) {
         const auto start = static_cast<std::uint64_t>(frame) * kFrame;
         essences = {tone(440.0, 0.3, 0.0, start), tone(880.0, 0.3, 0.5, start),
@@ -842,7 +843,7 @@ TEST_CASE("Eac3Decoder recovers the object positions AtmosEncoder wrote", "[atmo
     }
     REQUIRE(unit.substream_count() == 1);
 
-    ac3::Eac3Decoder decoder;
+    iclforge::Eac3Decoder decoder;
     const auto decoded = decoder.decode_substream(unit.substream(0));
     REQUIRE(decoded.has_value());
     REQUIRE(decoded->has_value());
@@ -875,8 +876,8 @@ TEST_CASE("decode_access_unit_by_block hands over the objects a block at a time"
     // ones at known positions, then decoded both ways and compared sample for
     // sample - nothing is copied on the way out, so what is checked is that
     // the views ARE the value form's samples, block by block, in order.
-    ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, 3};
-    const std::array<ac3::oba::ObjectPlacement, 3> placement{{
+    iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, 3};
+    const std::array<iclforge::oba::ObjectPlacement, 3> placement{{
         {.position = {.x = 0.1, .y = 0.2, .z = 0.5}},
         {.position = {.x = 0.9, .y = 0.2, .z = 0.0}},
         {.position = {.x = 0.5, .y = 0.9, .z = 1.0}},
@@ -884,9 +885,9 @@ TEST_CASE("decode_access_unit_by_block hands over the objects a block at a time"
 
     std::vector<std::vector<float>> essences;
     std::vector<std::span<const float>> views(3);
-    ac3::Eac3Decoder value_decoder;
-    ac3::Eac3Decoder block_decoder;
-    ac3::Eac3Decoder bed_decoder{{.skip_object_reconstruction = true}};
+    iclforge::Eac3Decoder value_decoder;
+    iclforge::Eac3Decoder block_decoder;
+    iclforge::Eac3Decoder bed_decoder{{.skip_object_reconstruction = true}};
     for (int frame = 0; frame < 3; ++frame) {
         const auto start = static_cast<std::uint64_t>(frame) * kFrame;
         essences = {tone(440.0, 0.3, 0.0, start), tone(880.0, 0.3, 0.5, start),
@@ -909,7 +910,7 @@ TEST_CASE("decode_access_unit_by_block hands over the objects a block at a time"
         int blocks_seen = 0;
         bool metadata_every_block = true;
         bool indices_every_block = true;
-        const auto sink = [&](const ac3::PcmBlock& pcm) {
+        const auto sink = [&](const iclforge::PcmBlock& pcm) {
             ++blocks_seen;
             bed.resize(pcm.channels.size());
             for (std::size_t slot = 0; slot < pcm.channels.size(); ++slot) {
@@ -918,7 +919,8 @@ TEST_CASE("decode_access_unit_by_block hands over the objects a block at a time"
             }
             objects.resize(pcm.objects.size());
             for (std::size_t o = 0; o < pcm.objects.size(); ++o) {
-                CHECK(pcm.objects[o].size() == static_cast<std::size_t>(ac3::kSamplesPerBlock));
+                CHECK(pcm.objects[o].size() ==
+                      static_cast<std::size_t>(iclforge::kSamplesPerBlock));
                 objects[o].insert(objects[o].end(), pcm.objects[o].begin(), pcm.objects[o].end());
             }
             if (pcm.object_metadata == nullptr || pcm.object_metadata->objects.size() != 3) {
@@ -931,7 +933,7 @@ TEST_CASE("decode_access_unit_by_block hands over the objects a block at a time"
         const auto by_block = block_decoder.decode_access_unit_by_block(encoded->bytes, sink);
         REQUIRE(by_block.has_value());
         REQUIRE(by_block->has_value());
-        CHECK(blocks_seen == ac3::kBlocksPerFrame);
+        CHECK(blocks_seen == iclforge::kBlocksPerFrame);
         CHECK(metadata_every_block);
         CHECK(indices_every_block);
 
@@ -952,7 +954,7 @@ TEST_CASE("decode_access_unit_by_block hands over the objects a block at a time"
         // object_audio is empty.
         int bed_only_objects = 0;
         bool bed_only_metadata = false;
-        const auto bed_sink = [&](const ac3::PcmBlock& pcm) {
+        const auto bed_sink = [&](const iclforge::PcmBlock& pcm) {
             bed_only_objects += static_cast<int>(pcm.objects.size() + pcm.object_indices.size());
             bed_only_metadata = bed_only_metadata || pcm.object_metadata != nullptr;
         };
@@ -969,8 +971,8 @@ TEST_CASE("skip_object_reconstruction leaves the bed untouched and the objects a
     // that cannot hold oba::joc::ReconstructionState. What has to hold is that
     // the flag costs the BED nothing - a decoder that quietly changed the
     // rendered audio to save memory would be worse than one that ran out of it.
-    ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, 3};
-    const std::array<ac3::oba::ObjectPlacement, 3> placement{{
+    iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, 3};
+    const std::array<iclforge::oba::ObjectPlacement, 3> placement{{
         {.position = {.x = 0.1, .y = 0.2, .z = 0.5}},
         {.position = {.x = 0.9, .y = 0.2, .z = 0.5}, .gain = 0.5},
         {.position = {.x = 0.5, .y = 0.9, .z = -0.5}, .lfe_send = 0.3},
@@ -978,7 +980,7 @@ TEST_CASE("skip_object_reconstruction leaves the bed untouched and the objects a
 
     std::vector<std::vector<float>> essences;
     std::vector<std::span<const float>> views(3);
-    ac3::eac3::AccessUnit unit;
+    iclforge::eac3::AccessUnit unit;
     for (int frame = 0; frame < 3; ++frame) {
         const auto start = static_cast<std::uint64_t>(frame) * kFrame;
         essences = {tone(440.0, 0.3, 0.0, start), tone(880.0, 0.3, 0.5, start),
@@ -991,12 +993,12 @@ TEST_CASE("skip_object_reconstruction leaves the bed untouched and the objects a
         unit = *encoded;
     }
 
-    ac3::Eac3Decoder full;
+    iclforge::Eac3Decoder full;
     const auto with_objects = full.decode_substream(unit.substream(0));
     REQUIRE(with_objects.has_value());
     REQUIRE(with_objects->has_value());
 
-    ac3::Eac3Decoder bed_only{{.skip_object_reconstruction = true}};
+    iclforge::Eac3Decoder bed_only{{.skip_object_reconstruction = true}};
     const auto without = bed_only.decode_substream(unit.substream(0));
     REQUIRE(without.has_value());
     REQUIRE(without->has_value());
@@ -1026,12 +1028,12 @@ TEST_CASE("skip_object_reconstruction leaves the bed untouched and the objects a
 }
 
 TEST_CASE("Eac3Decoder reports no object metadata for a plain (non-Atmos) stream", "[atmos][decoder]") {
-    const ac3::eac3::FrameConfig config{
-        .bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true};
-    const auto frame = ac3::eac3::build_silent_frame(config);
+    const iclforge::eac3::FrameConfig config{
+        .bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true};
+    const auto frame = iclforge::eac3::build_silent_frame(config);
     REQUIRE(frame.has_value());
 
-    ac3::Eac3Decoder decoder;
+    iclforge::Eac3Decoder decoder;
     const auto decoded = decoder.decode_substream(*frame);
     REQUIRE(decoded.has_value());
     REQUIRE(decoded->has_value());
@@ -1042,8 +1044,8 @@ TEST_CASE("the splice counter starts at zero and wraps to one", "[atmos]") {
     // §6.3.3.3. The first frame must read 0 so a decoder knows there is no
     // previous matrix to interpolate from; 0 must never come round again by
     // counting, or a mid-stream frame would masquerade as a splice.
-    ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, 1};
-    const std::array<ac3::oba::ObjectPlacement, 1> placement{{{}}};
+    iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, 1};
+    const std::array<iclforge::oba::ObjectPlacement, 1> placement{{{}}};
     std::vector<std::span<const float>> views(1);
 
     for (int frame = 0; frame < 4; ++frame) {
@@ -1072,8 +1074,8 @@ TEST_CASE("the splice counter starts at zero and wraps to one", "[atmos]") {
 // motion to interpolate across.
 TEST_CASE("short syncframes carry the object layer end to end",
           "[atmos][decoder][numblkscod]") {
-    constexpr std::array<int, ac3::oba::joc::kNumChannels5X> kAc3FromJoc = {0, 2, 1, 3, 4};
-    const std::array<ac3::oba::ObjectPlacement, 4> placement{{
+    constexpr std::array<int, iclforge::oba::joc::kNumChannels5X> kAc3FromJoc = {0, 2, 1, 3, 4};
+    const std::array<iclforge::oba::ObjectPlacement, 4> placement{{
         {.position = {.x = 0.0, .y = 0.0, .z = 0.0}},
         {.position = {.x = 1.0, .y = 0.0, .z = 0.0}},
         {.position = {.x = 0.0, .y = 1.0, .z = 1.0}},
@@ -1085,8 +1087,9 @@ TEST_CASE("short syncframes carry the object layer end to end",
     // the same amount of material at every code.
     constexpr std::size_t kTotalSamples = 36 * 1536;
 
-    const auto domain = GENERATE(ac3::oba::joc::Domain::kQmf, ac3::oba::joc::Domain::kMdctBand);
-    CAPTURE(domain == ac3::oba::joc::Domain::kQmf ? "qmf" : "mdct");
+    const auto domain =
+        GENERATE(iclforge::oba::joc::Domain::kQmf, iclforge::oba::joc::Domain::kMdctBand);
+    CAPTURE(domain == iclforge::oba::joc::Domain::kQmf ? "qmf" : "mdct");
 
     // Per-code bit rates, not one rate for all: the OAMD+JOC container
     // repeats per syncframe whatever its length, so its FIXED cost is a
@@ -1110,13 +1113,13 @@ TEST_CASE("short syncframes carry the object layer end to end",
     std::array<double, 4> worst_by_code{};
     for (const int code : {3, 0, 1, 2}) {
         const auto frame_samples = static_cast<std::size_t>(
-            ac3::eac3::blocks_per_syncframe(code) * ac3::kSamplesPerBlock);
+            iclforge::eac3::blocks_per_syncframe(code) * iclforge::kSamplesPerBlock);
         const std::size_t frames = kTotalSamples / frame_samples;
 
-        ac3::oba::AtmosEncoder encoder{
+        iclforge::oba::AtmosEncoder encoder{
             {.bitrate_kbps = bitrate_for(code), .joc_domain = domain, .numblkscod = code}, 4};
-        ac3::Eac3Decoder decoder;
-        ac3::oba::joc::ReconstructionState state;
+        iclforge::Eac3Decoder decoder;
+        iclforge::oba::joc::ReconstructionState state;
 
         std::array<std::vector<float>, 4> source;
         std::array<std::vector<float>, 4> recovered;
@@ -1155,20 +1158,20 @@ TEST_CASE("short syncframes carry the object layer end to end",
 
             // The OAMD update's ramp covers exactly one frame - the field a
             // fixed-1536 writer would get wrong at every short code.
-            const auto oamd_bytes = find_payload(frame_bytes, ac3::emdf::kPayloadIdOamd);
+            const auto oamd_bytes = find_payload(frame_bytes, iclforge::emdf::kPayloadIdOamd);
             REQUIRE(oamd_bytes.has_value());
-            const auto program = ac3::oba::parse_payload(*oamd_bytes);
+            const auto program = iclforge::oba::parse_payload(*oamd_bytes);
             REQUIRE(program.has_value());
             REQUIRE(program->blocks.size() == 1);
             CHECK(program->blocks[0].ramp_duration == static_cast<int>(frame_samples));
 
-            const auto joc_bytes = find_payload(frame_bytes, ac3::emdf::kPayloadIdJoc);
+            const auto joc_bytes = find_payload(frame_bytes, iclforge::emdf::kPayloadIdJoc);
             REQUIRE(joc_bytes.has_value());
-            const auto params = ac3::oba::joc::parse_payload(*joc_bytes);
+            const auto params = iclforge::oba::joc::parse_payload(*joc_bytes);
             REQUIRE(params.has_value());
 
-            std::array<std::span<const float>, ac3::oba::joc::kNumChannels5X> bed{};
-            for (int jc = 0; jc < ac3::oba::joc::kNumChannels5X; ++jc) {
+            std::array<std::span<const float>, iclforge::oba::joc::kNumChannels5X> bed{};
+            for (int jc = 0; jc < iclforge::oba::joc::kNumChannels5X; ++jc) {
                 bed[static_cast<std::size_t>(jc)] = sub.channels[static_cast<std::size_t>(
                     kAc3FromJoc[static_cast<std::size_t>(jc)])];
             }
@@ -1179,7 +1182,7 @@ TEST_CASE("short syncframes carry the object layer end to end",
             // two thirds of this case's time without touching anything
             // frame-length specific.
             const auto objects =
-                ac3::oba::joc::reconstruct(bed, *params, state, /*fast_mdct=*/true,
+                iclforge::oba::joc::reconstruct(bed, *params, state, /*fast_mdct=*/true,
                                            /*fast_imdct=*/true, domain);
             REQUIRE(objects.size() == 4);
             for (std::size_t i = 0; i < 4; ++i) {
@@ -1189,7 +1192,7 @@ TEST_CASE("short syncframes carry the object layer end to end",
         }
 
         const auto delay =
-            static_cast<std::size_t>(256 + ac3::oba::joc::reconstruction_delay(domain));
+            static_cast<std::size_t>(256 + iclforge::oba::joc::reconstruction_delay(domain));
         constexpr std::size_t kSkip = 1536;  // warm-up/cool-down, all codes alike
         double worst = 1e9;
         for (std::size_t i = 0; i < 4; ++i) {

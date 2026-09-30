@@ -25,7 +25,7 @@
 // the minimal profile entirely; this answers "what happened", always
 // compiled in, and aimed at production rather than development.
 
-namespace ac3 {
+namespace iclforge {
 
 enum class DiagnosticEvent : std::uint8_t {
     // §6.2 (AC-3 crc1/crc2)/§E2.3.1.2 (E-AC-3 crc2): the CRC did not check
@@ -60,4 +60,4 @@ struct Diagnostic {
 // `context` is DecoderConfig::diagnostics_context, passed through unchanged.
 using DiagnosticSink = void (*)(const Diagnostic& diagnostic, void* context);
 
-}  // namespace ac3
+}  // namespace iclforge

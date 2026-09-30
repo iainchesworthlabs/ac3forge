@@ -12,7 +12,7 @@
 
 #include "iclforge/base/layout.hpp"
 
-namespace ac3::audio {
+namespace iclforge::audio {
 
 namespace {
 
@@ -174,7 +174,7 @@ std::string describe_speakers(std::uint32_t mask) {
         if (!text.empty()) {
             text.push_back(' ');
         }
-        text += ac3::base::name(location);
+        text += iclforge::base::name(location);
     }
     const std::uint16_t named = speaker_count(mask & kSpeakerAllPositions);
     const auto placed = static_cast<std::uint16_t>(locations_of(mask).size());
@@ -220,4 +220,4 @@ std::vector<std::string> output_names(std::uint32_t mask, std::uint16_t outputs)
     return names;
 }
 
-}  // namespace ac3::audio
+}  // namespace iclforge::audio

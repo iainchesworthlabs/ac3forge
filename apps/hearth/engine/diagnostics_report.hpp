@@ -32,7 +32,7 @@
 // Pairing and the network (A4's sinks, found and paired) join the file when
 // the engine drives them; their records belong under "pairing/".
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 // The settings the pairing records, the server identity they are bound to
 // (server_identity.hpp) and the saved queue live under: keys, codes and paths.
@@ -45,7 +45,7 @@ inline constexpr std::size_t kReportListLimit = 50;
 struct ReportFacts {
     std::string written_at;      // ISO 8601, formatted by the caller
     std::string log_started_at;  // likewise
-    std::string version;         // ac3::version_details()
+    std::string version;         // iclforge::version_details()
     std::vector<std::pair<std::string, std::string>> platform;  // name/value rows, in order
     // The output the window chose (output_decision.hpp), by the endpoint's
     // name, and the decision's reason.
@@ -62,4 +62,4 @@ struct ReportFacts {
 [[nodiscard]] std::string render_report(const ReportFacts& facts, const EngineStatus& engine,
                                         const DiagnosticLog& log, const Secrets& secrets);
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

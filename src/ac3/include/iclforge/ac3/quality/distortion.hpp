@@ -53,7 +53,7 @@
 // them into one number here would price them all at once. A caller that
 // wants them measures the streams it wants and sums.
 
-namespace ac3::quality {
+namespace iclforge::quality {
 
 // §7.2.2.3's banding. The same 50 for every sample rate: the table maps
 // bins, not frequencies, and a band's width in Hz follows the rate.
@@ -72,7 +72,7 @@ enum class Criterion : std::uint8_t {
     // and cheap, and still a waveform criterion: it prices a decibel in a
     // band nobody can hear the same as a decibel in one they can.
     kDistortion,
-    // Minimise the noise-to-mask ratio against ac3::quality::PerceptualModel
+    // Minimise the noise-to-mask ratio against iclforge::quality::PerceptualModel
     // - the same measured noise, weighted by what the signal can actually
     // hide. Costs the psychoacoustic analysis on top.
     kPerceptual,
@@ -146,4 +146,4 @@ inline constexpr double kMaxSnrDb = 200.0;
 // Bands the stream does not cover report kMaxSnrDb, for the same reason.
 ICLFORGE_AC3_EXPORT void band_snr_db(const BandNoise& measured, std::span<double> out);
 
-}  // namespace ac3::quality
+}  // namespace iclforge::quality

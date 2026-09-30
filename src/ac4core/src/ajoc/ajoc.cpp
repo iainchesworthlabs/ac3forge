@@ -4,7 +4,7 @@
 #include <cmath>
 #include <cstddef>
 
-namespace ac4::detail::ajoc {
+namespace iclforge::ac4::detail::ajoc {
 namespace {
 
 [[nodiscard]] std::size_t at(int index) noexcept {
@@ -446,4 +446,4 @@ template class Reconstruction<Real>;
 // CMakeLists.txt, AC4CORE_ALSO_AT_DOUBLE).
 AC4CORE_ALSO_AT_DOUBLE(template class Reconstruction<double>;)
 
-}  // namespace ac4::detail::ajoc
+}  // namespace iclforge::ac4::detail::ajoc

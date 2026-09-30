@@ -26,7 +26,7 @@
 // Fixed-size and allocation-free, so a sink on a board can hold one beside its
 // layout. Tested on the host in tests/render/test_routing.cpp.
 
-namespace ac3::render {
+namespace iclforge::render {
 
 class Routing {
    public:
@@ -305,4 +305,4 @@ class Routing {
     std::uint8_t outputs_ = 0;
 };
 
-}  // namespace ac3::render
+}  // namespace iclforge::render

@@ -28,13 +28,13 @@
 
 namespace {
 
-namespace hs = ac3::sendspin::handshake;
-using ac3::sendspin::Channel;
-using ac3::sendspin::Dialect;
-using ac3::sendspin::crypto::Digest32;
-using ac3::sendspin::crypto::Key32;
-using ac3::sendspin::noise::KeyPair;
-using ac3::sendspin::noise::Suite;
+namespace hs = iclforge::sendspin::handshake;
+using iclforge::sendspin::Channel;
+using iclforge::sendspin::Dialect;
+using iclforge::sendspin::crypto::Digest32;
+using iclforge::sendspin::crypto::Key32;
+using iclforge::sendspin::noise::KeyPair;
+using iclforge::sendspin::noise::Suite;
 
 class ClientKeys final : public hs::ClientKeyring {
    public:
@@ -66,7 +66,7 @@ KeyPair generated() {
 
 Key32 random_key() {
     Key32 key{};
-    REQUIRE(ac3::sendspin::crypto::random_bytes(key));
+    REQUIRE(iclforge::sendspin::crypto::random_bytes(key));
     return key;
 }
 
@@ -121,8 +121,8 @@ struct Established {
 };
 
 Established channels(hs::Initiator& server, hs::Responder& client, Dialect dialect) {
-    std::optional<ac3::sendspin::noise::Handshake::Transport> server_keys = server.take_keys();
-    std::optional<ac3::sendspin::noise::Handshake::Transport> client_keys = client.take_keys();
+    std::optional<iclforge::sendspin::noise::Handshake::Transport> server_keys = server.take_keys();
+    std::optional<iclforge::sendspin::noise::Handshake::Transport> client_keys = client.take_keys();
     REQUIRE(server_keys.has_value());
     REQUIRE(client_keys.has_value());
     CHECK(server_keys->handshake_hash == client_keys->handshake_hash);
@@ -261,7 +261,7 @@ TEST_CASE("handshake session: server/error and the prologue", "[sendspin][handsh
         // The same members in another order: the client reads the same server/init, but
         // hashes different bytes into its prologue than the server did.
         const std::string reordered = R"({"payload":{"server_id":")" +
-                                      ac3::sendspin::base64url::encode(server_identity.public_key()) +
+                                      iclforge::sendspin::base64url::encode(server_identity.public_key()) +
                                       R"(","version":1},"type":"server/init"})";
         REQUIRE(reordered != step.replies[0]);
         CHECK(client.receive(reordered).outcome == hs::Outcome::kContinue);
@@ -299,11 +299,12 @@ TEST_CASE("handshake session: aiosendspin 9.1.1's message 1 names no category",
     const std::string server_init = hs::write_server_init({.server_key = server_identity.public_key()});
     std::vector<std::uint8_t> prologue(client.client_init().begin(), client.client_init().end());
     prologue.insert(prologue.end(), server_init.begin(), server_init.end());
-    ac3::sendspin::noise::Handshake server(Suite::kChaChaPolySha256, ac3::sendspin::noise::Role::kInitiator,
+    iclforge::sendspin::noise::Handshake server(Suite::kChaChaPolySha256, iclforge::sendspin::noise::Role::kInitiator,
                                            server_identity, init->client_key, prologue);
     const std::optional<Digest32> id = hs::psk_id(psk);
     REQUIRE(id.has_value());
-    const std::string payload = R"({"psk_id":")" + ac3::sendspin::base64url::encode(*id) + R"("})";
+    const std::string payload =
+        R"({"psk_id":")" + iclforge::sendspin::base64url::encode(*id) + R"("})";
     std::vector<std::uint8_t> message_1;
     REQUIRE(server.write_message_1(bytes_of(payload), message_1));
 
@@ -341,7 +342,7 @@ TEST_CASE("handshake session: a re-handshake inside the channel swaps the keys",
 
     // A noise/handshake text travels as a JSON message: ID 0, then the text.
     const auto carry = [](Channel& from, Channel& to, const std::string& text) {
-        std::vector<std::uint8_t> message{ac3::sendspin::message_id::kJson};
+        std::vector<std::uint8_t> message{iclforge::sendspin::message_id::kJson};
         message.insert(message.end(), text.begin(), text.end());
         std::vector<std::vector<std::uint8_t>> sealed;
         REQUIRE(from.seal(message, sealed));
@@ -367,12 +368,12 @@ TEST_CASE("handshake session: a re-handshake inside the channel swaps the keys",
 
         // Message 2 goes under the old keys; each side then switches.
         const std::string message_2 = carry(channel.client, channel.server, answer.replies[0]);
-        std::optional<ac3::sendspin::noise::Handshake::Transport> client_keys_new = client.take_keys();
+        std::optional<iclforge::sendspin::noise::Handshake::Transport> client_keys_new = client.take_keys();
         REQUIRE(client_keys_new.has_value());
         channel.client.rekey(std::move(*client_keys_new));
         REQUIRE(server.receive(message_2).outcome == hs::Outcome::kEstablished);
         CHECK(server.category() == hs::PskCategory::kLongTerm);
-        std::optional<ac3::sendspin::noise::Handshake::Transport> server_keys_new = server.take_keys();
+        std::optional<iclforge::sendspin::noise::Handshake::Transport> server_keys_new = server.take_keys();
         REQUIRE(server_keys_new.has_value());
         channel.server.rekey(std::move(*server_keys_new));
 
@@ -407,7 +408,7 @@ TEST_CASE("channel: fragments in both dialects, and what it refuses", "[sendspin
 
     // Three frames' worth of artwork-sized message.
     std::vector<std::uint8_t> large(150000);
-    large[0] = ac3::sendspin::message_id::kArtworkFirst;
+    large[0] = iclforge::sendspin::message_id::kArtworkFirst;
     for (std::size_t i = 1; i < large.size(); ++i) {
         large[i] = static_cast<std::uint8_t>(i * 7);
     }
@@ -415,7 +416,7 @@ TEST_CASE("channel: fragments in both dialects, and what it refuses", "[sendspin
     REQUIRE(channel.server.seal(large, sealed));
     CHECK(sealed.size() == 3);
     for (std::size_t i = 0; i < sealed.size(); ++i) {
-        CHECK(sealed[i].size() <= ac3::sendspin::noise::kMaxMessageBytes);
+        CHECK(sealed[i].size() <= iclforge::sendspin::noise::kMaxMessageBytes);
         const Channel::Opened opened = channel.client.open(sealed[i]);
         REQUIRE(opened.error == Channel::OpenError::kNone);
         if (i + 1 < sealed.size()) {

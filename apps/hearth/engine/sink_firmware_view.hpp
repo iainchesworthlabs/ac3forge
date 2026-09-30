@@ -12,7 +12,7 @@
 // this app say the same about one update. What the page does with a sink's
 // client at each poll is decided here too, for the same reason.
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 struct FirmwarePanel {
     // The board answers GET /firmware now. While it does not - restarting,
@@ -59,7 +59,7 @@ struct FirmwarePanel {
     std::string coredump_url{};  // its last crash's core dump, when it has one
 };
 
-// `app_version` is this app's own git describe (ac3::git_describe), empty
+// `app_version` is this app's own git describe (iclforge::git_describe), empty
 // when it was built without one.
 [[nodiscard]] FirmwarePanel to_firmware_panel(const SinkFirmware::Snapshot& snapshot, std::string_view app_version);
 
@@ -94,4 +94,4 @@ struct FirmwareClientPlan {
 [[nodiscard]] FirmwareClientPlan plan_firmware_client(bool busy, const SinkFirmware::Snapshot& snapshot, bool shown,
                                                       std::string_view address);
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

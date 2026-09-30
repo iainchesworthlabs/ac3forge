@@ -41,8 +41,8 @@ namespace ac4dec_test {
 // place of what the source sends: its de_config() and every frame's
 // parameters (constant), with de_signal_contribution.
 struct MuxDe {
-    ac4::detail::DeConfigCodes config{};
-    ac4::detail::DeFrameParameters parameters{};
+    iclforge::ac4::detail::DeConfigCodes config{};
+    iclforge::ac4::detail::DeFrameParameters parameters{};
 };
 
 struct MuxGroup {
@@ -50,7 +50,7 @@ struct MuxGroup {
     std::optional<int> content_classifier;  // content_type(), Part 1 Table 91
     std::string language;                   // language_tag_bytes
     // extended_metadata()'s dialogue fields; none writes b_dialog 0.
-    std::optional<ac4::detail::DialogueMixCodes> dialogue;
+    std::optional<iclforge::ac4::detail::DialogueMixCodes> dialogue;
     std::optional<MuxDe> de;
 };
 
@@ -64,7 +64,7 @@ struct MuxPresentation {
     std::size_t source = 0;  // whose presentation substream it is spliced from
     // The group gains and the associated audio's values; n_substream_groups
     // is filled in from the configuration.
-    ac4::detail::PresentationMixCodes mix{};
+    iclforge::ac4::detail::PresentationMixCodes mix{};
 };
 
 struct MuxLayout {
@@ -85,8 +85,8 @@ struct MuxSubstreamV0 {
     int dialnorm_bits = 124;  // -31 dBFS
     std::optional<int> content_classifier;
     std::string language;
-    std::optional<ac4::detail::AssociatedMixCodes> associated;
-    std::optional<ac4::detail::DialogueMixCodes> dialogue;
+    std::optional<iclforge::ac4::detail::AssociatedMixCodes> associated;
+    std::optional<iclforge::ac4::detail::DialogueMixCodes> dialogue;
 };
 
 struct MuxPresentationV0 {

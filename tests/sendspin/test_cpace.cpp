@@ -19,14 +19,14 @@
 
 namespace {
 
-using ac3::sendspin::cpace::Party;
-using ac3::sendspin::cpace::Role;
-using ac3::sendspin::crypto::Bytes;
-using ac3::sendspin::crypto::Key32;
-using ac3::sendspin::test::bytes_of;
-using ac3::sendspin::test::from_hex;
-using ac3::sendspin::test::key_from_hex;
-using ac3::sendspin::test::to_hex;
+using iclforge::sendspin::cpace::Party;
+using iclforge::sendspin::cpace::Role;
+using iclforge::sendspin::crypto::Bytes;
+using iclforge::sendspin::crypto::Key32;
+using iclforge::sendspin::test::bytes_of;
+using iclforge::sendspin::test::from_hex;
+using iclforge::sendspin::test::key_from_hex;
+using iclforge::sendspin::test::to_hex;
 
 constexpr std::string_view kPrs = "Password";
 constexpr std::string_view kCi = "0b415f696e69746961746f720b425f726573706f6e646572";
@@ -38,10 +38,10 @@ constexpr std::string_view kYb = "848b0779ff415f0af4ea14df9dd1d3c29ac41d836c7808
 
 TEST_CASE("cpace: prepend_len and lv_cat vectors", "[sendspin][cpace]") {
     std::vector<std::uint8_t> out;
-    ac3::sendspin::cpace::append_prepend_len(out, {});
+    iclforge::sendspin::cpace::append_prepend_len(out, {});
     CHECK(to_hex(out) == "00");
     out.clear();
-    ac3::sendspin::cpace::append_prepend_len(out, bytes_of("1234"));
+    iclforge::sendspin::cpace::append_prepend_len(out, bytes_of("1234"));
     CHECK(to_hex(out) == "0431323334");
 
     std::vector<std::uint8_t> range(128);
@@ -49,29 +49,30 @@ TEST_CASE("cpace: prepend_len and lv_cat vectors", "[sendspin][cpace]") {
         range[i] = static_cast<std::uint8_t>(i);
     }
     out.clear();
-    ac3::sendspin::cpace::append_prepend_len(out, std::span<const std::uint8_t>(range).first(127));
+    iclforge::sendspin::cpace::append_prepend_len(out,
+                                                  std::span<const std::uint8_t>(range).first(127));
     CHECK(out.size() == 128);
     CHECK(out[0] == 0x7F);
     out.clear();
-    ac3::sendspin::cpace::append_prepend_len(out, range);
+    iclforge::sendspin::cpace::append_prepend_len(out, range);
     CHECK(out.size() == 130);
     CHECK(out[0] == 0x80);
     CHECK(out[1] == 0x01);
     CHECK(out[2] == 0x00);
 
     const std::array<Bytes, 4> parts{bytes_of("1234"), bytes_of("5"), Bytes{}, bytes_of("678")};
-    CHECK(to_hex(ac3::sendspin::cpace::lv_cat(parts)) == "043132333401350003363738");
+    CHECK(to_hex(iclforge::sendspin::cpace::lv_cat(parts)) == "043132333401350003363738");
 
     const std::array<Bytes, 4> transcript{bytes_of("123"), bytes_of("PartyA"), bytes_of("234"),
                                           bytes_of("PartyB")};
-    CHECK(to_hex(ac3::sendspin::cpace::lv_cat(transcript)) ==
+    CHECK(to_hex(iclforge::sendspin::cpace::lv_cat(transcript)) ==
           "03313233065061727479410332333406506172747942");
 }
 
 TEST_CASE("cpace: calculate_generator for X25519 and SHA-512", "[sendspin][cpace]") {
     const std::vector<std::uint8_t> ci = from_hex(kCi);
     const std::vector<std::uint8_t> sid = from_hex(kSid);
-    const std::vector<std::uint8_t> gen = ac3::sendspin::cpace::generator_string(bytes_of(kPrs), ci, sid);
+    const std::vector<std::uint8_t> gen = iclforge::sendspin::cpace::generator_string(bytes_of(kPrs), ci, sid);
     CHECK(gen.size() == 170);
     // lv_cat(DSI, PRS, 109 zero bytes, CI, sid).
     const std::string expected = std::string("08") + "4350616365323535" + "08" + "50617373776f7264" +
@@ -80,11 +81,11 @@ TEST_CASE("cpace: calculate_generator for X25519 and SHA-512", "[sendspin][cpace
     CHECK(to_hex(gen) == expected);
 
     // hash generator string, then Elligator 2 on its first 32 bytes.
-    CHECK(to_hex(ac3::sendspin::cpace::elligator2(
+    CHECK(to_hex(iclforge::sendspin::cpace::elligator2(
               key_from_hex("03998087bdb1a2617bbe25ef5a7c18cd4f84f902328701790958755ee4aed1d3"))) ==
           "d04bf6d41f6a289632a2e929fa29bebd51092512a7829fdde7d314b62f05a73f");
 
-    const std::optional<Key32> g = ac3::sendspin::cpace::calculate_generator(bytes_of(kPrs), ci, sid);
+    const std::optional<Key32> g = iclforge::sendspin::cpace::calculate_generator(bytes_of(kPrs), ci, sid);
     REQUIRE(g.has_value());
     CHECK(to_hex(*g) == "d04bf6d41f6a289632a2e929fa29bebd51092512a7829fdde7d314b62f05a73f");
 }
@@ -109,25 +110,25 @@ TEST_CASE("cpace: the draft's initiator-responder run", "[sendspin][cpace]") {
     CHECK(to_hex(b->isk()) == isk_ir);
 
     // Mutual confirmation: each side's tag verifies at the other, and not at itself.
-    const std::optional<ac3::sendspin::crypto::Digest64> ta = a->tag();
-    const std::optional<ac3::sendspin::crypto::Digest64> tb = b->tag();
+    const std::optional<iclforge::sendspin::crypto::Digest64> ta = a->tag();
+    const std::optional<iclforge::sendspin::crypto::Digest64> tb = b->tag();
     REQUIRE(ta.has_value());
     REQUIRE(tb.has_value());
     CHECK(b->verify(*ta));
     CHECK(a->verify(*tb));
     CHECK_FALSE(a->verify(*ta));
     CHECK_FALSE(b->verify(*tb));
-    ac3::sendspin::crypto::Digest64 bent = *ta;
+    iclforge::sendspin::crypto::Digest64 bent = *ta;
     bent[63] ^= 1U;
     CHECK_FALSE(b->verify(bent));
     CHECK_FALSE(b->verify(std::span<const std::uint8_t>(*ta).first(63)));
 
     // mac_key = SHA-512("CPaceMac" || sid || ISK), Ta = HMAC-SHA-512(mac_key, lv_cat(Ya, ADa)).
-    ac3::sendspin::crypto::Digest64 mac_key{};
-    REQUIRE(ac3::sendspin::crypto::sha512({bytes_of("CPaceMac"), Bytes(sid), Bytes(a->isk())}, mac_key));
+    iclforge::sendspin::crypto::Digest64 mac_key{};
+    REQUIRE(iclforge::sendspin::crypto::sha512({bytes_of("CPaceMac"), Bytes(sid), Bytes(a->isk())}, mac_key));
     const std::array<Bytes, 2> message{Bytes(a->share()), bytes_of("ADa")};
-    ac3::sendspin::crypto::Digest64 expected{};
-    REQUIRE(ac3::sendspin::crypto::hmac_sha512(mac_key, {Bytes(ac3::sendspin::cpace::lv_cat(message))}, expected));
+    iclforge::sendspin::crypto::Digest64 expected{};
+    REQUIRE(iclforge::sendspin::crypto::hmac_sha512(mac_key, {Bytes(iclforge::sendspin::cpace::lv_cat(message))}, expected));
     CHECK(*ta == expected);
 }
 
@@ -204,7 +205,7 @@ TEST_CASE("cpace: X25519 on the draft's non-canonical and twist points", "[sends
     for (const auto& [u, q] : cases) {
         INFO(u);
         Key32 out{};
-        REQUIRE(ac3::sendspin::crypto::x25519(s, key_from_hex(u), out));
+        REQUIRE(iclforge::sendspin::crypto::x25519(s, key_from_hex(u), out));
         CHECK(to_hex(out) == q);
     }
 }
@@ -229,6 +230,6 @@ TEST_CASE("cpace: Elligator 2 against Python's big-integer arithmetic", "[sendsp
     }};
     for (const auto& [in, out] : cases) {
         INFO(in);
-        CHECK(to_hex(ac3::sendspin::cpace::elligator2(key_from_hex(in))) == out);
+        CHECK(to_hex(iclforge::sendspin::cpace::elligator2(key_from_hex(in))) == out);
     }
 }

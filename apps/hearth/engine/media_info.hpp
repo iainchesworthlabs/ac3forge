@@ -33,7 +33,7 @@
 //   fold levels that follows from it.
 // - For AC-4: the sync frames, the first frame's table of contents -
 //   presentations, substream groups, channel modes, bitrates and A-JOC - and
-//   what ac4::Decoder reads of the whole stream (apps/common/probe_json.hpp's
+//   what iclforge::ac4::Decoder reads of the whole stream (apps/common/probe_json.hpp's
 //   Ac4Summary).
 //
 // Reading a whole stream takes a noticeable part of a second for a long item,
@@ -80,7 +80,7 @@
 // Members are only ever added within a version, and one that does not apply
 // is present and null, as ac3forge.probe/1 promises for its own.
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 enum class MediaCodec : std::uint8_t {
     kAc3,
@@ -172,4 +172,4 @@ struct MediaInfo {
 // The description as a JSON document; see the top of this file.
 [[nodiscard]] std::string media_info_json(const MediaInfo& info);
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

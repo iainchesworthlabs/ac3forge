@@ -19,11 +19,11 @@
 // start; one the store would not write is not kept; a forgotten one is gone
 // for good; what pairing.md keeps only for a session is kept in memory only.
 
-using ac3::hearth::MemorySettingsStore;
-using ac3::hearth::PairingRecordView;
-using ac3::hearth::PairingStore;
-using ac3::sendspin::crypto::Key32;
-using ac3::sendspin::handshake::PskCategory;
+using iclforge::hearth::MemorySettingsStore;
+using iclforge::hearth::PairingRecordView;
+using iclforge::hearth::PairingStore;
+using iclforge::sendspin::crypto::Key32;
+using iclforge::sendspin::handshake::PskCategory;
 
 namespace {
 

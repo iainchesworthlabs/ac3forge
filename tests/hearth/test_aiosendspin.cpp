@@ -42,8 +42,8 @@
 namespace {
 
 namespace fs = std::filesystem;
-namespace m = ac3::sendspin::messages;
-namespace ss = ac3::sendspin;
+namespace m = iclforge::sendspin::messages;
+namespace ss = iclforge::sendspin;
 using namespace std::chrono_literals;
 
 constexpr std::int32_t kSampleRate = 48000;
@@ -177,7 +177,7 @@ TEST_CASE("aiosendspin: a host pairs with the scripted aiosendspin 9.1.1 player 
         bytes.push_back(static_cast<std::byte>(word & 0xFFU));
         bytes.push_back(static_cast<std::byte>(word >> 8U));
     }
-    REQUIRE(ac3::io::write_wav_pcm16_raw((directory / "programme.wav").string(), bytes, kSampleRate, 2).has_value());
+    REQUIRE(iclforge::io::write_wav_pcm16_raw((directory / "programme.wav").string(), bytes, kSampleRate, 2).has_value());
     {
         std::ofstream start(directory / "start_time_us.txt");
         start << *start_time << '\n';

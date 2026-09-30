@@ -79,7 +79,7 @@ void write_file(const fs::path& path, std::span<const std::byte> bytes) {
 std::vector<std::byte> sync_framed(std::span<const std::vector<std::byte>> frames) {
     std::vector<std::byte> out;
     for (const std::vector<std::byte>& frame : frames) {
-        const std::vector<std::byte> framed = ac4::sync_frame(frame, true);
+        const std::vector<std::byte> framed = iclforge::ac4::sync_frame(frame, true);
         out.insert(out.end(), framed.begin(), framed.end());
     }
     return out;
@@ -116,11 +116,12 @@ TEST_CASE("the encoder's presentations and DEE's substreams, made for the race",
                                                       .language = {},
                                                       .dialogue = std::nullopt,
                                                       .de = std::nullopt});
-        layout.groups.push_back(ac4dec_test::MuxGroup{.source = 1,
-                                                      .content_classifier = 4,
-                                                      .language = "en",
-                                                      .dialogue = ac4::detail::DialogueMixCodes{},
-                                                      .de = std::nullopt});
+        layout.groups.push_back(
+            ac4dec_test::MuxGroup{.source = 1,
+                                  .content_classifier = 4,
+                                  .language = "en",
+                                  .dialogue = iclforge::ac4::detail::DialogueMixCodes{},
+                                  .de = std::nullopt});
         layout.groups.push_back(ac4dec_test::MuxGroup{.source = 2,
                                                       .content_classifier = 2,
                                                       .language = "qad",
@@ -147,26 +148,26 @@ TEST_CASE("the encoder's presentations and DEE's substreams, made for the race",
         // The encoder's side: the same sources and presentations, each
         // substream at its DEE leg's rate, and the stream's rate that and
         // what its table of contents and presentation substreams take.
-        ac4::EncoderConfig config;
+        iclforge::ac4::EncoderConfig config;
         const int substreams_kbps = race.music_kbps + race.dialogue_kbps + race.associated_kbps;
         config.bitrate_kbps = substreams_kbps + 12;
-        ac4::SubstreamConfig music;
+        iclforge::ac4::SubstreamConfig music;
         music.channels = 2;
         music.bitrate_kbps = race.music_kbps;
-        music.content = ac4::ContentClassifier::kMusicAndEffects;
-        ac4::SubstreamConfig dialogue;
+        music.content = iclforge::ac4::ContentClassifier::kMusicAndEffects;
+        iclforge::ac4::SubstreamConfig dialogue;
         dialogue.channels = 2;
         dialogue.bitrate_kbps = race.dialogue_kbps;
-        dialogue.content = ac4::ContentClassifier::kDialogue;
+        dialogue.content = iclforge::ac4::ContentClassifier::kDialogue;
         dialogue.language = "en";
-        ac4::SubstreamConfig associated;
+        iclforge::ac4::SubstreamConfig associated;
         associated.channels = 2;
         associated.bitrate_kbps = race.associated_kbps;
-        associated.content = ac4::ContentClassifier::kVisuallyImpaired;
+        associated.content = iclforge::ac4::ContentClassifier::kVisuallyImpaired;
         associated.language = "qad";
         config.substreams = {music, dialogue, associated};
         const auto presentation = [](std::optional<int> kind, std::vector<int> substreams, int id) {
-            ac4::PresentationConfig p;
+            iclforge::ac4::PresentationConfig p;
             p.config = kind;
             p.substreams = std::move(substreams);
             p.presentation_id = id;
@@ -177,24 +178,24 @@ TEST_CASE("the encoder's presentations and DEE's substreams, made for the race",
                                 presentation(std::nullopt, {2}, 12)};
         std::vector<std::vector<float>> input;
         for (const char* source : {race.music_source, race.dialogue_source, race.associated_source}) {
-            const auto wav = ac3::io::read_wav((gold / "sources" / (std::string{source} + ".wav")).string());
+            const auto wav = iclforge::io::read_wav((gold / "sources" / (std::string{source} + ".wav")).string());
             REQUIRE(wav.has_value());
             REQUIRE(wav->sample_rate == 48000);
             REQUIRE(wav->channels.size() == 2);
             input.insert(input.end(), wav->channels.begin(), wav->channels.end());
         }
-        auto encoder = ac4::Encoder::create(config);
+        auto encoder = iclforge::ac4::Encoder::create(config);
         REQUIRE(encoder.has_value());
         const std::vector<std::span<const float>> views(input.begin(), input.end());
         std::vector<std::vector<std::byte>> encoded;
         auto written = encoder->encode(views);
         REQUIRE(written.has_value());
-        for (ac4::EncodedFrame& frame : *written) {
+        for (iclforge::ac4::EncodedFrame& frame : *written) {
             encoded.push_back(std::move(frame.raw_ac4_frame));
         }
         auto rest = encoder->flush();
         REQUIRE(rest.has_value());
-        for (ac4::EncodedFrame& frame : *rest) {
+        for (iclforge::ac4::EncodedFrame& frame : *rest) {
             encoded.push_back(std::move(frame.raw_ac4_frame));
         }
         write_file(out / (std::string{race.name} + ".encoder.ac4"), sync_framed(encoded));

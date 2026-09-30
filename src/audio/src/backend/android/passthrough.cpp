@@ -19,7 +19,7 @@
 // documents ENCODING_IEC61937 data as "already IEC 61937-formatted from
 // upstream"). This project's PassthroughSink::submit() contract is fixed
 // across every platform - it receives a complete, already-wrapped
-// ac3::iec61937::wrap_frame()/Eac3BurstPacker::push() burst - so
+// iclforge::iec61937::wrap_frame()/Eac3BurstPacker::push() burst - so
 // ENCODING_E_AC3 would double-wrap that burst inside another layer of
 // Android's own framing and produce noise; ENCODING_IEC61937 is the only
 // encoding whose input shape matches what this backend actually has.
@@ -47,7 +47,7 @@
 // is refused. The bridge's `eac3` flag below means "the four-times link" and
 // sizes the track's buffer; the Kotlin side never needs to know the codec.
 //
-// The Kotlin side (app-specific, not part of ac3::audio - see
+// The Kotlin side (app-specific, not part of iclforge::audio - see
 // apps/android/app/src/main/java/.../NativeBridge.kt and
 // PassthroughBridge.kt) is expected to expose exactly this contract, called
 // through the method IDs cached in registerPassthroughBridge() below:
@@ -104,7 +104,7 @@
 #include "iclforge/iec61937/iec61937.hpp"
 #include "android_support.hpp"
 
-namespace ac3::audio {
+namespace iclforge::audio {
 
 namespace {
 
@@ -683,21 +683,21 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
     return {};
 }
 
-}  // namespace ac3::audio
+}  // namespace iclforge::audio
 
 // --- JNI entry points -----------------------------------------------------
-// Deliberately outside namespace ac3::audio: JNI symbol names are fixed by
+// Deliberately outside namespace iclforge::audio: JNI symbol names are fixed by
 // the mangling convention (Java_<package>_<Class>_<method>), not by us.
 //
 // JNI_OnLoad is defined here, not in the app's own native code
 // (apps/android/app/src/main/cpp/), because capturing the JavaVM is
-// ac3::audio's own concern (jni_env() above needs it) and a
+// iclforge::audio's own concern (jni_env() above needs it) and a
 // process may load exactly one JNI_OnLoad per shared object - this is the
 // only translation unit in ac3forge_jni.so that needs it.
 
 extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* /*reserved*/) {
-    ac3::audio::g_vm = vm;
-    __android_log_print(ANDROID_LOG_INFO, ac3::audio::kLogTag,
+    iclforge::audio::g_vm = vm;
+    __android_log_print(ANDROID_LOG_INFO, iclforge::audio::kLogTag,
                         "JNI_OnLoad: ac3forge_jni loaded, JavaVM captured");
     return JNI_VERSION_1_6;
 }
@@ -708,11 +708,11 @@ extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* /*reserved*/) {
 extern "C" JNIEXPORT void JNICALL
 Java_com_ac3forge_shield_NativeBridge_registerPassthroughBridge(JNIEnv* env, jclass /*clazz*/,
                                                                  jobject bridge) {
-    std::lock_guard lock(ac3::audio::g_bridge_mutex);
+    std::lock_guard lock(iclforge::audio::g_bridge_mutex);
 
-    if (ac3::audio::g_bridge != nullptr) {
-        env->DeleteGlobalRef(ac3::audio::g_bridge);
-        ac3::audio::g_bridge = nullptr;
+    if (iclforge::audio::g_bridge != nullptr) {
+        env->DeleteGlobalRef(iclforge::audio::g_bridge);
+        iclforge::audio::g_bridge = nullptr;
     }
     if (bridge == nullptr) {
         return;
@@ -722,22 +722,23 @@ Java_com_ac3forge_shield_NativeBridge_registerPassthroughBridge(JNIEnv* env, jcl
     if (local_class == nullptr) {
         return;
     }
-    ac3::audio::g_mid_is_direct_supported =
+    iclforge::audio::g_mid_is_direct_supported =
         env->GetMethodID(local_class, "isDirectPlaybackSupported", "(IZ)Z");
-    ac3::audio::g_mid_is_pcm_supported = env->GetMethodID(local_class, "isPcmSupported", "(I)Z");
-    ac3::audio::g_mid_open = env->GetMethodID(local_class, "open", "(IZ)Z");
-    ac3::audio::g_mid_submit =
+    iclforge::audio::g_mid_is_pcm_supported =
+        env->GetMethodID(local_class, "isPcmSupported", "(I)Z");
+    iclforge::audio::g_mid_open = env->GetMethodID(local_class, "open", "(IZ)Z");
+    iclforge::audio::g_mid_submit =
         env->GetMethodID(local_class, "submit", "(Ljava/nio/ByteBuffer;I)I");
-    ac3::audio::g_mid_close = env->GetMethodID(local_class, "close", "()V");
+    iclforge::audio::g_mid_close = env->GetMethodID(local_class, "close", "()V");
     if (env->ExceptionCheck() != 0) {
         env->ExceptionClear();
-        ac3::audio::g_mid_is_direct_supported = nullptr;
-        ac3::audio::g_mid_is_pcm_supported = nullptr;
-        ac3::audio::g_mid_open = nullptr;
-        ac3::audio::g_mid_submit = nullptr;
-        ac3::audio::g_mid_close = nullptr;
+        iclforge::audio::g_mid_is_direct_supported = nullptr;
+        iclforge::audio::g_mid_is_pcm_supported = nullptr;
+        iclforge::audio::g_mid_open = nullptr;
+        iclforge::audio::g_mid_submit = nullptr;
+        iclforge::audio::g_mid_close = nullptr;
         env->DeleteLocalRef(local_class);
-        __android_log_print(ANDROID_LOG_ERROR, ac3::audio::kLogTag,
+        __android_log_print(ANDROID_LOG_ERROR, iclforge::audio::kLogTag,
                             "registerPassthroughBridge: GetMethodID failed - does "
                             "PassthroughBridge match the expected "
                             "isDirectPlaybackSupported/isPcmSupported/open/submit/close "
@@ -755,13 +756,13 @@ Java_com_ac3forge_shield_NativeBridge_registerPassthroughBridge(JNIEnv* env, jcl
         }
         return method;
     };
-    ac3::audio::g_mid_head_position = optional_method("playbackHeadPosition", "()J");
-    ac3::audio::g_mid_pause = optional_method("pause", "()Z");
-    ac3::audio::g_mid_resume = optional_method("resume", "()Z");
-    ac3::audio::g_mid_flush = optional_method("flush", "()Z");
+    iclforge::audio::g_mid_head_position = optional_method("playbackHeadPosition", "()J");
+    iclforge::audio::g_mid_pause = optional_method("pause", "()Z");
+    iclforge::audio::g_mid_resume = optional_method("resume", "()Z");
+    iclforge::audio::g_mid_flush = optional_method("flush", "()Z");
 
-    ac3::audio::g_bridge = env->NewGlobalRef(bridge);
+    iclforge::audio::g_bridge = env->NewGlobalRef(bridge);
     env->DeleteLocalRef(local_class);
-    __android_log_print(ANDROID_LOG_INFO, ac3::audio::kLogTag,
+    __android_log_print(ANDROID_LOG_INFO, iclforge::audio::kLogTag,
                         "registerPassthroughBridge: bridge registered");
 }

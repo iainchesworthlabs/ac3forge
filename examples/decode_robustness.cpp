@@ -2,7 +2,7 @@
 // ones - the shape real capture/transport corruption takes, since a torn or
 // bit-flipped frame does not usually take its neighbours down with it.
 //
-// ac3::split_frames delimits syncframes by sync word and declared size alone,
+// iclforge::split_frames delimits syncframes by sync word and declared size alone,
 // so it still finds every frame boundary correctly even though frame 4's
 // payload is corrupt; only that frame's own decode_frame call fails. A
 // caller can then skip exactly the damaged frame and keep decoding, rather
@@ -37,17 +37,17 @@ int main() {
 
     // Heap-allocated: FrameEncoder carries several KB of MDCT scratch/history
     // state (PREfast's C6262).
-    auto encoder = std::make_unique<ac3::FrameEncoder>(
-        ac3::EncoderConfig{.bitrate_kbps = 192, .acmod = ac3::Acmod::k2_0});
-    std::vector<std::vector<float>> pcm(2, std::vector<float>(ac3::kSamplesPerFrame));
+    auto encoder = std::make_unique<iclforge::FrameEncoder>(
+        iclforge::EncoderConfig{.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0});
+    std::vector<std::vector<float>> pcm(2, std::vector<float>(iclforge::kSamplesPerFrame));
     constexpr std::array<double, 2> tones{440.0, 660.0};
 
     std::vector<std::byte> stream;
     std::vector<std::size_t> frame_offsets;
     for (int frame = 0; frame < kFrameCount; ++frame) {
         for (std::size_t ch = 0; ch < pcm.size(); ++ch) {
-            for (int n = 0; n < ac3::kSamplesPerFrame; ++n) {
-                const double t = (frame * ac3::kSamplesPerFrame + n) / 48000.0;
+            for (int n = 0; n < iclforge::kSamplesPerFrame; ++n) {
+                const double t = (frame * iclforge::kSamplesPerFrame + n) / 48000.0;
                 pcm[ch][static_cast<std::size_t>(n)] =
                     static_cast<float>(0.4 * std::sin(2.0 * std::numbers::pi * tones[ch] * t));
             }
@@ -75,19 +75,19 @@ int main() {
          frame_offsets[static_cast<std::size_t>(kCorruptFrame)]) / 2;
     stream[corrupt_at] ^= std::byte{0xFF};
 
-    const auto frames = ac3::split_frames(stream);
+    const auto frames = iclforge::split_frames(stream);
     if (!frames) {
         fmt::printf("split_frames failed: %.*s\n",
-                    static_cast<int>(ac3::describe(frames.error()).size()),
-                    ac3::describe(frames.error()).data());
+                    static_cast<int>(iclforge::describe(frames.error()).size()),
+                    iclforge::describe(frames.error()).data());
         return 1;
     }
     fmt::printf("%zu frame(s) delimited, corruption at byte %zu\n", frames->size(), corrupt_at);
 
     int diagnosed = 0;
-    ac3::FrameDecoder decoder{{.diagnostics =
-                                   [](const ac3::Diagnostic& diagnostic, void* context) {
-                                       const auto message = ac3::describe(diagnostic.event);
+    iclforge::FrameDecoder decoder{{.diagnostics =
+                                   [](const iclforge::Diagnostic& diagnostic, void* context) {
+                                       const auto message = iclforge::describe(diagnostic.event);
                                        fmt::printf("  diagnostic: %.*s\n",
                                                    static_cast<int>(message.size()),
                                                    message.data());
@@ -99,7 +99,7 @@ int main() {
     for (std::size_t i = 0; i < frames->size(); ++i) {
         const auto decoded = decoder.decode_frame((*frames)[i]);
         if (!decoded) {
-            const auto message = ac3::describe(decoded.error());
+            const auto message = iclforge::describe(decoded.error());
             fmt::printf("frame %zu: decode failed (%.*s) - skipping\n", i,
                         static_cast<int>(message.size()), message.data());
             ++failed;

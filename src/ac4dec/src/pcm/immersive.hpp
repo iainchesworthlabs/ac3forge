@@ -16,7 +16,7 @@
 // The channels hold the intermediate signals A'' to K'' as pcm/routing.hpp's
 // header comment gives them until these tools make channels of them.
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 // Clause 5.3.3 on one frame of the IMDCT's output, in place, for an immersive
 // element in `codec_mode` (an immersive_mode value): time[c] is the channel
@@ -55,4 +55,4 @@ struct BandGains {
 // `gains` on `num_ts` slots of `matrix`, subbands below `sbx` and from it.
 void apply_band_gains(std::span<QmfValue> matrix, int num_ts, int sbx, BandGains gains) noexcept;
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

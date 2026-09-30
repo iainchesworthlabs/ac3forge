@@ -20,7 +20,7 @@
 
 namespace {
 
-using ac3::render::TrimDelay;
+using iclforge::render::TrimDelay;
 using Catch::Approx;
 
 // A ramp 1, 2, 3, ... per output, fed through in blocks of `block`, and what

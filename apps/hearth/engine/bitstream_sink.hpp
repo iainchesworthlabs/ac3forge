@@ -17,16 +17,16 @@
 //
 // The PCM sink's counterpart for the other kind of payload: IEC 61937
 // bursts, each one AC-3 frame or six E-AC-3 blocks' worth of access units,
-// already packed. The engine packs them (ac3::iec61937::wrap_frame and
+// already packed. The engine packs them (iclforge::iec61937::wrap_frame and
 // Eac3BurstPacker) and talks to this, never to a platform API. One
-// implementation drives ac3::audio::PassthroughSink; ac3tests has a fake with
+// implementation drives iclforge::audio::PassthroughSink; ac3tests has a fake with
 // a clock of its own, as it has for the PCM sink.
 //
 // Every figure a sink reports is in the CONTENT's frames - 1536 to a burst
 // in either format - as PassthroughSink::position() counts them, so the
 // player's timeline is the same arithmetic whichever sink it is feeding.
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 class BitstreamSink {
 public:
@@ -67,8 +67,8 @@ public:
 };
 
 // The real one: a local endpoint's exclusive IEC 61937 output through
-// ac3::audio::PassthroughSink. `device_id` empty lets the sink choose the
+// iclforge::audio::PassthroughSink. `device_id` empty lets the sink choose the
 // first output that will take the format, as PassthroughSink::start() does.
 [[nodiscard]] std::unique_ptr<BitstreamSink> make_passthrough_sink(std::string device_id = {});
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

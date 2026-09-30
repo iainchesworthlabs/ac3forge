@@ -22,15 +22,15 @@
 // in no longer loses the hour.
 //
 // The five containers here are exactly the streamable ones: a bare
-// elementary stream appends; Matroska streams via matroska::Writer (EBML's
+// elementary stream appends; Matroska streams via iclforge::matroska::Writer (EBML's
 // own unknown-size Segment pattern - the file differs from the one-shot
 // mux()'s by exactly that, as that class's comment describes); MPEG-TS via
-// mpegts::Writer (whose bytes are contract-identical to mux()'s); fragmented
+// iclforge::mpegts::Writer (whose bytes are contract-identical to mux()'s); fragmented
 // MP4/CMAF into a DIRECTORY rather than a file, through the Fmp4FolderWriter
 // EncoderController's own live session shares (whose media segments are
-// likewise contract-identical to mp4::fragment()'s);
+// likewise contract-identical to iclforge::mp4::fragment()'s);
 // the IEC 61937 WAV carrier via per-frame wrapping into
-// ac3::io::WavPcm16StreamWriter, whose closed file is byte-identical to
+// iclforge::io::WavPcm16StreamWriter, whose closed file is byte-identical to
 // write_wav_pcm16_raw over the same bursts. Plain MP4 is the one deliberately
 // absent: moov/stco need every frame's final offset, so the
 // accumulate-then-mux shape in EncoderController::writeOutput IS its design,
@@ -69,7 +69,7 @@ class RecordingSink {
         // kSpdif: the IEC 61937-14 burst type the stream's largest frame
         // needs, and the carrier a WAV file holds its link in (HBR16's eight
         // channels at a quarter of the link's rate).
-        ac3::iec61937::BurstDataType burst_type = ac3::iec61937::BurstDataType::kAc4;
+        iclforge::iec61937::BurstDataType burst_type = iclforge::iec61937::BurstDataType::kAc4;
         std::uint32_t carrier_rate_hz = 48000;
         std::uint16_t carrier_channels = 2;
         // kFmp4: the track, each sample the raw frame alone (Annex E.4).
@@ -129,11 +129,11 @@ class RecordingSink {
     // kElementary / kMatroska / kMpegts write here...
     std::ofstream file_;
     // ...through these; kSpdif goes through wav_ instead.
-    std::optional<matroska::Writer> matroska_;
-    std::optional<mpegts::Writer> mpegts_;
-    ac3::io::WavPcm16StreamWriter wav_;
-    ac3::iec61937::Eac3BurstPacker packer_;
-    std::optional<ac3::iec61937::Ac4BurstPacker> ac4_packer_;
+    std::optional<iclforge::matroska::Writer> matroska_;
+    std::optional<iclforge::mpegts::Writer> mpegts_;
+    iclforge::io::WavPcm16StreamWriter wav_;
+    iclforge::iec61937::Eac3BurstPacker packer_;
+    std::optional<iclforge::iec61937::Ac4BurstPacker> ac4_packer_;
     // ...and kFmp4 writes a folder of its own files through this.
     Fmp4FolderWriter fmp4_;
 };

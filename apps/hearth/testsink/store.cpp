@@ -20,7 +20,7 @@
 #include "iclforge/sendspin/handshake_session.hpp"
 #include "iclforge/sendspin/noise.hpp"
 
-namespace ac3::hearth::testsink {
+namespace iclforge::hearth::testsink {
 
 namespace {
 
@@ -236,4 +236,4 @@ void Store::set_last_playback(const Key32& server_key) {
     (void)write_text(directory_ / kLastPlaybackFile, hex_of(server_key) + "\n");
 }
 
-}  // namespace ac3::hearth::testsink
+}  // namespace iclforge::hearth::testsink

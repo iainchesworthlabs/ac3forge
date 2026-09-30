@@ -48,11 +48,11 @@
 namespace {
 
 namespace fs = std::filesystem;
-namespace ss = ac3::sendspin;
+namespace ss = iclforge::sendspin;
 namespace m = ss::messages;
 namespace ac = ss::ac3forge;
 namespace json = ss::json;
-namespace testsink = ac3::hearth::testsink;
+namespace testsink = iclforge::hearth::testsink;
 using namespace std::chrono_literals;
 using SteadyClock = std::chrono::steady_clock;
 
@@ -236,15 +236,15 @@ class SinkLog final : public testsink::SinkLog {
 }
 
 // The programme's bursts, made as they are needed: `passes` times through the file's access units
-// on one timeline, each burst with the Pc and Pd ac3::iec61937 writes, the units it carries, and the
+// on one timeline, each burst with the Pc and Pd iclforge::iec61937 writes, the units it carries, and the
 // programme frame of its first sample.
 class BurstSource {
    public:
-    BurstSource(const ac3::io::ScannedStream& stream, int passes)
-        : stream_(&stream), passes_(passes), pass_samples_(ac3::io::stream_duration_samples(stream)) {}
+    BurstSource(const iclforge::io::ScannedStream& stream, int passes)
+        : stream_(&stream), passes_(passes), pass_samples_(iclforge::io::stream_duration_samples(stream)) {}
 
     [[nodiscard]] std::optional<ss::Group::Burst> next(std::string& error) {
-        const bool eac3 = stream_->kind != ac3::io::StreamKind::kAc3;
+        const bool eac3 = stream_->kind != iclforge::io::StreamKind::kAc3;
         payload_.clear();
         std::optional<std::int64_t> frame;
         while (pass_ < passes_) {
@@ -254,7 +254,7 @@ class BurstSource {
                 continue;
             }
             const std::span<const std::byte> unit = stream_->access_units[unit_];
-            const std::optional<ac3::io::AccessUnitTiming> timing = ac3::io::access_unit_timing(*stream_, unit_);
+            const std::optional<iclforge::io::AccessUnitTiming> timing = iclforge::io::access_unit_timing(*stream_, unit_);
             ++unit_;
             if (!timing) {
                 error = "an access unit has no timing";
@@ -266,7 +266,7 @@ class BurstSource {
             std::transform(unit.begin(), unit.end(), std::back_inserter(payload_),
                            [](std::byte b) { return std::to_integer<std::uint8_t>(b); });
             if (!eac3) {
-                const auto burst = ac3::iec61937::wrap_frame(unit);
+                const auto burst = iclforge::iec61937::wrap_frame(unit);
                 if (!burst) {
                     error = "an AC-3 frame could not be wrapped";
                     return std::nullopt;
@@ -286,12 +286,12 @@ class BurstSource {
     }
 
    private:
-    const ac3::io::ScannedStream* stream_;
+    const iclforge::io::ScannedStream* stream_;
     int passes_;
     std::uint64_t pass_samples_;
     int pass_ = 0;
     std::size_t unit_ = 0;
-    ac3::iec61937::Eac3BurstPacker packer_;
+    iclforge::iec61937::Eac3BurstPacker packer_;
     std::vector<std::uint8_t> payload_;
 };
 
@@ -517,7 +517,7 @@ class BurstSource {
 }
 
 void write_report(std::ostream& out, const std::string& server_name, const std::string& server_id,
-                  const fs::path& programme, const ac3::io::ScannedStream& stream, std::uint64_t bursts_sent,
+                  const fs::path& programme, const iclforge::io::ScannedStream& stream, std::uint64_t bursts_sent,
                   std::optional<std::int64_t> start_server_us, double played_seconds, const std::vector<PlayerRun>& runs,
                   const std::string& result) {
     std::string text;
@@ -526,7 +526,7 @@ void write_report(std::ostream& out, const std::string& server_name, const std::
     w.key("server").begin_object().member("name", server_name).member("id", server_id).end_object();
     w.key("programme").begin_object();
     w.member("file", programme.generic_string());
-    w.member("codec", stream.kind == ac3::io::StreamKind::kAc3 ? "AC-3" : "E-AC-3");
+    w.member("codec", stream.kind == iclforge::io::StreamKind::kAc3 ? "AC-3" : "E-AC-3");
     w.member("channels", stream.channels);
     w.member("bursts", bursts_sent);
     w.key("seconds").number(played_seconds, 1);
@@ -791,20 +791,21 @@ int main(int argc, char** argv) {
         std::cerr << "cannot read " << programme.string() << "\n";
         return kExitUsage;
     }
-    const std::expected<ac3::io::ScannedStream, ac3::io::ScanError> stream = ac3::io::scan(*bytes);
+    const std::expected<iclforge::io::ScannedStream, iclforge::io::ScanError> stream =
+        iclforge::io::scan(*bytes);
     if (!stream || stream->access_units.empty()) {
         std::cerr << programme.string() << " is not an AC-3 or E-AC-3 stream\n";
         return kExitUsage;
     }
-    if (stream->sample_rate != ac3::SampleRate::k48000) {
+    if (stream->sample_rate != iclforge::SampleRate::k48000) {
         std::cerr << programme.string() << " is not at 48 kHz, which is all a Hearth sink plays\n";
         return kExitUsage;
     }
-    const std::uint64_t pass_samples = ac3::io::stream_duration_samples(*stream);
+    const std::uint64_t pass_samples = iclforge::io::stream_duration_samples(*stream);
     const int passes =
         seconds ? static_cast<int>(((static_cast<std::uint64_t>(*seconds) * kSampleRate) + pass_samples - 1) / pass_samples) : 1;
 
-    auto store = ac3::hearth::testserver::FileServerStore::open(state_directory);
+    auto store = iclforge::hearth::testserver::FileServerStore::open(state_directory);
     if (!store) {
         std::cerr << "ac3hearth-testserver: " << store.error() << "\n";
         return kExitUsage;
@@ -909,7 +910,7 @@ int main(int argc, char** argv) {
         }
     }
     const ac::DataType data_type =
-        stream->kind == ac3::io::StreamKind::kAc3 ? ac::DataType::kAc3 : ac::DataType::kEac3;
+        stream->kind == iclforge::io::StreamKind::kAc3 ? ac::DataType::kAc3 : ac::DataType::kEac3;
     if (!group->start({.pcm = std::nullopt,
                        .bursts = ac::StreamStart{.data_type = data_type, .sample_rate = static_cast<std::int32_t>(kSampleRate)},
                        .buffered = true})) {

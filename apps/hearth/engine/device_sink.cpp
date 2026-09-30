@@ -5,12 +5,12 @@
 #include "iclforge/audio/pcm_output.hpp"
 #include "pcm_sink.hpp"
 
-// The PcmSink over a real local device: ac3::audio::PcmOutput (A2), which
+// The PcmSink over a real local device: iclforge::audio::PcmOutput (A2), which
 // opens at the device's own width and places each rendered slot by the
 // device's speakers. Everything here is a translation between the two
 // interfaces; the decisions are PcmOutput's.
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 namespace {
 
@@ -78,4 +78,4 @@ std::unique_ptr<PcmSink> make_device_sink(std::string device_id, bool low_latenc
     return std::make_unique<DeviceSink>(std::move(device_id), low_latency);
 }
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

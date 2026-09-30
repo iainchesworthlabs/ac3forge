@@ -33,7 +33,7 @@
 // to T2; set 2 turns (I3, I4) into (U0, U1); set 3 turns (T0, U0) into
 // (O0, O3) and set 4 (T1, U1) into (O1, O4); O2 is T2.
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 // A channel, or a track, as the rate loop codes it: its lines, grouped, and
 // the noise each band may carry.
@@ -74,4 +74,4 @@ struct UnitChoice {
 [[nodiscard]] UnitChoice undo_five(int chel_matsel, std::array<Channel*, 5> unit,
                                    std::span<const StereoChoice> forced = {});
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

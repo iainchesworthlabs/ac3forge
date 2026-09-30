@@ -23,7 +23,7 @@
 // ring and a float multiply, and an output at 0 dB with no delay costs
 // nothing. Tested on the host in tests/render/test_trim_delay.cpp.
 
-namespace ac3::render {
+namespace iclforge::render {
 
 class TrimDelay {
    public:
@@ -179,4 +179,4 @@ class TrimDelay {
     std::array<std::uint32_t, kMaxOutputs> position_{};
 };
 
-}  // namespace ac3::render
+}  // namespace iclforge::render

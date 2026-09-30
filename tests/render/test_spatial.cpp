@@ -19,7 +19,7 @@ constexpr int kR = 2;
 constexpr int kSL = 3;
 constexpr int kSR = 4;
 
-double sum_sq(const ac3::spatial::PanGains& g) {
+double sum_sq(const iclforge::spatial::PanGains& g) {
     double total = 0.0;
     for (const auto v : g) {
         total += v * v;
@@ -35,8 +35,8 @@ TEST_CASE("panning at speaker azimuths hits exactly that speaker", "[spatial]") 
     }};
     for (const auto& [azimuth, channel] : cases) {
         CAPTURE(azimuth);
-        const auto gains = ac3::spatial::pan_azimuth(azimuth);
-        for (int ch = 0; ch < ac3::spatial::kBedChannels; ++ch) {
+        const auto gains = iclforge::spatial::pan_azimuth(azimuth);
+        for (int ch = 0; ch < iclforge::spatial::kBedChannels; ++ch) {
             CAPTURE(ch);
             if (ch == channel) {
                 CHECK(std::abs(gains[static_cast<std::size_t>(ch)] - 1.0) < 1e-12);
@@ -50,7 +50,7 @@ TEST_CASE("panning at speaker azimuths hits exactly that speaker", "[spatial]") 
 TEST_CASE("panning preserves energy and uses at most two speakers", "[spatial]") {
     for (int deg = 0; deg < 360; ++deg) {
         CAPTURE(deg);
-        const auto gains = ac3::spatial::pan_azimuth(static_cast<double>(deg));
+        const auto gains = iclforge::spatial::pan_azimuth(static_cast<double>(deg));
         CHECK(std::abs(sum_sq(gains) - 1.0) < 1e-12);
         int active = 0;
         for (const auto g : gains) {
@@ -59,22 +59,22 @@ TEST_CASE("panning preserves energy and uses at most two speakers", "[spatial]")
         CHECK(active <= 2);
     }
     // The L/C bisector splits equally.
-    const auto mid = ac3::spatial::pan_azimuth(15.0);
+    const auto mid = iclforge::spatial::pan_azimuth(15.0);
     CHECK(std::abs(mid[kL] - mid[kC]) < 1e-9);
 }
 
 TEST_CASE("renderer: static object, LFE send, and ramping", "[spatial]") {
-    ac3::spatial::BedRenderer renderer;
+    iclforge::spatial::BedRenderer renderer;
     const auto object = renderer.add_object({.azimuth_deg = 0.0, .gain = 0.8, .lfe_send = 0.25});
 
-    std::vector<float> mono(ac3::spatial::kBlockSamples);
+    std::vector<float> mono(iclforge::spatial::kBlockSamples);
     for (std::size_t n = 0; n < mono.size(); ++n) {
         mono[n] = static_cast<float>(
             0.5 * std::sin(2.0 * std::numbers::pi * 440.0 * static_cast<double>(n) / 48000.0));
     }
     std::array<std::vector<float>, 6> bed;
     for (auto& channel : bed) {
-        channel.assign(ac3::spatial::kBlockSamples, 0.0f);
+        channel.assign(iclforge::spatial::kBlockSamples, 0.0f);
     }
     const std::array<std::span<const float>, 1> audio = {mono};
     const std::array<std::span<float>, 6> bed_views = {bed[0], bed[1], bed[2],
@@ -109,19 +109,19 @@ TEST_CASE("orbiting object lands in the right channels end to end", "[spatial]")
     // 3/2+LFE -> in-repo decode -> each frame's dominant channel must be
     // the parked speaker. (A free-running orbit makes the expectation
     // ambiguous near pair boundaries and the 256-sample decode delay.)
-    ac3::spatial::BedRenderer renderer;
+    iclforge::spatial::BedRenderer renderer;
     const auto object = renderer.add_object({.azimuth_deg = 0.0, .gain = 0.7});
-    ac3::FrameEncoder encoder{
-        {.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true}};
-    ac3::FrameDecoder decoder;
+    iclforge::FrameEncoder encoder{
+        {.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true}};
+    iclforge::FrameDecoder decoder;
 
     constexpr std::array<double, 5> kParkAzimuth = {0.0, 30.0, 110.0, 250.0, 330.0};
     constexpr int kFrames = 5;
-    std::vector<float> mono(ac3::spatial::kBlockSamples);
+    std::vector<float> mono(iclforge::spatial::kBlockSamples);
     std::array<std::vector<float>, 6> frame_channels;
     std::array<std::vector<float>, 6> bed_block;
     for (auto& channel : bed_block) {
-        channel.assign(ac3::spatial::kBlockSamples, 0.0f);
+        channel.assign(iclforge::spatial::kBlockSamples, 0.0f);
     }
     std::vector<int> argmax_per_frame;
     std::uint64_t n0 = 0;
@@ -131,7 +131,7 @@ TEST_CASE("orbiting object lands in the right channels end to end", "[spatial]")
         }
         renderer.set_target(
             object, {.azimuth_deg = kParkAzimuth[static_cast<std::size_t>(f)], .gain = 0.7});
-        for (int block = 0; block < ac3::kBlocksPerFrame; ++block) {
+        for (int block = 0; block < iclforge::kBlocksPerFrame; ++block) {
             for (std::size_t n = 0; n < mono.size(); ++n) {
                 mono[n] = static_cast<float>(
                     0.6 * std::sin(2.0 * std::numbers::pi * 440.0 *
@@ -178,7 +178,7 @@ TEST_CASE("orbiting object lands in the right channels end to end", "[spatial]")
 // --- height-aware panning (legacy item IO12) ------------------------------------
 
 TEST_CASE("position_direction reads a room position's azimuth and elevation", "[spatial]") {
-    using ac3::spatial::position_direction;
+    using iclforge::spatial::position_direction;
 
     // The room's centre has no direction at any height - pan_room's own rule
     // for the same (x, y), extended to z.
@@ -218,24 +218,24 @@ TEST_CASE("pan_direction over floor-only targets agrees with pan_room", "[spatia
     // IO12's dynamic-object-only render relies on: metering an object-based
     // programme onto a plain 5.1 target must reproduce the same figures the
     // flat VBAP-folded bed already measures.
-    using Location = ac3::eac3::chanmap::Location;
+    using Location = iclforge::eac3::chanmap::Location;
     const std::array<Location, 5> floor = {Location::kLeft, Location::kCentre, Location::kRight,
                                            Location::kLeftSurround,
                                            Location::kRightSurround};
-    const auto targets = ac3::spatial::pan_targets(floor);
+    const auto targets = iclforge::spatial::pan_targets(floor);
     REQUIRE(targets.directions.size() == 5);
 
     for (const double x : {0.2, 0.5, 0.8}) {
         for (const double y : {0.1, 0.5, 0.9}) {
             CAPTURE(x);
             CAPTURE(y);
-            const auto room_gains = ac3::spatial::pan_room(x, y);
-            const auto direction = ac3::spatial::position_direction(x, y, 0.0);
+            const auto room_gains = iclforge::spatial::pan_room(x, y);
+            const auto direction = iclforge::spatial::position_direction(x, y, 0.0);
             std::vector<double> gains(targets.directions.size());
-            ac3::spatial::pan_direction(direction, targets.directions, gains);
+            iclforge::spatial::pan_direction(direction, targets.directions, gains);
             // pan_room's own order is L, C, R, SL, SR - the same order `floor`
             // was built in above.
-            for (int ch = 0; ch < ac3::spatial::kBedChannels; ++ch) {
+            for (int ch = 0; ch < iclforge::spatial::kBedChannels; ++ch) {
                 CHECK(std::abs(gains[static_cast<std::size_t>(ch)] -
                               room_gains[static_cast<std::size_t>(ch)]) < 1e-9);
             }
@@ -244,9 +244,9 @@ TEST_CASE("pan_direction over floor-only targets agrees with pan_room", "[spatia
 }
 
 TEST_CASE("pan_direction crossfades an elevated source into the height ring", "[spatial]") {
-    using Location = ac3::eac3::chanmap::Location;
+    using Location = iclforge::eac3::chanmap::Location;
     const std::array<Location, 2> locations = {Location::kLeft, Location::kVhl};
-    const auto targets = ac3::spatial::pan_targets(locations);
+    const auto targets = iclforge::spatial::pan_targets(locations);
     const int floor_ch = targets.index_of(Location::kLeft);
     const int height_ch = targets.index_of(Location::kVhl);
     REQUIRE(floor_ch >= 0);
@@ -256,8 +256,8 @@ TEST_CASE("pan_direction crossfades an elevated source into the height ring", "[
 
     // A source at L's own azimuth (30 degrees) but no elevation lands
     // entirely on the floor speaker.
-    ac3::spatial::pan_direction({.azimuth_deg = 30.0, .elevation_deg = 0.0}, targets.directions,
-                                gains);
+    iclforge::spatial::pan_direction({.azimuth_deg = 30.0, .elevation_deg = 0.0},
+                                     targets.directions, gains);
     CHECK(gains[static_cast<std::size_t>(floor_ch)] > 0.99);
     CHECK(gains[static_cast<std::size_t>(height_ch)] < 1e-9);
 
@@ -266,8 +266,8 @@ TEST_CASE("pan_direction crossfades an elevated source into the height ring", "[
     // measurement depends on: a flat 5.1 bed cannot represent this at all
     // (spatial::pan_room folds every elevation onto the ring), but re-panning
     // the recovered object audio by its real position can.
-    ac3::spatial::pan_direction(
-        {.azimuth_deg = 30.0, .elevation_deg = ac3::spatial::kHeightElevationDeg},
+    iclforge::spatial::pan_direction(
+        {.azimuth_deg = 30.0, .elevation_deg = iclforge::spatial::kHeightElevationDeg},
         targets.directions, gains);
     CHECK(gains[static_cast<std::size_t>(height_ch)] > 0.99);
     CHECK(gains[static_cast<std::size_t>(floor_ch)] < 1e-9);

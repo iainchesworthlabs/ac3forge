@@ -110,7 +110,7 @@ private:
 };
 
 // Reads `count` interleaved samples from a running capture.
-std::vector<float> read_samples(ac3::audio::Capture& capture, std::size_t count) {
+std::vector<float> read_samples(iclforge::audio::Capture& capture, std::size_t count) {
     std::vector<float> samples(count);
     std::size_t filled = 0;
     const bool complete = eventually([&] {
@@ -135,8 +135,8 @@ std::vector<float> stereo_chunk() {
 TEST_CASE("alsa capture: a float device's samples arrive exactly as it delivered them",
           "[audio][alsa-null][concurrency]") {
     const NullDevices devices;
-    ac3::audio::Capture capture;
-    REQUIRE(capture.start("replay_float", ac3::audio::DeviceKind::kInput).has_value());
+    iclforge::audio::Capture capture;
+    REQUIRE(capture.start("replay_float", iclforge::audio::DeviceKind::kInput).has_value());
     CHECK(capture.running());
     CHECK(capture.sample_rate() == 48000);
     CHECK(capture.channels() == 2);
@@ -156,8 +156,8 @@ TEST_CASE("alsa capture: a float device's samples arrive exactly as it delivered
 TEST_CASE("alsa capture: a device offering only integers is read as S32 and scaled into [-1, 1)",
           "[audio][alsa-null][concurrency]") {
     const NullDevices devices;
-    ac3::audio::Capture capture;
-    REQUIRE(capture.start("replay_s32", ac3::audio::DeviceKind::kInput).has_value());
+    iclforge::audio::Capture capture;
+    REQUIRE(capture.start("replay_s32", iclforge::audio::DeviceKind::kInput).has_value());
     const auto samples = read_samples(capture, 2 * kReplayFrames);
     std::size_t mismatches = 0;
     for (std::size_t i = 0; i < samples.size(); ++i) {
@@ -170,19 +170,19 @@ TEST_CASE("alsa capture: a device offering only integers is read as S32 and scal
 TEST_CASE("alsa capture: the default endpoint is listed first, at the rate and width it takes",
           "[audio][alsa-null][concurrency]") {
     const NullDevices devices;
-    const auto listed = ac3::audio::enumerate_devices();
+    const auto listed = iclforge::audio::enumerate_devices();
     REQUIRE(listed.has_value());
     REQUIRE_FALSE(listed->empty());
     const auto& first = listed->front();
     CHECK(first.id == "default");
     CHECK(first.is_default);
-    CHECK(first.kind == ac3::audio::DeviceKind::kInput);
+    CHECK(first.kind == iclforge::audio::DeviceKind::kInput);
     CHECK(first.sample_rate == 48000);
     CHECK(first.channels == 2);
 
     // An empty id is that same default, opened for real.
-    ac3::audio::Capture capture;
-    REQUIRE(capture.start("", ac3::audio::DeviceKind::kInput).has_value());
+    iclforge::audio::Capture capture;
+    REQUIRE(capture.start("", iclforge::audio::DeviceKind::kInput).has_value());
     CHECK(capture.channels() == 2);
     CHECK(eventually([&] { return capture.stats().frames_captured > 0; }));
 }
@@ -190,8 +190,8 @@ TEST_CASE("alsa capture: the default endpoint is listed first, at the rate and w
 TEST_CASE("alsa capture: a one-channel device is opened at the width it has",
           "[audio][alsa-null][concurrency]") {
     const NullDevices devices;
-    ac3::audio::Capture capture;
-    REQUIRE(capture.start("mono", ac3::audio::DeviceKind::kInput).has_value());
+    iclforge::audio::Capture capture;
+    REQUIRE(capture.start("mono", iclforge::audio::DeviceKind::kInput).has_value());
     CHECK(capture.channels() == 1);
     const auto samples = read_samples(capture, 1024);
     CHECK(samples.size() == 1024);
@@ -200,10 +200,10 @@ TEST_CASE("alsa capture: a one-channel device is opened at the width it has",
 TEST_CASE("alsa capture: a consumer that falls behind is told how much was dropped",
           "[audio][alsa-null][concurrency]") {
     const NullDevices devices;
-    ac3::audio::Capture capture;
+    iclforge::audio::Capture capture;
     // A ring of a few periods, never read: the null device delivers as fast as
     // it is asked, so the capture thread overruns it at once.
-    REQUIRE(capture.start("null", ac3::audio::DeviceKind::kInput, 4096).has_value());
+    REQUIRE(capture.start("null", iclforge::audio::DeviceKind::kInput, 4096).has_value());
     CHECK(eventually([&] { return capture.stats().frames_dropped > 0; }));
     // Read once the thread has stopped: the counters are separate atomics and
     // only agree with each other when nothing is moving them.
@@ -225,8 +225,8 @@ TEST_CASE("alsa capture: an overrun drops whole frames, so every channel stays i
     // the take. Only whole frames may go in, and what is dropped is a whole
     // number of frames too.
     const NullDevices devices;
-    ac3::audio::Capture capture;
-    REQUIRE(capture.start("replay_float", ac3::audio::DeviceKind::kInput, 4096).has_value());
+    iclforge::audio::Capture capture;
+    REQUIRE(capture.start("replay_float", iclforge::audio::DeviceKind::kInput, 4096).has_value());
     REQUIRE(capture.channels() == 2);
     REQUIRE(eventually([&] { return capture.stats().frames_dropped > 0; }));
     CHECK(capture.buffer()->available() % 2 == 0);
@@ -251,10 +251,10 @@ TEST_CASE("alsa capture: an overrun drops whole frames, so every channel stays i
 TEST_CASE("alsa capture: a device that is missing, or offers nothing readable, is refused by name",
           "[audio][alsa-null][concurrency]") {
     const NullDevices devices;
-    using ac3::audio::CaptureError;
-    using ac3::audio::DeviceKind;
+    using iclforge::audio::CaptureError;
+    using iclforge::audio::DeviceKind;
     {
-        ac3::audio::Capture capture;
+        iclforge::audio::Capture capture;
         const auto started = capture.start("no_such_alsa_device", DeviceKind::kInput);
         REQUIRE_FALSE(started.has_value());
         CHECK(started.error() == CaptureError::kDeviceNotFound);
@@ -262,14 +262,14 @@ TEST_CASE("alsa capture: a device that is missing, or offers nothing readable, i
     {
         // A `hw` device on a card that is not there fails in the kernel's
         // terms (ENOENT) rather than in the configuration's.
-        ac3::audio::Capture capture;
+        iclforge::audio::Capture capture;
         const auto started = capture.start("nocard", DeviceKind::kInput);
         REQUIRE_FALSE(started.has_value());
         CHECK(started.error() == CaptureError::kDeviceNotFound);
     }
     {
         // mu-law only: none of float/S32/S24/S16 is on offer.
-        ac3::audio::Capture capture;
+        iclforge::audio::Capture capture;
         const auto started = capture.start("mulawonly", DeviceKind::kInput);
         REQUIRE_FALSE(started.has_value());
         CHECK(started.error() == CaptureError::kFormatUnsupported);
@@ -277,7 +277,7 @@ TEST_CASE("alsa capture: a device that is missing, or offers nothing readable, i
     }
     {
         // Loopback with no id means snd-aloop's card, and there are no cards.
-        ac3::audio::Capture capture;
+        iclforge::audio::Capture capture;
         const auto started = capture.start("", DeviceKind::kLoopback);
         REQUIRE_FALSE(started.has_value());
         CHECK(started.error() == CaptureError::kDeviceNotFound);
@@ -287,13 +287,13 @@ TEST_CASE("alsa capture: a device that is missing, or offers nothing readable, i
 TEST_CASE("alsa capture: a second start is refused while running, and allowed after a stop",
           "[audio][alsa-null][concurrency]") {
     const NullDevices devices;
-    ac3::audio::Capture capture;
-    REQUIRE(capture.start("null", ac3::audio::DeviceKind::kInput).has_value());
-    const auto again = capture.start("null", ac3::audio::DeviceKind::kInput);
+    iclforge::audio::Capture capture;
+    REQUIRE(capture.start("null", iclforge::audio::DeviceKind::kInput).has_value());
+    const auto again = capture.start("null", iclforge::audio::DeviceKind::kInput);
     REQUIRE_FALSE(again.has_value());
-    CHECK(again.error() == ac3::audio::CaptureError::kAlreadyRunning);
+    CHECK(again.error() == iclforge::audio::CaptureError::kAlreadyRunning);
     capture.stop();
-    REQUIRE(capture.start("mono", ac3::audio::DeviceKind::kInput).has_value());
+    REQUIRE(capture.start("mono", iclforge::audio::DeviceKind::kInput).has_value());
     CHECK(capture.channels() == 1);
 }
 
@@ -303,14 +303,14 @@ TEST_CASE("alsa capture: a named loopback device is captured with the loopback t
     // gap-filling timeline running beside it; a device that keeps up (null
     // always does) needs no filling.
     const NullDevices devices;
-    ac3::audio::Capture capture;
-    REQUIRE(capture.start("null", ac3::audio::DeviceKind::kLoopback).has_value());
+    iclforge::audio::Capture capture;
+    REQUIRE(capture.start("null", iclforge::audio::DeviceKind::kLoopback).has_value());
     const auto samples = read_samples(capture, 4096);
     CHECK(samples.size() == 4096);
-    CHECK_FALSE(ac3::audio::process_loopback_available());
+    CHECK_FALSE(iclforge::audio::process_loopback_available());
     const auto tap = capture.start_process_loopback(1);
     REQUIRE_FALSE(tap.has_value());
-    CHECK(tap.error() == ac3::audio::CaptureError::kProcessLoopbackUnavailable);
+    CHECK(tap.error() == iclforge::audio::CaptureError::kProcessLoopbackUnavailable);
 }
 
 // ---------------------------------------------------------------------------
@@ -320,7 +320,7 @@ TEST_CASE("alsa capture: a named loopback device is captured with the loopback t
 TEST_CASE("alsa monitor: frames submitted to a software device are rendered and positioned",
           "[audio][alsa-null][concurrency]") {
     const NullDevices devices;
-    ac3::audio::MonitorSink sink;
+    iclforge::audio::MonitorSink sink;
     REQUIRE(sink.start("null", 48000, 2).has_value());
     CHECK(sink.running());
     CHECK(sink.can_submit());
@@ -342,7 +342,7 @@ TEST_CASE("alsa monitor: frames submitted to a software device are rendered and 
 
     const auto again = sink.start("null", 48000, 2);
     REQUIRE_FALSE(again.has_value());
-    CHECK(again.error() == ac3::audio::MonitorError::kAlreadyRunning);
+    CHECK(again.error() == iclforge::audio::MonitorError::kAlreadyRunning);
 
     sink.stop();
     CHECK_FALSE(sink.running());
@@ -352,7 +352,7 @@ TEST_CASE("alsa monitor: frames submitted to a software device are rendered and 
 TEST_CASE("alsa monitor: a pause before the device starts, a flush and a resume all take effect",
           "[audio][alsa-null][concurrency]") {
     const NullDevices devices;
-    ac3::audio::MonitorSink sink;
+    iclforge::audio::MonitorSink sink;
     REQUIRE(sink.start("null", 48000, 2).has_value());
     // Straight after start the stream is still PREPARED, which refuses a
     // hardware pause, so the render thread drops and re-prepares instead.
@@ -372,7 +372,7 @@ TEST_CASE("alsa monitor: a pause before the device starts, a flush and a resume 
 TEST_CASE("alsa monitor: a pause once the device is running holds it, and resume carries on",
           "[audio][alsa-null][concurrency]") {
     const NullDevices devices;
-    ac3::audio::MonitorSink sink;
+    iclforge::audio::MonitorSink sink;
     REQUIRE(sink.start("null", 48000, 2).has_value());
     // A buffer's worth and more, so the start threshold has been crossed and
     // the stream is RUNNING when the pause arrives.
@@ -402,7 +402,7 @@ TEST_CASE("alsa monitor: a device that under-runs is recovered, keeps playing an
     // not change that, and nor can a snd_pcm_drop from another thread, which
     // waits on the same lock - so stop() would never join.
     const NullDevices devices;
-    ac3::audio::MonitorSink sink;
+    iclforge::audio::MonitorSink sink;
     REQUIRE(sink.start("mono", 48000, 1).has_value());
     const std::vector<float> chunk(480, 0.0F);
     for (int i = 0; i < 40; ++i) {
@@ -427,20 +427,20 @@ TEST_CASE("alsa monitor: a device that under-runs is recovered, keeps playing an
 TEST_CASE("alsa monitor: a missing device and a zero-channel stream are refused by name",
           "[audio][alsa-null][concurrency]") {
     const NullDevices devices;
-    ac3::audio::MonitorSink sink;
+    iclforge::audio::MonitorSink sink;
     const auto missing = sink.start("no_such_alsa_device", 48000, 2);
     REQUIRE_FALSE(missing.has_value());
-    CHECK(missing.error() == ac3::audio::MonitorError::kDeviceNotFound);
+    CHECK(missing.error() == iclforge::audio::MonitorError::kDeviceNotFound);
     const auto empty = sink.start("null", 48000, 0);
     REQUIRE_FALSE(empty.has_value());
-    CHECK(empty.error() == ac3::audio::MonitorError::kComFailure);
+    CHECK(empty.error() == iclforge::audio::MonitorError::kComFailure);
     CHECK_FALSE(sink.running());
 }
 
 TEST_CASE("alsa monitor: a device whose writes fail for good stops the sink, which starts again",
           "[audio][alsa-null][concurrency]") {
     const NullDevices devices;
-    ac3::audio::MonitorSink sink;
+    iclforge::audio::MonitorSink sink;
     // Its writes fail with EIO, which snd_pcm_recover cannot mend.
     REQUIRE(sink.start("full", 48000, 2).has_value());
     CHECK(eventually([&] {
@@ -452,7 +452,7 @@ TEST_CASE("alsa monitor: a device whose writes fail for good stops the sink, whi
     CHECK_FALSE(sink.paused());
     const auto paused = sink.pause();
     REQUIRE_FALSE(paused.has_value());
-    CHECK(paused.error() == ac3::audio::MonitorError::kNotRunning);
+    CHECK(paused.error() == iclforge::audio::MonitorError::kNotRunning);
     sink.flush();  // nothing running: returns at once
 
     // start() tidies away the thread that ended with its device.
@@ -463,8 +463,8 @@ TEST_CASE("alsa monitor: a device whose writes fail for good stops the sink, whi
 TEST_CASE("alsa pcm output: a layout is opened on a named software device and played",
           "[audio][alsa-null][concurrency]") {
     const NullDevices devices;
-    ac3::audio::PcmOutput output;
-    const auto layout = ac3::render::OutputLayout::stereo();
+    iclforge::audio::PcmOutput output;
+    const auto layout = iclforge::render::OutputLayout::stereo();
     const auto opened = output.start("null", 48000, layout);
     REQUIRE(opened.has_value());
     CHECK(opened->outputs == 2);
@@ -486,11 +486,11 @@ TEST_CASE("alsa pcm output: a layout is opened on a named software device and pl
     CHECK_FALSE(output.paused());
 
     // A patch for another width is not this stream's.
-    const auto three = ac3::render::Routing::parse("0,1", 3);
+    const auto three = iclforge::render::Routing::parse("0,1", 3);
     if (three) {
         CHECK_FALSE(output.set_routing(*three));
     }
-    const auto swap = ac3::render::Routing::parse("1,0", 2);
+    const auto swap = iclforge::render::Routing::parse("1,0", 2);
     REQUIRE(swap.has_value());
     CHECK(output.set_routing(*swap));
     CHECK(output.routing().output_of(0) == 1);
@@ -504,7 +504,7 @@ TEST_CASE("alsa pcm output: a layout is opened on a named software device and pl
 
     const auto again = output.start("null", 48000, layout);
     REQUIRE_FALSE(again.has_value());
-    CHECK(again.error() == ac3::audio::MonitorError::kAlreadyRunning);
+    CHECK(again.error() == iclforge::audio::MonitorError::kAlreadyRunning);
     output.stop();
     CHECK_FALSE(output.running());
     CHECK_FALSE(output.submit(rendered, 480));
@@ -513,14 +513,14 @@ TEST_CASE("alsa pcm output: a layout is opened on a named software device and pl
 TEST_CASE("alsa pcm output: an empty layout or a missing device is refused",
           "[audio][alsa-null][concurrency]") {
     const NullDevices devices;
-    ac3::audio::PcmOutput output;
-    const auto empty = output.start("null", 48000, ac3::render::OutputLayout{});
+    iclforge::audio::PcmOutput output;
+    const auto empty = output.start("null", 48000, iclforge::render::OutputLayout{});
     REQUIRE_FALSE(empty.has_value());
-    CHECK(empty.error() == ac3::audio::MonitorError::kComFailure);
+    CHECK(empty.error() == iclforge::audio::MonitorError::kComFailure);
     const auto missing =
-        output.start("no_such_alsa_device", 48000, ac3::render::OutputLayout::stereo());
+        output.start("no_such_alsa_device", 48000, iclforge::render::OutputLayout::stereo());
     REQUIRE_FALSE(missing.has_value());
-    CHECK(missing.error() == ac3::audio::MonitorError::kDeviceNotFound);
+    CHECK(missing.error() == iclforge::audio::MonitorError::kDeviceNotFound);
     CHECK_FALSE(output.running());
 }
 
@@ -531,13 +531,13 @@ TEST_CASE("alsa pcm output: an empty layout or a missing device is refused",
 TEST_CASE("alsa passthrough: AC-3 bursts reach a software device, burst for burst",
           "[audio][alsa-null][concurrency]") {
     const NullDevices devices;
-    ac3::audio::PassthroughSink sink;
-    REQUIRE(sink.start("null", 48000, ac3::audio::BitstreamFormat::kAc3).has_value());
+    iclforge::audio::PassthroughSink sink;
+    REQUIRE(sink.start("null", 48000, iclforge::audio::BitstreamFormat::kAc3).has_value());
     CHECK(sink.running());
     CHECK(sink.can_submit());
 
-    const std::vector<std::byte> burst(ac3::iec61937::kBurstBytes);
-    const std::vector<std::byte> wrong(ac3::iec61937::kEac3BurstBytes);
+    const std::vector<std::byte> burst(iclforge::iec61937::kBurstBytes);
+    const std::vector<std::byte> wrong(iclforge::iec61937::kEac3BurstBytes);
     CHECK_FALSE(sink.submit(wrong));
     for (int i = 0; i < 8; ++i) {
         REQUIRE(eventually([&] { return sink.submit(burst); }));
@@ -551,9 +551,9 @@ TEST_CASE("alsa passthrough: AC-3 bursts reach a software device, burst for burs
     REQUIRE(position.has_value());
     CHECK(position->latency_frames == 0);
 
-    const auto again = sink.start("null", 48000, ac3::audio::BitstreamFormat::kAc3);
+    const auto again = sink.start("null", 48000, iclforge::audio::BitstreamFormat::kAc3);
     REQUIRE_FALSE(again.has_value());
-    CHECK(again.error() == ac3::audio::PassthroughError::kAlreadyRunning);
+    CHECK(again.error() == iclforge::audio::PassthroughError::kAlreadyRunning);
     sink.stop();
     CHECK_FALSE(sink.running());
     CHECK_FALSE(sink.position().has_value());
@@ -562,10 +562,10 @@ TEST_CASE("alsa passthrough: AC-3 bursts reach a software device, burst for burs
 TEST_CASE("alsa passthrough: E-AC-3 runs its link at 4x and takes only E-AC-3-sized bursts",
           "[audio][alsa-null][concurrency]") {
     const NullDevices devices;
-    ac3::audio::PassthroughSink sink;
-    REQUIRE(sink.start("null", 48000, ac3::audio::BitstreamFormat::kEac3).has_value());
-    const std::vector<std::byte> ac3_sized(ac3::iec61937::kBurstBytes);
-    const std::vector<std::byte> burst(ac3::iec61937::kEac3BurstBytes);
+    iclforge::audio::PassthroughSink sink;
+    REQUIRE(sink.start("null", 48000, iclforge::audio::BitstreamFormat::kEac3).has_value());
+    const std::vector<std::byte> ac3_sized(iclforge::iec61937::kBurstBytes);
+    const std::vector<std::byte> burst(iclforge::iec61937::kEac3BurstBytes);
     CHECK_FALSE(sink.submit(ac3_sized));
     REQUIRE(sink.submit(burst));
     CHECK(eventually([&] { return sink.stats().bursts_rendered >= 1; }));
@@ -574,10 +574,10 @@ TEST_CASE("alsa passthrough: E-AC-3 runs its link at 4x and takes only E-AC-3-si
 TEST_CASE("alsa passthrough: pause, flush and resume take effect before and after the link starts",
           "[audio][alsa-null][concurrency]") {
     const NullDevices devices;
-    const std::vector<std::byte> burst(ac3::iec61937::kBurstBytes);
+    const std::vector<std::byte> burst(iclforge::iec61937::kBurstBytes);
     SECTION("paused while still PREPARED: dropped and prepared again") {
-        ac3::audio::PassthroughSink sink;
-        REQUIRE(sink.start("null", 48000, ac3::audio::BitstreamFormat::kAc3).has_value());
+        iclforge::audio::PassthroughSink sink;
+        REQUIRE(sink.start("null", 48000, iclforge::audio::BitstreamFormat::kAc3).has_value());
         REQUIRE(sink.pause().has_value());
         CHECK(sink.paused());
         REQUIRE(sink.submit(burst));
@@ -588,8 +588,8 @@ TEST_CASE("alsa passthrough: pause, flush and resume take effect before and afte
         CHECK(eventually([&] { return sink.stats().bursts_rendered >= 1; }));
     }
     SECTION("paused while RUNNING: held by the device") {
-        ac3::audio::PassthroughSink sink;
-        REQUIRE(sink.start("null", 48000, ac3::audio::BitstreamFormat::kAc3).has_value());
+        iclforge::audio::PassthroughSink sink;
+        REQUIRE(sink.start("null", 48000, iclforge::audio::BitstreamFormat::kAc3).has_value());
         for (int i = 0; i < 8; ++i) {
             REQUIRE(eventually([&] { return sink.submit(burst); }));
         }
@@ -612,18 +612,18 @@ TEST_CASE("alsa passthrough: iec958 and hdmi names carry the non-audio channel s
     // accept the AES arguments and resolve to `null`, so this is alsa-lib's
     // real argument parsing reading the four bytes the backend appended.
     const NullDevices devices;
-    using ac3::audio::BitstreamFormat;
+    using iclforge::audio::BitstreamFormat;
     {
-        ac3::audio::PassthroughSink sink;
+        iclforge::audio::PassthroughSink sink;
         CHECK(sink.start("iec958:CARD=Test,DEV=0", 48000, BitstreamFormat::kAc3).has_value());
     }
     {
-        ac3::audio::PassthroughSink sink;
+        iclforge::audio::PassthroughSink sink;
         CHECK(sink.start("hdmi:CARD=Test,DEV=0", 48000, BitstreamFormat::kEac3).has_value());
     }
     {
         // Channel status written by hand is passed through untouched.
-        ac3::audio::PassthroughSink sink;
+        iclforge::audio::PassthroughSink sink;
         CHECK(sink.start("iec958:CARD=Test,AES0=0x06,AES1=0x82,AES2=0x00,AES3=0x02", 44100,
                          BitstreamFormat::kAc3)
                   .has_value());
@@ -631,21 +631,21 @@ TEST_CASE("alsa passthrough: iec958 and hdmi names carry the non-audio channel s
     {
         // E-AC-3 from 32 kHz content wants a 128 kHz link, which IEC 60958
         // has no frequency code for.
-        ac3::audio::PassthroughSink sink;
+        iclforge::audio::PassthroughSink sink;
         const auto started = sink.start("iec958:CARD=Test", 32000, BitstreamFormat::kEac3);
         REQUIRE_FALSE(started.has_value());
-        CHECK(started.error() == ac3::audio::PassthroughError::kFormatRejected);
+        CHECK(started.error() == iclforge::audio::PassthroughError::kFormatRejected);
     }
 }
 
 TEST_CASE("alsa passthrough: AC-4 bursts of either length go out on the links AC-3 and E-AC-3 use",
           "[audio][alsa-null][concurrency]") {
     const NullDevices devices;
-    using ac3::audio::BitstreamFormat;
+    using iclforge::audio::BitstreamFormat;
     {
         // 29.97 fps: IEC 61937-14 Table 6's bursts, 1602 and 1601 IEC 60958
         // frames long, one after the other in the queue.
-        ac3::audio::PassthroughSink sink;
+        iclforge::audio::PassthroughSink sink;
         REQUIRE(sink.start("iec958:CARD=Test,DEV=0", 48000, BitstreamFormat::kAc4).has_value());
         const std::vector<std::byte> longer(std::size_t{1602} * 4);
         const std::vector<std::byte> shorter(std::size_t{1601} * 4);
@@ -663,25 +663,25 @@ TEST_CASE("alsa passthrough: AC-4 bursts of either length go out on the links AC
     }
     {
         // HBR4 runs its link at four times the content rate, as E-AC-3 does.
-        ac3::audio::PassthroughSink sink;
+        iclforge::audio::PassthroughSink sink;
         CHECK(sink.start("hdmi:CARD=Test,DEV=0", 48000, BitstreamFormat::kAc4Hbr4).has_value());
     }
     {
         // HBR16 needs the eight-channel link, which this backend does not open.
-        ac3::audio::PassthroughSink sink;
+        iclforge::audio::PassthroughSink sink;
         const auto started = sink.start("hdmi:CARD=Test,DEV=0", 48000, BitstreamFormat::kAc4Hbr16);
         REQUIRE_FALSE(started.has_value());
-        CHECK(started.error() == ac3::audio::PassthroughError::kUnsupportedFormat);
+        CHECK(started.error() == iclforge::audio::PassthroughError::kUnsupportedFormat);
     }
 }
 
 TEST_CASE("alsa passthrough: a device that is missing or will not take the carrier is refused",
           "[audio][alsa-null][concurrency]") {
     const NullDevices devices;
-    using ac3::audio::BitstreamFormat;
-    using ac3::audio::PassthroughError;
+    using iclforge::audio::BitstreamFormat;
+    using iclforge::audio::PassthroughError;
     const auto refusal = [](const std::string& name) {
-        ac3::audio::PassthroughSink sink;
+        iclforge::audio::PassthroughSink sink;
         const auto started = sink.start(name, 48000, BitstreamFormat::kAc3);
         CHECK_FALSE(sink.running());
         return started.has_value() ? std::optional<PassthroughError>{} : started.error();
@@ -702,9 +702,9 @@ TEST_CASE("alsa passthrough: a link that under-runs is recovered and keeps carry
     // As the monitor's under-run case: four bursts play, the fifth write
     // meets -EPIPE, snd_pcm_recover prepares the stream again.
     const NullDevices devices;
-    ac3::audio::PassthroughSink sink;
-    REQUIRE(sink.start("stereo_xrun", 48000, ac3::audio::BitstreamFormat::kAc3).has_value());
-    const std::vector<std::byte> burst(ac3::iec61937::kBurstBytes);
+    iclforge::audio::PassthroughSink sink;
+    REQUIRE(sink.start("stereo_xrun", 48000, iclforge::audio::BitstreamFormat::kAc3).has_value());
+    const std::vector<std::byte> burst(iclforge::iec61937::kBurstBytes);
     for (int i = 0; i < 12; ++i) {
         REQUIRE(eventually([&] { return sink.submit(burst); }));
     }
@@ -723,9 +723,9 @@ TEST_CASE("alsa passthrough: a link that under-runs is recovered and keeps carry
 TEST_CASE("alsa passthrough: a device whose writes fail for good stops the sink by itself",
           "[audio][alsa-null][concurrency]") {
     const NullDevices devices;
-    ac3::audio::PassthroughSink sink;
-    REQUIRE(sink.start("full", 48000, ac3::audio::BitstreamFormat::kAc3).has_value());
-    const std::vector<std::byte> burst(ac3::iec61937::kBurstBytes);
+    iclforge::audio::PassthroughSink sink;
+    REQUIRE(sink.start("full", 48000, iclforge::audio::BitstreamFormat::kAc3).has_value());
+    const std::vector<std::byte> burst(iclforge::iec61937::kBurstBytes);
     CHECK(eventually([&] {
         std::ignore = sink.submit(burst);
         return !sink.running();
@@ -734,8 +734,8 @@ TEST_CASE("alsa passthrough: a device whose writes fail for good stops the sink 
     CHECK_FALSE(sink.can_submit());
     const auto resumed = sink.resume();
     REQUIRE_FALSE(resumed.has_value());
-    CHECK(resumed.error() == ac3::audio::PassthroughError::kNotRunning);
-    REQUIRE(sink.start("null", 48000, ac3::audio::BitstreamFormat::kAc3).has_value());
+    CHECK(resumed.error() == iclforge::audio::PassthroughError::kNotRunning);
+    REQUIRE(sink.start("null", 48000, iclforge::audio::BitstreamFormat::kAc3).has_value());
     CHECK(sink.running());
 }
 
@@ -746,16 +746,16 @@ TEST_CASE("alsa passthrough: a device whose writes fail for good stops the sink 
 TEST_CASE("alsa: with no sound card there are no render endpoints and no descriptor to read",
           "[audio][alsa-null][concurrency]") {
     const NullDevices devices;
-    const auto render = ac3::audio::enumerate_render_devices(48000);
+    const auto render = iclforge::audio::enumerate_render_devices(48000);
     REQUIRE(render.has_value());
     CHECK(render->empty());
-    const auto edid = ac3::audio::read_sink_capabilities("hdmi:CARD=Test,DEV=0");
+    const auto edid = iclforge::audio::read_sink_capabilities("hdmi:CARD=Test,DEV=0");
     REQUIRE_FALSE(edid.has_value());
-    CHECK(edid.error() == ac3::audio::EdidError::kDeviceNotFound);
-    using ac3::audio::EdidError;
+    CHECK(edid.error() == iclforge::audio::EdidError::kDeviceNotFound);
+    using iclforge::audio::EdidError;
     for (const auto error : {EdidError::kNoBackend, EdidError::kDeviceNotFound,
                              EdidError::kNoEdid, EdidError::kParseFailed}) {
-        const std::string_view text = ac3::audio::describe(error);
+        const std::string_view text = iclforge::audio::describe(error);
         CHECK_FALSE(text.empty());
         CHECK(text != "unknown EDID error");
     }
@@ -764,13 +764,13 @@ TEST_CASE("alsa: with no sound card there are no render endpoints and no descrip
 TEST_CASE("alsa: spatial object rendering is refused outright, even with a device to hand",
           "[audio][alsa-null][concurrency]") {
     const NullDevices devices;
-    const auto probed = ac3::audio::probe_spatial_capability("null");
+    const auto probed = iclforge::audio::probe_spatial_capability("null");
     REQUIRE_FALSE(probed.has_value());
-    CHECK(probed.error() == ac3::audio::SpatialError::kNoBackend);
-    ac3::audio::SpatialObjectSink sink;
+    CHECK(probed.error() == iclforge::audio::SpatialError::kNoBackend);
+    iclforge::audio::SpatialObjectSink sink;
     const auto started = sink.start("null", 48000, 0, 4);
     REQUIRE_FALSE(started.has_value());
-    CHECK(started.error() == ac3::audio::SpatialError::kNoBackend);
+    CHECK(started.error() == iclforge::audio::SpatialError::kNoBackend);
     sink.stop();
     CHECK_FALSE(sink.running());
 }
@@ -785,10 +785,10 @@ TEST_CASE("alsa: a configuration whose default card is not a number still enumer
         dir / "card_name.conf",
         std::string{alsa_null::kNullDevices} + "defaults.pcm.!card \"NotANumber\"\n");
     const alsa_null::AlsaConfigScope scope{config};
-    const auto render = ac3::audio::enumerate_render_devices(48000);
+    const auto render = iclforge::audio::enumerate_render_devices(48000);
     REQUIRE(render.has_value());
     CHECK(render->empty());
     // The named devices still open under it.
-    ac3::audio::MonitorSink sink;
+    iclforge::audio::MonitorSink sink;
     CHECK(sink.start("null", 48000, 2).has_value());
 }

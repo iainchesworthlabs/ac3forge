@@ -11,7 +11,7 @@
 #include "iclforge/audio/speakers.hpp"
 #include "iclforge/base/layout.hpp"
 
-// ac3::audio::PcmOutput's two decisions, against fake device records
+// iclforge::audio::PcmOutput's two decisions, against fake device records
 // (src/audio/src/pcm_output.cpp): how wide to open the stream, and which
 // output each rendered channel goes to.
 //
@@ -19,18 +19,18 @@
 // which is a plain record the enumeration fills in, so a fake one puts every
 // case - an 8-channel HDMI endpoint, a stereo jack, a backend that cannot say
 // how many channels it has - in front of the same code the real enumeration
-// feeds. The scatter itself belongs to ac3::render::Routing and is tested in
+// feeds. The scatter itself belongs to iclforge::render::Routing and is tested in
 // tests/render/test_routing.cpp; playing through a real device is
 // test_monitor_live.cpp's [.][monitor-live] case and the receiver.
 
 namespace {
 
-using ac3::audio::PcmOutput;
-using ac3::audio::RenderDeviceInfo;
-using ac3::audio::speaker_routing;
-using ac3::base::Location;
-using ac3::render::OutputLayout;
-using ac3::render::Routing;
+using iclforge::audio::PcmOutput;
+using iclforge::audio::RenderDeviceInfo;
+using iclforge::audio::speaker_routing;
+using iclforge::base::Location;
+using iclforge::render::OutputLayout;
+using iclforge::render::Routing;
 
 RenderDeviceInfo device_of(std::uint16_t channels, std::uint32_t speakers) {
     RenderDeviceInfo device;
@@ -56,14 +56,14 @@ std::optional<Location> at_output(const Routing& patch, const OutputLayout& layo
 
 TEST_CASE("pcm output: the stream is as wide as the device says it is",
           "[audio-backend][pcm-output]") {
-    using ac3::audio::output_width;
+    using iclforge::audio::output_width;
 
     // An 8-channel HDMI endpoint playing a 5.1 programme: eight outputs, not
     // six handed to a mixer to spread.
-    CHECK(output_width(device_of(8, ac3::audio::kSpeakers7_1), 6) == 8);
+    CHECK(output_width(device_of(8, iclforge::audio::kSpeakers7_1), 6) == 8);
     // And narrower than the programme, which is the fold the caller has
     // already been told about (RenderDeviceInfo::channels' own comment).
-    CHECK(output_width(device_of(2, ac3::audio::kSpeakersStereo), 6) == 2);
+    CHECK(output_width(device_of(2, iclforge::audio::kSpeakersStereo), 6) == 2);
     // 0 is "the backend cannot say", not "no channels": the caller's own
     // width is then the only number there is.
     CHECK(output_width(device_of(0, 0), 6) == 6);
@@ -83,7 +83,7 @@ TEST_CASE("pcm output: the default patch puts each channel on its own speaker's 
     // and in the mask's own bit order the side pair comes AFTER the rear
     // pair - outputs 6 and 7, not 4 and 5. Patched by index, a 5.1 stream
     // would come out of this device's rear speakers.
-    const auto patch = speaker_routing(*layout, ac3::audio::kSpeakers7_1, 8);
+    const auto patch = speaker_routing(*layout, iclforge::audio::kSpeakers7_1, 8);
     CHECK(patch.channels() == 6);
     CHECK(patch.outputs() == 8);
     CHECK(at_output(patch, *layout, 0) == Location::kLeft);
@@ -108,7 +108,7 @@ TEST_CASE("pcm output: a speaker the device has not got is left unpatched",
     // surrounds have nowhere to go. Audible silence is the wrong answer for a
     // player, which is why the caller is told - it should fold to stereo
     // first (§7.8), and RenderDeviceInfo::channels is what tells it to.
-    const auto patch = speaker_routing(*layout, ac3::audio::kSpeakersStereo, 2);
+    const auto patch = speaker_routing(*layout, iclforge::audio::kSpeakersStereo, 2);
     CHECK(at_output(patch, *layout, 0) == Location::kLeft);
     CHECK(at_output(patch, *layout, 1) == Location::kRight);
     // Read in the layout's own slot order, which is the coded one - L C R Ls
@@ -135,7 +135,7 @@ TEST_CASE("pcm output: with no mask the width's own arrangement is assumed",
     CHECK(at_output(patch, *layout, 4) == Location::kLeftSurround);
     CHECK(at_output(patch, *layout, 5) == Location::kRightSurround);
     CHECK(patch.unpatched_channels() == 0);
-    CHECK(patch == speaker_routing(*layout, ac3::audio::kSpeakers5_1, 6));
+    CHECK(patch == speaker_routing(*layout, iclforge::audio::kSpeakers5_1, 6));
 
     // Ten channels is 5.1.4 or 7.1.2 and a bare width does not say which, so
     // there is nothing to match against and the identity is what is left.
@@ -157,7 +157,7 @@ TEST_CASE("pcm output: a slot placed by angle is the caller's patch to make",
     REQUIRE(layout.has_value());
     REQUIRE(layout->slots() == 3);
 
-    const auto patch = speaker_routing(*layout, ac3::audio::kSpeakers5_1, 6);
+    const auto patch = speaker_routing(*layout, iclforge::audio::kSpeakers5_1, 6);
     CHECK(at_output(patch, *layout, 0) == Location::kLeft);
     CHECK(at_output(patch, *layout, 1) == Location::kRight);
     CHECK(patch.output_of(2) == Routing::kUnassigned);

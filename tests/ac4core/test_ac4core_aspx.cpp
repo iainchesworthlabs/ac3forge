@@ -23,10 +23,10 @@
 
 namespace {
 
-namespace aspx = ac4::detail::aspx;
+namespace aspx = iclforge::ac4::detail::aspx;
 // ac4core's own complex type (dsp/complex.hpp), not std::complex: every
 // function under test takes this type since D14a (planning/ac4.md).
-using Complex = ac4::detail::dsp::Complex<double>;
+using Complex = iclforge::ac4::detail::dsp::Complex<double>;
 
 // std::polar returns std::complex<double>, not this file's own Complex.
 [[nodiscard]] Complex polar(double magnitude, double angle) {

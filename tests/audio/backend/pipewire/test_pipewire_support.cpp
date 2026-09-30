@@ -19,17 +19,17 @@
 // and name a node. A spa_dict is a plain struct - no libpipewire connection,
 // daemon or hardware needed to build one by hand.
 
-using ac3::pipewire::carrier_rate;
-using ac3::pipewire::client_api_is_relay;
-using ac3::pipewire::codec_listed;
-using ac3::pipewire::unplayed_frames;
-using ac3::pipewire::iec958_codec_for;
-using ac3::pipewire::is_audio_sink;
-using ac3::pipewire::is_audio_source;
-using ac3::pipewire::node_friendly_name;
-using ac3::pipewire::stream_owner_pid;
-using ac3::pipewire::node_id;
-using ac3::audio::BitstreamFormat;
+using iclforge::pipewire::carrier_rate;
+using iclforge::pipewire::client_api_is_relay;
+using iclforge::pipewire::codec_listed;
+using iclforge::pipewire::unplayed_frames;
+using iclforge::pipewire::iec958_codec_for;
+using iclforge::pipewire::is_audio_sink;
+using iclforge::pipewire::is_audio_source;
+using iclforge::pipewire::node_friendly_name;
+using iclforge::pipewire::stream_owner_pid;
+using iclforge::pipewire::node_id;
+using iclforge::audio::BitstreamFormat;
 
 namespace {
 
@@ -45,7 +45,7 @@ spa_dict make_dict(const spa_dict_item* items, std::uint32_t n_items) {
 }  // namespace
 
 TEST_CASE("E-AC-3 runs the link four times as fast as its content, same as ALSA") {
-    // The PipeWire-side twin of ac3::alsa::carrier_rate() - see
+    // The PipeWire-side twin of iclforge::alsa::carrier_rate() - see
     // pipewire_support.hpp's comment on why it is a second three-line
     // function rather than a cross-backend helper.
     CHECK(carrier_rate(BitstreamFormat::kAc3, 48000) == 48000);

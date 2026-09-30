@@ -18,7 +18,7 @@
 // of three kinds of sink on an endpoint, open a per-process tap. The
 // production implementation for each platform (platform/<os>/, behind
 // platform_audio_devices() in platform_services.hpp) forwards
-// to ac3::audio; tests/crucible/fake_devices.hpp scripts endpoints and
+// to iclforge::audio; tests/crucible/fake_devices.hpp scripts endpoints and
 // records what was submitted, so the frame loop, the five routes, the
 // bypass fold and a mode switch mid-stream run in a plain Catch2 process
 // with no audio hardware.
@@ -28,7 +28,7 @@
 // MonitorSink/PassthroughSink/SpatialObjectSink document, so the stage's
 // submit_with_patience() behaves identically over a fake and over WASAPI.
 
-namespace ac3::crucible {
+namespace iclforge::crucible {
 
 // What a render endpoint probe finds, before the policy turns it into
 // EndpointFacts (output_policy.hpp adds the null-sink judgement).
@@ -52,7 +52,7 @@ public:
                                                                  bool eac3) = 0;
     virtual bool submit(std::span<const std::byte> burst) = 0;
     // True from a successful start() until stop() - or until the endpoint
-    // goes away under the stream, exactly as ac3::audio::PassthroughSink::
+    // goes away under the stream, exactly as iclforge::audio::PassthroughSink::
     // running() documents (the production implementation just forwards to
     // it). OutputStage reads this so a re-probe that finds the same
     // mode/endpoint does not keep a dead sink forever: a lost device can
@@ -78,7 +78,7 @@ public:
     // which is latency once the sink has started consuming.
     [[nodiscard]] virtual std::size_t queued_frames() const = 0;
     // Same contract as BurstSink::running() above, forwarding to
-    // ac3::audio::MonitorSink::running().
+    // iclforge::audio::MonitorSink::running().
     [[nodiscard]] virtual bool running() const = 0;
     virtual void stop() = 0;
 };
@@ -91,10 +91,10 @@ public:
                                                                  std::uint32_t sample_rate,
                                                                  std::uint32_t static_channels,
                                                                  std::uint32_t max_dynamic_objects) = 0;
-    virtual bool submit(std::span<const ac3::audio::DynamicObjectUpdate> dynamic,
-                        std::span<const ac3::audio::StaticObjectUpdate> static_objects) = 0;
+    virtual bool submit(std::span<const iclforge::audio::DynamicObjectUpdate> dynamic,
+                        std::span<const iclforge::audio::StaticObjectUpdate> static_objects) = 0;
     // Same contract as BurstSink::running() above, forwarding to
-    // ac3::audio::SpatialObjectSink::running().
+    // iclforge::audio::SpatialObjectSink::running().
     [[nodiscard]] virtual bool running() const = 0;
     virtual void stop() = 0;
 };
@@ -126,4 +126,4 @@ public:
     [[nodiscard]] virtual std::unique_ptr<TapSource> tap() = 0;
 };
 
-}  // namespace ac3::crucible
+}  // namespace iclforge::crucible

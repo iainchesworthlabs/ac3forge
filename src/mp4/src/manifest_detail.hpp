@@ -14,15 +14,15 @@
 // throughout: this header is included by more than one .cpp in the same
 // target, so ODR requires it (matching isobmff_detail.hpp's own note).
 
-namespace mp4::manifest_detail {
+namespace iclforge::mp4::manifest_detail {
 
-// A segment's duration counts in the track's timescale (mp4::timescale_of()),
+// A segment's duration counts in the track's timescale (iclforge::mp4::timescale_of()),
 // which is its sample rate unless AudioTrack::timescale says otherwise.
 [[nodiscard]] inline double segment_seconds(const SegmentInfo& segment, std::uint32_t timescale) {
     return static_cast<double>(segment.duration_samples) / static_cast<double>(timescale);
 }
 
-// mp4::segment_info over a whole batch list, for both modules' MediaSegment
+// iclforge::mp4::segment_info over a whole batch list, for both modules' MediaSegment
 // convenience overloads - a manifest only ever reads a segment's bookkeeping,
 // never its bytes (mp4.hpp's SegmentInfo).
 [[nodiscard]] inline std::vector<SegmentInfo> segment_infos(
@@ -42,7 +42,7 @@ namespace mp4::manifest_detail {
 // whole asset is the only honest answer a single-representation helper with
 // no per-segment target has; a real ABR ladder builder would want a
 // measured peak instead, out of this module's single-representation scope
-// (mp4.hpp's own header comment on mp4:: staying single-track).
+// (mp4.hpp's own header comment on iclforge::mp4:: staying single-track).
 [[nodiscard]] inline std::uint64_t estimate_bandwidth_bps(std::span<const SegmentInfo> segments,
                                                           std::uint32_t timescale) {
     std::uint64_t total_bytes = 0;
@@ -58,4 +58,4 @@ namespace mp4::manifest_detail {
         std::llround(static_cast<double>(total_bytes) * 8.0 / total_seconds));
 }
 
-}  // namespace mp4::manifest_detail
+}  // namespace iclforge::mp4::manifest_detail

@@ -44,7 +44,7 @@
 #include "alsa_support.hpp"
 #include "device_names.hpp"
 
-namespace ac3::audio {
+namespace iclforge::audio {
 
 namespace {
 
@@ -460,4 +460,4 @@ std::expected<void, CaptureError> Capture::start_process_loopback(std::uint32_t,
     return std::unexpected(CaptureError::kProcessLoopbackUnavailable);
 }
 
-}  // namespace ac3::audio
+}  // namespace iclforge::audio

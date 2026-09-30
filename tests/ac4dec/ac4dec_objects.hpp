@@ -94,7 +94,7 @@ struct ExpectedObject {
 struct BuiltObjectStream {
     std::vector<std::vector<std::byte>> frames;  // raw_ac4_frame()s
     // The writer's records of each frame, in the order the decoder reads them.
-    std::vector<std::vector<ac4::SyntaxRecord>> traces;
+    std::vector<std::vector<iclforge::ac4::SyntaxRecord>> traces;
     std::vector<ExpectedObject> full;  // the objects of full decoding, LFE first
     std::vector<ExpectedObject> core;  // and of core decoding
     // Full decoding's metadata timing: per frame, each block's update sample

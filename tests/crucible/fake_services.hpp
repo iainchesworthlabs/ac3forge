@@ -26,7 +26,7 @@
 // Thread-safe where the engine's frame thread and the test thread both touch
 // them, matching fake_devices.hpp.
 
-namespace ac3::crucible::testing {
+namespace iclforge::crucible::testing {
 
 class FakeSessionMonitor final : public SessionMonitor {
 public:
@@ -291,4 +291,4 @@ private:
     std::size_t removes_ = 0;
 };
 
-}  // namespace ac3::crucible::testing
+}  // namespace iclforge::crucible::testing

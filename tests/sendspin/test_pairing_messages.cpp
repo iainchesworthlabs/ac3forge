@@ -17,10 +17,10 @@
 
 namespace {
 
-using ac3::sendspin::Dialect;
-namespace pm = ac3::sendspin::pairing_messages;
-namespace m = ac3::sendspin::messages;
-namespace json = ac3::sendspin::json;
+using iclforge::sendspin::Dialect;
+namespace pm = iclforge::sendspin::pairing_messages;
+namespace m = iclforge::sendspin::messages;
+namespace json = iclforge::sendspin::json;
 
 struct Parsed {
     std::string text;

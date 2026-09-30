@@ -74,7 +74,7 @@ def read_size(elf: pathlib.Path) -> dict[str, int]:
 
 
 # GNU ld map lines for an input section look like
-#     .text._ZN3ac3...   0x00001234       0x56 path/to/file.o
+#     .text._ZN8iclforge...   0x00001234       0x56 path/to/file.o
 # or, when the name is long enough to need one, the name on its own line and
 # the address/size/origin on the next. Both forms are handled: the second is
 # the common one for C++ mangled section names, and missing it would silently
@@ -189,8 +189,8 @@ def main() -> int:
         rows = []
         for key, label in (
             ("heap.peak_bytes", "Peak heap"),
-            ("static.frame_decoder_bytes", "sizeof(ac3::FrameDecoder)"),
-            ("static.eac3_decoder_bytes", "sizeof(ac3::Eac3Decoder)"),
+            ("static.frame_decoder_bytes", "sizeof(iclforge::FrameDecoder)"),
+            ("static.eac3_decoder_bytes", "sizeof(iclforge::Eac3Decoder)"),
             ("static.pcm_bytes",
              "Caller-owned PCM (0: the probe reads the decoders' blocks in place)"),
         ):

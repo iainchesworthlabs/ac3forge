@@ -33,7 +33,7 @@ constexpr double kRate = 48000.0;
 std::vector<std::vector<float>> make_material(int channels) {
     std::mt19937 rng(0x5EA3);
     std::normal_distribution<double> gauss(0.0, 0.08);
-    const std::size_t total = static_cast<std::size_t>(kFrames) * ac3::kSamplesPerFrame;
+    const std::size_t total = static_cast<std::size_t>(kFrames) * iclforge::kSamplesPerFrame;
     std::vector<std::vector<float>> out(static_cast<std::size_t>(channels),
                                         std::vector<float>(total, 0.0f));
     double lowpass = 0.0;
@@ -66,26 +66,26 @@ std::vector<std::span<const float>> spans_for(const std::vector<std::vector<floa
     spans.reserve(channels.size());
     for (const auto& channel : channels) {
         spans.emplace_back(channel.data() + (static_cast<std::size_t>(frame) *
-                                             ac3::kSamplesPerFrame),
-                           ac3::kSamplesPerFrame);
+                                             iclforge::kSamplesPerFrame),
+                           iclforge::kSamplesPerFrame);
     }
     return spans;
 }
 
-ac3::eac3::FrameConfig config_for(ac3::quality::Criterion search, ac3::Acmod acmod, bool lfe,
-                                  std::uint32_t kbps) {
-    ac3::eac3::FrameConfig config;
+iclforge::eac3::FrameConfig config_for(iclforge::quality::Criterion search, iclforge::Acmod acmod,
+                                       bool lfe, std::uint32_t kbps) {
+    iclforge::eac3::FrameConfig config;
     config.acmod = acmod;
     config.lfe = lfe;
     config.bitrate_kbps = kbps;
-    config.coupling = acmod != ac3::Acmod::k1_0;
+    config.coupling = acmod != iclforge::Acmod::k1_0;
     config.search = search;
     return config;
 }
 
-std::vector<std::vector<std::byte>> encode_all(const ac3::eac3::FrameConfig& config,
+std::vector<std::vector<std::byte>> encode_all(const iclforge::eac3::FrameConfig& config,
                                                const std::vector<std::vector<float>>& material) {
-    ac3::eac3::FrameEncoder encoder(config);
+    iclforge::eac3::FrameEncoder encoder(config);
     std::vector<std::vector<std::byte>> frames;
     for (int frame = 0; frame < kFrames; ++frame) {
         const auto spans = spans_for(material, frame);
@@ -109,9 +109,9 @@ TEST_CASE("the E-AC-3 encoder's model still matches a real decode with the searc
     const auto surround = make_material(6);  // 5 fbw + LFE
     for (const std::uint32_t kbps : {192U, 448U}) {
         {
-            ac3::verify::Eac3MirrorEncoder mirror{ac3::eac3::AccessUnitConfig{
-                .independent = config_for(ac3::quality::Criterion::kDistortion,
-                                          ac3::Acmod::k2_0, false, kbps)}};
+            iclforge::verify::Eac3MirrorEncoder mirror{iclforge::eac3::AccessUnitConfig{
+                .independent = config_for(iclforge::quality::Criterion::kDistortion,
+                                          iclforge::Acmod::k2_0, false, kbps)}};
             for (int frame = 0; frame < kFrames; ++frame) {
                 auto checked = mirror.encode_access_unit(spans_for(stereo, frame));
                 REQUIRE(checked.has_value());
@@ -120,9 +120,9 @@ TEST_CASE("the E-AC-3 encoder's model still matches a real decode with the searc
             }
         }
         {
-            ac3::verify::Eac3MirrorEncoder mirror{ac3::eac3::AccessUnitConfig{
-                .independent = config_for(ac3::quality::Criterion::kDistortion,
-                                          ac3::Acmod::k3_2, true, kbps)}};
+            iclforge::verify::Eac3MirrorEncoder mirror{iclforge::eac3::AccessUnitConfig{
+                .independent = config_for(iclforge::quality::Criterion::kDistortion,
+                                          iclforge::Acmod::k3_2, true, kbps)}};
             for (int frame = 0; frame < kFrames; ++frame) {
                 auto checked = mirror.encode_access_unit(spans_for(surround, frame));
                 REQUIRE(checked.has_value());
@@ -136,7 +136,7 @@ TEST_CASE("the E-AC-3 encoder's model still matches a real decode with the searc
 TEST_CASE("the E-AC-3 search off changes nothing about the encode", "[quality][search][eac3]") {
     const auto material = make_material(2);
     const auto config =
-        config_for(ac3::quality::Criterion::kNone, ac3::Acmod::k2_0, false, 192);
+        config_for(iclforge::quality::Criterion::kNone, iclforge::Acmod::k2_0, false, 192);
     const auto first = encode_all(config, material);
     const auto second = encode_all(config, material);
     REQUIRE(first.size() == second.size());
@@ -149,7 +149,7 @@ TEST_CASE("the E-AC-3 search off changes nothing about the encode", "[quality][s
 TEST_CASE("the E-AC-3 search is deterministic", "[quality][search][eac3]") {
     const auto material = make_material(2);
     const auto config =
-        config_for(ac3::quality::Criterion::kDistortion, ac3::Acmod::k2_0, false, 256);
+        config_for(iclforge::quality::Criterion::kDistortion, iclforge::Acmod::k2_0, false, 256);
     const auto first = encode_all(config, material);
     const auto second = encode_all(config, material);
     for (std::size_t frame = 0; frame < first.size(); ++frame) {
@@ -162,9 +162,11 @@ TEST_CASE("the E-AC-3 search actually changes the emitted parameters",
           "[quality][search][eac3]") {
     const auto material = make_material(2);
     const auto without = encode_all(
-        config_for(ac3::quality::Criterion::kNone, ac3::Acmod::k2_0, false, 192), material);
+        config_for(iclforge::quality::Criterion::kNone, iclforge::Acmod::k2_0, false, 192),
+        material);
     const auto with = encode_all(
-        config_for(ac3::quality::Criterion::kDistortion, ac3::Acmod::k2_0, false, 192), material);
+        config_for(iclforge::quality::Criterion::kDistortion, iclforge::Acmod::k2_0, false, 192),
+        material);
     bool differs = false;
     for (std::size_t frame = 0; frame < without.size(); ++frame) {
         differs = differs || without[frame] != with[frame];
@@ -182,10 +184,10 @@ TEST_CASE("searching E-AC-3 on distortion lowers the decoded error",
           "[quality][search][eac3]") {
     const auto material = make_material(2);
 
-    const auto decoded_error = [&](ac3::quality::Criterion criterion, std::uint32_t kbps) {
+    const auto decoded_error = [&](iclforge::quality::Criterion criterion, std::uint32_t kbps) {
         const auto frames =
-            encode_all(config_for(criterion, ac3::Acmod::k2_0, false, kbps), material);
-        ac3::Eac3Decoder decoder;
+            encode_all(config_for(criterion, iclforge::Acmod::k2_0, false, kbps), material);
+        iclforge::Eac3Decoder decoder;
         double signal = 0.0;
         double noise = 0.0;
         // Frame 0's output is the previous (empty) frame's second half, same
@@ -198,7 +200,7 @@ TEST_CASE("searching E-AC-3 on distortion lowers the decoded error",
             for (std::size_t ch = 0; ch < sub.channels.size(); ++ch) {
                 const auto& out = sub.channels[ch];
                 const auto& in = material[ch];
-                const std::size_t base = (frame - 1) * ac3::kSamplesPerFrame;
+                const std::size_t base = (frame - 1) * iclforge::kSamplesPerFrame;
                 for (std::size_t n = 0; n < out.size(); ++n) {
                     const double reference = static_cast<double>(in[base + n]);
                     const double error = static_cast<double>(out[n]) - reference;
@@ -211,8 +213,8 @@ TEST_CASE("searching E-AC-3 on distortion lowers the decoded error",
     };
 
     for (const std::uint32_t kbps : {192U, 448U}) {
-        const double off = decoded_error(ac3::quality::Criterion::kNone, kbps);
-        const double searched = decoded_error(ac3::quality::Criterion::kDistortion, kbps);
+        const double off = decoded_error(iclforge::quality::Criterion::kNone, kbps);
+        const double searched = decoded_error(iclforge::quality::Criterion::kDistortion, kbps);
         CAPTURE(kbps, off, searched);
         // Never worse than the switch margin the search itself uses - see
         // kCodeSwitchMarginDb in eac3_frame.cpp.
@@ -227,10 +229,12 @@ TEST_CASE("searching E-AC-3 on distortion lowers the decoded error",
 // above checks for CBR.
 TEST_CASE("the E-AC-3 search stays inert under VBR", "[quality][search][eac3]") {
     const auto material = make_material(2);
-    auto without = config_for(ac3::quality::Criterion::kNone, ac3::Acmod::k2_0, false, 448);
-    without.vbr = ac3::eac3::VbrConfig{.quality = 0.6};
-    auto with = config_for(ac3::quality::Criterion::kDistortion, ac3::Acmod::k2_0, false, 448);
-    with.vbr = ac3::eac3::VbrConfig{.quality = 0.6};
+    auto without =
+        config_for(iclforge::quality::Criterion::kNone, iclforge::Acmod::k2_0, false, 448);
+    without.vbr = iclforge::eac3::VbrConfig{.quality = 0.6};
+    auto with =
+        config_for(iclforge::quality::Criterion::kDistortion, iclforge::Acmod::k2_0, false, 448);
+    with.vbr = iclforge::eac3::VbrConfig{.quality = 0.6};
 
     const auto first = encode_all(without, material);
     const auto second = encode_all(with, material);
@@ -264,11 +268,11 @@ TEST_CASE("a pinned E-AC-3 fgaincod round-trips through a real decode",
     for (const int fgaincod : {0, 2, 4, 7}) {
         for (const std::uint32_t kbps : {192U, 448U}) {
             {
-                auto config = config_for(ac3::quality::Criterion::kNone, ac3::Acmod::k2_0,
+                auto config = config_for(iclforge::quality::Criterion::kNone, iclforge::Acmod::k2_0,
                                          false, kbps);
                 config.fgaincod = fgaincod;
-                ac3::verify::Eac3MirrorEncoder mirror{
-                    ac3::eac3::AccessUnitConfig{.independent = config}};
+                iclforge::verify::Eac3MirrorEncoder mirror{
+                    iclforge::eac3::AccessUnitConfig{.independent = config}};
                 for (int frame = 0; frame < kFrames; ++frame) {
                     auto checked = mirror.encode_access_unit(spans_for(stereo, frame));
                     REQUIRE(checked.has_value());
@@ -280,11 +284,11 @@ TEST_CASE("a pinned E-AC-3 fgaincod round-trips through a real decode",
                 // Coupled 5.1: the one shape that exercises cplfgaincod's own
                 // slot ahead of the per-channel run, and the LFE's at the end
                 // of it.
-                auto config = config_for(ac3::quality::Criterion::kNone, ac3::Acmod::k3_2,
+                auto config = config_for(iclforge::quality::Criterion::kNone, iclforge::Acmod::k3_2,
                                          true, kbps);
                 config.fgaincod = fgaincod;
-                ac3::verify::Eac3MirrorEncoder mirror{
-                    ac3::eac3::AccessUnitConfig{.independent = config}};
+                iclforge::verify::Eac3MirrorEncoder mirror{
+                    iclforge::eac3::AccessUnitConfig{.independent = config}};
                 for (int frame = 0; frame < kFrames; ++frame) {
                     auto checked = mirror.encode_access_unit(spans_for(surround, frame));
                     REQUIRE(checked.has_value());
@@ -304,7 +308,8 @@ TEST_CASE("a pinned E-AC-3 fgaincod round-trips through a real decode",
 TEST_CASE("E-AC-3 fgaincod defaults to writing no fgaincode element at all",
           "[quality][search][eac3]") {
     const auto material = make_material(2);
-    auto defaulted = config_for(ac3::quality::Criterion::kNone, ac3::Acmod::k2_0, false, 192);
+    auto defaulted =
+        config_for(iclforge::quality::Criterion::kNone, iclforge::Acmod::k2_0, false, 192);
     auto pinned_default = defaulted;
     pinned_default.fgaincod = 4;  // the same code, stated rather than implied
     auto pinned_other = defaulted;
@@ -348,7 +353,8 @@ TEST_CASE("the E-AC-3 search never raises fgaincod above the default",
     // the encode must be identical to what the one-axis search produces.
     // Pinning the default reproduces "one axis" exactly - it takes fgaincod
     // out of the candidate set without changing anything else.
-    auto two_axis = config_for(ac3::quality::Criterion::kDistortion, ac3::Acmod::k2_0, false, 96);
+    auto two_axis =
+        config_for(iclforge::quality::Criterion::kDistortion, iclforge::Acmod::k2_0, false, 96);
     auto one_axis = two_axis;
     one_axis.fgaincod = 4;  // the default, stated - no element, no candidate
 
@@ -365,8 +371,8 @@ TEST_CASE("the E-AC-3 search never raises fgaincod above the default",
     // does not oblige the search to TAKE it - the refit may still reject it -
     // so this only asserts the encode remains valid and decodable, which is
     // what the mirror check below covers properly.
-    const int curve_640 = ac3::rate_adaptive_fgaincod(640, 2);
+    const int curve_640 = iclforge::rate_adaptive_fgaincod(640, 2);
     CHECK(curve_640 < 4);
-    const int curve_96 = ac3::rate_adaptive_fgaincod(96, 2);
+    const int curve_96 = iclforge::rate_adaptive_fgaincod(96, 2);
     CHECK(curve_96 > 4);
 }

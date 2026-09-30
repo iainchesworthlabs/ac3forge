@@ -33,12 +33,12 @@
 // mutex guards the callback and the stats against a caller reading stats()
 // from its own thread at the same time.
 
-namespace ac3::audio {
+namespace iclforge::audio {
 
-using ac3::pipewire::Context;
-using ac3::pipewire::Core;
-using ac3::pipewire::Registry;
-using ac3::pipewire::ThreadLoop;
+using iclforge::pipewire::Context;
+using iclforge::pipewire::Core;
+using iclforge::pipewire::Registry;
+using iclforge::pipewire::ThreadLoop;
 
 std::string_view describe(DeviceWatchError error) {
     switch (error) {
@@ -89,10 +89,11 @@ struct DeviceWatcher::Impl {
         }
         const std::string_view kind{type};
         if (kind == PW_TYPE_INTERFACE_Node) {
-            if (!ac3::pipewire::is_audio_sink(*props) && !ac3::pipewire::is_audio_source(*props)) {
+            if (!iclforge::pipewire::is_audio_sink(*props) &&
+                !iclforge::pipewire::is_audio_source(*props)) {
                 return;
             }
-            std::string device_id = ac3::pipewire::node_id(*props);
+            std::string device_id = iclforge::pipewire::node_id(*props);
             self->nodes.emplace(id, device_id);
             self->deliver(DeviceChange::kAdded, std::move(device_id));
             return;
@@ -173,7 +174,7 @@ std::expected<void, DeviceWatchError> DeviceWatcher::start(Callback callback) {
         return std::unexpected(DeviceWatchError::kAlreadyRunning);
     }
 
-    ac3::pipewire::ensure_initialized();
+    iclforge::pipewire::ensure_initialized();
 
     impl_->loop = ThreadLoop{pw_thread_loop_new("ac3audio-devicewatch", nullptr)};
     if (!impl_->loop) {
@@ -264,4 +265,4 @@ DeviceWatchStats DeviceWatcher::stats() const {
     return DeviceWatchStats{.events_delivered = impl_->events.load(std::memory_order_relaxed)};
 }
 
-}  // namespace ac3::audio
+}  // namespace iclforge::audio

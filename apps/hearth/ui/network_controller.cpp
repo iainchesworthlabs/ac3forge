@@ -12,11 +12,11 @@
 
 // Qt's <QObject> headers define `slots` as a macro unless QT_NO_KEYWORDS is
 // set, which this project's Qt targets do not
-// (hearth-ui-qt-slots-macro-collides-with-render-layout): ac3::render::
+// (hearth-ui-qt-slots-macro-collides-with-render-layout): iclforge::render::
 // OutputLayout::slots() is a real method name elsewhere in this engine, and
 // left alone the macro would rewrite it into nonsense the moment a header
 // pulling it in joins a Qt header in one translation unit. Nothing below
-// spells the word, but network_sinks.hpp's own includes reach ac3::render
+// spells the word, but network_sinks.hpp's own includes reach iclforge::render
 // nowhere - this line is precautionary, matching hearth_controller.cpp's own,
 // for whichever future include first makes the two meet here too.
 #undef slots
@@ -40,11 +40,11 @@
 #include "sink_firmware.hpp"
 #include "sink_firmware_view.hpp"
 
-namespace ac3::hearth::ui {
+namespace iclforge::hearth::ui {
 
 namespace {
 
-namespace forge = ac3::sendspin::ac3forge;
+namespace forge = iclforge::sendspin::ac3forge;
 
 constexpr int kPollMs = 60;
 
@@ -107,20 +107,21 @@ bool g_network_discovery = true;
 // values. kDefault reads as "wall" too: Speaker::Realization's own comment
 // says kHeight is "numerically the same as kDefault", i.e. a height slot
 // nobody has re-tiered yet is already wall-mounted in effect.
-[[nodiscard]] QString realization_name(ac3::render::Speaker::Realization realization) {
+[[nodiscard]] QString realization_name(iclforge::render::Speaker::Realization realization) {
     switch (realization) {
-        case ac3::render::Speaker::Realization::kTop: return QStringLiteral("ceiling");
-        case ac3::render::Speaker::Realization::kUpFiring: return QStringLiteral("upfiring");
-        case ac3::render::Speaker::Realization::kHeight:
-        case ac3::render::Speaker::Realization::kDefault:
+        case iclforge::render::Speaker::Realization::kTop: return QStringLiteral("ceiling");
+        case iclforge::render::Speaker::Realization::kUpFiring: return QStringLiteral("upfiring");
+        case iclforge::render::Speaker::Realization::kHeight:
+        case iclforge::render::Speaker::Realization::kDefault:
         default:
             return QStringLiteral("wall");
     }
 }
-[[nodiscard]] ac3::render::Speaker::Realization realization_from_name(const QString& name) {
-    if (name == QStringLiteral("ceiling")) return ac3::render::Speaker::Realization::kTop;
-    if (name == QStringLiteral("upfiring")) return ac3::render::Speaker::Realization::kUpFiring;
-    return ac3::render::Speaker::Realization::kHeight;
+[[nodiscard]] iclforge::render::Speaker::Realization realization_from_name(const QString& name) {
+    if (name == QStringLiteral("ceiling")) return iclforge::render::Speaker::Realization::kTop;
+    if (name == QStringLiteral("upfiring"))
+        return iclforge::render::Speaker::Realization::kUpFiring;
+    return iclforge::render::Speaker::Realization::kHeight;
 }
 
 // A/52 Table 5.8, plus "+ LFE" appended by the caller - "3/2" for acmod 7,
@@ -142,13 +143,13 @@ bool g_network_discovery = true;
 // reason - there is no sink-reported default to read instead (SinkFacts::
 // intended_settings's own comment), so this is a starting point for editing,
 // never asserted as what the sink is actually running.
-[[nodiscard]] ac3::render::OutputLayout draft_layout(const std::optional<std::string>& text) {
+[[nodiscard]] iclforge::render::OutputLayout draft_layout(const std::optional<std::string>& text) {
     if (text) {
-        if (const std::optional<ac3::render::OutputLayout> parsed = ac3::render::OutputLayout::parse(*text)) {
+        if (const std::optional<iclforge::render::OutputLayout> parsed = iclforge::render::OutputLayout::parse(*text)) {
             return *parsed;
         }
     }
-    return ac3::render::OutputLayout::stereo();
+    return iclforge::render::OutputLayout::stereo();
 }
 
 // This sink's own draft/cached Settings, ALWAYS fully populated in every
@@ -160,18 +161,18 @@ bool g_network_discovery = true;
 // DecoderEac3.qml's own "?? default" convention instead, applied in
 // sink_decoder_settings_to_map() below, since every decoder key is
 // independently optional on the wire in a way the speaker fields are not.
-[[nodiscard]] forge::Settings sink_settings_base(const ac3::hearth::SinkFacts& facts) {
+[[nodiscard]] forge::Settings sink_settings_base(const iclforge::hearth::SinkFacts& facts) {
     if (facts.intended_settings) {
         return *facts.intended_settings;
     }
     forge::Settings settings;
-    const ac3::render::OutputLayout layout = draft_layout(std::nullopt);
+    const iclforge::render::OutputLayout layout = draft_layout(std::nullopt);
     settings.layout = std::string(layout.text());
     const auto outputs = static_cast<std::size_t>(facts.ac3forge_support ? facts.ac3forge_support->outputs.count : 0);
     if (facts.ac3forge_support && facts.ac3forge_support->management.routing) {
-        std::array<char, ac3::render::Routing::kTextBytes> text{};
-        if (const std::optional<ac3::render::Routing> identity =
-                ac3::render::Routing::identity(layout.slots(), outputs)) {
+        std::array<char, iclforge::render::Routing::kTextBytes> text{};
+        if (const std::optional<iclforge::render::Routing> identity =
+                iclforge::render::Routing::identity(layout.slots(), outputs)) {
             if (identity->format(text) > 0) {
                 settings.routing = std::string(text.data());
             }
@@ -197,24 +198,24 @@ struct LayoutFields {
 // deliberately duplicated rather than shared, for the same reason the enum
 // name tables above are: that file is this initiative's own hottest file
 // today.
-[[nodiscard]] LayoutFields layout_fields(const ac3::render::OutputLayout& layout) {
+[[nodiscard]] LayoutFields layout_fields(const iclforge::render::OutputLayout& layout) {
     LayoutFields fields;
     const std::size_t slots = layout.slots();
     fields.labels.reserve(static_cast<qsizetype>(slots));
     fields.small.reserve(static_cast<qsizetype>(slots));
     fields.is_lfe.reserve(static_cast<qsizetype>(slots));
     bool heights_mixed = false;
-    std::optional<ac3::render::Speaker::Realization> shared_realization;
+    std::optional<iclforge::render::Speaker::Realization> shared_realization;
     for (std::size_t slot = 0; slot < slots; ++slot) {
         std::array<char, 32> name{};
         layout.slot_name(slot, name);
-        const ac3::render::Speaker& speaker = layout.slot(slot);
+        const iclforge::render::Speaker& speaker = layout.slot(slot);
         fields.labels.push_back(QString::fromLatin1(name.data()));
         fields.small.push_back(speaker.small);
-        const bool is_lfe = speaker.kind == ac3::render::Speaker::Kind::kLfe;
+        const bool is_lfe = speaker.kind == iclforge::render::Speaker::Kind::kLfe;
         fields.is_lfe.push_back(is_lfe);
         fields.has_lfe = fields.has_lfe || is_lfe;
-        if (speaker.location.has_value() && ac3::render::OutputLayout::is_realizable_height(*speaker.location)) {
+        if (speaker.location.has_value() && iclforge::render::OutputLayout::is_realizable_height(*speaker.location)) {
             fields.has_height = true;
             if (!shared_realization) {
                 shared_realization = speaker.realization;
@@ -232,7 +233,7 @@ struct LayoutFields {
 // any of the Speakers/Decoder tabs' edits can reach it:
 // ServerSession::ac3forge_command() refuses a command the state does not
 // list, whatever the support object says the sink could manage.
-[[nodiscard]] bool sink_takes_settings(const ac3::hearth::SinkFacts& facts) {
+[[nodiscard]] bool sink_takes_settings(const iclforge::hearth::SinkFacts& facts) {
     if (!facts.ac3forge_state) {
         return false;
     }
@@ -240,7 +241,7 @@ struct LayoutFields {
     return std::find(listed.begin(), listed.end(), forge::Command::kSettings) != listed.end();
 }
 
-[[nodiscard]] QVariantMap sink_speaker_settings_to_map(const ac3::hearth::SinkFacts& facts) {
+[[nodiscard]] QVariantMap sink_speaker_settings_to_map(const iclforge::hearth::SinkFacts& facts) {
     QVariantMap map;
     if (!facts.ac3forge_support) {
         return map;
@@ -249,7 +250,7 @@ struct LayoutFields {
     // this is false - an edit it offered would otherwise be dropped silently.
     map[QStringLiteral("settingsAccepted")] = sink_takes_settings(facts);
     const forge::Settings settings = sink_settings_base(facts);
-    const ac3::render::OutputLayout layout = draft_layout(settings.layout);
+    const iclforge::render::OutputLayout layout = draft_layout(settings.layout);
     const LayoutFields fields = layout_fields(layout);
     const auto outputs = static_cast<std::size_t>(facts.ac3forge_support->outputs.count);
 
@@ -277,10 +278,11 @@ struct LayoutFields {
 
     QVariantList routing;
     routing.reserve(static_cast<qsizetype>(fields.labels.size()));
-    const std::optional<ac3::render::Routing> parsed_routing =
-        settings.routing ? ac3::render::Routing::parse(*settings.routing, outputs) : std::nullopt;
+    const std::optional<iclforge::render::Routing> parsed_routing =
+        settings.routing ? iclforge::render::Routing::parse(*settings.routing, outputs)
+                         : std::nullopt;
     for (std::size_t slot = 0; slot < static_cast<std::size_t>(fields.labels.size()); ++slot) {
-        routing.push_back(parsed_routing ? parsed_routing->output_of(slot) : ac3::render::Routing::kUnassigned);
+        routing.push_back(parsed_routing ? parsed_routing->output_of(slot) : iclforge::render::Routing::kUnassigned);
     }
     map[QStringLiteral("routing")] = routing;
 
@@ -299,7 +301,7 @@ struct LayoutFields {
     return map;
 }
 
-[[nodiscard]] QVariantMap sink_decoder_settings_to_map(const ac3::hearth::SinkFacts& facts) {
+[[nodiscard]] QVariantMap sink_decoder_settings_to_map(const iclforge::hearth::SinkFacts& facts) {
     QVariantMap map;
     if (!facts.ac3forge_support) {
         return map;
@@ -326,7 +328,8 @@ struct LayoutFields {
 // `refused` is set when the last push this window made to this sink was
 // not sent (NetworkController::note_push()): that, not "Nothing sent yet.",
 // is what the report has to say then.
-[[nodiscard]] QVariantMap sink_report_to_map(const ac3::hearth::SinkFacts& facts, bool refused) {
+[[nodiscard]] QVariantMap sink_report_to_map(const iclforge::hearth::SinkFacts& facts,
+                                             bool refused) {
     QVariantMap map;
     if (!facts.ac3forge_support) {
         return map;
@@ -388,7 +391,7 @@ struct LayoutFields {
     return map;
 }
 
-[[nodiscard]] QVariantMap sink_only_on_sink_to_map(const ac3::hearth::SinkFacts& facts) {
+[[nodiscard]] QVariantMap sink_only_on_sink_to_map(const iclforge::hearth::SinkFacts& facts) {
     QVariantMap map;
     if (!facts.ac3forge_support) {
         return map;
@@ -410,7 +413,7 @@ struct LayoutFields {
     return map;
 }
 
-[[nodiscard]] QVariantMap row_to_variant(const ac3::hearth::SinkRow& row) {
+[[nodiscard]] QVariantMap row_to_variant(const iclforge::hearth::SinkRow& row) {
     QVariantMap map;
     map[QStringLiteral("id")] = QString::fromStdString(row.id);
     map[QStringLiteral("name")] = QString::fromStdString(row.name);
@@ -430,7 +433,8 @@ struct LayoutFields {
 // way the settings pages' own fields do (this file's header comment on A6's
 // second slice). poll() computes it once, from status.groups, and passes it
 // in here - the same boundary, drawn for the same reason.
-[[nodiscard]] QVariantMap detail_to_variant(const ac3::hearth::SinkDetail& detail, bool in_group) {
+[[nodiscard]] QVariantMap detail_to_variant(const iclforge::hearth::SinkDetail& detail,
+                                            bool in_group) {
     QVariantMap map;
     map[QStringLiteral("id")] = QString::fromStdString(detail.id);
     map[QStringLiteral("name")] = QString::fromStdString(detail.name);
@@ -456,12 +460,12 @@ struct LayoutFields {
 
 // At least one member connected right now - NetworkOutputStatus::Entry::ready's
 // own comment says why this does not require every member.
-[[nodiscard]] bool group_ready(const ac3::hearth::GroupFacts& facts) {
+[[nodiscard]] bool group_ready(const iclforge::hearth::GroupFacts& facts) {
     return std::any_of(facts.members.begin(), facts.members.end(),
-                       [](const ac3::hearth::GroupMemberFacts& member) { return member.connected; });
+                       [](const iclforge::hearth::GroupMemberFacts& member) { return member.connected; });
 }
 
-[[nodiscard]] QVariantMap group_row_to_variant(const ac3::hearth::GroupRow& row) {
+[[nodiscard]] QVariantMap group_row_to_variant(const iclforge::hearth::GroupRow& row) {
     QVariantMap map;
     map[QStringLiteral("id")] = QString::fromStdString(row.id);
     map[QStringLiteral("name")] = QString::fromStdString(row.name);
@@ -474,7 +478,7 @@ struct LayoutFields {
     return map;
 }
 
-[[nodiscard]] QVariantMap group_member_to_variant(const ac3::hearth::GroupMemberRow& member) {
+[[nodiscard]] QVariantMap group_member_to_variant(const iclforge::hearth::GroupMemberRow& member) {
     QVariantMap map;
     map[QStringLiteral("sinkId")] = QString::fromStdString(member.sink_id);
     map[QStringLiteral("name")] = QString::fromStdString(member.name);
@@ -487,13 +491,13 @@ struct LayoutFields {
     return map;
 }
 
-[[nodiscard]] QVariantMap group_detail_to_variant(const ac3::hearth::GroupDetail& detail) {
+[[nodiscard]] QVariantMap group_detail_to_variant(const iclforge::hearth::GroupDetail& detail) {
     QVariantMap map;
     map[QStringLiteral("id")] = QString::fromStdString(detail.id);
     map[QStringLiteral("name")] = QString::fromStdString(detail.name);
     QVariantList members;
     members.reserve(static_cast<qsizetype>(detail.members.size()));
-    for (const ac3::hearth::GroupMemberRow& member : detail.members) {
+    for (const iclforge::hearth::GroupMemberRow& member : detail.members) {
         members.push_back(group_member_to_variant(member));
     }
     map[QStringLiteral("members")] = members;
@@ -510,7 +514,7 @@ struct LayoutFields {
 // most 4 MiB, so anything past twice that is not an image for one.
 constexpr qint64 kMaxFirmwareFileBytes = 8 * 1024 * 1024;
 
-[[nodiscard]] QVariantMap firmware_panel_to_map(const ac3::hearth::FirmwarePanel& panel) {
+[[nodiscard]] QVariantMap firmware_panel_to_map(const iclforge::hearth::FirmwarePanel& panel) {
     QVariantMap map;
     map[QStringLiteral("answering")] = panel.answering;
     map[QStringLiteral("statusText")] = QString::fromStdString(panel.status_text);
@@ -552,7 +556,7 @@ NetworkController::NetworkController(QObject* parent)
       // constructor carries the identical comment for the identical reason.
       settings_(QSettings::defaultFormat(), QSettings::UserScope, QStringLiteral("ac3forge"),
                 QStringLiteral("Hearth")),
-      settings_store_(std::make_unique<ac3::hearth::ui::QSettingsStore>(settings_)),
+      settings_store_(std::make_unique<iclforge::hearth::ui::QSettingsStore>(settings_)),
       pairing_store_(shared_pairing_store()) {
     poll_timer_.setInterval(kPollMs);
     connect(&poll_timer_, &QTimer::timeout, this, &NetworkController::poll);
@@ -565,7 +569,7 @@ NetworkController::~NetworkController() {
     // The groups this controller published go first, so that a group nothing
     // else holds leaves its members while the host can still tell them (a
     // group the engine still holds just finds no members once the host has
-    // gone - ac3::sendspin::Group's own comment).
+    // gone - iclforge::sendspin::Group's own comment).
     NetworkOutputStatus::instance().set_groups({});
     sinks_engine_.reset();
 }
@@ -581,17 +585,17 @@ void NetworkController::start() {
     // Kept in the settings, so that every pairing outlives a restart
     // (server_identity.hpp). Read before the NetworkSinks exists, while nothing
     // else can be using this controller's settings.
-    const std::optional<ac3::sendspin::noise::KeyPair> identity =
-        ac3::hearth::load_or_make_server_identity(*settings_store_);
+    const std::optional<iclforge::sendspin::noise::KeyPair> identity =
+        iclforge::hearth::load_or_make_server_identity(*settings_store_);
     if (!identity.has_value()) {
         return;
     }
     // The Settings page's own name for this computer (network/name), or
     // "Hearth on <host>" until the person gives one.
-    const ac3::hearth::EngineSettings settings =
-        ac3::hearth::load_settings(*settings_store_, QSysInfo::machineHostName().toStdString());
-    const ac3::hearth::NetworkSinksOptions options{.browse = g_network_discovery};
-    sinks_engine_ = std::make_unique<ac3::hearth::NetworkSinks>(*identity, settings.network.name, *pairing_store_,
+    const iclforge::hearth::EngineSettings settings = iclforge::hearth::load_settings(
+        *settings_store_, QSysInfo::machineHostName().toStdString());
+    const iclforge::hearth::NetworkSinksOptions options{.browse = g_network_discovery};
+    sinks_engine_ = std::make_unique<iclforge::hearth::NetworkSinks>(*identity, settings.network.name, *pairing_store_,
                                                                 options);
     poll_timer_.start();
     poll();
@@ -718,7 +722,7 @@ void NetworkController::poll() {
     for (const std::string& line : sinks_engine_->take_log()) {
         qInfo().noquote() << "sendspin:" << QString::fromStdString(line);
     }
-    const ac3::hearth::NetworkStatus status = sinks_engine_->status();
+    const iclforge::hearth::NetworkStatus status = sinks_engine_->status();
     poll_firmware(status);
 
     // Every sink id that belongs to at least one group, computed once here
@@ -727,8 +731,8 @@ void NetworkController::poll() {
     // banner) needs to tell a paired-but-ungrouped sink from one already
     // playing to something.
     std::unordered_set<std::string> grouped_sink_ids;
-    for (const ac3::hearth::GroupFacts& group_facts : status.groups) {
-        for (const ac3::hearth::GroupMemberFacts& member : group_facts.members) {
+    for (const iclforge::hearth::GroupFacts& group_facts : status.groups) {
+        for (const iclforge::hearth::GroupMemberFacts& member : group_facts.members) {
             grouped_sink_ids.insert(member.sink_id);
         }
     }
@@ -741,11 +745,11 @@ void NetworkController::poll() {
     QVariantMap decoder_settings;
     QVariantMap report;
     QVariantMap only_on_sink;
-    for (const ac3::hearth::SinkFacts& facts : status.sinks) {
-        rows.push_back(row_to_variant(ac3::hearth::to_row(facts)));
+    for (const iclforge::hearth::SinkFacts& facts : status.sinks) {
+        rows.push_back(row_to_variant(iclforge::hearth::to_row(facts)));
         if (facts.id == status.selected_id) {
-            selected = detail_to_variant(ac3::hearth::to_detail(facts), grouped_sink_ids.count(facts.id) > 0);
-            selected_settable = facts.pair_state == ac3::hearth::PairState::kPaired &&
+            selected = detail_to_variant(iclforge::hearth::to_detail(facts), grouped_sink_ids.count(facts.id) > 0);
+            selected_settable = facts.pair_state == iclforge::hearth::PairState::kPaired &&
                                  facts.ac3forge_support.has_value();
             if (selected_settable) {
                 speaker_settings = sink_speaker_settings_to_map(facts);
@@ -765,17 +769,17 @@ void NetworkController::poll() {
     // state (connected can flip without the group's own row text changing),
     // and HearthController's own poll() needs to see that promptly rather
     // than only when this controller's own UI-facing fields happen to.
-    std::map<std::string, ac3::hearth::ui::NetworkOutputStatus::Entry> output_status;
-    for (const ac3::hearth::GroupFacts& facts : status.groups) {
-        group_rows.push_back(group_row_to_variant(ac3::hearth::to_group_row(facts)));
+    std::map<std::string, iclforge::hearth::ui::NetworkOutputStatus::Entry> output_status;
+    for (const iclforge::hearth::GroupFacts& facts : status.groups) {
+        group_rows.push_back(group_row_to_variant(iclforge::hearth::to_group_row(facts)));
         if (facts.id == status.selected_group_id) {
-            selected_group = group_detail_to_variant(ac3::hearth::to_group_detail(facts));
+            selected_group = group_detail_to_variant(iclforge::hearth::to_group_detail(facts));
         }
-        output_status.emplace(facts.id, ac3::hearth::ui::NetworkOutputStatus::Entry{
+        output_status.emplace(facts.id, iclforge::hearth::ui::NetworkOutputStatus::Entry{
                                             .ready = group_ready(facts),
                                             .group = sinks_engine_->group(facts.id)});
     }
-    ac3::hearth::ui::NetworkOutputStatus::instance().set_groups(std::move(output_status));
+    iclforge::hearth::ui::NetworkOutputStatus::instance().set_groups(std::move(output_status));
 
     const QString new_selected_id = QString::fromStdString(status.selected_id);
     const QString new_pairing_error = QString::fromStdString(status.pairing_error);
@@ -803,13 +807,13 @@ void NetworkController::poll() {
     emit sinksChanged();
 }
 
-void NetworkController::poll_firmware(const ac3::hearth::NetworkStatus& status) {
+void NetworkController::poll_firmware(const iclforge::hearth::NetworkStatus& status) {
     // The sink the Firmware tab is open on, and the address mDNS gave for it,
     // where its web server is too.
     std::string sink_id;
     std::string address;
     if (firmware_watching_) {
-        for (const ac3::hearth::SinkFacts& facts : status.sinks) {
+        for (const iclforge::hearth::SinkFacts& facts : status.sinks) {
             if (facts.id == status.selected_id) {
                 sink_id = facts.id;
                 address = facts.address;
@@ -826,8 +830,8 @@ void NetworkController::poll_firmware(const ac3::hearth::NetworkStatus& status) 
         // update ended before then. The plan says when the row is kept, and
         // it is kept or let go at every poll from the same reading that lets
         // the client go, so no client goes with its sink still kept.
-        const ac3::hearth::FirmwareClientPlan plan =
-            ac3::hearth::plan_firmware_client(it->second->busy(), it->second->snapshot(), shown, address);
+        const iclforge::hearth::FirmwareClientPlan plan =
+            iclforge::hearth::plan_firmware_client(it->second->busy(), it->second->snapshot(), shown, address);
         sinks_engine_->keep_sink(it->first, plan.keep_sink);
         if (plan.let_go) {
             it = firmware_.erase(it);
@@ -837,7 +841,7 @@ void NetworkController::poll_firmware(const ac3::hearth::NetworkStatus& status) 
         ++it;
     }
     if (!sink_id.empty() && !address.empty() && firmware_.find(sink_id) == firmware_.end()) {
-        auto client = std::make_unique<ac3::hearth::SinkFirmware>(address);
+        auto client = std::make_unique<iclforge::hearth::SinkFirmware>(address);
         client->set_watching(true);
         firmware_.emplace(sink_id, std::move(client));
     }
@@ -852,20 +856,20 @@ void NetworkController::poll_firmware(const ac3::hearth::NetworkStatus& status) 
         }
         return;
     }
-    const ac3::hearth::SinkFirmware::Snapshot snapshot = found->second->snapshot();
+    const iclforge::hearth::SinkFirmware::Snapshot snapshot = found->second->snapshot();
     if (sink_id == firmware_sink_id_ && snapshot.generation == firmware_generation_ && !sink_firmware_.isEmpty()) {
         return;
     }
     firmware_sink_id_ = sink_id;
     firmware_generation_ = snapshot.generation;
-    QVariantMap panel = firmware_panel_to_map(ac3::hearth::to_firmware_panel(snapshot, ac3::git_describe));
+    QVariantMap panel = firmware_panel_to_map(iclforge::hearth::to_firmware_panel(snapshot, iclforge::git_describe));
     if (panel != sink_firmware_) {
         sink_firmware_ = std::move(panel);
         emit sinkFirmwareChanged();
     }
 }
 
-ac3::hearth::SinkFirmware* NetworkController::selected_firmware() const {
+iclforge::hearth::SinkFirmware* NetworkController::selected_firmware() const {
     const auto found = firmware_.find(firmware_sink_id_);
     return found != firmware_.end() ? found->second.get() : nullptr;
 }
@@ -896,19 +900,20 @@ void NetworkController::chooseSinkFirmwareFile(const QUrl& file) {
     } else {
         const QByteArray bytes = image.readAll();
         const auto* first = reinterpret_cast<const std::uint8_t*>(bytes.constData());
-        ac3::hearth::ReadFirmwareFile read =
-            ac3::hearth::read_firmware_file(std::vector<std::uint8_t>(first, first + bytes.size()));
+        iclforge::hearth::ReadFirmwareFile read = iclforge::hearth::read_firmware_file(
+            std::vector<std::uint8_t>(first, first + bytes.size()));
         if (!read.file) {
             candidate[QStringLiteral("refusal")] = QString::fromStdString(read.why);
         } else {
-            const ac3::hearth::SinkFirmware* client = selected_firmware();
-            const ac3::hearth::FirmwareCandidate checked = ac3::hearth::to_candidate(
-                *read.file, client != nullptr ? client->snapshot() : ac3::hearth::SinkFirmware::Snapshot{});
+            const iclforge::hearth::SinkFirmware* client = selected_firmware();
+            const iclforge::hearth::FirmwareCandidate checked = iclforge::hearth::to_candidate(
+                *read.file, client != nullptr ? client->snapshot() : iclforge::hearth::SinkFirmware::Snapshot{});
             candidate[QStringLiteral("version")] = QString::fromStdString(checked.version);
             candidate[QStringLiteral("text")] = QString::fromStdString(checked.text);
             candidate[QStringLiteral("refusal")] = QString::fromStdString(checked.refusal);
             if (checked.refusal.empty()) {
-                firmware_file_ = std::make_unique<ac3::hearth::FirmwareFile>(std::move(*read.file));
+                firmware_file_ =
+                    std::make_unique<iclforge::hearth::FirmwareFile>(std::move(*read.file));
                 firmware_file_sink_id_ = firmware_sink_id_;
             }
         }
@@ -927,7 +932,7 @@ void NetworkController::clearSinkFirmwareFile() {
 }
 
 void NetworkController::updateSinkFirmware() {
-    ac3::hearth::SinkFirmware* client = selected_firmware();
+    iclforge::hearth::SinkFirmware* client = selected_firmware();
     // The file was checked for the sink the tab showed then; a selection
     // changed since sends nothing.
     if (client != nullptr && firmware_file_ && firmware_file_sink_id_ == firmware_sink_id_) {
@@ -941,21 +946,21 @@ void NetworkController::updateSinkFirmware() {
 }
 
 void NetworkController::rollbackSinkFirmware() {
-    if (ac3::hearth::SinkFirmware* client = selected_firmware()) {
+    if (iclforge::hearth::SinkFirmware* client = selected_firmware()) {
         (void)client->rollback();
     }
 }
 
 void NetworkController::restartSink() {
-    if (ac3::hearth::SinkFirmware* client = selected_firmware()) {
+    if (iclforge::hearth::SinkFirmware* client = selected_firmware()) {
         (void)client->restart();
     }
 }
 
 namespace {
-[[nodiscard]] std::optional<ac3::hearth::SinkFacts> selected_sink_facts(const ac3::hearth::NetworkSinks& sinks) {
-    const ac3::hearth::NetworkStatus status = sinks.status();
-    for (const ac3::hearth::SinkFacts& facts : status.sinks) {
+[[nodiscard]] std::optional<iclforge::hearth::SinkFacts> selected_sink_facts(const iclforge::hearth::NetworkSinks& sinks) {
+    const iclforge::hearth::NetworkStatus status = sinks.status();
+    for (const iclforge::hearth::SinkFacts& facts : status.sinks) {
         if (facts.id == status.selected_id) {
             return facts;
         }
@@ -968,11 +973,11 @@ void NetworkController::setSinkLayoutText(const QString& text) {
     if (!sinks_engine_) {
         return;
     }
-    const std::optional<ac3::hearth::SinkFacts> facts = selected_sink_facts(*sinks_engine_);
+    const std::optional<iclforge::hearth::SinkFacts> facts = selected_sink_facts(*sinks_engine_);
     if (!facts || !facts->ac3forge_support) {
         return;
     }
-    if (!ac3::render::OutputLayout::parse(text.toStdString())) {
+    if (!iclforge::render::OutputLayout::parse(text.toStdString())) {
         return;
     }
     forge::Settings settings = sink_settings_base(*facts);
@@ -990,12 +995,12 @@ void NetworkController::setSinkHeights(const QString& realization) {
     if (!sinks_engine_) {
         return;
     }
-    const std::optional<ac3::hearth::SinkFacts> facts = selected_sink_facts(*sinks_engine_);
+    const std::optional<iclforge::hearth::SinkFacts> facts = selected_sink_facts(*sinks_engine_);
     if (!facts || !facts->ac3forge_support) {
         return;
     }
     forge::Settings settings = sink_settings_base(*facts);
-    const ac3::render::OutputLayout layout = draft_layout(settings.layout);
+    const iclforge::render::OutputLayout layout = draft_layout(settings.layout);
     settings.layout = std::string(layout.with_realization(realization_from_name(realization)).text());
     note_push(sinks_engine_->push_sink_settings(facts->id, settings), facts->id);
 }
@@ -1004,13 +1009,13 @@ void NetworkController::setSinkSpeakerSmall(int slot, bool small) {
     if (!sinks_engine_ || slot < 0) {
         return;
     }
-    const std::optional<ac3::hearth::SinkFacts> facts = selected_sink_facts(*sinks_engine_);
+    const std::optional<iclforge::hearth::SinkFacts> facts = selected_sink_facts(*sinks_engine_);
     if (!facts || !facts->ac3forge_support) {
         return;
     }
     forge::Settings settings = sink_settings_base(*facts);
-    const ac3::render::OutputLayout layout = draft_layout(settings.layout);
-    const std::optional<ac3::render::OutputLayout> changed = layout.with_small(static_cast<std::size_t>(slot), small);
+    const iclforge::render::OutputLayout layout = draft_layout(settings.layout);
+    const std::optional<iclforge::render::OutputLayout> changed = layout.with_small(static_cast<std::size_t>(slot), small);
     if (!changed) {
         return;
     }
@@ -1022,7 +1027,7 @@ void NetworkController::setSinkTrimDb(int output, double db) {
     if (!sinks_engine_ || output < 0) {
         return;
     }
-    const std::optional<ac3::hearth::SinkFacts> facts = selected_sink_facts(*sinks_engine_);
+    const std::optional<iclforge::hearth::SinkFacts> facts = selected_sink_facts(*sinks_engine_);
     if (!facts || !facts->ac3forge_support) {
         return;
     }
@@ -1038,7 +1043,7 @@ void NetworkController::setSinkDelayMs(int output, double ms) {
     if (!sinks_engine_ || output < 0) {
         return;
     }
-    const std::optional<ac3::hearth::SinkFacts> facts = selected_sink_facts(*sinks_engine_);
+    const std::optional<iclforge::hearth::SinkFacts> facts = selected_sink_facts(*sinks_engine_);
     if (!facts || !facts->ac3forge_support) {
         return;
     }
@@ -1054,7 +1059,7 @@ void NetworkController::setSinkCrossoverHz(double hz) {
     if (!sinks_engine_) {
         return;
     }
-    const std::optional<ac3::hearth::SinkFacts> facts = selected_sink_facts(*sinks_engine_);
+    const std::optional<iclforge::hearth::SinkFacts> facts = selected_sink_facts(*sinks_engine_);
     if (!facts || !facts->ac3forge_support) {
         return;
     }
@@ -1067,20 +1072,20 @@ void NetworkController::setSinkRoutingAssignment(int slot, int output) {
     if (!sinks_engine_ || slot < 0) {
         return;
     }
-    const std::optional<ac3::hearth::SinkFacts> facts = selected_sink_facts(*sinks_engine_);
+    const std::optional<iclforge::hearth::SinkFacts> facts = selected_sink_facts(*sinks_engine_);
     if (!facts || !facts->ac3forge_support || !facts->ac3forge_support->management.routing) {
         return;
     }
     forge::Settings settings = sink_settings_base(*facts);
-    const ac3::render::OutputLayout layout = draft_layout(settings.layout);
+    const iclforge::render::OutputLayout layout = draft_layout(settings.layout);
     const auto outputs = static_cast<std::size_t>(facts->ac3forge_support->outputs.count);
-    std::optional<ac3::render::Routing> patch =
-        settings.routing ? ac3::render::Routing::parse(*settings.routing, outputs)
-                          : ac3::render::Routing::identity(layout.slots(), outputs);
+    std::optional<iclforge::render::Routing> patch =
+        settings.routing ? iclforge::render::Routing::parse(*settings.routing, outputs)
+                          : iclforge::render::Routing::identity(layout.slots(), outputs);
     if (!patch || !patch->assign(static_cast<std::size_t>(slot), output)) {
         return;
     }
-    std::array<char, ac3::render::Routing::kTextBytes> text{};
+    std::array<char, iclforge::render::Routing::kTextBytes> text{};
     if (patch->format(text) == 0 && patch->channels() > 0) {
         return;
     }
@@ -1092,7 +1097,7 @@ void NetworkController::setSinkDecoderSettings(const QVariantMap& settings_map) 
     if (!sinks_engine_) {
         return;
     }
-    const std::optional<ac3::hearth::SinkFacts> facts = selected_sink_facts(*sinks_engine_);
+    const std::optional<iclforge::hearth::SinkFacts> facts = selected_sink_facts(*sinks_engine_);
     if (!facts || !facts->ac3forge_support) {
         return;
     }
@@ -1145,7 +1150,7 @@ void NetworkController::startSinkIdentify(int slot) {
     if (!sinks_engine_ || slot < 0) {
         return;
     }
-    const std::optional<ac3::hearth::SinkFacts> facts = selected_sink_facts(*sinks_engine_);
+    const std::optional<iclforge::hearth::SinkFacts> facts = selected_sink_facts(*sinks_engine_);
     if (!facts || !facts->ac3forge_support || !facts->ac3forge_support->management.identify) {
         return;
     }
@@ -1156,11 +1161,11 @@ void NetworkController::stopSinkIdentify() {
     if (!sinks_engine_) {
         return;
     }
-    const std::optional<ac3::hearth::SinkFacts> facts = selected_sink_facts(*sinks_engine_);
+    const std::optional<iclforge::hearth::SinkFacts> facts = selected_sink_facts(*sinks_engine_);
     if (!facts) {
         return;
     }
     sinks_engine_->push_sink_identify(facts->id, std::nullopt);
 }
 
-}  // namespace ac3::hearth::ui
+}  // namespace iclforge::hearth::ui

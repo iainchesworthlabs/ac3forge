@@ -77,7 +77,7 @@
 
 #include "coreaudio_support.hpp"
 
-namespace ac3::coreaudio {
+namespace iclforge::coreaudio {
 
 namespace {
 
@@ -285,4 +285,4 @@ void destroy_process_tap(ProcessTap& tap) {
     tap.format = AudioStreamBasicDescription{};
 }
 
-}  // namespace ac3::coreaudio
+}  // namespace iclforge::coreaudio

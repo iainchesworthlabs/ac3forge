@@ -1,7 +1,7 @@
 // Drive Atmos objects from an authored scene instead of hand-rolled trig.
 //
 // atmos_objects.cpp computes each object's position with its own per-frame
-// sin/cos math. ac3::oba::ObjectScene is the shared layer that replaces that:
+// sin/cos math. iclforge::oba::ObjectScene is the shared layer that replaces that:
 // named objects with position/gain automation, each segment saying how it is
 // traversed (hold, linear, smooth), evaluated once per frame into the
 // ObjectPlacement span AtmosEncoder::encode_frame wants. A scene also has a
@@ -25,8 +25,8 @@
 int main() {
     constexpr int kObjects = 2;
 
-    using ac3::oba::Interpolation;
-    auto built = ac3::oba::ObjectScene::create({
+    using iclforge::oba::Interpolation;
+    auto built = iclforge::oba::ObjectScene::create({
         // A slow sweep from the left wall to the right, easing in and out of
         // the front-centre cue so the pan does not corner where the segments
         // meet - that is what kSmooth buys over a straight line.
@@ -57,9 +57,10 @@ int main() {
     }
     const auto& scene = *built;
 
-    ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, kObjects};
+    iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, kObjects};
 
-    std::vector<std::vector<float>> sources(kObjects, std::vector<float>(ac3::kSamplesPerFrame));
+    std::vector<std::vector<float>> sources(kObjects,
+                                            std::vector<float>(iclforge::kSamplesPerFrame));
     std::vector<std::span<const float>> views;
     for (const auto& source : sources) {
         views.emplace_back(source);
@@ -68,18 +69,18 @@ int main() {
 
     // Filled in place once per frame rather than reallocated - evaluate_into
     // is the allocation-free form for exactly this loop.
-    std::vector<ac3::oba::ObjectPlacement> placement(kObjects);
+    std::vector<iclforge::oba::ObjectPlacement> placement(kObjects);
     std::vector<std::byte> stream;
     for (int frame = 0; frame < 93; ++frame) {  // three seconds
         for (std::size_t obj = 0; obj < kObjects; ++obj) {
-            for (int n = 0; n < ac3::kSamplesPerFrame; ++n) {
-                const double t = (frame * ac3::kSamplesPerFrame + n) / 48000.0;
+            for (int n = 0; n < iclforge::kSamplesPerFrame; ++n) {
+                const double t = (frame * iclforge::kSamplesPerFrame + n) / 48000.0;
                 sources[obj][static_cast<std::size_t>(n)] =
                     static_cast<float>(0.3 * std::sin(2.0 * std::numbers::pi * tones[obj] * t));
             }
         }
 
-        const double seconds = frame * ac3::kSamplesPerFrame / 48000.0;
+        const double seconds = frame * iclforge::kSamplesPerFrame / 48000.0;
         scene.evaluate_into(seconds, placement);
 
         const auto unit = encoder.encode_frame(views, placement);
@@ -96,7 +97,7 @@ int main() {
     // The same scene as text. Save this next to the stream and `ac3cli
     // atmos-path out.ec3 scene.json` reproduces the motion from the file -
     // and so does the keyframe grammar, which that command still reads.
-    const auto text = ac3::oba::to_json(scene);
+    const auto text = iclforge::oba::to_json(scene);
     fmt::printf("scene serialises to %zu bytes of JSON, %.1f s long\n", text.size(),
                 scene.duration_s());
     return 0;

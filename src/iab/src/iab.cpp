@@ -22,7 +22,7 @@
 // convention every other parse_* helper in that file follows). Confirmed against the oracle's
 // real byte layout, never consulted for its code, per CONTRIBUTING.md's clean-room rule.
 
-namespace ac3iab {
+namespace iclforge::iab {
 
 namespace {
 
@@ -176,4 +176,4 @@ std::expected<std::vector<IABitstreamFrame>, IabError> parse_iabitstream(const s
     return parse_iabitstream(in);
 }
 
-}  // namespace ac3iab
+}  // namespace iclforge::iab

@@ -9,15 +9,15 @@
 #include "iclforge/adm/export.hpp"
 #include "iclforge/adm/model.hpp"
 
-// Top-level entry point for ac3adm::ac3adm: parses a BW64/RF64 (or plain,
+// Top-level entry point for iclforge::adm::ac3adm: parses a BW64/RF64 (or plain,
 // sub-4 GB RIFF/WAVE carrying the same chunks) file into an AdmDocument -
 // the ADM object graph plus the <chna> join table plus the decoded PCM.
 //
 // Roadmap item B1 phase 1 of 3 ('s "ADM BWF reader feeding the
 // JOC encoder" entry): this module knows nothing about AC-3, E-AC-3 or the
 // JOC/Atmos object layer - it is a container + XML metadata reader only, the
-// same "codec-blind" shape as matroska::matroska, mp4::mp4 and
-// mpegts::mpegts. Mapping the parsed graph onto ac3::oba::AtmosEncoder is a
+// same "codec-blind" shape as iclforge::matroska, iclforge::mp4 and
+// iclforge::mpegts. Mapping the parsed graph onto iclforge::oba::AtmosEncoder is a
 // separate, later task (phase 2); a worked end-to-end example is phase 3.
 //
 // Implemented on top of two vendored third-party libraries rather than a
@@ -27,7 +27,7 @@
 // the ADM XML object model. Both are maintained by the same BBC/IRT team
 // that authored the underlying ITU-R Recommendations themselves. Neither
 // library's own types appear in this header or model.hpp - see model.hpp's
-// header comment for why (the namespace collision libadm's own `adm::`
+// header comment for why (the namespace collision libadm's own `::adm::`
 // would otherwise cause is the main reason).
 //
 // Primary sources these two libraries themselves implement, and that this
@@ -41,7 +41,7 @@
 //     audioTrackFormat/audioTrackUID) and its ID/coordinate/time-format
 //     conventions.
 
-namespace ac3adm {
+namespace iclforge::adm {
 
 enum class AdmError : std::uint8_t {
     kCannotOpen,        // path could not be opened for reading, OR libbw64 opened it and then
@@ -63,7 +63,7 @@ enum class AdmError : std::uint8_t {
                          // typed exceptions), so this module cannot reliably tell them apart
                          // and does not claim to.
     kMalformedAdm,       // libadm rejected the document with one of its own typed
-                         // adm::error::AdmException diagnostics - duplicate IDs, an unresolved
+                         // ::adm::error::AdmException diagnostics - duplicate IDs, an unresolved
                          // reference, an invalid enumerated value, the audioFormatExtended root
                          // not found, ...
     kOther,              // any other failure surfaced by libbw64/libadm; see the exception message
@@ -87,8 +87,8 @@ enum class AdmError : std::uint8_t {
 
 // Roadmap item IM2 ("JOC -> ADM BWF writer"): the write-side counterpart of parse_bw64, using the
 // same two vendored libraries in the other direction - libadm's document-builder API
-// (adm::AudioObject::create() and friends, see src/adm/src/adm_model.cpp) to turn an AdmModel
-// into a libadm adm::Document, adm::writeXml() to serialize it, and libbw64's Bw64Writer
+// (::adm::AudioObject::create() and friends, see src/adm/src/adm_model.cpp) to turn an AdmModel
+// into a libadm ::adm::Document, ::adm::writeXml() to serialize it, and libbw64's Bw64Writer
 // (bw64::writeFile()) to write the BW64 container (<fmt >, <chna>, <axml>, <data>).
 enum class AdmWriteError : std::uint8_t {
     kInvalidDocument,  // an AdmModel cross-reference (a *_refs entry, or an AdmDocument::chna
@@ -125,7 +125,7 @@ inline constexpr std::uint16_t kWriteBitDepth = 24;
 // (AudioObject::id, AudioPackFormat::id, ChnaEntry::uid, ...) are used here ONLY as correlation
 // keys while this function wires the object graph together (matching a *_refs entry back to the
 // element it names) - they never appear literally in the written file. Real, BS.2076-2-formatted
-// IDs are assigned by libadm's own adm::reassignIds() once the whole graph is built, and it is
+// IDs are assigned by libadm's own ::adm::reassignIds() once the whole graph is built, and it is
 // THOSE that end up in the XML and in <chna>'s own AudioId rows. A caller building the AdmModel to
 // pass here is therefore free to use any unique, stable strings it likes for `id`/`uid` fields -
 // "obj0", "pack3", whatever is convenient - not just the "AO_1001"-style strings parse_bw64 itself
@@ -143,4 +143,4 @@ inline constexpr std::uint16_t kWriteBitDepth = 24;
 [[nodiscard]] AC3ADM_EXPORT std::expected<void, AdmWriteError> write_bw64(const std::string& path,
                                                                           const AdmDocument& document);
 
-}  // namespace ac3adm
+}  // namespace iclforge::adm

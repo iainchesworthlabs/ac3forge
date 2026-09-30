@@ -54,7 +54,7 @@
 // does not compile) and a test supplies over memory.
 //
 // AC-4 (planning/ac4.md, I2): the units are the stream's sync frames, and
-// each one's length the samples ac4::Decoder puts out for it, which
+// each one's length the samples iclforge::ac4::Decoder puts out for it, which
 // ac4_stream.hpp works out before anything is decoded. What differs is where
 // a decoder can start. An AC-4 decoder needs the configuration an I-frame
 // sends, and its output runs behind its input by latency_samples() - 1,313
@@ -73,7 +73,7 @@
 // the presentation it would choose with no preferences; ac4_presentation()
 // says which the listener's choice would play, for the player to compare.
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 // What an ItemLoader hands over: the item's elementary stream, and the part
 // of it to play.
@@ -121,7 +121,7 @@ public:
     [[nodiscard]] static std::expected<Session, std::string> open(
         const std::string& path, const ItemLoader& loader,
         std::optional<int> programme = std::nullopt,
-        const ac4::PresentationChoice& presentation = {});
+        const iclforge::ac4::PresentationChoice& presentation = {});
 
     // Movable: the access units are views of the item's own buffer, and a
     // moved vector keeps its buffer, so the views move with it.
@@ -145,11 +145,11 @@ public:
     // Whether the item is AC-4.
     [[nodiscard]] bool ac4() const { return ac4_; }
     // The presentation of the stream's first table of contents that an AC-4
-    // decoder set to `choice` plays (ac4::select_presentation()); nothing for
+    // decoder set to `choice` plays (iclforge::ac4::select_presentation()); nothing for
     // an item that is not AC-4, or a choice nothing meets. A sink decodes the
     // presentation of the default choice, {}.
     [[nodiscard]] std::optional<std::size_t> ac4_presentation(
-        const ac4::PresentationChoice& choice) const;
+        const iclforge::ac4::PresentationChoice& choice) const;
     // The samples the unit covering `position` codes, counted from the start
     // of what the item plays.
     [[nodiscard]] std::uint32_t unit_samples_at(std::uint64_t position) const;
@@ -244,7 +244,7 @@ private:
     // AC-4: the first frame's table of contents, and which units are
     // I-frames (sized with the units, set by index).
     bool ac4_ = false;
-    ac4::Toc ac4_toc_{};
+    iclforge::ac4::Toc ac4_toc_{};
     std::vector<bool> iframes_;
     ItemFacts facts_{};
     // The part of the stream the item plays, in stream samples.
@@ -260,4 +260,4 @@ private:
     bool whole_units_ = false;
 };
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

@@ -74,7 +74,7 @@ inline std::string elf_hex(const ImageSpec& spec) {
 
 inline std::array<std::uint8_t, 32> sha256(std::span<const std::uint8_t> bytes) {
     std::array<std::uint8_t, 32> out{};
-    if (!ac3::sendspin::crypto::sha256({bytes}, out)) {
+    if (!iclforge::sendspin::crypto::sha256({bytes}, out)) {
         out.fill(0);
     }
     return out;

@@ -1,8 +1,8 @@
 // Wrap an elementary stream in an MPEG-2 Transport Stream.
 //
-// mpegts::mpegts links nothing from ac3::forge beyond the AC-3/E-AC-3 choice
+// iclforge::mpegts links nothing from iclforge::ac3 beyond the AC-3/E-AC-3 choice
 // it is told — it takes access units as opaque bytes. Pairing it with
-// ac3::io::scan is what keeps the PMT descriptor honest: which codec, and
+// iclforge::io::scan is what keeps the PMT descriptor honest: which codec, and
 // where each access unit begins, come off the bitstream rather than from the
 // caller.
 
@@ -22,15 +22,15 @@ int main() {
     // Some AC-3 to wrap.
     // Heap-allocated: FrameEncoder carries several KB of MDCT scratch/history
     // state (PREfast's C6262).
-    auto encoder = std::make_unique<ac3::FrameEncoder>(
-        ac3::EncoderConfig{.bitrate_kbps = 192, .acmod = ac3::Acmod::k2_0});
-    std::vector<std::vector<float>> pcm(2, std::vector<float>(ac3::kSamplesPerFrame));
+    auto encoder = std::make_unique<iclforge::FrameEncoder>(
+        iclforge::EncoderConfig{.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0});
+    std::vector<std::vector<float>> pcm(2, std::vector<float>(iclforge::kSamplesPerFrame));
     const std::vector<std::span<const float>> views{pcm[0], pcm[1]};
 
     std::vector<std::byte> elementary;
     for (int frame = 0; frame < 31; ++frame) {
         for (std::size_t ch = 0; ch < pcm.size(); ++ch) {
-            for (int n = 0; n < ac3::kSamplesPerFrame; ++n) {
+            for (int n = 0; n < iclforge::kSamplesPerFrame; ++n) {
                 pcm[ch][static_cast<std::size_t>(n)] =
                     0.2F * static_cast<float>((n % 61) - 30) / 30.0F;
             }
@@ -43,7 +43,7 @@ int main() {
     }
 
     // Ask the bitstream what it is rather than asserting it.
-    const auto scanned = ac3::io::scan(elementary);
+    const auto scanned = iclforge::io::scan(elementary);
     if (!scanned) {
         fmt::printf("scan failed\n");
         return 1;
@@ -58,18 +58,20 @@ int main() {
         frames.emplace_back(unit.begin(), unit.end());
     }
 
-    const mpegts::AudioTrack track{
-        .codec = scanned->kind == ac3::io::StreamKind::kAc3 ? mpegts::AudioCodec::kAc3
-                                                             : mpegts::AudioCodec::kEac3,
-        .sample_rate = ac3::sample_rate_hz(scanned->sample_rate),
+    const iclforge::mpegts::AudioTrack track{
+        .codec = scanned->kind == iclforge::io::StreamKind::kAc3
+                     ? iclforge::mpegts::AudioCodec::kAc3
+                     : iclforge::mpegts::AudioCodec::kEac3,
+        .sample_rate = iclforge::sample_rate_hz(scanned->sample_rate),
         .channels = scanned->channels,
-        .samples_per_frame = ac3::kSamplesPerFrame,
+        .samples_per_frame = iclforge::kSamplesPerFrame,
     };
 
-    const auto file = mpegts::mux(track, frames);
+    const auto file = iclforge::mpegts::mux(track, frames);
     if (!file) {
-        fmt::printf("mux failed: %.*s\n", static_cast<int>(mpegts::describe(file.error()).size()),
-                    mpegts::describe(file.error()).data());
+        fmt::printf("mux failed: %.*s\n",
+                    static_cast<int>(iclforge::mpegts::describe(file.error()).size()),
+                    iclforge::mpegts::describe(file.error()).data());
         return 1;
     }
 

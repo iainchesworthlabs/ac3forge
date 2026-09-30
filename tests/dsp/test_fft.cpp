@@ -82,7 +82,7 @@ TEST_CASE("dft512 of a unit impulse is a flat 1/N spectrum", "[fft]") {
     std::array<double, 512> real_out{};
     std::array<double, 512> imag_out{};
     re[0] = 1.0;
-    ac3::dft512(re, im, real_out, imag_out);
+    iclforge::dft512(re, im, real_out, imag_out);
     for (int k = 0; k < 512; ++k) {
         CAPTURE(k);
         CHECK(near(real_out[static_cast<std::size_t>(k)], 1.0 / 512.0));
@@ -98,7 +98,7 @@ TEST_CASE("dft512 of a DC signal concentrates entirely in bin 0", "[fft]") {
     std::array<double, 512> real_out{};
     std::array<double, 512> imag_out{};
     re.fill(1.0);
-    ac3::dft512(re, im, real_out, imag_out);
+    iclforge::dft512(re, im, real_out, imag_out);
     CHECK(near(real_out[0], 1.0));
     CHECK(near(imag_out[0], 0.0));
     for (int k = 1; k < 512; ++k) {
@@ -122,7 +122,7 @@ TEST_CASE("dft512 of a bin-aligned real cosine splits evenly between k and N-k",
         re[static_cast<std::size_t>(n)] =
             std::cos(2.0 * std::numbers::pi * kBin * n / 512.0);
     }
-    ac3::dft512(re, im, real_out, imag_out);
+    iclforge::dft512(re, im, real_out, imag_out);
     CHECK(near(real_out[kBin], 0.5, 1e-8));
     CHECK(near(imag_out[kBin], 0.0, 1e-8));
     CHECK(near(real_out[512 - kBin], 0.5, 1e-8));
@@ -142,8 +142,8 @@ TEST_CASE("dft512 is linear", "[fft]") {
     x[1] = 1.0;
     y[7] = 1.0;
     std::array<double, 512> zx_re{}, zx_im{}, zy_re{}, zy_im{};
-    ac3::dft512(x, zero, zx_re, zx_im);
-    ac3::dft512(y, zero, zy_re, zy_im);
+    iclforge::dft512(x, zero, zx_re, zx_im);
+    iclforge::dft512(y, zero, zy_re, zy_im);
 
     std::array<double, 512> combined{};
     for (int n = 0; n < 512; ++n) {
@@ -151,7 +151,7 @@ TEST_CASE("dft512 is linear", "[fft]") {
             2.0 * x[static_cast<std::size_t>(n)] - 0.5 * y[static_cast<std::size_t>(n)];
     }
     std::array<double, 512> zc_re{}, zc_im{};
-    ac3::dft512(combined, zero, zc_re, zc_im);
+    iclforge::dft512(combined, zero, zc_re, zc_im);
 
     for (int k = 0; k < 512; ++k) {
         CAPTURE(k);
@@ -177,7 +177,7 @@ TEST_CASE("dft512 agrees with the direct-form summation on real audio", "[fft]")
         const auto x = tone_block(block);
         std::array<double, 512> fast_re{};
         std::array<double, 512> fast_im{};
-        ac3::dft512(x, zero, fast_re, fast_im);
+        iclforge::dft512(x, zero, fast_re, fast_im);
         const double err = max_rel_error(fast_re, fast_im, direct_dft512(x, zero));
         CAPTURE(err);
         CHECK(err < kTolerance);
@@ -195,7 +195,7 @@ TEST_CASE("dft512 agrees with the direct-form summation on complex input", "[fft
         const auto x_im = tone_block(block + 3);
         std::array<double, 512> fast_re{};
         std::array<double, 512> fast_im{};
-        ac3::dft512(x_re, x_im, fast_re, fast_im);
+        iclforge::dft512(x_re, x_im, fast_re, fast_im);
         const double err = max_rel_error(fast_re, fast_im, direct_dft512(x_re, x_im));
         CAPTURE(err);
         CHECK(err < kTolerance);

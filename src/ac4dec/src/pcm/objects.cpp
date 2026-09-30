@@ -4,7 +4,7 @@
 #include <cmath>
 #include <limits>
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 namespace {
 
 constexpr double kMinusInfinity = -std::numeric_limits<double>::infinity();
@@ -300,4 +300,4 @@ std::optional<Speaker> speaker_of_index(int index) noexcept {
     }
 }
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

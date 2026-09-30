@@ -29,7 +29,7 @@
 // Sentinel PSK on a copy of the state (connection.md, Sentinel Fallback). A
 // Handshake is therefore an ordinary copyable value.
 
-namespace ac3::sendspin::noise {
+namespace iclforge::sendspin::noise {
 
 using crypto::Digest32;
 using crypto::Key32;
@@ -168,4 +168,4 @@ class Handshake {
     std::uint64_t n_ = 0;
 };
 
-}  // namespace ac3::sendspin::noise
+}  // namespace iclforge::sendspin::noise

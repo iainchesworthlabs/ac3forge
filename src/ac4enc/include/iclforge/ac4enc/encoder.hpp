@@ -55,7 +55,7 @@
 // presentations, each that carries audio with a presentation_id of its own,
 // and one configuration throughout. A configuration 6 presentation has no
 // field for one, so a CMAF track cannot carry a stream that has it
-// (ac4::cmaf_refusal()), where an MP4 can. With experimental.objects, a
+// (iclforge::ac4::cmaf_refusal()), where an MP4 can. With experimental.objects, a
 // substream of objects and their metadata (ObjectsConfig): an A-JOC substream,
 // a downmix in the ASF and A-SPX tools and the parameters that rebuild the
 // objects from it (Part 2 clause 5.7), or direct-coded object substreams in
@@ -64,7 +64,7 @@
 // refused;
 // Encoder::refusal_reason() names the rule a configuration breaks. Each frame
 // comes out as a raw_ac4_frame, which an MP4 sample holds as it is
-// (ac4::build_dac4() describes the track from toc()), and which sync_frame()
+// (iclforge::ac4::build_dac4() describes the track from toc()), and which sync_frame()
 // wraps for a raw .ac4 file or MPEG-2 TS.
 //
 // Every field of the configuration structures has a default, so a designated
@@ -73,7 +73,7 @@
 // src/ac4enc/ERRATA.md records the readings the writer alone needs; where the
 // decoder depends on the same reading, src/ac4dec/ERRATA.md has it.
 
-namespace ac4 {
+namespace iclforge::ac4 {
 
 enum class EncodeError : std::uint8_t {
     kInvalidConfig,  // a configuration the encoder does not write: Encoder::refusal_reason() says why
@@ -443,7 +443,7 @@ enum class BedChannel : std::uint8_t {
 };
 
 // An object's metadata is ac4/ac4.hpp's ObjectProperties, the terms
-// ac4::Decoder reports it in. Each value is written to the nearest its code
+// iclforge::ac4::Decoder reports it in. Each value is written to the nearest its code
 // has, and refused outside its range: the gain +15 to -49 dB in steps of 1,
 // or -infinity; the priority 0 to 1 in steps of 1/31; X and Y 0 to 1 in steps
 // of 1/62 and Z -1 to 1 in steps of 1/15; zone_mask 0 to 7; each width 0 to 1
@@ -631,7 +631,7 @@ struct PresentationConfig {
 };
 
 struct EncoderConfig {
-    // The input's channels, in the order ac4::Decoder writes them: 1, mono; 2,
+    // The input's channels, in the order iclforge::ac4::Decoder writes them: 1, mono; 2,
     // stereo, L R; 5, 5.0, L R C Ls Rs; 6, 5.1, L R C LFE Ls Rs; 9, 5.0.4, L R
     // C Ls Rs Tfl Tfr Tbl Tbr; 10, 5.1.4, L R C LFE Ls Rs Tfl Tfr Tbl Tbr; with
     // experimental.seven_x, 7 or 8, 7.0 or 7.1, L R C, the LFE of 7.1, Ls Rs
@@ -792,7 +792,7 @@ class AC4ENC_EXPORT Encoder {
     // The table of contents every frame carries. sequence_counter and
     // b_iframe_global change from frame to frame, and substream_sizes with each
     // frame's content; the rest is fixed for the stream, which is what
-    // ac4::build_dac4() and ac4::rfc6381_codec_string() read.
+    // iclforge::ac4::build_dac4() and iclforge::ac4::rfc6381_codec_string() read.
     [[nodiscard]] const Toc& toc() const noexcept;
 
     // The codec mode the stream is coded in: what kAuto chose from the rate,
@@ -808,12 +808,12 @@ class AC4ENC_EXPORT Encoder {
     // added.
     [[nodiscard]] int delay_samples() const noexcept;
 
-    // The delay ac4::Decoder adds, at the input's rate: at frame_rate_index
+    // The delay iclforge::ac4::Decoder adds, at the input's rate: at frame_rate_index
     // 13, 1 313 samples (Part 1 Table 188's d_pcm, 352, the QMF banks' 577 and
     // six QMF slots); at the other frame rates, the same at the internal rate
     // and the decoder's converter's delay, to the nearest sample. An input
     // sample at index n is at index n + delay_samples() +
-    // decoder_delay_samples() of ac4::Decoder's output, to within a sample.
+    // decoder_delay_samples() of iclforge::ac4::Decoder's output, to within a sample.
     [[nodiscard]] int decoder_delay_samples() const noexcept;
 
    private:
@@ -828,4 +828,4 @@ class AC4ENC_EXPORT Encoder {
 [[nodiscard]] AC4ENC_EXPORT std::vector<std::byte> sync_frame(std::span<const std::byte> raw_ac4_frame,
                                                               bool crc);
 
-}  // namespace ac4
+}  // namespace iclforge::ac4

@@ -29,7 +29,7 @@
 // when told to, and runs the re-handshake to the new long-term PSK once both sides have
 // persisted it. Neither object persists anything: PairingEvents::on_paired() does.
 
-namespace ac3::sendspin::pairing_flow {
+namespace iclforge::sendspin::pairing_flow {
 
 using crypto::Digest32;
 using crypto::Key32;
@@ -284,4 +284,4 @@ class ServerPairing {
     Key32 long_term_psk_{};
 };
 
-}  // namespace ac3::sendspin::pairing_flow
+}  // namespace iclforge::sendspin::pairing_flow

@@ -27,12 +27,12 @@
 
 namespace {
 
-using ac4::Speaker;
-using ac4::detail::ChannelElement;
-using ac4::detail::ElementKind;
-using ac4::detail::ElementRoute;
-using ac4::detail::Real;
-using ac4::detail::SubstreamContext;
+using iclforge::ac4::Speaker;
+using iclforge::ac4::detail::ChannelElement;
+using iclforge::ac4::detail::ElementKind;
+using iclforge::ac4::detail::ElementRoute;
+using iclforge::ac4::detail::Real;
+using iclforge::ac4::detail::SubstreamContext;
 using ac4dec_test::entry;
 using ac4dec_test::kFourChannel;
 using ac4dec_test::kTable178;
@@ -40,13 +40,13 @@ using ac4dec_test::kTable179;
 using ac4dec_test::rows_of;
 
 // Random parameter sets in both forms this file needs: `real`, fed to the
-// production matrix functions (ac4::detail::Abcd, Real - possibly float),
+// production matrix functions (iclforge::ac4::detail::Abcd, Real - possibly float),
 // and `reference`, fed to entry()'s exact double formula
 // (ac4dec_test::Abcd, always double - a table transcription independent of
 // the decoder's own scalar). The two hold the same values, `real`'s narrowed
 // once from `reference`'s.
 struct RandomParams {
-    std::vector<ac4::detail::Abcd> real;
+    std::vector<iclforge::ac4::detail::Abcd> real;
     std::vector<ac4dec_test::Abcd> reference;
 };
 
@@ -71,7 +71,7 @@ RandomParams random_parameters(std::mt19937& rng, std::size_t count) {
 // (tests/ac4core and this suite's other assertions) and this test's job is
 // the formula, not the scalar.
 template <std::size_t N>
-void check_printed(const ac4::detail::Matrix<N>& m, std::string_view printed,
+void check_printed(const iclforge::ac4::detail::Matrix<N>& m, std::string_view printed,
                    std::span<const ac4dec_test::Abcd> p) {
     const auto rows = rows_of(printed);
     REQUIRE(rows.size() == N);
@@ -93,7 +93,7 @@ ChannelElement element_of(ElementKind kind, int tracks, bool lfe) {
     ChannelElement element;
     element.kind = kind;
     for (int t = 0; t < tracks; ++t) {
-        ac4::detail::Track track;
+        iclforge::ac4::detail::Track track;
         track.info = t;
         track.lfe = lfe && t == 0;
         element.tracks.push_back(track);
@@ -121,7 +121,8 @@ TEST_CASE("Table 178's matrices equal the table's printed entries", "[ac4dec][mu
         const RandomParams p = random_parameters(rng, 2);
         for (int matsel = 0; matsel < 12; ++matsel) {
             CAPTURE(trial, matsel);
-            const auto m = ac4::detail::three_channel_matrix(matsel, p.real[0], p.real[1]);
+            const auto m =
+                iclforge::ac4::detail::three_channel_matrix(matsel, p.real[0], p.real[1]);
             REQUIRE(m.has_value());
             check_printed<3>(*m, kTable178[static_cast<std::size_t>(matsel)], p.reference);
         }
@@ -134,8 +135,8 @@ TEST_CASE("Table 179's matrices equal the table's printed entries", "[ac4dec][mu
         const RandomParams p = random_parameters(rng, 5);
         for (int matsel = 0; matsel < 12; ++matsel) {
             CAPTURE(trial, matsel);
-            const auto m = ac4::detail::five_channel_matrix(
-                matsel, std::span<const ac4::detail::Abcd, 5>(p.real.data(), 5));
+            const auto m = iclforge::ac4::detail::five_channel_matrix(
+                matsel, std::span<const iclforge::ac4::detail::Abcd, 5>(p.real.data(), 5));
             REQUIRE(m.has_value());
             check_printed<5>(*m, kTable179[static_cast<std::size_t>(matsel)], p.reference);
         }
@@ -147,7 +148,7 @@ TEST_CASE("clause 5.3.3.4's matrix equals its printed entries", "[ac4dec][multic
     for (int trial = 0; trial < 20; ++trial) {
         const RandomParams p = random_parameters(rng, 4);
         check_printed<4>(
-            ac4::detail::four_channel_matrix(std::span<const ac4::detail::Abcd, 4>(p.real.data(), 4)),
+            iclforge::ac4::detail::four_channel_matrix(std::span<const iclforge::ac4::detail::Abcd, 4>(p.real.data(), 4)),
             kFourChannel, p.reference);
     }
 }
@@ -155,12 +156,12 @@ TEST_CASE("clause 5.3.3.4's matrix equals its printed entries", "[ac4dec][multic
 TEST_CASE("every chel_matsel's matrix is the identity when its parameters are", "[ac4dec][multichannel]") {
     // sap_mode 0 sets a = d = 1 and b = c = 0 (Pseudocode 59): the tracks are
     // the channels, whatever chel_matsel says.
-    const ac4::detail::Abcd one = {Real{1}, Real{}, Real{}, Real{1}};
-    const std::array<ac4::detail::Abcd, 5> ones = {one, one, one, one, one};
+    const iclforge::ac4::detail::Abcd one = {Real{1}, Real{}, Real{}, Real{1}};
+    const std::array<iclforge::ac4::detail::Abcd, 5> ones = {one, one, one, one, one};
     for (int matsel = 0; matsel < 12; ++matsel) {
         CAPTURE(matsel);
-        const auto three = ac4::detail::three_channel_matrix(matsel, one, one);
-        const auto five = ac4::detail::five_channel_matrix(matsel, ones);
+        const auto three = iclforge::ac4::detail::three_channel_matrix(matsel, one, one);
+        const auto five = iclforge::ac4::detail::five_channel_matrix(matsel, ones);
         REQUIRE(three.has_value());
         REQUIRE(five.has_value());
         for (std::size_t o = 0; o < 5; ++o) {
@@ -179,14 +180,14 @@ TEST_CASE("three_channel_data() takes its two parameter sets and reads no third"
     // One long group of two bands, M/S in both sets, and the sets in a vector
     // of exactly two: a read of a third set leaves it, which a sanitised or
     // bounds-checked build stops at.
-    ac4::detail::SfInfo info;
+    iclforge::ac4::detail::SfInfo info;
     info.psy.num_window_groups = 1;
-    ac4::detail::SfData layout;
+    iclforge::ac4::detail::SfData layout;
     layout.max_sfb[0] = 2;
     layout.sect_sfb_offset[0][1] = 4;
     layout.sect_sfb_offset[0][2] = 8;
-    std::vector<ac4::detail::StereoParameters> sets(2);
-    for (ac4::detail::StereoParameters& set : sets) {
+    std::vector<iclforge::ac4::detail::StereoParameters> sets(2);
+    for (iclforge::ac4::detail::StereoParameters& set : sets) {
         set.abcd[0][0] = {Real{1}, Real{1}, Real{1}, Real{-1}};
         set.abcd[0][1] = {Real{1}, Real{1}, Real{1}, Real{-1}};
     }
@@ -198,7 +199,8 @@ TEST_CASE("three_channel_data() takes its two parameter sets and reads no third"
     }
     const std::vector<std::vector<Real>> tracks_in = lines;
     const std::array<std::vector<Real>*, 3> tracks = {&lines[0], &lines[1], &lines[2]};
-    REQUIRE(static_cast<bool>(ac4::detail::apply_channel_data(info, layout, 0, sets, tracks)));
+    REQUIRE(static_cast<bool>(
+        iclforge::ac4::detail::apply_channel_data(info, layout, 0, sets, tracks)));
     // chel_matsel 0 with M/S in both sets: O0 = I0 + I1 + I2, O1 = I0 - I1,
     // O2 = I0 + I1 - I2.
     for (std::size_t k = 0; k < 8; ++k) {
@@ -213,17 +215,17 @@ TEST_CASE("three_channel_data() takes its two parameter sets and reads no third"
 }
 
 TEST_CASE("chel_matsel 12 to 15, which the tables leave out, make no matrix", "[ac4dec][multichannel]") {
-    const ac4::detail::Abcd one = {Real{1}, Real{}, Real{}, Real{1}};
-    const std::array<ac4::detail::Abcd, 5> ones = {one, one, one, one, one};
+    const iclforge::ac4::detail::Abcd one = {Real{1}, Real{}, Real{}, Real{1}};
+    const std::array<iclforge::ac4::detail::Abcd, 5> ones = {one, one, one, one, one};
     for (int matsel = 12; matsel < 16; ++matsel) {
-        CHECK_FALSE(ac4::detail::three_channel_matrix(matsel, one, one).has_value());
-        CHECK_FALSE(ac4::detail::five_channel_matrix(matsel, ones).has_value());
+        CHECK_FALSE(iclforge::ac4::detail::three_channel_matrix(matsel, one, one).has_value());
+        CHECK_FALSE(iclforge::ac4::detail::five_channel_matrix(matsel, ones).has_value());
     }
 }
 
 TEST_CASE("the channel modes' speakers, in the order decode() writes them", "[ac4dec][multichannel]") {
-    using ac4::detail::speakers_of;
-    namespace mode = ac4::detail::ch_mode;
+    using iclforge::ac4::detail::speakers_of;
+    namespace mode = iclforge::ac4::detail::ch_mode;
     const auto list = [](int ch_mode) {
         const auto s = speakers_of(ch_mode);
         return std::vector<Speaker>(s.begin(), s.end());
@@ -248,7 +250,7 @@ TEST_CASE("the channel modes' speakers, in the order decode() writes them", "[ac
                       Speaker::kTopBackLeft, Speaker::kTopBackRight});
     CHECK(list(mode::k7_0_4).size() == 11);
     const auto core = [](int ch_mode) {
-        const auto s = speakers_of(ch_mode, ac4::DecodingMode::kCore);
+        const auto s = speakers_of(ch_mode, iclforge::ac4::DecodingMode::kCore);
         return std::vector<Speaker>(s.begin(), s.end());
     };
     CHECK(core(mode::k7_0_4) == std::vector{Speaker::kLeft, Speaker::kRight, Speaker::kCentre,
@@ -262,7 +264,7 @@ TEST_CASE("the channel modes' speakers, in the order decode() writes them", "[ac
 
 TEST_CASE("Table 180 routes the 5.X element's tracks", "[ac4dec][multichannel]") {
     SubstreamContext ctx;
-    ctx.ch_mode = ac4::detail::ch_mode::k5_1;
+    ctx.ch_mode = iclforge::ac4::detail::ch_mode::k5_1;
     ElementRoute route;
     SECTION("coding_config 0: two pairs and C, the pairs by 2ch_mode") {
         ChannelElement element = element_of(ElementKind::k5X, 6, true);
@@ -270,14 +272,14 @@ TEST_CASE("Table 180 routes the 5.X element's tracks", "[ac4dec][multichannel]")
         element.b_enable_mdct_stereo_proc = {true, false};
         element.chparams.resize(1);
         element.two_ch_mode = false;
-        REQUIRE(ac4::detail::route_element(ctx, element, route));
+        REQUIRE(iclforge::ac4::detail::route_element(ctx, element, route));
         CHECK(destinations(route) == std::vector{Speaker::kLfe, Speaker::kLeft, Speaker::kRight,
                                                  Speaker::kLeftSurround, Speaker::kRightSurround,
                                                  Speaker::kCentre});
         CHECK(route.data[1].processed);
         CHECK_FALSE(route.data[2].processed);
         element.two_ch_mode = true;
-        REQUIRE(ac4::detail::route_element(ctx, element, route));
+        REQUIRE(iclforge::ac4::detail::route_element(ctx, element, route));
         CHECK(destinations(route) == std::vector{Speaker::kLfe, Speaker::kLeft, Speaker::kLeftSurround,
                                                  Speaker::kRight, Speaker::kRightSurround, Speaker::kCentre});
     }
@@ -287,7 +289,7 @@ TEST_CASE("Table 180 routes the 5.X element's tracks", "[ac4dec][multichannel]")
         element.chel_matsel = {7};
         element.b_enable_mdct_stereo_proc = {true};
         element.chparams.resize(3);
-        REQUIRE(ac4::detail::route_element(ctx, element, route));
+        REQUIRE(iclforge::ac4::detail::route_element(ctx, element, route));
         CHECK(destinations(route) == std::vector{Speaker::kLfe, Speaker::kLeft, Speaker::kRight, Speaker::kCentre,
                                                  Speaker::kLeftSurround, Speaker::kRightSurround});
         CHECK(route.data[1].chel_matsel == 7);
@@ -297,18 +299,18 @@ TEST_CASE("Table 180 routes the 5.X element's tracks", "[ac4dec][multichannel]")
         ChannelElement element = element_of(ElementKind::k5X, 6, true);
         element.coding_config = 2;
         element.chparams.resize(4);
-        REQUIRE(ac4::detail::route_element(ctx, element, route));
+        REQUIRE(iclforge::ac4::detail::route_element(ctx, element, route));
         CHECK(destinations(route) == std::vector{Speaker::kLfe, Speaker::kLeft, Speaker::kRight,
                                                  Speaker::kLeftSurround, Speaker::kRightSurround,
                                                  Speaker::kCentre});
     }
     SECTION("coding_config 3: five tracks") {
-        ctx.ch_mode = ac4::detail::ch_mode::k5_0;
+        ctx.ch_mode = iclforge::ac4::detail::ch_mode::k5_0;
         ChannelElement element = element_of(ElementKind::k5X, 5, false);
         element.coding_config = 3;
         element.chel_matsel = {11};
         element.chparams.resize(5);
-        REQUIRE(ac4::detail::route_element(ctx, element, route));
+        REQUIRE(iclforge::ac4::detail::route_element(ctx, element, route));
         CHECK(destinations(route) == std::vector{Speaker::kLeft, Speaker::kRight, Speaker::kCentre,
                                                  Speaker::kLeftSurround, Speaker::kRightSurround});
     }
@@ -316,10 +318,10 @@ TEST_CASE("Table 180 routes the 5.X element's tracks", "[ac4dec][multichannel]")
         ChannelElement element = element_of(ElementKind::k5X, 6, true);
         element.coding_config = 2;
         element.chparams.resize(3);  // four_channel_data() holds four
-        CHECK_FALSE(ac4::detail::route_element(ctx, element, route));
+        CHECK_FALSE(iclforge::ac4::detail::route_element(ctx, element, route));
         element.chparams.resize(4);
-        ctx.ch_mode = ac4::detail::ch_mode::k5_0;  // an LFE track where the mode has none
-        CHECK_FALSE(ac4::detail::route_element(ctx, element, route));
+        ctx.ch_mode = iclforge::ac4::detail::ch_mode::k5_0;  // an LFE track where the mode has none
+        CHECK_FALSE(iclforge::ac4::detail::route_element(ctx, element, route));
     }
 }
 
@@ -327,14 +329,14 @@ TEST_CASE("Table 182 routes the 7.X element's tracks, and Table 183 pairs its la
     SubstreamContext ctx;
     ElementRoute route;
     SECTION("3/4/0.1, coding_config 0, 2ch_mode 1") {
-        ctx.ch_mode = ac4::detail::ch_mode::k7_1_340;
+        ctx.ch_mode = iclforge::ac4::detail::ch_mode::k7_1_340;
         ChannelElement element = element_of(ElementKind::k7X, 8, true);
         element.coding_config = 0;
         element.two_ch_mode = true;
         element.b_enable_mdct_stereo_proc = {false, false, false};
         element.b_use_sap_add_ch = true;
         element.chparams.resize(2);
-        REQUIRE(ac4::detail::route_element(ctx, element, route));
+        REQUIRE(iclforge::ac4::detail::route_element(ctx, element, route));
         // Tracks 0 to 3 are A, D, B and E, 4 and 5 F and G, 6 C.
         CHECK(destinations(route) == std::vector{Speaker::kLfe, Speaker::kLeft, Speaker::kLeftSurround,
                                                  Speaker::kRight, Speaker::kRightSurround, Speaker::kLeftBack,
@@ -347,14 +349,14 @@ TEST_CASE("Table 182 routes the 7.X element's tracks, and Table 183 pairs its la
         CHECK(route.steps[1].second == Speaker::kRightBack);
     }
     SECTION("5/2/0, coding_config 3: five tracks, then the wide pair") {
-        ctx.ch_mode = ac4::detail::ch_mode::k7_0_520;
+        ctx.ch_mode = iclforge::ac4::detail::ch_mode::k7_0_520;
         ChannelElement element = element_of(ElementKind::k7X, 7, false);
         element.coding_config = 3;
         element.chel_matsel = {0};
         element.b_enable_mdct_stereo_proc = {true};
         element.b_use_sap_add_ch = true;
         element.chparams.resize(5 + 2 + 1);
-        REQUIRE(ac4::detail::route_element(ctx, element, route));
+        REQUIRE(iclforge::ac4::detail::route_element(ctx, element, route));
         CHECK(destinations(route) == std::vector{Speaker::kLeft, Speaker::kRight, Speaker::kCentre,
                                                  Speaker::kLeftSurround, Speaker::kRightSurround,
                                                  Speaker::kLeftWide, Speaker::kRightWide});
@@ -365,13 +367,13 @@ TEST_CASE("Table 182 routes the 7.X element's tracks, and Table 183 pairs its la
         CHECK(route.data.back().first_chparam == 7);
     }
     SECTION("3/2/2, coding_config 2, b_use_sap_add_ch unset") {
-        ctx.ch_mode = ac4::detail::ch_mode::k7_0_322;
+        ctx.ch_mode = iclforge::ac4::detail::ch_mode::k7_0_322;
         ChannelElement element = element_of(ElementKind::k7X, 7, false);
         element.coding_config = 2;
         element.b_enable_mdct_stereo_proc = {false};
         element.b_use_sap_add_ch = false;
         element.chparams.resize(4);
-        REQUIRE(ac4::detail::route_element(ctx, element, route));
+        REQUIRE(iclforge::ac4::detail::route_element(ctx, element, route));
         CHECK(destinations(route) == std::vector{Speaker::kLeft, Speaker::kRight, Speaker::kLeftSurround,
                                                  Speaker::kRightSurround, Speaker::kTopFrontLeft,
                                                  Speaker::kTopFrontRight, Speaker::kCentre});
@@ -381,10 +383,10 @@ TEST_CASE("Table 182 routes the 7.X element's tracks, and Table 183 pairs its la
 
 TEST_CASE("Part 2 Table 19 routes the immersive element's tracks, with step 4 and Table 20",
           "[ac4dec][multichannel]") {
-    namespace immersive = ac4::detail::immersive_mode;
+    namespace immersive = iclforge::ac4::detail::immersive_mode;
     using S = Speaker;
     SubstreamContext ctx;
-    ctx.ch_mode = ac4::detail::ch_mode::k7_1_4;
+    ctx.ch_mode = iclforge::ac4::detail::ch_mode::k7_1_4;
     ElementRoute route;
     // An element of `tracks` tracks and `pairs` two_channel_data() without
     // stereo processing, in `mode`.
@@ -402,7 +404,7 @@ TEST_CASE("Part 2 Table 19 routes the immersive element's tracks, with step 4 an
         element.two_ch_mode = false;
         element.b_use_sap_add_ch = true;
         element.chparams.resize(6);
-        REQUIRE(ac4::detail::route_element(ctx, element, route));
+        REQUIRE(iclforge::ac4::detail::route_element(ctx, element, route));
         CHECK(destinations(route) == std::vector{S::kLfe, S::kLeft, S::kRight, S::kLeftSurround,
                                                  S::kRightSurround, S::kCentre, S::kTopFrontLeft,
                                                  S::kTopFrontRight, S::kLeftBack, S::kRightBack,
@@ -434,7 +436,8 @@ TEST_CASE("Part 2 Table 19 routes the immersive element's tracks, with step 4 an
 
         // Core decoding: F and G are the core's Tsl and Tsr, H to K are read
         // and not decoded, and Table 20 is left out.
-        REQUIRE(ac4::detail::route_element(ctx, element, route, ac4::DecodingMode::kCore));
+        REQUIRE(iclforge::ac4::detail::route_element(ctx, element, route,
+                                                     iclforge::ac4::DecodingMode::kCore));
         REQUIRE(route.data.size() == 7);
         CHECK(route.data[4].outputs[0] == S::kTopSideLeft);
         CHECK(route.data[4].outputs[1] == S::kTopSideRight);
@@ -452,7 +455,7 @@ TEST_CASE("Part 2 Table 19 routes the immersive element's tracks, with step 4 an
         element.b_use_sap_add_ch = false;
         element.b_enable_mdct_stereo_proc[2] = true;  // [F,G]'s chparam_info() after the core's
         element.chparams.resize(1 + 4);
-        REQUIRE(ac4::detail::route_element(ctx, element, route));
+        REQUIRE(iclforge::ac4::detail::route_element(ctx, element, route));
         // [A,D] and [B,E].
         CHECK(destinations(route) == std::vector{S::kLfe, S::kLeft, S::kLeftSurround, S::kRight,
                                                  S::kRightSurround, S::kCentre, S::kTopFrontLeft,
@@ -463,13 +466,13 @@ TEST_CASE("Part 2 Table 19 routes the immersive element's tracks, with step 4 an
         CHECK((route.steps[0].prediction && route.steps[0].chparam == 1));
     }
     SECTION("core_5ch_grouping 1, 2 and 3") {
-        ctx.ch_mode = ac4::detail::ch_mode::k7_0_4;
+        ctx.ch_mode = iclforge::ac4::detail::ch_mode::k7_0_4;
         ChannelElement three = immersive_element(immersive::kAspxAcpl1, 11, 4, false);
         three.core_5ch_grouping = 1;
         three.chel_matsel = {3};
         three.b_use_sap_add_ch = false;
         three.chparams.resize(2 + 4);
-        REQUIRE(ac4::detail::route_element(ctx, three, route));
+        REQUIRE(iclforge::ac4::detail::route_element(ctx, three, route));
         CHECK(destinations(route) == std::vector{S::kLeft, S::kRight, S::kCentre, S::kLeftSurround,
                                                  S::kRightSurround, S::kTopFrontLeft,
                                                  S::kTopFrontRight, S::kLeftBack, S::kRightBack,
@@ -481,7 +484,7 @@ TEST_CASE("Part 2 Table 19 routes the immersive element's tracks, with step 4 an
         four.core_5ch_grouping = 2;
         four.b_use_sap_add_ch = false;
         four.chparams.resize(4 + 4);
-        REQUIRE(ac4::detail::route_element(ctx, four, route));
+        REQUIRE(iclforge::ac4::detail::route_element(ctx, four, route));
         CHECK(destinations(route) == std::vector{S::kLeft, S::kRight, S::kLeftSurround,
                                                  S::kRightSurround, S::kCentre, S::kTopFrontLeft,
                                                  S::kTopFrontRight, S::kLeftBack, S::kRightBack,
@@ -492,7 +495,7 @@ TEST_CASE("Part 2 Table 19 routes the immersive element's tracks, with step 4 an
         five.chel_matsel = {0};
         five.b_use_sap_add_ch = true;
         five.chparams.resize(5 + 2 + 4);
-        REQUIRE(ac4::detail::route_element(ctx, five, route));
+        REQUIRE(iclforge::ac4::detail::route_element(ctx, five, route));
         CHECK(destinations(route) == std::vector{S::kLeft, S::kRight, S::kCentre, S::kLeftSurround,
                                                  S::kRightSurround, S::kTopFrontLeft,
                                                  S::kTopFrontRight, S::kLeftBack, S::kRightBack,
@@ -506,23 +509,25 @@ TEST_CASE("Part 2 Table 19 routes the immersive element's tracks, with step 4 an
         acpl.two_ch_mode = false;
         acpl.b_use_sap_add_ch = true;
         acpl.chparams.resize(2);
-        REQUIRE(ac4::detail::route_element(ctx, acpl, route));
+        REQUIRE(iclforge::ac4::detail::route_element(ctx, acpl, route));
         CHECK(route.silent ==
               std::vector{S::kLeftBack, S::kRightBack, S::kTopBackLeft, S::kTopBackRight});
         // Step 4 in ASPX_ACPL_2 too (ERRATA.md, "ASPX_ACPL_2 and step 4").
         CHECK(route.steps.size() == 2);
-        REQUIRE(ac4::detail::route_element(ctx, acpl, route, ac4::DecodingMode::kCore));
+        REQUIRE(iclforge::ac4::detail::route_element(ctx, acpl, route,
+                                                     iclforge::ac4::DecodingMode::kCore));
         CHECK(route.silent.empty());
 
         ChannelElement ajcc = immersive_element(immersive::kAspxAjcc, 6, 2, true);
         ajcc.core_5ch_grouping = 0;
         ajcc.two_ch_mode = false;
-        REQUIRE(ac4::detail::route_element(ctx, ajcc, route));
+        REQUIRE(iclforge::ac4::detail::route_element(ctx, ajcc, route));
         CHECK(destinations(route) == std::vector{S::kLfe, S::kLeft, S::kRight, S::kLeftSurround,
                                                  S::kRightSurround, S::kCentre});
         CHECK(route.silent == std::vector{S::kLeftBack, S::kRightBack, S::kTopFrontLeft,
                                           S::kTopFrontRight, S::kTopBackLeft, S::kTopBackRight});
-        REQUIRE(ac4::detail::route_element(ctx, ajcc, route, ac4::DecodingMode::kCore));
+        REQUIRE(iclforge::ac4::detail::route_element(ctx, ajcc, route,
+                                                     iclforge::ac4::DecodingMode::kCore));
         CHECK(route.silent == std::vector{S::kTopSideLeft, S::kTopSideRight});
         CHECK(route.steps.empty());
     }
@@ -532,26 +537,27 @@ TEST_CASE("Part 2 Table 19 routes the immersive element's tracks, with step 4 an
         element.two_ch_mode = false;
         element.b_use_sap_add_ch = false;
         element.chparams.resize(4);
-        REQUIRE(ac4::detail::route_element(ctx, element, route));
+        REQUIRE(iclforge::ac4::detail::route_element(ctx, element, route));
         element.chparams.resize(3);  // Table 20's four
-        CHECK_FALSE(ac4::detail::route_element(ctx, element, route));
+        CHECK_FALSE(iclforge::ac4::detail::route_element(ctx, element, route));
         element.chparams.resize(4);
         element.two_ch_mode.reset();  // grouping 0 reads 2ch_mode
-        CHECK_FALSE(ac4::detail::route_element(ctx, element, route));
+        CHECK_FALSE(iclforge::ac4::detail::route_element(ctx, element, route));
         element.two_ch_mode = false;
         element.b_use_sap_add_ch.reset();  // 7CH_STATIC reads b_use_sap_add_ch
-        CHECK_FALSE(ac4::detail::route_element(ctx, element, route));
+        CHECK_FALSE(iclforge::ac4::detail::route_element(ctx, element, route));
         element.b_use_sap_add_ch = false;
-        ctx.ch_mode = ac4::detail::ch_mode::k7_0_4;  // an LFE track where the mode has none
-        CHECK_FALSE(ac4::detail::route_element(ctx, element, route));
+        ctx.ch_mode =
+            iclforge::ac4::detail::ch_mode::k7_0_4;  // an LFE track where the mode has none
+        CHECK_FALSE(iclforge::ac4::detail::route_element(ctx, element, route));
     }
 }
 
 TEST_CASE("Tables 212 and 213 name the channels companding and A-SPX process", "[ac4dec][multichannel]") {
-    namespace mode = ac4::detail::ch_mode;
-    using ac4::detail::aspx_units;
-    using ac4::detail::companded_speakers;
-    namespace codec = ac4::detail::codec_mode;
+    namespace mode = iclforge::ac4::detail::ch_mode;
+    using iclforge::ac4::detail::aspx_units;
+    using iclforge::ac4::detail::companded_speakers;
+    namespace codec = iclforge::ac4::detail::codec_mode;
     CHECK(companded_speakers(mode::k5_1, codec::kAspx) ==
           std::vector{Speaker::kLeft, Speaker::kRight, Speaker::kCentre, Speaker::kLeftSurround,
                       Speaker::kRightSurround});
@@ -606,12 +612,12 @@ TEST_CASE("Tables 212 and 213 name the channels companding and A-SPX process", "
 
 TEST_CASE("Part 2 Table 8 names the channels A-SPX processes in the immersive element",
           "[ac4dec][multichannel]") {
-    namespace mode = ac4::detail::ch_mode;
-    namespace immersive = ac4::detail::immersive_mode;
-    using ac4::detail::aspx_units;
-    using ac4::detail::companded_speakers;
+    namespace mode = iclforge::ac4::detail::ch_mode;
+    namespace immersive = iclforge::ac4::detail::immersive_mode;
+    using iclforge::ac4::detail::aspx_units;
+    using iclforge::ac4::detail::companded_speakers;
     using S = Speaker;
-    constexpr auto kCore = ac4::DecodingMode::kCore;
+    constexpr auto kCore = iclforge::ac4::DecodingMode::kCore;
     CHECK(aspx_units(mode::k7_1_4, immersive::kScpl).empty());
     CHECK(companded_speakers(mode::k7_1_4, immersive::kAspxScpl).empty());
     // Only ASPX_AJCC sends companding_control(), for L, R, C, Ls and Rs.

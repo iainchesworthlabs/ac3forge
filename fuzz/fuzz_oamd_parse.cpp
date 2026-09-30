@@ -4,7 +4,7 @@
 
 #include "iclforge/objects/oamd.hpp"
 
-// ac3::oba::parse_payload (src/objects/src/oamd.cpp) - the
+// iclforge::oba::parse_payload (src/objects/src/oamd.cpp) - the
 // object_audio_metadata_payload of TS 103 420 §5, as recovered from an EMDF
 // payload with id 11.
 //
@@ -22,6 +22,6 @@
 // would spend most of the budget on container syntax instead.
 extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size) {
     const std::span<const std::byte> bytes{reinterpret_cast<const std::byte*>(data), size};
-    (void)ac3::oba::parse_payload(bytes);
+    (void)iclforge::oba::parse_payload(bytes);
     return 0;
 }

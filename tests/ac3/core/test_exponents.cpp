@@ -13,18 +13,18 @@
 
 namespace {
 
-std::vector<std::uint8_t> decode_all(const ac3::EncodedExponents& encoded,
-                                     ac3::ExpStrategy strategy, int endmant) {
+std::vector<std::uint8_t> decode_all(const iclforge::EncodedExponents& encoded,
+                                     iclforge::ExpStrategy strategy, int endmant) {
     std::vector<std::uint8_t> out(static_cast<std::size_t>(endmant));
-    ac3::decode_exponents(encoded.absolute, encoded.groups, strategy, out);
+    iclforge::decode_exponents(encoded.absolute, encoded.groups, strategy, out);
     return out;
 }
 
 }  // namespace
 
 TEST_CASE("fixed-point conversion and exponent extraction", "[exponents]") {
-    using ac3::exponent_from_fixed;
-    using ac3::to_fixed25;
+    using iclforge::exponent_from_fixed;
+    using iclforge::to_fixed25;
 
     // |c| in [0.5, 1) -> exponent 0; each halving adds one.
     CHECK(exponent_from_fixed(to_fixed25(0.5)) == 0);
@@ -36,15 +36,15 @@ TEST_CASE("fixed-point conversion and exponent extraction", "[exponents]") {
     CHECK(exponent_from_fixed(to_fixed25(1.0)) == 0);
     CHECK(exponent_from_fixed(to_fixed25(-1.0)) == 0);
     CHECK(exponent_from_fixed(to_fixed25(5.9e-8)) == 23);  // ~2^-24
-    CHECK(exponent_from_fixed(to_fixed25(1e-9)) == ac3::kMaxExponent);  // rounds to 0
-    CHECK(exponent_from_fixed(0) == ac3::kMaxExponent);
+    CHECK(exponent_from_fixed(to_fixed25(1e-9)) == iclforge::kMaxExponent);  // rounds to 0
+    CHECK(exponent_from_fixed(0) == iclforge::kMaxExponent);
     CHECK(to_fixed25(2.0) == 16777215);
     CHECK(to_fixed25(-2.0) == -16777216);
 }
 
 TEST_CASE("group-count formulas match the spec examples", "[exponents]") {
-    using ac3::exponent_group_count;
-    using enum ac3::ExpStrategy;
+    using iclforge::exponent_group_count;
+    using enum iclforge::ExpStrategy;
     // endmant = 73 (chbwcod 0): 24 / 12 / 6 groups (A/52 7.1.3).
     STATIC_CHECK(exponent_group_count(kD15, 73) == 24);
     STATIC_CHECK(exponent_group_count(kD25, 73) == 12);
@@ -60,18 +60,18 @@ TEST_CASE("silent-frame exponent fields fall out of the general encoder", "[expo
     // 24 from an absolute of 15; the independent bitstream-parse audit
     // validated those fields externally, so they serve as a golden here.
     std::array<std::uint8_t, 73> raw{};
-    raw.fill(ac3::kMaxExponent);
+    raw.fill(iclforge::kMaxExponent);
 
-    const auto encoded = ac3::encode_exponents(raw, ac3::ExpStrategy::kD15);
+    const auto encoded = iclforge::encode_exponents(raw, iclforge::ExpStrategy::kD15);
     CHECK(encoded.absolute == 15);
-    REQUIRE(encoded.groups.size() == ac3::detail::kSilentExpGroups.size());
+    REQUIRE(encoded.groups.size() == iclforge::detail::kSilentExpGroups.size());
     for (std::size_t i = 0; i < encoded.groups.size(); ++i) {
         CAPTURE(i);
-        CHECK(encoded.groups[i] == ac3::detail::kSilentExpGroups[i]);
+        CHECK(encoded.groups[i] == iclforge::detail::kSilentExpGroups[i]);
     }
 
     // Decoder mirror: the ramp 15,17,19,21,23,24,24,...
-    const auto decoded = decode_all(encoded, ac3::ExpStrategy::kD15, 73);
+    const auto decoded = decode_all(encoded, iclforge::ExpStrategy::kD15, 73);
     CHECK(decoded[0] == 15);
     CHECK(decoded[1] == 17);
     CHECK(decoded[4] == 23);
@@ -88,12 +88,12 @@ TEST_CASE("hand-computed D25 case incl. absolute-exponent lowering", "[exponents
     // LOWER the absolute exponent 10 -> 5+2=7 so every step fits +-2:
     // final pre = [7, 5, 5, 3], diffs -2, 0, -2 -> mapped 0, 2, 0 -> 10.
     const std::array<std::uint8_t, 7> raw = {10, 5, 5, 9, 9, 3, 3};
-    const auto encoded = ac3::encode_exponents(raw, ac3::ExpStrategy::kD25);
+    const auto encoded = iclforge::encode_exponents(raw, iclforge::ExpStrategy::kD25);
     CHECK(encoded.absolute == 7);
     REQUIRE(encoded.groups.size() == 1);
     CHECK(encoded.groups[0] == 10);
 
-    const auto decoded = decode_all(encoded, ac3::ExpStrategy::kD25, 7);
+    const auto decoded = decode_all(encoded, iclforge::ExpStrategy::kD25, 7);
     CHECK(decoded == std::vector<std::uint8_t>{7, 5, 5, 5, 5, 3, 3});
 }
 
@@ -118,7 +118,7 @@ TEST_CASE("decoded exponents stay in 0..24 for adversarial profiles", "[exponent
     }
 
     for (const auto strategy :
-         {ac3::ExpStrategy::kD15, ac3::ExpStrategy::kD25, ac3::ExpStrategy::kD45}) {
+         {iclforge::ExpStrategy::kD15, iclforge::ExpStrategy::kD25, iclforge::ExpStrategy::kD45}) {
         for (const int endmant : legal_endmant) {
             const auto size = static_cast<std::size_t>(endmant);
 
@@ -126,7 +126,7 @@ TEST_CASE("decoded exponents stay in 0..24 for adversarial profiles", "[exponent
             std::vector<std::vector<std::uint8_t>> profiles;
             const auto add = [&](std::vector<std::uint8_t> p) { profiles.push_back(std::move(p)); };
 
-            add(std::vector<std::uint8_t>(size, ac3::kMaxExponent));  // digital silence
+            add(std::vector<std::uint8_t>(size, iclforge::kMaxExponent));  // digital silence
             add(std::vector<std::uint8_t>(size, 0));                  // full scale everywhere
 
             for (const int slope : {1, 2, 3, 6, 12, 24}) {
@@ -140,7 +140,7 @@ TEST_CASE("decoded exponents stay in 0..24 for adversarial profiles", "[exponent
                     for (int bin = 0; bin < endmant; ++bin) {
                         const int v = bin <= from ? 0 : (bin - from) * slope;
                         rise[static_cast<std::size_t>(bin)] =
-                            static_cast<std::uint8_t>(std::min(v, ac3::kMaxExponent));
+                            static_cast<std::uint8_t>(std::min(v, iclforge::kMaxExponent));
                     }
                     add(rise);
 
@@ -148,8 +148,8 @@ TEST_CASE("decoded exponents stay in 0..24 for adversarial profiles", "[exponent
                     // has to absorb by lowering the absolute exponent.
                     std::vector<std::uint8_t> fall(size);
                     for (int bin = 0; bin < endmant; ++bin) {
-                        const int v = bin <= from ? ac3::kMaxExponent
-                                                  : ac3::kMaxExponent - (bin - from) * slope;
+                        const int v = bin <= from ? iclforge::kMaxExponent
+                                                  : iclforge::kMaxExponent - (bin - from) * slope;
                         fall[static_cast<std::size_t>(bin)] =
                             static_cast<std::uint8_t>(std::max(v, 0));
                     }
@@ -176,10 +176,10 @@ TEST_CASE("decoded exponents stay in 0..24 for adversarial profiles", "[exponent
                 CAPTURE(static_cast<int>(strategy), endmant, p);
                 const auto& raw = profiles[p];
 
-                const auto encoded = ac3::encode_exponents(raw, strategy);
-                CHECK(encoded.absolute <= ac3::kMaxAbsoluteExponent);
+                const auto encoded = iclforge::encode_exponents(raw, strategy);
+                CHECK(encoded.absolute <= iclforge::kMaxAbsoluteExponent);
                 REQUIRE(static_cast<int>(encoded.groups.size()) ==
-                        ac3::exponent_group_count(strategy, endmant));
+                        iclforge::exponent_group_count(strategy, endmant));
                 // A grouped value above 124 is not a legal triple of mapped
                 // values (§7.10.2 error condition 17) - it means some
                 // differential escaped the +-2 range Table 7.1 can carry.
@@ -190,7 +190,7 @@ TEST_CASE("decoded exponents stay in 0..24 for adversarial profiles", "[exponent
                 const auto decoded = decode_all(encoded, strategy, endmant);
                 for (int bin = 0; bin < endmant; ++bin) {
                     CAPTURE(bin);
-                    CHECK(decoded[static_cast<std::size_t>(bin)] <= ac3::kMaxExponent);
+                    CHECK(decoded[static_cast<std::size_t>(bin)] <= iclforge::kMaxExponent);
                 }
             }
         }
@@ -199,7 +199,7 @@ TEST_CASE("decoded exponents stay in 0..24 for adversarial profiles", "[exponent
 
 TEST_CASE("encode/decode properties over random exponent sets", "[exponents]") {
     std::mt19937 rng(0x0715);
-    std::uniform_int_distribution<int> exp_dist(0, ac3::kMaxExponent);
+    std::uniform_int_distribution<int> exp_dist(0, iclforge::kMaxExponent);
 
     // Legal AC-3 mantissa counts only: fbw channels 73..253 step 3 (chbwcod
     // 0..60), coupled channels 37 + 12*cplbegf, and the 7-mantissa LFE. All
@@ -214,7 +214,7 @@ TEST_CASE("encode/decode properties over random exponent sets", "[exponents]") {
     std::uniform_int_distribution<std::size_t> endmant_pick(0, legal_endmant.size() - 1);
 
     for (const auto strategy :
-         {ac3::ExpStrategy::kD15, ac3::ExpStrategy::kD25, ac3::ExpStrategy::kD45}) {
+         {iclforge::ExpStrategy::kD15, iclforge::ExpStrategy::kD25, iclforge::ExpStrategy::kD45}) {
         for (int trial = 0; trial < 40; ++trial) {
             const int endmant = legal_endmant[endmant_pick(rng)];
             std::vector<std::uint8_t> raw(static_cast<std::size_t>(endmant));
@@ -223,10 +223,10 @@ TEST_CASE("encode/decode properties over random exponent sets", "[exponents]") {
             }
             CAPTURE(static_cast<int>(strategy), endmant, trial);
 
-            const auto encoded = ac3::encode_exponents(raw, strategy);
-            CHECK(encoded.absolute <= ac3::kMaxAbsoluteExponent);
+            const auto encoded = iclforge::encode_exponents(raw, strategy);
+            CHECK(encoded.absolute <= iclforge::kMaxAbsoluteExponent);
             CHECK(static_cast<int>(encoded.groups.size()) ==
-                  ac3::exponent_group_count(strategy, endmant));
+                  iclforge::exponent_group_count(strategy, endmant));
             for (const auto g : encoded.groups) {
                 CHECK(g <= 124);  // 25*4 + 5*4 + 4: every mapped value <= 4
             }
@@ -238,11 +238,11 @@ TEST_CASE("encode/decode properties over random exponent sets", "[exponents]") {
             for (int bin = 0; bin < endmant; ++bin) {
                 CAPTURE(bin);
                 CHECK(decoded[static_cast<std::size_t>(bin)] <= raw[static_cast<std::size_t>(bin)]);
-                CHECK(decoded[static_cast<std::size_t>(bin)] <= ac3::kMaxExponent);
+                CHECK(decoded[static_cast<std::size_t>(bin)] <= iclforge::kMaxExponent);
             }
 
             // Pairs/quads share one exponent (A/52 7.1.3 step 4).
-            const int group_size = ac3::exponent_group_size(strategy);
+            const int group_size = iclforge::exponent_group_size(strategy);
             for (int bin = 1; bin < endmant; ++bin) {
                 if ((bin - 1) % group_size != 0) {
                     CHECK(decoded[static_cast<std::size_t>(bin)] ==
@@ -251,7 +251,7 @@ TEST_CASE("encode/decode properties over random exponent sets", "[exponents]") {
             }
 
             // Encoding the decoded set again is a fixpoint: identical fields.
-            const auto re_encoded = ac3::encode_exponents(decoded, strategy);
+            const auto re_encoded = iclforge::encode_exponents(decoded, strategy);
             CHECK(re_encoded.absolute == encoded.absolute);
             CHECK(re_encoded.groups == encoded.groups);
         }
@@ -291,7 +291,7 @@ std::vector<float> float_probe_values() {
 
 TEST_CASE("to_fixed25's float instantiation agrees with the double one", "[exponents]") {
     for (const float v : float_probe_values()) {
-        CHECK(ac3::to_fixed25(v) == ac3::to_fixed25(static_cast<double>(v)));
+        CHECK(iclforge::to_fixed25(v) == iclforge::to_fixed25(static_cast<double>(v)));
     }
 }
 
@@ -299,14 +299,14 @@ TEST_CASE("the float block conversions agree with to_fixed25 element by element"
           "[exponents]") {
     const auto values = float_probe_values();
     std::vector<std::int32_t> fixed(values.size());
-    ac3::to_fixed25_block(std::span<const float>{values}, fixed);
+    iclforge::to_fixed25_block(std::span<const float>{values}, fixed);
     std::vector<std::int32_t> fused(values.size());
     std::vector<std::uint8_t> exponents(values.size());
-    ac3::to_fixed25_block(std::span<const float>{values}, fused, exponents);
+    iclforge::to_fixed25_block(std::span<const float>{values}, fused, exponents);
     for (std::size_t i = 0; i < values.size(); ++i) {
-        const std::int32_t expected = ac3::to_fixed25(values[i]);
+        const std::int32_t expected = iclforge::to_fixed25(values[i]);
         CHECK(fixed[i] == expected);
         CHECK(fused[i] == expected);
-        CHECK(exponents[i] == static_cast<std::uint8_t>(ac3::exponent_from_fixed(expected)));
+        CHECK(exponents[i] == static_cast<std::uint8_t>(iclforge::exponent_from_fixed(expected)));
     }
 }

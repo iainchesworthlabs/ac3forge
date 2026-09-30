@@ -37,7 +37,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
         written += static_cast<std::size_t>(n);
     }
     ::close(fd);
-    (void)ac3::io::read_wav(path);
+    (void)iclforge::io::read_wav(path);
     ::unlink(path.c_str());
     return 0;
 }

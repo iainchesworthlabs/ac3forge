@@ -21,15 +21,15 @@
 
 using namespace std::chrono_literals;
 
-using ac3::hearth::EngineSettings;
-using ac3::hearth::EngineStatus;
-using ac3::hearth::FailurePolicy;
-using ac3::hearth::MemorySettingsStore;
-using ac3::hearth::PlayPosition;
-using ac3::hearth::Queue;
-using ac3::hearth::QueueItem;
-using ac3::hearth::SavedQueue;
-using ac3::hearth::SavedSpeakerSetup;
+using iclforge::hearth::EngineSettings;
+using iclforge::hearth::EngineStatus;
+using iclforge::hearth::FailurePolicy;
+using iclforge::hearth::MemorySettingsStore;
+using iclforge::hearth::PlayPosition;
+using iclforge::hearth::Queue;
+using iclforge::hearth::QueueItem;
+using iclforge::hearth::SavedQueue;
+using iclforge::hearth::SavedSpeakerSetup;
 
 namespace {
 
@@ -72,7 +72,7 @@ TEST_CASE("settings: a store removes a group whole, and keeps what it last wrote
 
 TEST_CASE("settings: what is missing or cannot be read is the default", "[hearth][settings-model]") {
     const MemorySettingsStore empty;
-    const EngineSettings defaults = ac3::hearth::load_settings(empty, "DESKTOP-7KQ2");
+    const EngineSettings defaults = iclforge::hearth::load_settings(empty, "DESKTOP-7KQ2");
     CHECK(defaults.playback.gapless);
     CHECK(defaults.playback.resume_queue);
     CHECK(defaults.playback.on_failure == FailurePolicy::kSkip);
@@ -86,14 +86,14 @@ TEST_CASE("settings: what is missing or cannot be read is the default", "[hearth
                                        {"playback/onFailure", "Stop"},
                                        {"network/name", " \t\n "},
                                        {"network/discover", "False"}}};
-    CHECK(ac3::hearth::load_settings(damaged, "DESKTOP-7KQ2") == defaults);
+    CHECK(iclforge::hearth::load_settings(damaged, "DESKTOP-7KQ2") == defaults);
 
     const MemorySettingsStore set{{{"playback/gapless", "false"},
                                    {"playback/resumeQueue", "false"},
                                    {"playback/onFailure", "stop"},
                                    {"network/name", "  Living room  "},
                                    {"network/discover", "false"}}};
-    const EngineSettings read = ac3::hearth::load_settings(set, "DESKTOP-7KQ2");
+    const EngineSettings read = iclforge::hearth::load_settings(set, "DESKTOP-7KQ2");
     CHECK_FALSE(read.playback.gapless);
     CHECK_FALSE(read.playback.resume_queue);
     CHECK(read.playback.on_failure == FailurePolicy::kStop);
@@ -109,15 +109,15 @@ TEST_CASE("settings: what is saved reads back, and is what the diagnostics file 
     settings.network.name = "Study";
     settings.network.discover = false;
     MemorySettingsStore store;
-    ac3::hearth::save_settings(settings, store);
-    CHECK(ac3::hearth::load_settings(store, "elsewhere") == settings);
+    iclforge::hearth::save_settings(settings, store);
+    CHECK(iclforge::hearth::load_settings(store, "elsewhere") == settings);
 
     const std::vector<std::pair<std::string, std::string>> rows{
         {"playback/gapless", "false"},    {"playback/resumeQueue", "true"},
         {"playback/onFailure", "stop"},   {"network/name", "Study"},
         {"network/discover", "false"},
     };
-    CHECK(ac3::hearth::settings_rows(settings) == rows);
+    CHECK(iclforge::hearth::settings_rows(settings) == rows);
     for (const auto& [key, value] : rows) {
         INFO(key);
         CHECK(store.value(key) == std::optional<std::string>{value});
@@ -125,22 +125,22 @@ TEST_CASE("settings: what is saved reads back, and is what the diagnostics file 
 }
 
 TEST_CASE("settings: a network name is one DNS label's worth of text", "[hearth][settings-model]") {
-    CHECK(ac3::hearth::network_name("  Kitchen\r\n speaker \x7F ") == "Kitchen speaker");
-    CHECK(ac3::hearth::network_name("\x01\x02").empty());
-    CHECK(ac3::hearth::network_name(std::string(70, 'a')) == std::string(63, 'a'));
+    CHECK(iclforge::hearth::network_name("  Kitchen\r\n speaker \x7F ") == "Kitchen speaker");
+    CHECK(iclforge::hearth::network_name("\x01\x02").empty());
+    CHECK(iclforge::hearth::network_name(std::string(70, 'a')) == std::string(63, 'a'));
     // A two-byte character that would end past the limit is left out whole,
     // and a space the cut leaves at the end goes too.
     std::string accented(61, 'b');
     accented += " \xC3\xA9";
-    CHECK(ac3::hearth::network_name(accented) == std::string(61, 'b'));
+    CHECK(iclforge::hearth::network_name(accented) == std::string(61, 'b'));
     std::string fits(61, 'c');
     fits += "\xC3\xA9";
-    CHECK(ac3::hearth::network_name(fits) == fits);
+    CHECK(iclforge::hearth::network_name(fits) == fits);
 
-    CHECK(ac3::hearth::default_network_name("DESKTOP-7KQ2") == "Hearth on DESKTOP-7KQ2");
-    CHECK(ac3::hearth::default_network_name(" \n") == "Hearth");
+    CHECK(iclforge::hearth::default_network_name("DESKTOP-7KQ2") == "Hearth on DESKTOP-7KQ2");
+    CHECK(iclforge::hearth::default_network_name(" \n") == "Hearth");
     const std::string long_host(80, 'h');
-    CHECK(ac3::hearth::default_network_name(long_host) == "Hearth on " + std::string(53, 'h'));
+    CHECK(iclforge::hearth::default_network_name(long_host) == "Hearth on " + std::string(53, 'h'));
 }
 
 TEST_CASE("settings: the queue kept for the next start is the item being heard, and how far in",
@@ -154,7 +154,7 @@ TEST_CASE("settings: the queue kept for the next start is the item being heard, 
 
     // Heard: the item and the position the device has reached, which can
     // differ from the queue's current item while a reopen waits.
-    const SavedQueue heard = ac3::hearth::saved_queue(
+    const SavedQueue heard = iclforge::hearth::saved_queue(
         status, PlayPosition{.item = 1, .heard = 83456ms, .duration = 200000ms});
     REQUIRE(heard.items.size() == 3);
     CHECK(heard.items[1].path == "C:/Music/two.ec3");
@@ -165,19 +165,19 @@ TEST_CASE("settings: the queue kept for the next start is the item being heard, 
     CHECK(heard.position == 83456ms);
 
     // Nothing heard: the current item, from its start.
-    const SavedQueue stopped = ac3::hearth::saved_queue(status, PlayPosition{});
+    const SavedQueue stopped = iclforge::hearth::saved_queue(status, PlayPosition{});
     CHECK(stopped.current == 2);
     CHECK(stopped.position == 0ms);
 
     MemorySettingsStore store;
-    ac3::hearth::save_queue(heard, store);
+    iclforge::hearth::save_queue(heard, store);
     CHECK(store.value("queue/size") == std::optional<std::string>{"3"});
     CHECK(store.value("queue/1/path") == std::optional<std::string>{"C:/Music/one.ec3"});
     CHECK(store.value("queue/3/title") == std::optional<std::string>{"Three"});
     CHECK(store.value("queue/current") == std::optional<std::string>{"2"});
     CHECK(store.value("queue/positionMs") == std::optional<std::string>{"83456"});
 
-    const SavedQueue read = ac3::hearth::load_queue(store);
+    const SavedQueue read = iclforge::hearth::load_queue(store);
     REQUIRE(read.items.size() == 3);
     for (std::size_t i = 0; i < 3; ++i) {
         CHECK(read.items[i].path == heard.items[i].path);
@@ -187,10 +187,10 @@ TEST_CASE("settings: the queue kept for the next start is the item being heard, 
     CHECK(read.position == 83456ms);
 
     // A shorter queue replaces the group rather than overlaying it.
-    ac3::hearth::save_queue(SavedQueue{.items = {queued("/one", "One")}}, store);
+    iclforge::hearth::save_queue(SavedQueue{.items = {queued("/one", "One")}}, store);
     CHECK_FALSE(store.value("queue/2/path").has_value());
     CHECK_FALSE(store.value("queue/current").has_value());
-    const SavedQueue shorter = ac3::hearth::load_queue(store);
+    const SavedQueue shorter = iclforge::hearth::load_queue(store);
     CHECK(shorter.items.size() == 1);
     CHECK(shorter.current == Queue::kNone);
     CHECK(shorter.position == 0ms);
@@ -206,7 +206,7 @@ TEST_CASE("settings: a damaged saved queue reads as far as it can", "[hearth][se
                                     {"queue/4/path", "d.ec3"},
                                     {"queue/current", "3"},
                                     {"queue/positionMs", "1500"}}};
-    const SavedQueue read = ac3::hearth::load_queue(gaps);
+    const SavedQueue read = iclforge::hearth::load_queue(gaps);
     REQUIRE(read.items.size() == 3);
     CHECK(read.items[0].title == "a.ec3");
     CHECK(read.items[1].title == "c.ec3");
@@ -220,20 +220,20 @@ TEST_CASE("settings: a damaged saved queue reads as far as it can", "[hearth][se
                                     {"queue/1/path", "/a"},
                                     {"queue/current", "2"},
                                     {"queue/positionMs", "1500"}}};
-    CHECK(ac3::hearth::load_queue(gone).current == Queue::kNone);
-    CHECK(ac3::hearth::load_queue(gone).position == 0ms);
+    CHECK(iclforge::hearth::load_queue(gone).current == Queue::kNone);
+    CHECK(iclforge::hearth::load_queue(gone).position == 0ms);
 
     // Counts and numbers that do not read.
     for (const char* size : {"", "-1", "two", "3 ", "0x3"}) {
         INFO(size);
         const MemorySettingsStore bad{{{"queue/size", size}, {"queue/1/path", "/a"}}};
-        CHECK(ac3::hearth::load_queue(bad).items.empty());
+        CHECK(iclforge::hearth::load_queue(bad).items.empty());
     }
     const MemorySettingsStore bad_numbers{{{"queue/size", "1"},
                                            {"queue/1/path", "/a"},
                                            {"queue/current", "one"},
                                            {"queue/positionMs", "99999999999999999999"}}};
-    const SavedQueue numbers = ac3::hearth::load_queue(bad_numbers);
+    const SavedQueue numbers = iclforge::hearth::load_queue(bad_numbers);
     CHECK(numbers.items.size() == 1);
     CHECK(numbers.current == Queue::kNone);
     CHECK(numbers.position == 0ms);
@@ -241,26 +241,26 @@ TEST_CASE("settings: a damaged saved queue reads as far as it can", "[hearth][se
                                              {"queue/1/path", "/a"},
                                              {"queue/current", "1"},
                                              {"queue/positionMs", "18446744073709551615"}}};
-    CHECK(ac3::hearth::load_queue(huge_position).position == 0ms);
+    CHECK(iclforge::hearth::load_queue(huge_position).position == 0ms);
 
     // A count far past anything written stops at the limit rather than
     // walking for ever, and what is there still reads.
     const MemorySettingsStore huge{{{"queue/size", "18446744073709551615"},
                                     {"queue/1/path", "/a"}}};
-    CHECK(ac3::hearth::load_queue(huge).items.size() == 1);
-    CHECK(ac3::hearth::load_queue(MemorySettingsStore{}).items.empty());
+    CHECK(iclforge::hearth::load_queue(huge).items.size() == 1);
+    CHECK(iclforge::hearth::load_queue(MemorySettingsStore{}).items.empty());
 }
 
 TEST_CASE("settings: the speaker setup kept for the next start round-trips through the store",
           "[hearth][settings-model]") {
     EngineStatus status;
-    status.layout = *ac3::render::OutputLayout::parse("5.1");
+    status.layout = *iclforge::render::OutputLayout::parse("5.1");
     status.trim_db = {1.5, -2.0, 0.0, 3.25, -6.0, 0.0};
     status.delay_ms = {0.0, 5.0, 10.0, 0.0, 2.5, 0.0};
     status.crossover_hz = 100.0;
-    status.routing = *ac3::render::Routing::identity(6, 8);
+    status.routing = *iclforge::render::Routing::identity(6, 8);
 
-    const SavedSpeakerSetup saved = ac3::hearth::saved_speaker_setup(status);
+    const SavedSpeakerSetup saved = iclforge::hearth::saved_speaker_setup(status);
     CHECK(saved.layout == "5.1");
     CHECK(saved.trim_db == status.trim_db);
     CHECK(saved.delay_ms == status.delay_ms);
@@ -268,7 +268,7 @@ TEST_CASE("settings: the speaker setup kept for the next start round-trips throu
     CHECK(saved.routing_outputs == 8);  // identity(6, 8): 6 channels onto 8 device outputs
 
     MemorySettingsStore store;
-    ac3::hearth::save_speaker_setup(saved, store);
+    iclforge::hearth::save_speaker_setup(saved, store);
     CHECK(store.value("speakers/layout") == std::optional<std::string>{"5.1"});
     CHECK(store.value("speakers/slots") == std::optional<std::string>{"6"});
     CHECK(store.value("speakers/routing").has_value());
@@ -276,7 +276,7 @@ TEST_CASE("settings: the speaker setup kept for the next start round-trips throu
 
     // What is saved reads back exactly, doubles included - text_of()/
     // double_of()'s own round trip, not any particular on-disk spelling.
-    const SavedSpeakerSetup read = ac3::hearth::load_speaker_setup(store);
+    const SavedSpeakerSetup read = iclforge::hearth::load_speaker_setup(store);
     CHECK(read.layout == saved.layout);
     CHECK(read.trim_db == saved.trim_db);
     CHECK(read.delay_ms == saved.delay_ms);
@@ -288,29 +288,29 @@ TEST_CASE("settings: the speaker setup kept for the next start round-trips throu
     // that empty text is not saved as if it were a real (if degenerate)
     // patch - load_speaker_setup() then has nothing to try to apply.
     EngineStatus closed;
-    closed.layout = *ac3::render::OutputLayout::parse("2.0");
-    const SavedSpeakerSetup no_routing = ac3::hearth::saved_speaker_setup(closed);
+    closed.layout = *iclforge::render::OutputLayout::parse("2.0");
+    const SavedSpeakerSetup no_routing = iclforge::hearth::saved_speaker_setup(closed);
     CHECK(no_routing.routing.empty());
     MemorySettingsStore store2;
-    ac3::hearth::save_speaker_setup(no_routing, store2);
+    iclforge::hearth::save_speaker_setup(no_routing, store2);
     CHECK_FALSE(store2.value("speakers/routing").has_value());
     CHECK_FALSE(store2.value("speakers/routingOutputs").has_value());
 
     // A shorter setup replaces the group rather than overlaying it.
-    ac3::hearth::save_speaker_setup(
+    iclforge::hearth::save_speaker_setup(
         SavedSpeakerSetup{.layout = "2.0", .trim_db = {0.0, 0.0}, .delay_ms = {0.0, 0.0}}, store);
     CHECK_FALSE(store.value("speakers/trimDb/3").has_value());
     CHECK_FALSE(store.value("speakers/routing").has_value());
-    const SavedSpeakerSetup shorter = ac3::hearth::load_speaker_setup(store);
+    const SavedSpeakerSetup shorter = iclforge::hearth::load_speaker_setup(store);
     CHECK(shorter.trim_db.size() == 2);
 }
 
 TEST_CASE("settings: a damaged saved speaker setup reads as far as it can", "[hearth][settings-model]") {
-    const SavedSpeakerSetup defaults = ac3::hearth::load_speaker_setup(MemorySettingsStore{});
+    const SavedSpeakerSetup defaults = iclforge::hearth::load_speaker_setup(MemorySettingsStore{});
     CHECK(defaults.layout.empty());
     CHECK(defaults.trim_db.empty());
     CHECK(defaults.delay_ms.empty());
-    CHECK(defaults.crossover_hz == ac3::render::LayoutRenderer::kDefaultCrossoverHz);
+    CHECK(defaults.crossover_hz == iclforge::render::LayoutRenderer::kDefaultCrossoverHz);
     CHECK(defaults.routing.empty());
     CHECK(defaults.routing_outputs == 0);
 
@@ -327,7 +327,7 @@ TEST_CASE("settings: a damaged saved speaker setup reads as far as it can", "[he
                                     {"speakers/crossoverHz", "not a number"},
                                     {"speakers/routing", "0,1"},
                                     {"speakers/routingOutputs", "nope"}}};
-    const SavedSpeakerSetup read = ac3::hearth::load_speaker_setup(gaps);
+    const SavedSpeakerSetup read = iclforge::hearth::load_speaker_setup(gaps);
     CHECK(read.layout == "5.1");
     REQUIRE(read.trim_db.size() == 3);
     CHECK(read.trim_db[0] == 2.5);
@@ -337,7 +337,7 @@ TEST_CASE("settings: a damaged saved speaker setup reads as far as it can", "[he
     CHECK(read.delay_ms[0] == 0.0);
     CHECK(read.delay_ms[1] == 4.0);
     CHECK(read.delay_ms[2] == 0.0);
-    CHECK(read.crossover_hz == ac3::render::LayoutRenderer::kDefaultCrossoverHz);
+    CHECK(read.crossover_hz == iclforge::render::LayoutRenderer::kDefaultCrossoverHz);
     CHECK(read.routing == "0,1");
     CHECK(read.routing_outputs == 0);
 
@@ -347,14 +347,14 @@ TEST_CASE("settings: a damaged saved speaker setup reads as far as it can", "[he
     const MemorySettingsStore huge{{{"speakers/slots", "18446744073709551615"},
                                     {"speakers/trimDb/1", "1"},
                                     {"speakers/delayMs/1", "2"}}};
-    const SavedSpeakerSetup capped = ac3::hearth::load_speaker_setup(huge);
-    CHECK(capped.trim_db.size() == ac3::render::OutputLayout::kMaxSlots);
-    CHECK(capped.delay_ms.size() == ac3::render::OutputLayout::kMaxSlots);
+    const SavedSpeakerSetup capped = iclforge::hearth::load_speaker_setup(huge);
+    CHECK(capped.trim_db.size() == iclforge::render::OutputLayout::kMaxSlots);
+    CHECK(capped.delay_ms.size() == iclforge::render::OutputLayout::kMaxSlots);
 
     // Numbers that do not read at all.
     for (const char* slots : {"", "-1", "two", "3 ", "0x3"}) {
         INFO(slots);
         const MemorySettingsStore bad{{{"speakers/slots", slots}, {"speakers/trimDb/1", "1"}}};
-        CHECK(ac3::hearth::load_speaker_setup(bad).trim_db.empty());
+        CHECK(iclforge::hearth::load_speaker_setup(bad).trim_db.empty());
     }
 }

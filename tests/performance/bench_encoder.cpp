@@ -61,7 +61,7 @@ constexpr double kSampleRate = 48000.0;
 constexpr int kObjects = 4;
 
 double real_time_budget_ms(int frames) {
-    return 1000.0 * static_cast<double>(frames) * ac3::kSamplesPerFrame / kSampleRate;
+    return 1000.0 * static_cast<double>(frames) * iclforge::kSamplesPerFrame / kSampleRate;
 }
 
 struct Result {
@@ -151,9 +151,9 @@ constexpr int kWarmupFrames = 8;
 // the decode workloads' source streams, so a decode series is always read
 // against exactly the configuration whose encode series sits above it.
 
-ac3::FrameEncoder make_ac3_51(bool fast_mdct) {
-    return ac3::FrameEncoder{
-        {.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true, .fast_mdct = fast_mdct}};
+iclforge::FrameEncoder make_ac3_51(bool fast_mdct) {
+    return iclforge::FrameEncoder{
+        {.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true, .fast_mdct = fast_mdct}};
 }
 
 // E-AC-3 with auto_tools: the landscape configuration, not a corner. `auto`
@@ -161,13 +161,14 @@ ac3::FrameEncoder make_ac3_51(bool fast_mdct) {
 // comment on why neither "all on" nor "all off" is a sensible default), so
 // this is the code path a stream produced by this encoder normally takes -
 // and the one whose cost a rate change silently moves.
-ac3::eac3::FrameEncoder make_eac3_auto(ac3::Acmod acmod, bool lfe, std::uint32_t bitrate_kbps) {
-    return ac3::eac3::FrameEncoder{
+iclforge::eac3::FrameEncoder make_eac3_auto(iclforge::Acmod acmod, bool lfe,
+                                            std::uint32_t bitrate_kbps) {
+    return iclforge::eac3::FrameEncoder{
         {.bitrate_kbps = bitrate_kbps, .acmod = acmod, .lfe = lfe, .auto_tools = true}};
 }
 
-std::vector<ac3::oba::ObjectPlacement> object_placement() {
-    std::vector<ac3::oba::ObjectPlacement> placement(static_cast<std::size_t>(kObjects));
+std::vector<iclforge::oba::ObjectPlacement> object_placement() {
+    std::vector<iclforge::oba::ObjectPlacement> placement(static_cast<std::size_t>(kObjects));
     for (int obj = 0; obj < kObjects; ++obj) {
         placement[static_cast<std::size_t>(obj)] = {
             .position = {.x = 0.2 + 0.2 * obj, .y = 0.5, .z = 0.0}, .gain = 1.0};
@@ -204,7 +205,7 @@ Result bench_ac3_51(perf::FrameSource& source, bool fast_mdct) {
     return timer.result(name);
 }
 
-Result bench_eac3_auto(std::string name, perf::FrameSource& source, ac3::Acmod acmod, bool lfe,
+Result bench_eac3_auto(std::string name, perf::FrameSource& source, iclforge::Acmod acmod, bool lfe,
                        std::uint32_t bitrate_kbps) {
     {
         auto warm = make_eac3_auto(acmod, lfe, bitrate_kbps);
@@ -234,18 +235,18 @@ Result bench_eac3_auto(std::string name, perf::FrameSource& source, ac3::Acmod a
 // plain_51 has to plain_51_fast_mdct), so the trend series stay continuous
 // across a default change instead of taking a step nobody can read later.
 Result bench_atmos_4obj(perf::FrameSource& source, bool fast_mdct,
-                        ac3::oba::joc::Domain domain = ac3::oba::joc::Domain::kMdctBand) {
-    ac3::oba::AtmosEncoder encoder{
+                        iclforge::oba::joc::Domain domain = iclforge::oba::joc::Domain::kMdctBand) {
+    iclforge::oba::AtmosEncoder encoder{
         {.bitrate_kbps = 448, .fast_mdct = fast_mdct, .joc_domain = domain}, kObjects};
     const char* name = "atmos_4obj";
-    if (domain == ac3::oba::joc::Domain::kQmf) {
+    if (domain == iclforge::oba::joc::Domain::kQmf) {
         name = fast_mdct ? "atmos_4obj_qmf_fast_mdct" : "atmos_4obj_qmf";
     } else if (fast_mdct) {
         name = "atmos_4obj_fast_mdct";
     }
     const auto placement = object_placement();
     {
-        ac3::oba::AtmosEncoder warm{
+        iclforge::oba::AtmosEncoder warm{
             {.bitrate_kbps = 448, .fast_mdct = fast_mdct, .joc_domain = domain}, kObjects};
         for (int frame = 0; frame < kWarmupFrames; ++frame) {
             (void)warm.encode_frame(source.frame(static_cast<std::size_t>(frame)), placement);
@@ -282,7 +283,7 @@ std::vector<std::byte> encode_ac3_stream(perf::FrameSource& source) {
 }
 
 std::vector<std::byte> encode_eac3_stream(perf::FrameSource& source) {
-    auto encoder = make_eac3_auto(ac3::Acmod::k3_2, /*lfe=*/true, 448);
+    auto encoder = make_eac3_auto(iclforge::Acmod::k3_2, /*lfe=*/true, 448);
     std::vector<std::byte> stream;
     stream.reserve(static_cast<std::size_t>(kFrames) * 2048);
     for (int frame = 0; frame < kFrames; ++frame) {
@@ -296,7 +297,7 @@ std::vector<std::byte> encode_eac3_stream(perf::FrameSource& source) {
 }
 
 std::vector<std::byte> encode_atmos_stream(perf::FrameSource& source) {
-    ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448, .fast_mdct = true}, kObjects};
+    iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 448, .fast_mdct = true}, kObjects};
     const auto placement = object_placement();
     std::vector<std::byte> stream;
     stream.reserve(static_cast<std::size_t>(kFrames) * 4096);
@@ -318,18 +319,18 @@ std::vector<std::byte> encode_atmos_stream(perf::FrameSource& source) {
 // number.
 
 Result bench_ac3_decode(std::span<const std::byte> stream) {
-    const auto frames = ac3::split_frames(stream);
+    const auto frames = iclforge::split_frames(stream);
     if (!frames || frames->empty()) {
         fail("ac3_51_decode", "split_frames");
     }
     {
-        ac3::FrameDecoder warm{};
+        iclforge::FrameDecoder warm{};
         for (int i = 0; i < kWarmupFrames && i < static_cast<int>(frames->size()); ++i) {
             (void)warm.decode_frame((*frames)[static_cast<std::size_t>(i)]);
         }
     }
 
-    ac3::FrameDecoder decoder{};
+    iclforge::FrameDecoder decoder{};
     FrameTimer timer{static_cast<int>(frames->size())};
     for (const auto& frame : *frames) {
         timer.time_frame([&] {
@@ -343,19 +344,19 @@ Result bench_ac3_decode(std::span<const std::byte> stream) {
 }
 
 Result bench_eac3_decode(std::string name, std::span<const std::byte> stream) {
-    const auto units = ac3::split_access_units(stream);
+    const auto units = iclforge::split_access_units(stream);
     if (!units || units->empty()) {
         fail(name.c_str(), "split_access_units");
     }
     {
-        ac3::Eac3Decoder warm{};
+        iclforge::Eac3Decoder warm{};
         for (int i = 0; i < kWarmupFrames && i < static_cast<int>(units->size()); ++i) {
             (void)warm.decode_access_unit((*units)[static_cast<std::size_t>(i)]);
         }
         (void)warm.flush();
     }
 
-    ac3::Eac3Decoder decoder{};
+    iclforge::Eac3Decoder decoder{};
     FrameTimer timer{static_cast<int>(units->size())};
     for (const auto& unit : *units) {
         timer.time_frame([&] {
@@ -381,27 +382,27 @@ double ac4_budget_ms() {
 // while the encoder's delay fills; they still did that frame's analysis, so
 // they stay in the series.
 Result bench_ac4_encode(std::string name, perf::ac4_bench::FrameSource& source,
-                        const ac4::EncoderConfig& config) {
+                        const iclforge::ac4::EncoderConfig& config) {
     {
-        auto warm = ac4::Encoder::create(config);
+        auto warm = iclforge::ac4::Encoder::create(config);
         if (!warm) {
-            fail(name.c_str(), "ac4::Encoder::create");
+            fail(name.c_str(), "iclforge::ac4::Encoder::create");
         }
         for (int i = 0; i < kWarmupFrames; ++i) {
             (void)warm->encode(source.frame(static_cast<std::size_t>(i)));
         }
     }
 
-    auto encoder = ac4::Encoder::create(config);
+    auto encoder = iclforge::ac4::Encoder::create(config);
     if (!encoder) {
-        fail(name.c_str(), "ac4::Encoder::create");
+        fail(name.c_str(), "iclforge::ac4::Encoder::create");
     }
     FrameTimer timer{kFrames};
     for (int frame = 0; frame < kFrames; ++frame) {
         timer.time_frame([&] {
             const auto result = encoder->encode(source.frame(static_cast<std::size_t>(frame)));
             if (!result) {
-                fail(name.c_str(), "ac4::Encoder::encode");
+                fail(name.c_str(), "iclforge::ac4::Encoder::encode");
             }
         });
     }
@@ -415,19 +416,19 @@ Result bench_ac4_decode(std::string name, const std::vector<std::vector<std::byt
         fail(name.c_str(), "encoding the AC-4 source stream");
     }
     {
-        ac4::Decoder warm;
+        iclforge::ac4::Decoder warm;
         for (int i = 0; i < kWarmupFrames && i < static_cast<int>(frames.size()); ++i) {
             (void)warm.decode(frames[static_cast<std::size_t>(i)]);
         }
     }
 
-    ac4::Decoder decoder;
+    iclforge::ac4::Decoder decoder;
     FrameTimer timer{static_cast<int>(frames.size())};
     for (const auto& frame : frames) {
         timer.time_frame([&] {
             const auto result = decoder.decode(frame);
             if (!result) {
-                fail(name.c_str(), "ac4::Decoder::decode");
+                fail(name.c_str(), "iclforge::ac4::Decoder::decode");
             }
         });
     }
@@ -477,8 +478,8 @@ int main(int argc, char** argv) {
         return only.empty() || std::ranges::contains(only, name);
     };
 
-    const ac3::io::WavData audio =
-        perf::load_real_audio(wav_path, 6, static_cast<std::size_t>(ac3::kSamplesPerFrame));
+    const iclforge::io::WavData audio =
+        perf::load_real_audio(wav_path, 6, static_cast<std::size_t>(iclforge::kSamplesPerFrame));
     perf::FrameSource six_channel{audio, perf::kFiveOneChannels};
     perf::FrameSource two_channel{audio, perf::kStereoChannels};
     perf::FrameSource four_object{audio, perf::kFourObjectChannels};
@@ -508,10 +509,10 @@ int main(int argc, char** argv) {
     }
     if (wanted("eac3_51_auto")) {
         results.push_back(
-            bench_eac3_auto("eac3_51_auto", six_channel, ac3::Acmod::k3_2, /*lfe=*/true, 448));
+            bench_eac3_auto("eac3_51_auto", six_channel, iclforge::Acmod::k3_2, /*lfe=*/true, 448));
     }
     if (wanted("eac3_stereo_auto")) {
-        results.push_back(bench_eac3_auto("eac3_stereo_auto", two_channel, ac3::Acmod::k2_0,
+        results.push_back(bench_eac3_auto("eac3_stereo_auto", two_channel, iclforge::Acmod::k2_0,
                                           /*lfe=*/false, 192));
     }
     if (wanted("atmos_4obj")) {
@@ -529,7 +530,7 @@ int main(int argc, char** argv) {
     // step nobody can read later.
     if (wanted("atmos_4obj_qmf_fast_mdct")) {
         results.push_back(
-            bench_atmos_4obj(four_object, /*fast_mdct=*/true, ac3::oba::joc::Domain::kQmf));
+            bench_atmos_4obj(four_object, /*fast_mdct=*/true, iclforge::oba::joc::Domain::kQmf));
     }
     if (wanted("ac3_51_decode")) {
         results.push_back(bench_ac3_decode(ac3_stream));

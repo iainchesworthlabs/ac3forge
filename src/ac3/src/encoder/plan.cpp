@@ -28,7 +28,7 @@
 #include "iclforge/ac3/meta/mixing.hpp"
 #include "iclforge/render/spatial.hpp"
 
-namespace ac3::plan {
+namespace iclforge::plan {
 
 namespace {
 
@@ -82,7 +82,7 @@ using Location = eac3::chanmap::Location;
 //
 // The height-aware azimuth/elevation panner (Direction, direction_of,
 // PanTargets, pan_targets, pan_direction) used to live here alone; it is now
-// ac3::spatial's, promoted so IO12's object-based loudness measurement can
+// iclforge::spatial's, promoted so IO12's object-based loudness measurement can
 // pan an object by its own position with the identical geometry this
 // renderer uses to move a bed's channels between layouts. Aliased back in
 // rather than qualified at every call site below.
@@ -880,7 +880,7 @@ namespace {
 // is one of the channel modes the AC-4 encoder takes (ETSI TS 103 190-1 Table
 // 88's mono, stereo, 5.0 and 5.1), at one of the rates it takes. The rate and
 // everything else the encoder decides for itself (its least frame, the codec
-// mode) are ac4::Encoder::refusal_reason()'s to name.
+// mode) are iclforge::ac4::Encoder::refusal_reason()'s to name.
 std::optional<PlanError> validate_ac4(const Plan& plan) {
     if (plan.custom_locations.has_value()) {
         const auto allocated = eac3::chanmap::allocate(*plan.custom_locations);
@@ -1376,4 +1376,4 @@ void render(const Routing& routing, std::span<const std::span<const float>> sour
     }
 }
 
-}  // namespace ac3::plan
+}  // namespace iclforge::plan

@@ -16,7 +16,7 @@
 #include "mdct_avx2.hpp"
 #include "reference_transform.hpp"
 
-namespace ac3 {
+namespace iclforge {
 
 namespace {
 
@@ -195,7 +195,7 @@ const FastMdctTables<NLen, Scalar>& fast_mdct_tables() {
 // transform runs it at M = 256 and both short transforms at M = 128.
 // The pre- and post-twiddle loops run two m/k at a time through the arch
 // seam (SIMD kernels), four at a time on AVX2-capable hardware
-// (ac3::internal::cpu::has_avx2(), SIMD kernels's dynamic-dispatch
+// (iclforge::internal::cpu::has_avx2(), SIMD kernels's dynamic-dispatch
 // follow-on - see mdct_avx2.hpp/.cpp). Both are complex multiplies whose
 // ARITHMETIC is contiguous even though their memory access is not: the
 // pre-twiddle gathers u at stride +2 and stride -2 and scatters its result
@@ -496,7 +496,7 @@ void imdct512_windowed_impl(std::span<const Scalar, 256> coeffs, std::span<Scala
     std::array<Scalar, kQuarter> t_im{};
     if (fast) {
         // Two k at a time through f64x2, four through f32x4 or the AVX2
-        // tier (SIMD kernels, ac3::internal::cpu::has_avx2()), the same
+        // tier (SIMD kernels, iclforge::internal::cpu::has_avx2()), the same
         // gather-compute-scatter shape as dct4_scaled's pre-twiddle: the
         // coefficient gather runs at stride -2/+2 and the scatter target is
         // bitrev[k], so both ends stay scalar and only the six multiplies
@@ -794,7 +794,7 @@ void imdct256_pair_windowed_impl(std::span<const Scalar, 256> coeffs, std::span<
     // Step 4: post-IFFT complex multiply. y1[n] = z1[n] * (xcos2[n] + j*xsin2[n]).
     // Both half-block sets: two n at a time through f64x2, four through
     // f32x4 or the AVX2 tier, all unit stride (SIMD kernels,
-    // ac3::internal::cpu::has_avx2()).
+    // iclforge::internal::cpu::has_avx2()).
     std::array<Scalar, kEighth> y1_re{};
     std::array<Scalar, kEighth> y1_im{};
     std::array<Scalar, kEighth> y2_re{};
@@ -899,4 +899,4 @@ void imdct512_windowed_batch4(std::span<const float, 256> coeffs0,
     imdct512_windowed(coeffs3, x3);
 }
 
-}  // namespace ac3
+}  // namespace iclforge

@@ -16,7 +16,7 @@
 // Found by compiling the encoder for arm-none-eabi, which had never been done:
 // the decoder does not reach this file.
 
-namespace ac3::meta {
+namespace iclforge::meta {
 
 std::string format_timecode(const TimeCodeCoarse& coarse, const TimeCodeFine& fine) {
     return fmt::format("{:02}:{:02}:{:02}:{:02}.{}", coarse.hours, coarse.minutes,
@@ -24,4 +24,4 @@ std::string format_timecode(const TimeCodeCoarse& coarse, const TimeCodeFine& fi
                        fine.sixty_fourths);
 }
 
-}  // namespace ac3::meta
+}  // namespace iclforge::meta

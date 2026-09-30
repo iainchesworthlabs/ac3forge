@@ -36,7 +36,7 @@
 // headers and the surveyed real-world implementations say it does - never
 // something that was watched happening. Written 2026-09-06.
 
-namespace ac3::coreaudio {
+namespace iclforge::coreaudio {
 
 // How many channels the tap mixes the processes it covers down to.
 //
@@ -145,4 +145,4 @@ struct ProcessTap {
 // to do if the HAL refuses to let go.
 void destroy_process_tap(ProcessTap& tap);
 
-}  // namespace ac3::coreaudio
+}  // namespace iclforge::coreaudio

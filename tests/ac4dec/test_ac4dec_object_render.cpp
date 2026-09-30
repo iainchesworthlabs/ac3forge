@@ -32,7 +32,7 @@ namespace {
 namespace fs = std::filesystem;
 using ac4dec_test::BuiltObjectStream;
 using ac4dec_test::ObjectCase;
-using S = ac4::Speaker;
+using S = iclforge::ac4::Speaker;
 
 // The component of `samples` at `hz`, through a Hann window, scaled so that a
 // sine of amplitude a has magnitude a.
@@ -63,9 +63,9 @@ ObjectCase committed(const std::string& name) {
 }
 
 // The properties of `object` half way through its frame.
-ac4::ObjectProperties at_middle(const ac4::DecodedObject& object) {
-    ac4::ObjectProperties p = object.properties;
-    for (const ac4::ObjectUpdate& update : object.updates) {
+iclforge::ac4::ObjectProperties at_middle(const iclforge::ac4::DecodedObject& object) {
+    iclforge::ac4::ObjectProperties p = object.properties;
+    for (const iclforge::ac4::ObjectUpdate& update : object.updates) {
         if (update.sample <= object.samples.size() / 2) {
             p = update.properties;
         }
@@ -94,21 +94,21 @@ TEST_CASE(
     "[ac4dec][objects]") {
     struct Leg {
         std::string name;
-        ac4::DecodingMode mode;
+        iclforge::ac4::DecodingMode mode;
     };
-    const std::vector<Leg> legs = {{"direct-dynamic", ac4::DecodingMode::kFull},
-                                   {"ajoc-2to4-coarse", ac4::DecodingMode::kFull},
-                                   {"ajoc-2to4-coarse", ac4::DecodingMode::kCore}};
+    const std::vector<Leg> legs = {{"direct-dynamic", iclforge::ac4::DecodingMode::kFull},
+                                   {"ajoc-2to4-coarse", iclforge::ac4::DecodingMode::kFull},
+                                   {"ajoc-2to4-coarse", iclforge::ac4::DecodingMode::kCore}};
     for (const Leg& leg : legs) {
-        CAPTURE(leg.name, ac4::describe(leg.mode));
+        CAPTURE(leg.name, iclforge::ac4::describe(leg.mode));
         // Four seconds, so that object 0 moves little within a frame.
         const BuiltObjectStream stream = ac4dec_test::build_objects(committed(leg.name), 96);
         const std::vector<double> tones = tones_of(stream);
-        ac4::DecoderConfig config;
+        iclforge::ac4::DecoderConfig config;
         config.decoding = leg.mode;
-        ac4::Decoder decoder(config);
-        ac3::apps::Ac4ObjectRenderer renderer(ac4::DownmixTarget::k7X4);
-        ac3::apps::Ac4ObjectRenderer reference(ac4::DownmixTarget::k7X4);
+        iclforge::ac4::Decoder decoder(config);
+        iclforge::apps::Ac4ObjectRenderer renderer(iclforge::ac4::DownmixTarget::k7X4);
+        iclforge::apps::Ac4ObjectRenderer reference(iclforge::ac4::DownmixTarget::k7X4);
         const std::span<const S> speakers = renderer.speakers();
         REQUIRE(speakers.size() == 12);
         const std::size_t left = 0;
@@ -123,7 +123,7 @@ TEST_CASE(
             const auto decoded = decoder.decode(stream.frames[f]);
             REQUIRE(decoded.has_value());
             REQUIRE(decoded->has_value());
-            const ac4::DecodedFrame& frame = **decoded;
+            const iclforge::ac4::DecodedFrame& frame = **decoded;
             renderer.render(frame, out);
             REQUIRE(out.size() == speakers.size());
             // Each object's gains half way through the frame, and how far
@@ -133,14 +133,14 @@ TEST_CASE(
             std::vector<std::vector<float>> gains;
             std::vector<std::vector<float>> spread;
             for (std::size_t o = 0; o < frame.objects.size(); ++o) {
-                const ac4::DecodedObject& object = frame.objects[o];
-                REQUIRE((object.lfe || object.kind == ac4::ObjectKind::kDyn));
-                const auto gains_at = [&](const ac4::ObjectProperties& p) {
+                const iclforge::ac4::DecodedObject& object = frame.objects[o];
+                REQUIRE((object.lfe || object.kind == iclforge::ac4::ObjectKind::kDyn));
+                const auto gains_at = [&](const iclforge::ac4::ObjectProperties& p) {
                     return object.lfe ? std::vector<float>(speakers.size(), 0.0F)
                                       : reference.object_gains(p);
                 };
                 std::vector<std::vector<float>> seen = {gains_at(object.properties)};
-                for (const ac4::ObjectUpdate& update : object.updates) {
+                for (const iclforge::ac4::ObjectUpdate& update : object.updates) {
                     seen.push_back(gains_at(update.properties));
                 }
                 if (o < last_first.size()) {
@@ -156,7 +156,7 @@ TEST_CASE(
                 spread.push_back(std::move(s));
             }
             last_first.clear();
-            for (const ac4::DecodedObject& object : frame.objects) {
+            for (const iclforge::ac4::DecodedObject& object : frame.objects) {
                 last_first.push_back(object.lfe ? std::vector<float>(speakers.size(), 0.0F)
                                                 : reference.object_gains(object.properties));
             }
@@ -169,7 +169,7 @@ TEST_CASE(
             // the faster the nearer the object is to it.
             for (const double hz : tones) {
                 std::vector<std::complex<double>> components;
-                for (const ac4::DecodedObject& object : frame.objects) {
+                for (const iclforge::ac4::DecodedObject& object : frame.objects) {
                     components.push_back(tone_component(object.samples, hz));
                 }
                 for (std::size_t slot = 0; slot < speakers.size(); ++slot) {

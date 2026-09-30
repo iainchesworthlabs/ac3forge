@@ -18,7 +18,7 @@
 
 namespace {
 
-constexpr int kFrame = ac3::kSamplesPerFrame;
+constexpr int kFrame = iclforge::kSamplesPerFrame;
 
 // Same helpers as test_atmos.cpp, duplicated here per this project's
 // per-file convention (no shared test-utility header exists). Objects that
@@ -46,11 +46,11 @@ std::complex<double> project(std::span<const float> x, double hz) {
 
 int band_of(double hz, int num_bands_idx) {
     const auto subband = static_cast<std::size_t>(hz / (24000.0 / 64.0));
-    return ac3::oba::joc::kSubbandToBand[static_cast<std::size_t>(num_bands_idx)][subband];
+    return iclforge::oba::joc::kSubbandToBand[static_cast<std::size_t>(num_bands_idx)][subband];
 }
 
-std::complex<double> reconstruct_at(const ac3::oba::AtmosEncoder& encoder, int object, double hz,
-                                    int num_bands_idx) {
+std::complex<double> reconstruct_at(const iclforge::oba::AtmosEncoder& encoder, int object,
+                                    double hz, int num_bands_idx) {
     constexpr std::array<int, 5> kAc3FromJoc = {0, 2, 1, 3, 4};
     const int band = band_of(hz, num_bands_idx);
     std::complex<double> sum{};
@@ -73,8 +73,9 @@ double error_db(std::complex<double> got, std::complex<double> want) {
 // end (0-indexed) lands exactly on an authored keyframe for every frame,
 // never mid-interpolation, which is what makes the LAST frame of each hold a
 // clean, fully settled check point (see the flagship test below).
-ac3::oba::KeyframePath make_holds(std::span<const ac3::oba::Position> waypoints, int hold_frames) {
-    std::vector<ac3::oba::Keyframe> keyframes;
+iclforge::oba::KeyframePath make_holds(std::span<const iclforge::oba::Position> waypoints,
+                                       int hold_frames) {
+    std::vector<iclforge::oba::Keyframe> keyframes;
     int frame_index = 1;
     for (const auto& p : waypoints) {
         for (int h = 0; h < hold_frames; ++h) {
@@ -86,7 +87,7 @@ ac3::oba::KeyframePath make_holds(std::span<const ac3::oba::Position> waypoints,
             ++frame_index;
         }
     }
-    auto created = ac3::oba::KeyframePath::create(std::move(keyframes));
+    auto created = iclforge::oba::KeyframePath::create(std::move(keyframes));
     REQUIRE(created.has_value());
     return std::move(*created);
 }
@@ -94,7 +95,7 @@ ac3::oba::KeyframePath make_holds(std::span<const ac3::oba::Position> waypoints,
 }  // namespace
 
 TEST_CASE("keyframe paths interpolate linearly and hold past the ends", "[atmos][motion]") {
-    const auto path = ac3::oba::KeyframePath::create({
+    const auto path = iclforge::oba::KeyframePath::create({
         {.time_s = 0.0, .position = {.x = 0.0, .y = 0.0, .z = -1.0}, .gain = 0.2, .lfe_send = 0.0},
         {.time_s = 2.0, .position = {.x = 1.0, .y = 1.0, .z = 1.0}, .gain = 1.0, .lfe_send = 0.5},
     });
@@ -117,7 +118,7 @@ TEST_CASE("keyframe paths interpolate linearly and hold past the ends", "[atmos]
 }
 
 TEST_CASE("a single keyframe holds its placement everywhere", "[atmos][motion]") {
-    const auto path = ac3::oba::KeyframePath::create({
+    const auto path = iclforge::oba::KeyframePath::create({
         {.time_s = 3.0, .position = {.x = 0.2, .y = 0.8, .z = 0.5}, .gain = 0.7, .lfe_send = 0.1},
     });
     REQUIRE(path.has_value());
@@ -132,23 +133,23 @@ TEST_CASE("a single keyframe holds its placement everywhere", "[atmos][motion]")
 
 TEST_CASE("KeyframePath::create rejects no keyframes or a duplicate timestamp",
          "[atmos][motion]") {
-    const auto empty = ac3::oba::KeyframePath::create({});
+    const auto empty = iclforge::oba::KeyframePath::create({});
     REQUIRE_FALSE(empty.has_value());
-    CHECK(empty.error() == ac3::oba::PathError::kNoKeyframes);
+    CHECK(empty.error() == iclforge::oba::PathError::kNoKeyframes);
 
-    const auto duplicate = ac3::oba::KeyframePath::create({
+    const auto duplicate = iclforge::oba::KeyframePath::create({
         {.time_s = 1.0, .position = {}, .gain = 1.0, .lfe_send = 0.0},
         {.time_s = 1.0, .position = {.x = 0.1}, .gain = 0.5, .lfe_send = 0.0},
     });
     REQUIRE_FALSE(duplicate.has_value());
-    CHECK(duplicate.error() == ac3::oba::PathError::kDuplicateTimestamp);
+    CHECK(duplicate.error() == iclforge::oba::PathError::kDuplicateTimestamp);
 }
 
 TEST_CASE("make_orbit_path reproduces the closed-form circle", "[atmos][motion]") {
     constexpr double kRateHz = 0.25;
     constexpr double kPhaseRad = 0.3;
     constexpr double kHeight = -0.5;
-    const auto path = ac3::oba::make_orbit_path(kRateHz, kPhaseRad, kHeight, 0.6, 0.1);
+    const auto path = iclforge::oba::make_orbit_path(kRateHz, kPhaseRad, kHeight, 0.6, 0.1);
     for (const double t : {0.0, 0.7, 3.1, 12.5}) {
         CAPTURE(t);
         const double angle = 2.0 * std::numbers::pi * kRateHz * t + kPhaseRad;
@@ -165,16 +166,16 @@ TEST_CASE("make_orbit_path reproduces the closed-form circle", "[atmos][motion]"
 
 TEST_CASE("evaluate_placements evaluates every path at one instant, in order",
          "[atmos][motion]") {
-    auto keyframe = ac3::oba::KeyframePath::create(
+    auto keyframe = iclforge::oba::KeyframePath::create(
         {{.time_s = 0.0, .position = {.x = 0.1, .y = 0.2, .z = 0.3}, .gain = 0.9}});
     REQUIRE(keyframe.has_value());
-    const auto orbit = ac3::oba::make_orbit_path(0.5, 0.0, 0.0, 0.8, 0.0);
+    const auto orbit = iclforge::oba::make_orbit_path(0.5, 0.0, 0.0, 0.8, 0.0);
 
-    std::vector<ac3::oba::ObjectPath> paths;
+    std::vector<iclforge::oba::ObjectPath> paths;
     paths.emplace_back(std::move(*keyframe));
     paths.push_back(orbit);
 
-    const auto placement = ac3::oba::evaluate_placements(paths, 1.0);
+    const auto placement = iclforge::oba::evaluate_placements(paths, 1.0);
     REQUIRE(placement.size() == 2);
     CHECK(placement[0].position.x == 0.1);
     CHECK(placement[0].gain == 0.9);
@@ -191,24 +192,24 @@ TEST_CASE("evaluate_placements evaluates every path at one instant, in order",
 // the whole point is to prove authored motion survives encoding and comes
 // back out, the same way test_spatial.cpp's orbit test proves motion on the
 // plain-channel path. The waypoints sit exactly on the 5.1 ring's L, SR and R
-// azimuths (see ac3::spatial::pan_room / kRing in spatial.cpp: L +30 degrees,
+// azimuths (see iclforge::spatial::pan_room / kRing in spatial.cpp: L +30 degrees,
 // SR -110 degrees, R -30 degrees), so each one should pan almost entirely
 // into a single bed channel - and L -> SR is a huge jump, deliberately
 // stressing the frame-to-frame placement change harder than a smooth orbit
 // ever would.
 TEST_CASE("a moving object's decoded bed tracks its authored path frame by frame",
          "[atmos][motion]") {
-    constexpr ac3::oba::Position kL{.x = 0.25, .y = 0.066987, .z = 0.0};
-    constexpr ac3::oba::Position kSR{.x = 0.969846, .y = 0.671010, .z = 0.0};
-    constexpr ac3::oba::Position kR{.x = 0.75, .y = 0.066987, .z = 0.0};
+    constexpr iclforge::oba::Position kL{.x = 0.25, .y = 0.066987, .z = 0.0};
+    constexpr iclforge::oba::Position kSR{.x = 0.969846, .y = 0.671010, .z = 0.0};
+    constexpr iclforge::oba::Position kR{.x = 0.75, .y = 0.066987, .z = 0.0};
     constexpr int kHoldFrames = 3;
-    const std::array<ac3::oba::Position, 3> waypoints{kL, kSR, kR};
+    const std::array<iclforge::oba::Position, 3> waypoints{kL, kSR, kR};
 
-    std::vector<ac3::oba::ObjectPath> paths;
+    std::vector<iclforge::oba::ObjectPath> paths;
     paths.emplace_back(make_holds(waypoints, kHoldFrames));
 
-    ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, 1};
-    ac3::Eac3Decoder decoder;
+    iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, 1};
+    iclforge::Eac3Decoder decoder;
     std::vector<std::span<const float>> views(1);
 
     const int total_frames = kHoldFrames * static_cast<int>(waypoints.size());
@@ -220,7 +221,7 @@ TEST_CASE("a moving object's decoded bed tracks its authored path frame by frame
 
         const double t =
             static_cast<double>(start + static_cast<std::uint64_t>(kFrame)) / 48000.0;
-        const auto placement = ac3::oba::evaluate_placements(paths, t);
+        const auto placement = iclforge::oba::evaluate_placements(paths, t);
         const auto unit = encoder.encode_frame(views, placement);
         REQUIRE(unit.has_value());
 
@@ -263,10 +264,10 @@ TEST_CASE("a moving object's decoded bed tracks its authored path frame by frame
 // motion, not motion surviving the bitstream (the flagship test above
 // already covers that).
 TEST_CASE("two independently moving objects keep reconstructing cleanly", "[atmos][motion]") {
-    constexpr ac3::oba::Position kFrontLeft{.x = 0.0, .y = 0.0, .z = 0.0};
-    constexpr ac3::oba::Position kFrontRight{.x = 1.0, .y = 0.0, .z = 0.0};
-    constexpr ac3::oba::Position kBackLeftUp{.x = 0.0, .y = 1.0, .z = 1.0};
-    constexpr ac3::oba::Position kBackRightUp{.x = 1.0, .y = 1.0, .z = 1.0};
+    constexpr iclforge::oba::Position kFrontLeft{.x = 0.0, .y = 0.0, .z = 0.0};
+    constexpr iclforge::oba::Position kFrontRight{.x = 1.0, .y = 0.0, .z = 0.0};
+    constexpr iclforge::oba::Position kBackLeftUp{.x = 0.0, .y = 1.0, .z = 1.0};
+    constexpr iclforge::oba::Position kBackRightUp{.x = 1.0, .y = 1.0, .z = 1.0};
     constexpr int kHoldFrames = 3;
     constexpr double kHzA = 311.0;
     constexpr double kHzB = 997.0;
@@ -275,14 +276,14 @@ TEST_CASE("two independently moving objects keep reconstructing cleanly", "[atmo
     // Object A: front-left, then swaps to the diagonally opposite corner.
     // Object B: front-right, then swaps to ITS diagonally opposite corner -
     // never sharing a direction with A at either interval.
-    const std::array<ac3::oba::Position, 2> waypoints_a{kFrontLeft, kBackRightUp};
-    const std::array<ac3::oba::Position, 2> waypoints_b{kFrontRight, kBackLeftUp};
+    const std::array<iclforge::oba::Position, 2> waypoints_a{kFrontLeft, kBackRightUp};
+    const std::array<iclforge::oba::Position, 2> waypoints_b{kFrontRight, kBackLeftUp};
 
-    std::vector<ac3::oba::ObjectPath> paths;
+    std::vector<iclforge::oba::ObjectPath> paths;
     paths.emplace_back(make_holds(waypoints_a, kHoldFrames));
     paths.emplace_back(make_holds(waypoints_b, kHoldFrames));
 
-    ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 640}, 2};
+    iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 640}, 2};
     std::vector<std::span<const float>> views(2);
 
     const int total_frames = kHoldFrames * static_cast<int>(waypoints_a.size());
@@ -298,7 +299,7 @@ TEST_CASE("two independently moving objects keep reconstructing cleanly", "[atmo
 
         const double t =
             static_cast<double>(start + static_cast<std::uint64_t>(kFrame)) / 48000.0;
-        const auto placement = ac3::oba::evaluate_placements(paths, t);
+        const auto placement = iclforge::oba::evaluate_placements(paths, t);
         const auto unit = encoder.encode_frame(views, placement);
         REQUIRE(unit.has_value());
 
@@ -328,18 +329,18 @@ TEST_CASE("keyframe paths ramp object size but hold the rendering flags", "[atmo
     // parameters and TS 103 420 sends them per metadata update, so a growing
     // object is expressible on both sides. snap/zone/enable_elevation are
     // discrete decisions with no halfway point, so they step instead.
-    const auto path = ac3::oba::KeyframePath::create({
+    const auto path = iclforge::oba::KeyframePath::create({
         {.time_s = 0.0,
          .position = {.x = 0.0, .y = 0.0, .z = 0.0},
          .size = {.width = 0.0, .depth = 0.2, .height = 1.0},
          .snap = false,
-         .zone = ac3::oba::ZoneConstraint::kNone,
+         .zone = iclforge::oba::ZoneConstraint::kNone,
          .enable_elevation = true},
         {.time_s = 2.0,
          .position = {.x = 1.0, .y = 1.0, .z = 0.0},
          .size = {.width = 1.0, .depth = 0.6, .height = 0.0},
          .snap = true,
-         .zone = ac3::oba::ZoneConstraint::kSurroundOnly,
+         .zone = iclforge::oba::ZoneConstraint::kSurroundOnly,
          .enable_elevation = false},
     });
     REQUIRE(path.has_value());
@@ -350,12 +351,12 @@ TEST_CASE("keyframe paths ramp object size but hold the rendering flags", "[atmo
     CHECK_THAT(mid.size.height, Catch::Matchers::WithinAbs(0.5, 1e-12));
     // Held at the EARLIER keyframe's values right up to the later one.
     CHECK_FALSE(mid.snap);
-    CHECK(mid.zone == ac3::oba::ZoneConstraint::kNone);
+    CHECK(mid.zone == iclforge::oba::ZoneConstraint::kNone);
     CHECK(mid.enable_elevation);
 
     const auto at_end = path->evaluate(2.0);
     CHECK(at_end.snap);
-    CHECK(at_end.zone == ac3::oba::ZoneConstraint::kSurroundOnly);
+    CHECK(at_end.zone == iclforge::oba::ZoneConstraint::kSurroundOnly);
     CHECK_FALSE(at_end.enable_elevation);
     CHECK_THAT(at_end.size.width, Catch::Matchers::WithinAbs(1.0, 1e-12));
 }
@@ -364,21 +365,21 @@ TEST_CASE("AtmosEncoder transmits an object's size, snap and zone", "[atmos][mot
     // End to end: a placement in, a decoded OAMD payload out. The bed render
     // deliberately ignores all three (see ObjectPlacement's own comment), so
     // the bitstream is the only place they can be observed.
-    ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, 1};
+    iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, 1};
     const auto source = tone(440.0, 0.4, 0.0, 0);
     const std::array<std::span<const float>, 1> audio{std::span<const float>{source}};
-    const std::array<ac3::oba::ObjectPlacement, 1> placement{
+    const std::array<iclforge::oba::ObjectPlacement, 1> placement{
         {{.position = {.x = 0.25, .y = 0.75, .z = 0.5},
           .gain = 1.0,
           .size = {.width = 8.0 / 31.0, .depth = 20.0 / 31.0, .height = 31.0 / 31.0},
           .snap = true,
-          .zone = ac3::oba::ZoneConstraint::kCentreAndBackOnly,
+          .zone = iclforge::oba::ZoneConstraint::kCentreAndBackOnly,
           .enable_elevation = false}}};
 
     const auto unit = encoder.encode_frame(audio, placement);
     REQUIRE(unit.has_value());
 
-    ac3::Eac3Decoder decoder;
+    iclforge::Eac3Decoder decoder;
     const auto decoded = decoder.decode_substream(unit->substream(0));
     REQUIRE(decoded.has_value());
     REQUIRE(decoded->has_value());
@@ -389,6 +390,6 @@ TEST_CASE("AtmosEncoder transmits an object's size, snap and zone", "[atmos][mot
     CHECK(objects[0].size.depth == 20.0 / 31.0);
     CHECK(objects[0].size.height == 1.0);
     CHECK(objects[0].snap);
-    CHECK(objects[0].zone == ac3::oba::ZoneConstraint::kCentreAndBackOnly);
+    CHECK(objects[0].zone == iclforge::oba::ZoneConstraint::kCentreAndBackOnly);
     CHECK_FALSE(objects[0].enable_elevation);
 }

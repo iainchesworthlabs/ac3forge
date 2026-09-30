@@ -23,7 +23,7 @@
 // the default has been moved to the null sink, the best a receiver on the
 // default endpoint can get is the reason saying so.
 
-namespace ac3::crucible {
+namespace iclforge::crucible {
 
 enum class OutputMode : std::uint8_t {
     kAtmos,        // E-AC-3 JOC, exclusive bitstream, objects intact
@@ -72,4 +72,4 @@ struct OutputChoice {
 
 [[nodiscard]] OutputChoice choose_output(const OutputPolicyInput& input);
 
-}  // namespace ac3::crucible
+}  // namespace iclforge::crucible

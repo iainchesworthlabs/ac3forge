@@ -12,7 +12,7 @@
 #include "iclforge/audio/audio_backend.hpp"
 #include "iclforge/audio/render_devices.hpp"
 
-// ac3::audio::RenderDeviceWatch against a fake enumeration
+// iclforge::audio::RenderDeviceWatch against a fake enumeration
 // (src/audio/src/render_devices.cpp): a list that keeps itself current whether
 // or not the platform reports that something changed.
 //
@@ -25,9 +25,9 @@
 
 namespace {
 
-using ac3::audio::PassthroughError;
-using ac3::audio::RenderDeviceInfo;
-using ac3::audio::RenderDeviceWatch;
+using iclforge::audio::PassthroughError;
+using iclforge::audio::RenderDeviceInfo;
+using iclforge::audio::RenderDeviceWatch;
 
 RenderDeviceInfo device_of(std::string id, std::uint16_t channels) {
     RenderDeviceInfo device;
@@ -239,7 +239,7 @@ TEST_CASE("render devices: nothing to enumerate is nothing to watch",
     const auto started = watch.start(kEager, /*on_change=*/{},
                                      {.enumerate = fake.enumerate(), .platform_watcher = false});
     REQUIRE_FALSE(started.has_value());
-    CHECK(started.error() == ac3::audio::DeviceWatchError::kNoBackend);
+    CHECK(started.error() == iclforge::audio::DeviceWatchError::kNoBackend);
     CHECK_FALSE(watch.running());
     CHECK(watch.snapshot().devices.empty());
 }
@@ -251,7 +251,7 @@ TEST_CASE("render devices: a real watch agrees with what the backend reports",
     // not, and an empty device list is a valid list - so unlike playback it
     // can run on a CI runner or in a container, the same reasoning
     // test_audio_backend.cpp's own device-watch case gives.
-    const auto& backend = ac3::audio::audio_backend();
+    const auto& backend = iclforge::audio::audio_backend();
     RenderDeviceWatch watch;
     const auto started =
         watch.start({.sample_rate = 48000, .reprobe = std::chrono::seconds{1}}, /*on_change=*/{});
@@ -260,7 +260,7 @@ TEST_CASE("render devices: a real watch agrees with what the backend reports",
         // all, or one that refused here (no session daemon, no audio in the
         // container). Both are reported as kNoBackend by start(), which
         // cannot tell them apart and does not pretend to.
-        CHECK(started.error() == ac3::audio::DeviceWatchError::kNoBackend);
+        CHECK(started.error() == iclforge::audio::DeviceWatchError::kNoBackend);
         CHECK_FALSE(watch.running());
         CHECK_FALSE((backend.passthrough.available && backend.device_watch.available &&
                      backend.monitor.available));
@@ -292,7 +292,7 @@ TEST_CASE("render devices: stopping twice, and starting again after a stop",
     // A second start while running is refused rather than leaking a worker.
     const auto again = watch.start(kEager, /*on_change=*/{}, sources);
     REQUIRE_FALSE(again.has_value());
-    CHECK(again.error() == ac3::audio::DeviceWatchError::kAlreadyRunning);
+    CHECK(again.error() == iclforge::audio::DeviceWatchError::kAlreadyRunning);
 
     watch.stop();
     watch.stop();

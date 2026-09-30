@@ -106,7 +106,7 @@
 // call that outlives this wait writes into memory nobody reads any more. The
 // frame thread never touches any of it.
 
-namespace ac3::crucible::ui {
+namespace iclforge::crucible::ui {
 
 namespace {
 
@@ -342,4 +342,4 @@ QImage AppIconProvider::requestImage(const QString& id, QSize* size, const QSize
     return image;
 }
 
-}  // namespace ac3::crucible::ui
+}  // namespace iclforge::crucible::ui

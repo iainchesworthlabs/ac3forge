@@ -1,7 +1,7 @@
 // Decode an AC-4 stream the way a player does. The bytes arrive in pieces, as they do from a
-// socket or an HTTP body; the inspector's SyncFrameSplitter (ac4::ac4) hands over each sync frame
-// once all of it is in, and the decoder (ac4::decoder) turns it into PCM for one presentation,
-// handed over in blocks of 256 samples. A television's settings go in the decoder's
+// socket or an HTTP body; the inspector's SyncFrameSplitter (iclforge::ac4) hands over each sync
+// frame once all of it is in, and the decoder (iclforge::ac4dec) turns it into PCM for one
+// presentation, handed over in blocks of 256 samples. A television's settings go in the decoder's
 // configuration: the output level, the dynamic range control mode it selects, a stereo downmix
 // and dialogue enhancement. Once the stream has played, the decoder says what it found: the
 // presentations and the metadata of the one it decoded.
@@ -33,18 +33,18 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    ac4::DecoderConfig config;
+    iclforge::ac4::DecoderConfig config;
     config.output.output_level_dbfs = -24.0;     // Lout: the dialogue level the output is taken to
-    config.output.drc = ac4::DrcMode::kDefault;  // the mode that output level selects
-    config.output.downmix = ac4::DownmixTarget::kStereo;
+    config.output.drc = iclforge::ac4::DrcMode::kDefault;  // the mode that output level selects
+    config.output.downmix = iclforge::ac4::DownmixTarget::kStereo;
     config.output.dialogue_enhancement_db = 6.0;  // up to the stream's cap
     config.presentation.language = "en";          // where the stream offers a choice
-    ac4::Decoder decoder(config);
+    iclforge::ac4::Decoder decoder(config);
 
     std::uint64_t samples = 0;
     std::size_t channels = 0;
     float peak = 0.0F;
-    const auto sink = [&](const ac4::PcmBlock& block) {
+    const auto sink = [&](const iclforge::ac4::PcmBlock& block) {
         channels = block.channels.size();
         for (const std::span<const float> channel : block.channels) {
             for (const float sample : channel) {
@@ -55,12 +55,12 @@ int main(int argc, char** argv) {
     };
 
     // The splitter owns no memory: this holds the frame being assembled.
-    std::vector<std::byte> storage(ac4::kSplitterRecommendedBuffer);
-    ac4::SyncFrameSplitter splitter{storage};
+    std::vector<std::byte> storage(iclforge::ac4::kSplitterRecommendedBuffer);
+    iclforge::ac4::SyncFrameSplitter splitter{storage};
     std::size_t frames = 0;
     for (;;) {
         const auto next = splitter.next();
-        if (next.status == ac4::SyncFrameSplitter::Status::kNeedMoreInput) {
+        if (next.status == iclforge::ac4::SyncFrameSplitter::Status::kNeedMoreInput) {
             const std::span<std::byte> space = splitter.writable();
             const std::size_t want = std::min<std::size_t>(space.size(), 4096);
             in.read(reinterpret_cast<char*>(space.data()), static_cast<std::streamsize>(want));
@@ -72,7 +72,7 @@ int main(int argc, char** argv) {
             }
             continue;
         }
-        if (next.status != ac4::SyncFrameSplitter::Status::kFrame) {
+        if (next.status != iclforge::ac4::SyncFrameSplitter::Status::kFrame) {
             break;  // kEndOfStream, or kTruncated at a cut-off last frame
         }
         ++frames;
@@ -86,13 +86,13 @@ int main(int argc, char** argv) {
     }
     decoder.flush(sink);  // the samples held back short of a block, as one shorter block
 
-    for (const ac4::PresentationInfo& presentation : decoder.presentations()) {
+    for (const iclforge::ac4::PresentationInfo& presentation : decoder.presentations()) {
         fmt::printf("presentation %zu: %zu channels as coded, %s%s\n", presentation.index,
                     presentation.speakers.size(),
                     presentation.language.empty() ? "no language" : presentation.language.c_str(),
                     presentation.decodable ? "" : ", not decoded by this version");
     }
-    const ac4::PresentationMetadata& metadata = decoder.metadata();
+    const iclforge::ac4::PresentationMetadata& metadata = decoder.metadata();
     if (metadata.loudness.dialnorm_dbfs) {
         fmt::printf("dialnorm %.0f dBFS\n", *metadata.loudness.dialnorm_dbfs);
     }

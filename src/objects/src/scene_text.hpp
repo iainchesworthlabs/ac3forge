@@ -22,11 +22,11 @@
 // plan.cpp and encoder/assignment.cpp already hand-roll for the identical
 // reason.
 
-namespace ac3::oba {
+namespace iclforge::oba {
 
 // The whole of `token` as a double, or false: no leading/trailing spaces, no
 // trailing characters, no out-of-range magnitude. A leading '+' is accepted,
 // which the keyframe grammar's original istringstream extraction also was.
 [[nodiscard]] bool read_double(std::string_view token, double& out);
 
-}  // namespace ac3::oba
+}  // namespace iclforge::oba

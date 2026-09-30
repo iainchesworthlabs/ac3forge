@@ -50,7 +50,7 @@ double g_checksum = 0.0;
 // here would just move the obstacle.
 bool sink_open(std::uint32_t sample_rate, int channels) {
     g_channels = channels;
-    g_dac.open(kVirtualDescriptors, ac3::kSamplesPerBlock, sample_rate);
+    g_dac.open(kVirtualDescriptors, iclforge::kSamplesPerBlock, sample_rate);
     std::printf("sink: null %lu Hz x%d (no peripheral; timed writes paced as a DAC would)\n",
                 static_cast<unsigned long>(sample_rate), channels);
     return true;
@@ -58,7 +58,7 @@ bool sink_open(std::uint32_t sample_rate, int channels) {
 
 // Any channel count, so the ceiling is the most slots a layout has: what a
 // player may ask for before this sink has been opened at all.
-int sink_slots() { return static_cast<int>(ac3::render::OutputLayout::kMaxSlots); }
+int sink_slots() { return static_cast<int>(iclforge::render::OutputLayout::kMaxSlots); }
 
 int sink_max_slots() { return sink_slots(); }
 

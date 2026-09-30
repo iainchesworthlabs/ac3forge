@@ -22,7 +22,7 @@
 #include "iclforge/base/detail/profiling.hpp"
 #include "iclforge/ac3/oba/joc_tables.hpp"
 
-namespace ac3::oba::joc {
+namespace iclforge::oba::joc {
 
 namespace {
 
@@ -1335,4 +1335,4 @@ std::vector<std::vector<float>> reconstruct(std::span<const std::span<const floa
     return objects;
 }
 
-}  // namespace ac3::oba::joc
+}  // namespace iclforge::oba::joc

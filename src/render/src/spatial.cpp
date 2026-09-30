@@ -11,7 +11,7 @@
 
 #include "iclforge/base/layout.hpp"
 
-namespace ac3::spatial {
+namespace iclforge::spatial {
 
 namespace {
 
@@ -367,4 +367,4 @@ void BedRenderer::render_block(std::span<const std::span<const float>> audio,
     }
 }
 
-}  // namespace ac3::spatial
+}  // namespace iclforge::spatial

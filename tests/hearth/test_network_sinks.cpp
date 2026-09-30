@@ -8,7 +8,7 @@
 #include "network_sinks.hpp"
 #include "settings_model.hpp"
 
-// ac3::hearth::NetworkSinks (apps/hearth/engine/network_sinks.cpp): the
+// iclforge::hearth::NetworkSinks (apps/hearth/engine/network_sinks.cpp): the
 // discovery/pairing bookkeeping, driven directly through its
 // discovery::BrowseListener/ServerHostEvents overrides (public on this class
 // for exactly this reason - see network_sinks.hpp's own comment) with
@@ -19,7 +19,7 @@
 // accepted WebSocket, which [[hearth-b3-sendspin-board-findings]] and
 // test_group.cpp's own comment ("mDNS off") say are exactly what to keep out
 // of a fast, reliable test. The one real thing this test does is start an
-// actual ac3::sendspin::ServerHost (with browse off and no listening port,
+// actual iclforge::sendspin::ServerHost (with browse off and no listening port,
 // as NetworkSinks always configures it) and dial a real, refused loopback
 // port - both fast and deterministic, unlike anything that touches multicast
 // or another process. Every construction below also turns NetworkSinks' own
@@ -29,15 +29,15 @@
 // whoever's sinks share that network (CI's self-hosted runners sit on
 // someone's home network). With no browse socket, nothing asks Windows for a
 // firewall exception either, which plain ac3tests.exe could not finish
-// adding (ac3::sendspin::discovery::mdns::Options::
+// adding (iclforge::sendspin::discovery::mdns::Options::
 // request_firewall_exception's own comment).
 
-namespace ss = ac3::sendspin;
-using ac3::hearth::MemorySettingsStore;
-using ac3::hearth::NetworkSinks;
-using ac3::hearth::PairingStore;
-using ac3::hearth::PairState;
-using ac3::hearth::SinkKind;
+namespace ss = iclforge::sendspin;
+using iclforge::hearth::MemorySettingsStore;
+using iclforge::hearth::NetworkSinks;
+using iclforge::hearth::PairingStore;
+using iclforge::hearth::PairState;
+using iclforge::hearth::SinkKind;
 
 namespace {
 
@@ -165,7 +165,7 @@ TEST_CASE("network sinks: pairing a sink with no connection dials to pair it", "
     sinks.pair_sink("hearth-s3-study");
     const auto facts = sinks.status().sinks.front();
     CHECK(facts.pairing_requested);
-    CHECK((facts.link == ac3::hearth::SinkLink::kConnecting || facts.link == ac3::hearth::SinkLink::kRetrying));
+    CHECK((facts.link == iclforge::hearth::SinkLink::kConnecting || facts.link == iclforge::hearth::SinkLink::kRetrying));
 
     // A sink whose hello lists no dynamic code cannot be paired from the page,
     // and says so rather than dialling.
@@ -497,7 +497,7 @@ TEST_CASE("network sinks: group commands on an id nothing has made are quietly r
 TEST_CASE("network sinks: volume and mute on a real group reach a synthetic, unaccepted client harmlessly",
           "[hearth][network-sinks]") {
     // The point of this test is that these calls do not crash reaching
-    // through a real ac3::sendspin::Group to a client_id ServerHost never
+    // through a real iclforge::sendspin::Group to a client_id ServerHost never
     // actually accepted a connection for (the same reasoning
     // test_network_sinks.cpp's own header comment gives for select_sink()'s
     // real, harmlessly-refused host_->pair() call) - not that the volume
@@ -546,7 +546,7 @@ TEST_CASE("network sinks: a client going away keeps its row, and it is dialled a
     client.ac3forge_support = support;
     sinks.on_client(client);
     REQUIRE(sinks.status().sinks.size() == 1);
-    CHECK(sinks.status().sinks.front().link == ac3::hearth::SinkLink::kConnected);
+    CHECK(sinks.status().sinks.front().link == iclforge::hearth::SinkLink::kConnected);
 
     // The row stays, still saying what the sink is, and the sink is dialled
     // again after the back-off.
@@ -557,18 +557,19 @@ TEST_CASE("network sinks: a client going away keeps its row, and it is dialled a
     CHECK(row.name == "Lounge");
     CHECK(row.kind == SinkKind::kHearthSink);
     CHECK(row.output_slots == 6U);
-    CHECK(row.link == ac3::hearth::SinkLink::kRetrying);
+    CHECK(row.link == iclforge::hearth::SinkLink::kRetrying);
     // At least this one: on_found()'s own dial of the refused port may have
     // failed first.
     CHECK(row.failed_dials >= 1U);
 
     // It is dialled once the back-off has run, and not before.
     sinks.tick(NetworkSinks::Clock::now());
-    CHECK(sinks.status().sinks.front().link == ac3::hearth::SinkLink::kRetrying);
+    CHECK(sinks.status().sinks.front().link == iclforge::hearth::SinkLink::kRetrying);
     sinks.tick(NetworkSinks::Clock::now() + std::chrono::seconds(5));
     const auto link = sinks.status().sinks.front().link;
     // Dialled: connecting, or already failed again against the refused port.
-    CHECK((link == ac3::hearth::SinkLink::kConnecting || link == ac3::hearth::SinkLink::kRetrying));
+    CHECK((link == iclforge::hearth::SinkLink::kConnecting ||
+           link == iclforge::hearth::SinkLink::kRetrying));
 }
 
 TEST_CASE("network sinks: a sink kept through a firmware update keeps its row until it is let go",
@@ -605,16 +606,16 @@ TEST_CASE("network sinks: a sink kept through a firmware update keeps its row un
     auto status = sinks.status();
     REQUIRE(status.sinks.size() == 1);
     CHECK(status.selected_id == "hearth-s3-den");
-    const ac3::hearth::SinkFacts facts = status.sinks.front();
+    const iclforge::hearth::SinkFacts facts = status.sinks.front();
     CHECK(facts.name == "Den");
     CHECK(facts.kind == SinkKind::kHearthSink);
     CHECK(facts.pair_state == PairState::kPaired);
     CHECK(facts.address == "127.0.0.1");
-    CHECK(facts.link == ac3::hearth::SinkLink::kRetrying);
-    const ac3::hearth::SinkRow row = ac3::hearth::to_row(facts);
+    CHECK(facts.link == iclforge::hearth::SinkLink::kRetrying);
+    const iclforge::hearth::SinkRow row = iclforge::hearth::to_row(facts);
     CHECK_FALSE(row.connected);
     CHECK(row.link_text.starts_with("not answering"));
-    CHECK_FALSE(ac3::hearth::to_detail(facts).connected);
+    CHECK_FALSE(iclforge::hearth::to_detail(facts).connected);
 
     // Let go while mDNS still does not list it and nothing is connected, it
     // goes at once, as it would have without being kept. The selection is
@@ -662,9 +663,10 @@ TEST_CASE("network sinks: a kept sink that mDNS finds again is an ordinary row o
     // back-off, and hello connects it.
     sinks.on_found(service);
     const auto link = sinks.status().sinks.front().link;
-    CHECK((link == ac3::hearth::SinkLink::kConnecting || link == ac3::hearth::SinkLink::kRetrying));
+    CHECK((link == iclforge::hearth::SinkLink::kConnecting ||
+           link == iclforge::hearth::SinkLink::kRetrying));
     sinks.on_client(client);
-    CHECK(sinks.status().sinks.front().link == ac3::hearth::SinkLink::kConnected);
+    CHECK(sinks.status().sinks.front().link == iclforge::hearth::SinkLink::kConnected);
 
     // Let go while mDNS lists it, it stays; from then on its mDNS record and
     // its connection decide, as they do for any row.
@@ -706,13 +708,13 @@ TEST_CASE("network sinks: another server taking the sink holds its row until the
     sinks.on_client_gone("client-jkl");
     auto row = sinks.status().sinks.front();
     CHECK(row.notice == "In use by another server.");
-    CHECK(row.link == ac3::hearth::SinkLink::kIdle);
+    CHECK(row.link == iclforge::hearth::SinkLink::kIdle);
     CHECK(row.pair_state == PairState::kPaired);
     sinks.tick(NetworkSinks::Clock::now() + std::chrono::minutes(5));
     sinks.on_found(service);
     sinks.rescan();
-    CHECK(sinks.status().sinks.front().link == ac3::hearth::SinkLink::kIdle);
-    ac3::hearth::SinkDetail detail = ac3::hearth::to_detail(sinks.status().sinks.front());
+    CHECK(sinks.status().sinks.front().link == iclforge::hearth::SinkLink::kIdle);
+    iclforge::hearth::SinkDetail detail = iclforge::hearth::to_detail(sinks.status().sinks.front());
     CHECK(detail.can_connect);
 
     // Taking it back is the person's: it is dialled at once.
@@ -720,13 +722,13 @@ TEST_CASE("network sinks: another server taking the sink holds its row until the
     row = sinks.status().sinks.front();
     CHECK_FALSE(row.held_elsewhere);
     CHECK(row.notice.empty());
-    CHECK((row.link == ac3::hearth::SinkLink::kConnecting || row.link == ac3::hearth::SinkLink::kRetrying));
+    CHECK((row.link == iclforge::hearth::SinkLink::kConnecting || row.link == iclforge::hearth::SinkLink::kRetrying));
 
     // A fresh connection is connected, with no notice.
     ss::ClientView reconnected = client;
     sinks.on_client(reconnected);
     CHECK(sinks.status().sinks.front().notice.empty());
-    CHECK(sinks.status().sinks.front().link == ac3::hearth::SinkLink::kConnected);
+    CHECK(sinks.status().sinks.front().link == iclforge::hearth::SinkLink::kConnected);
 }
 
 TEST_CASE("network sinks: a sink another server holds refusing this computer is marked in use",
@@ -753,16 +755,16 @@ TEST_CASE("network sinks: a sink another server holds refusing this computer is 
     sinks.on_client_gone("client-mno");
     auto row = sinks.status().sinks.front();
     CHECK(row.notice == "In use by another server.");
-    CHECK(row.link == ac3::hearth::SinkLink::kIdle);
+    CHECK(row.link == iclforge::hearth::SinkLink::kIdle);
     CHECK(row.pair_state == PairState::kNotPaired);
-    CHECK(ac3::hearth::to_detail(row).can_pair);
+    CHECK(iclforge::hearth::to_detail(row).can_pair);
 
     // An unpaired sink is only read, never taken, by dialling it: Look again
     // tries it once more.
     sinks.rescan();
     row = sinks.status().sinks.front();
-    CHECK((row.link == ac3::hearth::SinkLink::kConnecting || row.link == ac3::hearth::SinkLink::kRetrying ||
-           row.link == ac3::hearth::SinkLink::kIdle));
+    CHECK((row.link == iclforge::hearth::SinkLink::kConnecting || row.link == iclforge::hearth::SinkLink::kRetrying ||
+           row.link == iclforge::hearth::SinkLink::kIdle));
 
     // Pairing is what takes it: asked for, it clears the notice and dials to pair.
     sinks.pair_sink("hearth-s3-study");
@@ -797,7 +799,7 @@ TEST_CASE("network sinks: a refusal that arrives after a pairing was asked for d
     const auto row = sinks.status().sinks.front();
     CHECK_FALSE(row.held_elsewhere);
     CHECK(row.pairing_requested);
-    CHECK(row.link == ac3::hearth::SinkLink::kRetrying);
+    CHECK(row.link == iclforge::hearth::SinkLink::kRetrying);
 }
 
 TEST_CASE("network sinks: a dial that fails is tried again, and a pairing waiting on it says why",
@@ -818,7 +820,7 @@ TEST_CASE("network sinks: a dial that fails is tried again, and a pairing waitin
     // and is one more of the same.
     sinks.on_dial_failed(url, false);
     auto row = sinks.status().sinks.front();
-    CHECK(row.link == ac3::hearth::SinkLink::kRetrying);
+    CHECK(row.link == iclforge::hearth::SinkLink::kRetrying);
     CHECK(row.failed_dials >= 1U);
     sinks.on_dial_failed(url, false);
     sinks.on_dial_failed(url, true);

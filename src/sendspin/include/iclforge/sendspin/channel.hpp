@@ -24,7 +24,7 @@
 // Not synchronised: a session seals from one thread at a time and opens from one thread at a
 // time, which may be different threads.
 
-namespace ac3::sendspin {
+namespace iclforge::sendspin {
 
 class Channel {
    public:
@@ -79,4 +79,4 @@ class Channel {
     std::vector<std::uint8_t> plaintext_;
 };
 
-}  // namespace ac3::sendspin
+}  // namespace iclforge::sendspin

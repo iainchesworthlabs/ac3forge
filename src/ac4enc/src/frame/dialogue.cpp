@@ -5,7 +5,7 @@
 #include <cstddef>
 #include <utility>
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 namespace {
 
 // Table 173: each band's first and last QMF subband.
@@ -176,4 +176,4 @@ DeFrameParameters de_cross_parameters(std::span<const std::vector<double>> chann
     return out;
 }
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

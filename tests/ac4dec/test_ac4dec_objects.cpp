@@ -45,22 +45,24 @@ constexpr int kFrames = 8;
 // substreams, offsets, widths and values, in the same order - and every
 // substream read to its end.
 void parse_checked(const BuiltObjectStream& stream) {
-    std::vector<ac4::SyntaxRecord> read;
-    const auto keep = [&read](const ac4::SyntaxRecord& record) { read.push_back(record); };
-    ac4::DecoderConfig config;
+    std::vector<iclforge::ac4::SyntaxRecord> read;
+    const auto keep = [&read](const iclforge::ac4::SyntaxRecord& record) {
+        read.push_back(record);
+    };
+    iclforge::ac4::DecoderConfig config;
     config.syntax = keep;
-    ac4::Decoder decoder(config);
+    iclforge::ac4::Decoder decoder(config);
     for (std::size_t f = 0; f < stream.frames.size(); ++f) {
         read.clear();
         const auto report = decoder.parse(stream.frames[f]);
         INFO("frame " << f);
         REQUIRE(report.has_value());
-        for (const ac4::SubstreamReport& s : report->substreams) {
+        for (const iclforge::ac4::SubstreamReport& s : report->substreams) {
             INFO("substream " << s.index << ": " << s.refused_reason);
             CHECK_FALSE(s.refused.has_value());
             CHECK(s.bits_read == s.size_bits);
         }
-        const std::vector<ac4::SyntaxRecord>& written = stream.traces[f];
+        const std::vector<iclforge::ac4::SyntaxRecord>& written = stream.traces[f];
         for (std::size_t i = 0; i < std::min(read.size(), written.size()); ++i) {
             const bool same = read[i].substream == written[i].substream &&
                               read[i].bit_offset == written[i].bit_offset &&
@@ -79,24 +81,25 @@ void parse_checked(const BuiltObjectStream& stream) {
 // the updates of its metadata in order.
 struct Decoded {
     std::vector<std::vector<float>> samples;
-    std::vector<std::vector<ac4::ObjectUpdate>> updates;
+    std::vector<std::vector<iclforge::ac4::ObjectUpdate>> updates;
     std::vector<std::vector<std::size_t>> update_at;  // each update's sample in the whole output
-    std::vector<ac4::DecodedObject> last;  // the last frame's objects, their samples dropped
+    std::vector<iclforge::ac4::DecodedObject>
+        last;  // the last frame's objects, their samples dropped
 };
 
-Decoded decode_all(const BuiltObjectStream& stream, ac4::DecodingMode decoding,
+Decoded decode_all(const BuiltObjectStream& stream, iclforge::ac4::DecodingMode decoding,
                    double dialogue_db = 0.0) {
-    ac4::DecoderConfig config;
+    iclforge::ac4::DecoderConfig config;
     config.decoding = decoding;
     config.output.dialogue_enhancement_db = dialogue_db;
-    ac4::Decoder decoder(config);
+    iclforge::ac4::Decoder decoder(config);
     Decoded out;
     for (std::size_t f = 0; f < stream.frames.size(); ++f) {
         const auto decoded = decoder.decode(stream.frames[f]);
         INFO("frame " << f << ": " << decoder.refusal_reason());
         REQUIRE(decoded.has_value());
         REQUIRE(decoded->has_value());
-        const ac4::DecodedFrame& frame = **decoded;
+        const iclforge::ac4::DecodedFrame& frame = **decoded;
         if (out.samples.empty()) {
             out.samples.resize(frame.objects.size());
             out.updates.resize(frame.objects.size());
@@ -104,18 +107,18 @@ Decoded decode_all(const BuiltObjectStream& stream, ac4::DecodingMode decoding,
         }
         REQUIRE(frame.objects.size() == out.samples.size());
         for (std::size_t o = 0; o < frame.objects.size(); ++o) {
-            const ac4::DecodedObject& object = frame.objects[o];
+            const iclforge::ac4::DecodedObject& object = frame.objects[o];
             const std::size_t start = out.samples[o].size();
             out.samples[o].insert(out.samples[o].end(), object.samples.begin(),
                                   object.samples.end());
             out.updates[o].insert(out.updates[o].end(), object.updates.begin(),
                                   object.updates.end());
-            for (const ac4::ObjectUpdate& update : object.updates) {
+            for (const iclforge::ac4::ObjectUpdate& update : object.updates) {
                 out.update_at[o].push_back(start + update.sample);
             }
         }
         out.last = frame.objects;
-        for (ac4::DecodedObject& object : out.last) {
+        for (iclforge::ac4::DecodedObject& object : out.last) {
             object.samples.clear();
         }
     }
@@ -265,8 +268,10 @@ TEST_CASE("A-JOC objects carry their dry coefficients' share of each downmix sig
         CAPTURE(c.name);
         const BuiltObjectStream stream = ac4dec_test::build_objects(c, 12);
         const std::vector<double> tones = tones_of(stream);
-        check_objects(stream.full, decode_all(stream, ac4::DecodingMode::kFull), tones, 0.1);
-        check_objects(stream.core, decode_all(stream, ac4::DecodingMode::kCore), tones, 0.1);
+        check_objects(stream.full, decode_all(stream, iclforge::ac4::DecodingMode::kFull), tones,
+                      0.1);
+        check_objects(stream.core, decode_all(stream, iclforge::ac4::DecodingMode::kCore), tones,
+                      0.1);
     }
 }
 
@@ -282,14 +287,14 @@ TEST_CASE("a static downmix's core objects are its LFE and its bed at L R C Ls a
     }
     REQUIRE(c.kind == ObjectCase::Kind::kAjocStatic);
     const BuiltObjectStream stream = ac4dec_test::build_objects(c, 4);
-    const Decoded decoded = decode_all(stream, ac4::DecodingMode::kCore);
-    using S = ac4::Speaker;
+    const Decoded decoded = decode_all(stream, iclforge::ac4::DecodingMode::kCore);
+    using S = iclforge::ac4::Speaker;
     const std::array<S, 6> speakers = {S::kLfe,    S::kLeft,         S::kRight,
                                        S::kCentre, S::kLeftSurround, S::kRightSurround};
     REQUIRE(decoded.last.size() == speakers.size());
     for (std::size_t o = 0; o < speakers.size(); ++o) {
         CAPTURE(o);
-        CHECK(decoded.last[o].kind == ac4::ObjectKind::kBed);
+        CHECK(decoded.last[o].kind == iclforge::ac4::ObjectKind::kBed);
         CHECK(decoded.last[o].lfe == (o == 0));
         CHECK(decoded.last[o].speaker == speakers[o]);
     }
@@ -303,7 +308,8 @@ TEST_CASE("direct-coded objects and a bed carry their own tones", "[ac4dec][obje
         CAPTURE(c.name);
         const BuiltObjectStream stream = ac4dec_test::build_objects(c, 12);
         const std::vector<double> tones = tones_of(stream);
-        for (const ac4::DecodingMode mode : {ac4::DecodingMode::kFull, ac4::DecodingMode::kCore}) {
+        for (const iclforge::ac4::DecodingMode mode :
+             {iclforge::ac4::DecodingMode::kFull, iclforge::ac4::DecodingMode::kCore}) {
             check_objects(stream.full, decode_all(stream, mode), tones, 0.1);
         }
     }
@@ -334,7 +340,8 @@ TEST_CASE("A-JOC dialogue enhancement raises the dialogue object and its share o
         for (auto& tone : full.front().tones) {
             tone[1] *= de_gain;
         }
-        check_objects(full, decode_all(stream, ac4::DecodingMode::kFull, asked), tones, 0.1);
+        check_objects(full, decode_all(stream, iclforge::ac4::DecodingMode::kFull, asked), tones,
+                      0.1);
         std::vector<ac4dec_test::ExpectedObject> core(stream.core.size());
         for (int ch = 0; ch < 2; ++ch) {
             for (int in = 0; in < 2; ++in) {
@@ -348,7 +355,8 @@ TEST_CASE("A-JOC dialogue enhancement raises the dialogue object and its share o
                 }
             }
         }
-        check_objects(core, decode_all(stream, ac4::DecodingMode::kCore, asked), tones, 0.1);
+        check_objects(core, decode_all(stream, iclforge::ac4::DecodingMode::kCore, asked), tones,
+                      0.1);
     }
 }
 
@@ -376,7 +384,8 @@ TEST_CASE("a direct-coded dialogue substream's objects take dialogue enhancement
                 tone[1] *= std::pow(10.0, applied / 20.0);
             }
         }
-        check_objects(expected, decode_all(stream, ac4::DecodingMode::kFull, asked), tones, 0.1);
+        check_objects(expected, decode_all(stream, iclforge::ac4::DecodingMode::kFull, asked),
+                      tones, 0.1);
     }
 }
 
@@ -393,7 +402,7 @@ TEST_CASE("object metadata takes effect at its update sample and moves object 0"
         }
         CAPTURE(c.name);
         const BuiltObjectStream stream = ac4dec_test::build_objects(c, 12);
-        const Decoded decoded = decode_all(stream, ac4::DecodingMode::kFull);
+        const Decoded decoded = decode_all(stream, iclforge::ac4::DecodingMode::kFull);
         std::size_t moving = 0;
         int dynamic = -1;
         for (std::size_t o = 0; o < stream.full.size(); ++o) {
@@ -408,7 +417,7 @@ TEST_CASE("object metadata takes effect at its update sample and moves object 0"
             // in Y (Tables 123 and 124), which the blocks after it reuse.
             const double ext_x = c.extras && dynamic != 0 ? 2.0 / 310.0 : 0.0;
             const double ext_y = c.extras && dynamic != 0 ? -2.0 / 310.0 : 0.0;
-            const std::vector<ac4::ObjectUpdate>& updates = decoded.updates[o];
+            const std::vector<iclforge::ac4::ObjectUpdate>& updates = decoded.updates[o];
             // Every frame's blocks but the last frame's, which the delay holds
             // back past the stream's end.
             REQUIRE(updates.size() >=
@@ -424,7 +433,7 @@ TEST_CASE("object metadata takes effect at its update sample and moves object 0"
                 }
                 if (b + 1 == static_cast<std::size_t>(c.blocks)) {
                     const std::array<int, 4>& pos = expected.positions[f];
-                    const ac4::ObjectProperties& p = updates[u].properties;
+                    const iclforge::ac4::ObjectProperties& p = updates[u].properties;
                     CHECK(p.position[0] ==
                           Catch::Approx(std::clamp(pos[0] / 62.0 + ext_x, 0.0, 1.0)).margin(1e-12));
                     CHECK(p.position[1] ==
@@ -446,8 +455,8 @@ TEST_CASE("an intermediate spatial format renders to the output layout by Annex 
     // SR3100_to_<layout>, a row per object and a column per speaker in Table
     // A.27's order without the LFE. Each object's tone reaches each speaker at
     // its coefficient, and at +5 dB where the object's metadata sets that gain.
-    using S = ac4::Speaker;
-    using T = ac4::DownmixTarget;
+    using S = iclforge::ac4::Speaker;
+    using T = iclforge::ac4::DownmixTarget;
     struct Target {
         T target = T::kAsCoded;
         std::size_t matrix = 0;  // the layout's index in kIsfMatrices
@@ -492,17 +501,17 @@ TEST_CASE("an intermediate spatial format renders to the output layout by Annex 
         REQUIRE(stream.full.size() == 4);
         const double gain = gained ? std::pow(10.0, 5.0 / 20.0) : 1.0;
         for (const Target& t : targets) {
-            CAPTURE(gained, ac4::describe(t.target));
-            ac4::DecoderConfig config;
+            CAPTURE(gained, iclforge::ac4::describe(t.target));
+            iclforge::ac4::DecoderConfig config;
             config.output.downmix = t.target;
-            ac4::Decoder decoder(config);
+            iclforge::ac4::Decoder decoder(config);
             std::vector<std::vector<float>> channels(t.speakers.size());
             for (std::size_t f = 0; f < stream.frames.size(); ++f) {
                 const auto decoded = decoder.decode(stream.frames[f]);
                 INFO("frame " << f << ": " << decoder.refusal_reason());
                 REQUIRE(decoded.has_value());
                 REQUIRE(decoded->has_value());
-                const ac4::DecodedFrame& frame = **decoded;
+                const iclforge::ac4::DecodedFrame& frame = **decoded;
                 CHECK(frame.objects.empty());
                 REQUIRE(frame.speakers == t.speakers);
                 REQUIRE(frame.channels.size() == channels.size());
@@ -511,7 +520,8 @@ TEST_CASE("an intermediate spatial format renders to the output layout by Annex 
                                        frame.channels[s].end());
                 }
             }
-            const std::span<const float> matrix = ac4::detail::tables::kIsfMatrices[0][t.matrix];
+            const std::span<const float> matrix =
+                iclforge::ac4::detail::tables::kIsfMatrices[0][t.matrix];
             const std::size_t columns = t.target == T::kMono ? 2 : t.speakers.size();
             REQUIRE(matrix.size() == 4 * columns);
             for (std::size_t s = 0; s < channels.size(); ++s) {
@@ -532,25 +542,25 @@ TEST_CASE("an intermediate spatial format renders to the output layout by Annex 
     }
     // The generator's reading of the attachment, against its text:
     // SR3100_to_5's first and last rows, and SR15951_to_904's last value.
-    const std::span<const float> to_5 = ac4::detail::tables::kIsfMatrices[0][1];
+    const std::span<const float> to_5 = iclforge::ac4::detail::tables::kIsfMatrices[0][1];
     CHECK(to_5[0] == 6.243139852e-01F);
     CHECK(to_5[3] == -2.890952832e-01F);
     CHECK(to_5[17] == 0.0F);
     CHECK(to_5[19] == 3.751586799e-01F);
-    CHECK(ac4::detail::tables::kIsfMatrices[5][9].size() == 30 * 13);
+    CHECK(iclforge::ac4::detail::tables::kIsfMatrices[5][9].size() == 30 * 13);
 }
 
 TEST_CASE("an ISF object's gain ramps linearly from its update sample", "[ac4dec][objects]") {
     // Annex F.11: an update takes effect at its sample, reached over its
     // ramp_duration from the gain in force there; the ramp carries on into
     // the next frame.
-    ac4::detail::IsfGain gain;
+    iclforge::ac4::detail::IsfGain gain;
     std::vector<float> samples(64, 1.0F);
-    ac4::ObjectUpdate update;
+    iclforge::ac4::ObjectUpdate update;
     update.sample = 8;
     update.ramp_samples = 80;
     update.properties.gain_db = -20.0;
-    const std::array<ac4::ObjectUpdate, 1> updates = {update};
+    const std::array<iclforge::ac4::ObjectUpdate, 1> updates = {update};
     gain.apply(samples, updates);
     CHECK(samples[7] == 1.0F);
     const double step = (0.1 - 1.0) / 80.0;
@@ -561,10 +571,10 @@ TEST_CASE("an ISF object's gain ramps linearly from its update sample", "[ac4dec
     CHECK(next[23] == Catch::Approx(0.1));
     CHECK(next[63] == Catch::Approx(0.1));
     // An inactive object is silent from its update, a ramp of 0 at once.
-    ac4::ObjectUpdate off;
+    iclforge::ac4::ObjectUpdate off;
     off.sample = 4;
     off.properties.active = false;
-    const std::array<ac4::ObjectUpdate, 1> offs = {off};
+    const std::array<iclforge::ac4::ObjectUpdate, 1> offs = {off};
     std::vector<float> last(16, 1.0F);
     gain.apply(last, offs);
     CHECK(last[3] == Catch::Approx(0.1));
@@ -583,23 +593,24 @@ TEST_CASE("Chromium's A-JOC stream decodes in full and core decoding", "[ac4dec]
         SKIP("AC4DEC_AJOC_STREAM does not name Chromium's ac4-ajoc.ac4");
     }
     const std::vector<std::byte> bytes = read_file(fs::path{path});
-    const ac4::ScanResult scan = ac4::scan(bytes);
+    const iclforge::ac4::ScanResult scan = iclforge::ac4::scan(bytes);
     REQUIRE_FALSE(scan.frames.empty());
-    for (const ac4::DecodingMode mode : {ac4::DecodingMode::kFull, ac4::DecodingMode::kCore}) {
-        CAPTURE(ac4::describe(mode));
-        const bool full = mode == ac4::DecodingMode::kFull;
-        ac4::DecoderConfig config;
+    for (const iclforge::ac4::DecodingMode mode :
+         {iclforge::ac4::DecodingMode::kFull, iclforge::ac4::DecodingMode::kCore}) {
+        CAPTURE(iclforge::ac4::describe(mode));
+        const bool full = mode == iclforge::ac4::DecodingMode::kFull;
+        iclforge::ac4::DecoderConfig config;
         config.decoding = mode;
-        ac4::Decoder decoder(config);
+        iclforge::ac4::Decoder decoder(config);
         std::size_t decoded_frames = 0;
         for (std::size_t f = 0; f < scan.frames.size(); ++f) {
             CAPTURE(f);
-            const auto raw = ac4::parse_raw_frame(scan.frames[f].raw_ac4_frame);
+            const auto raw = iclforge::ac4::parse_raw_frame(scan.frames[f].raw_ac4_frame);
             REQUIRE(raw.has_value());
-            const ac4::AjocSubstreamInfo* ajoc = nullptr;
-            for (const ac4::SubstreamGroupInfo& group : raw->toc.substream_groups) {
-                for (const ac4::GroupSubstream& sub : group.substreams) {
-                    if (sub.kind == ac4::GroupSubstream::Kind::kAjoc && sub.ajoc) {
+            const iclforge::ac4::AjocSubstreamInfo* ajoc = nullptr;
+            for (const iclforge::ac4::SubstreamGroupInfo& group : raw->toc.substream_groups) {
+                for (const iclforge::ac4::GroupSubstream& sub : group.substreams) {
+                    if (sub.kind == iclforge::ac4::GroupSubstream::Kind::kAjoc && sub.ajoc) {
                         ajoc = &*sub.ajoc;
                     }
                 }
@@ -613,29 +624,29 @@ TEST_CASE("Chromium's A-JOC stream decodes in full and core decoding", "[ac4dec]
                 continue;
             }
             ++decoded_frames;
-            const ac4::DecodedFrame& frame = **decoded;
-            std::vector<ac4::ObjectEntry> listed;
+            const iclforge::ac4::DecodedFrame& frame = **decoded;
+            std::vector<iclforge::ac4::ObjectEntry> listed;
             if (ajoc->b_lfe) {
-                listed.push_back({.kind = ac4::ObjectKind::kBed,
+                listed.push_back({.kind = iclforge::ac4::ObjectKind::kBed,
                                   .lfe = true,
                                   .ajoc_coded = true,
                                   .speaker = 11});
             }
             if (!full && ajoc->b_static_dmx) {
                 for (int s = 0; s < 5; ++s) {
-                    listed.push_back({.kind = ac4::ObjectKind::kBed,
+                    listed.push_back({.kind = iclforge::ac4::ObjectKind::kBed,
                                       .lfe = false,
                                       .ajoc_coded = true,
                                       .speaker = s});
                 }
             } else {
-                const std::vector<ac4::ObjectEntry>& assigned =
+                const std::vector<iclforge::ac4::ObjectEntry>& assigned =
                     full ? ajoc->upmix_objects : ajoc->static_objects;
                 listed.insert(listed.end(), assigned.begin(), assigned.end());
                 const int signals =
                     full ? ajoc->n_fullband_upmix_signals : ajoc->n_fullband_dmx_signals;
                 for (auto k = static_cast<int>(assigned.size()); k < signals; ++k) {
-                    listed.push_back({.kind = ac4::ObjectKind::kDyn,
+                    listed.push_back({.kind = iclforge::ac4::ObjectKind::kDyn,
                                       .lfe = false,
                                       .ajoc_coded = true,
                                       .speaker = {}});
@@ -647,7 +658,7 @@ TEST_CASE("Chromium's A-JOC stream decodes in full and core decoding", "[ac4dec]
             CHECK(length > 0);
             for (std::size_t o = 0; o < listed.size(); ++o) {
                 CAPTURE(o);
-                const ac4::DecodedObject& object = frame.objects[o];
+                const iclforge::ac4::DecodedObject& object = frame.objects[o];
                 CHECK(object.kind == listed[o].kind);
                 CHECK(object.lfe == listed[o].lfe);
                 CHECK(object.speaker.has_value() == listed[o].speaker.has_value());

@@ -18,7 +18,7 @@
 // performs, in every lane, the operations this one performs, in the same order
 // and without fused multiply-add, so that the two give the same bits.
 
-namespace ac4::detail::dsp::qmf {
+namespace iclforge::ac4::detail::dsp::qmf {
 
 // Logical block `b` of a delay line of ten blocks, 0 the newest, sits at
 // physical block (head + b) mod 10.
@@ -215,4 +215,4 @@ inline void synthesis_window(const Real* filt, std::size_t head, Real* out) noex
     }
 }
 
-}  // namespace ac4::detail::dsp::qmf
+}  // namespace iclforge::ac4::detail::dsp::qmf

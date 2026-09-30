@@ -22,7 +22,7 @@
 // rather than in the encoder is what stops the two from drifting into
 // disagreement about what a bit pattern means.
 
-namespace ac3::eac3 {
+namespace iclforge::eac3 {
 
 // §E2.3.1.6: bit streams compliant with Annex E carry bsid 16. Values 11-15
 // are earlier E-AC-3 versions a version-16 decoder is required to decode too;
@@ -201,10 +201,10 @@ inline constexpr std::uint16_t kPairs =
 }
 
 // The vocabulary moved to ac3/core/layout.hpp; the Annex E code keeps its old spelling.
-using ac3::base::kMaxChannels;
-using ac3::base::Layout;
-using ac3::base::Location;
-using ac3::base::name;
+using iclforge::base::kMaxChannels;
+using iclforge::base::Layout;
+using iclforge::base::Location;
+using iclforge::base::name;
 
 [[nodiscard]] constexpr Layout expand(std::uint16_t map) {
     Layout out;
@@ -360,4 +360,4 @@ struct ChannelPlan {
 
 }  // namespace chanmap
 
-}  // namespace ac3::eac3
+}  // namespace iclforge::eac3

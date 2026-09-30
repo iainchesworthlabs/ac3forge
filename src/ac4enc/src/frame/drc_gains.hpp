@@ -31,7 +31,7 @@
 // on when it decodes frame f + d_ctrl: slots num_qmf_timeslots (f + d_ctrl) -
 // ts_offset_hfgen on, the synthesis working that far behind the analysis.
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 // A compression curve's control points (dB2) and time constants (ms), from
 // drc_compression_curve()'s fields as Table 166 and clauses 4.3.13.4.15 to
@@ -116,4 +116,4 @@ class DrcGainEncoder {
     long long slots_ = 0;
 };
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

@@ -19,7 +19,7 @@
 // RingBuffer; callers pull from that buffer at their own pace. Nothing on the
 // capture side allocates, locks or blocks.
 
-namespace ac3::audio {
+namespace iclforge::audio {
 
 enum class CaptureError : std::uint8_t {
     kNoBackend,          // built without a platform capture backend
@@ -156,4 +156,4 @@ private:
     std::unique_ptr<Impl> impl_;
 };
 
-}  // namespace ac3::audio
+}  // namespace iclforge::audio

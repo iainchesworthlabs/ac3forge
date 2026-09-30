@@ -17,7 +17,7 @@
 // writer's, and the round-trip test would be the only thing that noticed -
 // and only for the cases it happens to cover.
 
-namespace mpegts::detail {
+namespace iclforge::mpegts::detail {
 
 inline constexpr std::size_t kTsPacketSize = 188;
 inline constexpr std::uint8_t kSyncByte = 0x47;
@@ -91,4 +91,4 @@ static_assert(crc32_mpeg2(kCrc32CheckVector) == 0x0376'E6E7U,
               "a wrong polynomial or bit order here corrupts every PAT/PMT section silently, "
               "since nothing but a real demuxer's CRC check would ever notice.");
 
-}  // namespace mpegts::detail
+}  // namespace iclforge::mpegts::detail

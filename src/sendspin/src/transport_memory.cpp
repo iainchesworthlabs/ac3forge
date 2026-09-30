@@ -13,7 +13,7 @@
 
 // The in-memory transport: two queues and one shared closed flag.
 
-namespace ac3::sendspin::transport {
+namespace iclforge::sendspin::transport {
 
 namespace {
 
@@ -95,4 +95,4 @@ std::pair<std::unique_ptr<Connection>, std::unique_ptr<Connection>> memory_pair(
             std::make_unique<MemoryConnection>(shared, false, std::move(first_name))};
 }
 
-}  // namespace ac3::sendspin::transport
+}  // namespace iclforge::sendspin::transport

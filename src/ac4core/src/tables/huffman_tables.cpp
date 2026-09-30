@@ -14,7 +14,7 @@
 // a codebook, the value is 0. Each codebook's Fast table is built from its
 // entries at compile time (make_fast_table in huffman_codebook.hpp).
 
-namespace ac4::detail::tables {
+namespace iclforge::ac4::detail::tables {
 
 namespace {
 
@@ -4590,4 +4590,4 @@ constinit const std::array<bool, 12> kUnsignedCb = {{
     false, false, false, true, true, false, false, true, true, true, true, true,
 }};
 
-}  // namespace ac4::detail::tables
+}  // namespace iclforge::ac4::detail::tables

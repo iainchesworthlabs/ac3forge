@@ -17,7 +17,7 @@
 // and reader agree on each message.
 
 extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size) {
-    namespace hs = ac3::sendspin::handshake;
+    namespace hs = iclforge::sendspin::handshake;
     const std::string_view text{reinterpret_cast<const char*>(data), size};
     const std::span<const std::uint8_t> bytes{data, size};
 

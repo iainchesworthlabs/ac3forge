@@ -27,12 +27,12 @@
 //
 //   _ac3forge_player@v1's bursts (planning/hearth-sendspin-extension.md, Burst
 //   chunks) are decoded, AC-3 or E-AC-3 with any object layer, and rendered
-//   onto the board's layout by ac3::render;
+//   onto the board's layout by iclforge::render;
 //   player@v1's PCM, which is what Music Assistant sends, is rendered onto the
 //   same layout as a stereo or mono bed.
 //
 // Either way each block is then routed to the sink's outputs, trimmed and
-// delayed per output (ac3::render::Routing and TrimDelay), replaced by the
+// delayed per output (iclforge::render::Routing and TrimDelay), replaced by the
 // identify tone while one plays, metered, scaled by the player's volume, and
 // handed to a Playout, which writes it so that its first frame leaves the
 // audio port when the server said.
@@ -114,10 +114,10 @@ struct BurstPlayerConfig {
     // The layout until a server sends one, and the decoder settings under
     // it: the server's settings replace these whole, as the extension page
     // says, and a stream that sends none plays with these.
-    ac3::render::OutputLayout layout = ac3::render::OutputLayout::stereo();
-    ac3::DecoderConfig decoder{.output = {.mode = ac3::OperatingMode::kLine}};
-    ac3::DownmixTarget stereo_fold = ac3::DownmixTarget::kLoRo;
-    ac3::render::ObjectsPolicy objects = ac3::render::ObjectsPolicy::kAuto;
+    iclforge::render::OutputLayout layout = iclforge::render::OutputLayout::stereo();
+    iclforge::DecoderConfig decoder{.output = {.mode = iclforge::OperatingMode::kLine}};
+    iclforge::DownmixTarget stereo_fold = iclforge::DownmixTarget::kLoRo;
+    iclforge::render::ObjectsPolicy objects = iclforge::render::ObjectsPolicy::kAuto;
 
     Playout::Tuning tuning;
 };
@@ -129,7 +129,7 @@ struct BurstPlayerStatus {
     const char* stream = "idle";
     // What the decoder found in the current stream, once a unit has decoded.
     bool have_decoder = false;
-    ac3::sendspin::ac3forge::DecoderReport decoder;
+    iclforge::sendspin::ac3forge::DecoderReport decoder;
 
     // Per output: the last 100 ms, in dB of full scale (kSilenceDb for
     // silence), and the whole stream's RMS scaled by a million, as the
@@ -142,7 +142,7 @@ struct BurstPlayerStatus {
     bool have_levels = false;
     std::uint32_t levels_serial = 0;
 
-    ac3::sendspin::ac3forge::Counters counters;
+    iclforge::sendspin::ac3forge::Counters counters;
     Playout::Stats playout;
 
     // The newest stream frame with a known play time: its position from the
@@ -160,7 +160,7 @@ struct BurstPlayerStatus {
 
     std::int64_t settings_revision = 0;
     // The layout in force, as text.
-    std::array<char, ac3::render::OutputLayout::kTextBytes> layout{};
+    std::array<char, iclforge::render::OutputLayout::kTextBytes> layout{};
     bool identifying = false;
 };
 
@@ -181,24 +181,24 @@ class BurstPlayer {
 
     // From the Sendspin session's task. Each goes into the ring in order;
     // chunks that do not fit are dropped and counted.
-    void start_bursts(const ac3::sendspin::ac3forge::StreamStart& stream);
-    void start_pcm(const ac3::sendspin::messages::AudioFormat& format);
+    void start_bursts(const iclforge::sendspin::ac3forge::StreamStart& stream);
+    void start_pcm(const iclforge::sendspin::messages::AudioFormat& format);
     void clear();
     void end();
-    void burst(const ac3::sendspin::BurstChunk& chunk, std::int64_t local_us);
+    void burst(const iclforge::sendspin::BurstChunk& chunk, std::int64_t local_us);
     void pcm(std::span<const std::uint8_t> frame, std::int64_t server_us, std::int64_t local_us);
     void invalid_chunk();
 
     // The role's settings: checked against `support` now, and applied at the
     // next burst boundary. The reason they are refused, or nothing.
-    [[nodiscard]] std::optional<std::string> settings(const ac3::sendspin::ac3forge::Settings& settings,
-                                                      const ac3::sendspin::ac3forge::Support& support);
+    [[nodiscard]] std::optional<std::string> settings(const iclforge::sendspin::ac3forge::Settings& settings,
+                                                      const iclforge::sendspin::ac3forge::Support& support);
     // The layout a board's own page sets, for streams with no server settings:
     // applied at the next burst boundary, and replaced by the next settings a
     // server sends. False for a layout the sink cannot carry.
-    [[nodiscard]] bool set_layout(const ac3::render::OutputLayout& layout);
+    [[nodiscard]] bool set_layout(const iclforge::render::OutputLayout& layout);
     // The identify tone on one output at `level_db`, or none.
-    void identify(std::optional<ac3::sendspin::ac3forge::Identify> tone);
+    void identify(std::optional<iclforge::sendspin::ac3forge::Identify> tone);
     // The player's volume, 0 to 100, and mute: (volume / 100)^1.5, ramped over
     // a block.
     void set_volume(int volume, bool muted);

@@ -15,7 +15,7 @@
 #include "iclforge/mpegts/mpegts.hpp"
 #include "ts_detail.hpp"
 
-namespace mpegts {
+namespace iclforge::mpegts {
 
 namespace {
 
@@ -654,4 +654,4 @@ std::expected<void, DemuxError> Reader::finish(const PayloadFn& on_payload) {
     return finish_verdict(s);
 }
 
-}  // namespace mpegts
+}  // namespace iclforge::mpegts

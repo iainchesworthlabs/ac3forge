@@ -11,7 +11,7 @@
 // because the renderer, the audio backends and the spatial panner use it for streams of
 // any codec.
 
-namespace ac3::base {
+namespace iclforge::base {
 
 // One speaker feed. A pair location expands to two adjacent enumerators, in
 // that order, which is what lets the expansion below be a single sweep.
@@ -71,4 +71,4 @@ struct Layout {
     }
 };
 
-}  // namespace ac3::base
+}  // namespace iclforge::base

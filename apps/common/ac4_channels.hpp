@@ -21,35 +21,35 @@
 // layout, which the order has no place for either, takes the top front pair's
 // places, which an X.2 layout leaves empty.
 
-namespace ac3::apps {
+namespace iclforge::apps {
 
-[[nodiscard]] inline int ac4_wav_rank(ac4::Speaker speaker) {
+[[nodiscard]] inline int ac4_wav_rank(iclforge::ac4::Speaker speaker) {
     switch (speaker) {
-        case ac4::Speaker::kLeft:
+        case iclforge::ac4::Speaker::kLeft:
             return 0;
-        case ac4::Speaker::kRight:
+        case iclforge::ac4::Speaker::kRight:
             return 1;
-        case ac4::Speaker::kCentre:
+        case iclforge::ac4::Speaker::kCentre:
             return 2;
-        case ac4::Speaker::kLfe:
+        case iclforge::ac4::Speaker::kLfe:
             return 3;
-        case ac4::Speaker::kLeftBack:
+        case iclforge::ac4::Speaker::kLeftBack:
             return 4;
-        case ac4::Speaker::kRightBack:
+        case iclforge::ac4::Speaker::kRightBack:
             return 5;
-        case ac4::Speaker::kLeftSurround:
+        case iclforge::ac4::Speaker::kLeftSurround:
             return 9;
-        case ac4::Speaker::kRightSurround:
+        case iclforge::ac4::Speaker::kRightSurround:
             return 10;
-        case ac4::Speaker::kTopFrontLeft:
-        case ac4::Speaker::kTopSideLeft:
+        case iclforge::ac4::Speaker::kTopFrontLeft:
+        case iclforge::ac4::Speaker::kTopSideLeft:
             return 12;
-        case ac4::Speaker::kTopFrontRight:
-        case ac4::Speaker::kTopSideRight:
+        case iclforge::ac4::Speaker::kTopFrontRight:
+        case iclforge::ac4::Speaker::kTopSideRight:
             return 14;
-        case ac4::Speaker::kTopBackLeft:
+        case iclforge::ac4::Speaker::kTopBackLeft:
             return 15;
-        case ac4::Speaker::kTopBackRight:
+        case iclforge::ac4::Speaker::kTopBackRight:
             return 17;
         default:
             return 99;
@@ -58,7 +58,7 @@ namespace ac3::apps {
 
 // The indices of `speakers` ordered by `rank`, ties kept in their order.
 template <typename Rank>
-[[nodiscard]] std::vector<std::size_t> ac4_order(std::span<const ac4::Speaker> speakers, Rank rank) {
+[[nodiscard]] std::vector<std::size_t> ac4_order(std::span<const iclforge::ac4::Speaker> speakers, Rank rank) {
     std::vector<std::size_t> order(speakers.size());
     std::iota(order.begin(), order.end(), std::size_t{0});
     std::ranges::stable_sort(order, {}, [&](std::size_t c) { return rank(speakers[c]); });
@@ -67,19 +67,19 @@ template <typename Rank>
 
 // The level and loudness meters' order, A/52's: L C R Ls Rs, the LFE, then any
 // other.
-[[nodiscard]] inline int ac4_meter_rank(ac4::Speaker speaker) {
+[[nodiscard]] inline int ac4_meter_rank(iclforge::ac4::Speaker speaker) {
     switch (speaker) {
-        case ac4::Speaker::kLeft:
+        case iclforge::ac4::Speaker::kLeft:
             return 0;
-        case ac4::Speaker::kCentre:
+        case iclforge::ac4::Speaker::kCentre:
             return 1;
-        case ac4::Speaker::kRight:
+        case iclforge::ac4::Speaker::kRight:
             return 2;
-        case ac4::Speaker::kLeftSurround:
+        case iclforge::ac4::Speaker::kLeftSurround:
             return 3;
-        case ac4::Speaker::kRightSurround:
+        case iclforge::ac4::Speaker::kRightSurround:
             return 4;
-        case ac4::Speaker::kLfe:
+        case iclforge::ac4::Speaker::kLfe:
             return 5;
         default:
             return 99;
@@ -88,17 +88,18 @@ template <typename Rank>
 
 // The coding mode that names an AC-4 layout's bed for a meter: 1/0, 2/0, 3/0
 // or 3/2; a 7.X layout's last pair is metered past it.
-[[nodiscard]] inline ac3::Acmod ac4_bed_acmod(std::span<const ac4::Speaker> speakers) {
-    const auto has = [&](ac4::Speaker s) {
+[[nodiscard]] inline iclforge::Acmod ac4_bed_acmod(
+    std::span<const iclforge::ac4::Speaker> speakers) {
+    const auto has = [&](iclforge::ac4::Speaker s) {
         return std::ranges::find(speakers, s) != speakers.end();
     };
-    if (has(ac4::Speaker::kLeftSurround)) {
-        return ac3::Acmod::k3_2;
+    if (has(iclforge::ac4::Speaker::kLeftSurround)) {
+        return iclforge::Acmod::k3_2;
     }
-    if (has(ac4::Speaker::kLeft)) {
-        return has(ac4::Speaker::kCentre) ? ac3::Acmod::k3_0 : ac3::Acmod::k2_0;
+    if (has(iclforge::ac4::Speaker::kLeft)) {
+        return has(iclforge::ac4::Speaker::kCentre) ? iclforge::Acmod::k3_0 : iclforge::Acmod::k2_0;
     }
-    return ac3::Acmod::k1_0;
+    return iclforge::Acmod::k1_0;
 }
 
 // Where an AC-4 speaker is among A/52's Table E2.5 locations, for a meter that
@@ -107,43 +108,44 @@ template <typename Rank>
 // surrounds, Lw and Rw the wides, the top front pair the vertical heights, the
 // top back and top side pairs the top surrounds (Table E2.5 has one pair for
 // both, as the object renderer places them), and the second LFE LFE2.
-[[nodiscard]] inline ac3::eac3::chanmap::Location ac4_location(ac4::Speaker speaker) {
-    using L = ac3::eac3::chanmap::Location;
+[[nodiscard]] inline iclforge::eac3::chanmap::Location ac4_location(
+    iclforge::ac4::Speaker speaker) {
+    using L = iclforge::eac3::chanmap::Location;
     switch (speaker) {
-        case ac4::Speaker::kLeft:
+        case iclforge::ac4::Speaker::kLeft:
             return L::kLeft;
-        case ac4::Speaker::kRight:
+        case iclforge::ac4::Speaker::kRight:
             return L::kRight;
-        case ac4::Speaker::kCentre:
+        case iclforge::ac4::Speaker::kCentre:
             return L::kCentre;
-        case ac4::Speaker::kLfe:
+        case iclforge::ac4::Speaker::kLfe:
             return L::kLfe;
-        case ac4::Speaker::kLeftSurround:
+        case iclforge::ac4::Speaker::kLeftSurround:
             return L::kLeftSurround;
-        case ac4::Speaker::kRightSurround:
+        case iclforge::ac4::Speaker::kRightSurround:
             return L::kRightSurround;
-        case ac4::Speaker::kLeftBack:
+        case iclforge::ac4::Speaker::kLeftBack:
             return L::kLrs;
-        case ac4::Speaker::kRightBack:
+        case iclforge::ac4::Speaker::kRightBack:
             return L::kRrs;
-        case ac4::Speaker::kLeftWide:
+        case iclforge::ac4::Speaker::kLeftWide:
             return L::kLw;
-        case ac4::Speaker::kRightWide:
+        case iclforge::ac4::Speaker::kRightWide:
             return L::kRw;
-        case ac4::Speaker::kTopFrontLeft:
+        case iclforge::ac4::Speaker::kTopFrontLeft:
             return L::kVhl;
-        case ac4::Speaker::kTopFrontRight:
+        case iclforge::ac4::Speaker::kTopFrontRight:
             return L::kVhr;
-        case ac4::Speaker::kTopBackLeft:
-        case ac4::Speaker::kTopSideLeft:
+        case iclforge::ac4::Speaker::kTopBackLeft:
+        case iclforge::ac4::Speaker::kTopSideLeft:
             return L::kLts;
-        case ac4::Speaker::kTopBackRight:
-        case ac4::Speaker::kTopSideRight:
+        case iclforge::ac4::Speaker::kTopBackRight:
+        case iclforge::ac4::Speaker::kTopSideRight:
             return L::kRts;
-        case ac4::Speaker::kLfe2:
+        case iclforge::ac4::Speaker::kLfe2:
             return L::kLfe2;
     }
     return L::kCentre;
 }
 
-}  // namespace ac3::apps
+}  // namespace iclforge::apps

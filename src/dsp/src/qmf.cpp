@@ -9,7 +9,7 @@
 #include "iclforge/dsp/detail/fft_kernel.hpp"
 #include "qmf_prototype.hpp"
 
-namespace ac3::dsp {
+namespace iclforge::dsp {
 
 namespace {
 
@@ -163,4 +163,4 @@ void QmfSynthesis::pull(std::span<const double, kQmfSubbands> real,
     }
 }
 
-}  // namespace ac3::dsp
+}  // namespace iclforge::dsp

@@ -21,11 +21,11 @@
 
 namespace {
 
-using ac3::hearth::MediaBitstream;
-using ac3::hearth::MediaCodec;
-using ac3::hearth::MediaInfo;
-namespace json = ac3::sendspin::json;
-namespace meta = ac3::meta;
+using iclforge::hearth::MediaBitstream;
+using iclforge::hearth::MediaCodec;
+using iclforge::hearth::MediaInfo;
+namespace json = iclforge::sendspin::json;
+namespace meta = iclforge::meta;
 
 struct Parsed {
     std::string text;
@@ -54,7 +54,7 @@ meta::MixMetadata full_mix() {
     mix.extpgmscl = std::nullopt;
     mix.pan = meta::PanInfo{.panmean = 20, .paninfo = 3};
     mix.pan2 = std::nullopt;
-    std::array<std::optional<int>, ac3::kBlocksPerFrame> words{};
+    std::array<std::optional<int>, iclforge::kBlocksPerFrame> words{};
     words[0] = 7;
     mix.blkmixcfginfo = words;
     return mix;
@@ -68,7 +68,7 @@ TEST_CASE("media info json: AC-3 time codes and Annex D's alternate bitstream in
     info.path = "annex-d.ac3";
     info.codec = MediaCodec::kAc3WithEac3;
     MediaBitstream bits;
-    bits.acmod = ac3::Acmod::k3_2;
+    bits.acmod = iclforge::Acmod::k3_2;
     meta::BsiInfo bsi;
     bsi.timecod1 = meta::TimeCodeCoarse{.hours = 1, .minutes = 2, .eight_seconds = 3};
     bsi.timecod2 = meta::TimeCodeFine{.seconds = 4, .frames = 5, .sixty_fourths = 6};
@@ -84,7 +84,7 @@ TEST_CASE("media info json: AC-3 time codes and Annex D's alternate bitstream in
     bits.levels.lfe_mix_level_db = std::nullopt;
     info.bitstream = bits;
 
-    const Parsed parsed{ac3::hearth::media_info_json(info)};
+    const Parsed parsed{iclforge::hearth::media_info_json(info)};
     const auto root = parsed.root();
     CHECK(root["codec"].equals("ac3+eac3"));
     const auto b = root["bitstream"];
@@ -102,7 +102,7 @@ TEST_CASE("media info json: AC-3 time codes and Annex D's alternate bitstream in
     CHECK(xbsi1["pan"]["degrees"].as_double() == Catch::Approx(20 * meta::kPanMeanDegreesPerStep).margin(0.05));
     CHECK(xbsi1["pan"]["paninfo"].as_int() == 3);
     CHECK(xbsi1["pan2"].is_null());
-    REQUIRE(xbsi1["blkmixcfginfo"].size() == static_cast<std::size_t>(ac3::kBlocksPerFrame));
+    REQUIRE(xbsi1["blkmixcfginfo"].size() == static_cast<std::size_t>(iclforge::kBlocksPerFrame));
     CHECK(xbsi1["blkmixcfginfo"].at(0)["code"].as_int() == 7);
     CHECK(xbsi1["blkmixcfginfo"].at(1).is_null());
     CHECK(xbsi1["mixdef"]["label"].equals("none"));
@@ -126,7 +126,7 @@ TEST_CASE("media info json: each mixdef spells its own data", "[hearth][media-in
         mix.mixing.premix = premix;
         bits.mixing = mix;
         info.bitstream = bits;
-        const Parsed parsed{ac3::hearth::media_info_json(info)};
+        const Parsed parsed{iclforge::hearth::media_info_json(info)};
         const auto mixdef = parsed.root()["bitstream"]["mixing"]["mixdef"];
         CHECK(mixdef["label"].equals("premix"));
         CHECK(mixdef["premix"]["premixcmpsel_label"].equals("compr"));
@@ -138,7 +138,7 @@ TEST_CASE("media info json: each mixdef spells its own data", "[hearth][media-in
         mix.mixing.reserved = 0xABC;
         bits.mixing = mix;
         info.bitstream = bits;
-        const Parsed parsed{ac3::hearth::media_info_json(info)};
+        const Parsed parsed{iclforge::hearth::media_info_json(info)};
         const auto mixdef = parsed.root()["bitstream"]["mixing"]["mixdef"];
         CHECK(mixdef["label"].equals("reserved"));
         CHECK(mixdef["reserved"].as_int() == 0xABC);
@@ -147,7 +147,7 @@ TEST_CASE("media info json: each mixdef spells its own data", "[hearth][media-in
         mix.mixing.mixdef = meta::MixDefinition::kExtended;
         bits.mixing = mix;
         info.bitstream = bits;
-        const Parsed parsed{ac3::hearth::media_info_json(info)};
+        const Parsed parsed{iclforge::hearth::media_info_json(info)};
         const auto mixdef = parsed.root()["bitstream"]["mixing"]["mixdef"];
         CHECK(mixdef["label"].equals("extended"));
         CHECK(mixdef["external"].is_null());
@@ -174,7 +174,7 @@ TEST_CASE("media info json: each mixdef spells its own data", "[hearth][media-in
         mix.mixing.speech = speech;
         bits.mixing = mix;
         info.bitstream = bits;
-        const Parsed parsed{ac3::hearth::media_info_json(info)};
+        const Parsed parsed{iclforge::hearth::media_info_json(info)};
         const auto mixdef = parsed.root()["bitstream"]["mixing"]["mixdef"];
         const auto ext = mixdef["external"];
         CHECK(ext["premix"]["premixcmpsel_label"].equals("dynrng"));
@@ -207,13 +207,13 @@ TEST_CASE("media info json: each mixdef spells its own data", "[hearth][media-in
         bits.mixing = mix;
         info.bitstream = bits;
         {
-            const Parsed parsed{ac3::hearth::media_info_json(info)};
+            const Parsed parsed{iclforge::hearth::media_info_json(info)};
             CHECK(parsed.root()["bitstream"]["mixing"]["mixdef"]["speech"]["additional"]["more"].is_null());
         }
         mix.mixing.speech = none_more;
         bits.mixing = mix;
         info.bitstream = bits;
-        const Parsed parsed{ac3::hearth::media_info_json(info)};
+        const Parsed parsed{iclforge::hearth::media_info_json(info)};
         CHECK(parsed.root()["bitstream"]["mixing"]["mixdef"]["speech"]["additional"].is_null());
     }
 }
@@ -222,7 +222,7 @@ TEST_CASE("media info json: an MPEG-TS item's service descriptor, and the AC-4 c
           "[hearth][media-info]") {
     MediaInfo info;
     info.codec = MediaCodec::kAc4;
-    info.container.kind = ac3::apps::ContainerKind::kMpegTs;
+    info.container.kind = iclforge::apps::ContainerKind::kMpegTs;
     info.container.program_number = 7;
     info.container.service_present = true;
     info.container.service_bsmod = 2;
@@ -231,7 +231,7 @@ TEST_CASE("media info json: an MPEG-TS item's service descriptor, and the AC-4 c
     info.container.service_mainid = std::nullopt;
     info.container.service_asvc = 1;
     info.container.service_mix_metadata = true;
-    const Parsed parsed{ac3::hearth::media_info_json(info)};
+    const Parsed parsed{iclforge::hearth::media_info_json(info)};
     const auto root = parsed.root();
     CHECK(root["codec"].equals("ac4"));
     const auto service = root["container"]["mpegts"]["service"];
@@ -244,5 +244,5 @@ TEST_CASE("media info json: an MPEG-TS item's service descriptor, and the AC-4 c
     CHECK(service["mix_metadata"].as_bool());
     CHECK(root["container"]["mp4"].is_null());
     CHECK(root["probe"].is_null());  // no AC-4 sync frame was summarised
-    CHECK(ac3::hearth::codec_token(MediaCodec::kEac3) == "eac3");
+    CHECK(iclforge::hearth::codec_token(MediaCodec::kEac3) == "eac3");
 }

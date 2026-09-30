@@ -13,7 +13,7 @@
 
 // See server_identity.hpp.
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 namespace {
 
@@ -68,4 +68,4 @@ std::optional<sendspin::noise::KeyPair> load_or_make_server_identity(SettingsSto
     return made;
 }
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

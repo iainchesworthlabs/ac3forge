@@ -19,12 +19,12 @@ std::uint8_t u8(std::span<const std::byte> bytes, std::size_t index) {
 }  // namespace
 
 TEST_CASE("gf2 helpers: multiplicative identities", "[crc16][gf2]") {
-    STATIC_CHECK(ac3::gf2::mul_mod(1, 1) == 1);
-    STATIC_CHECK(ac3::gf2::mul_mod(0x1234, 1) == 0x1234);
-    STATIC_CHECK(ac3::gf2::mul_mod(2, ac3::gf2::kInverseX) == 1);
-    STATIC_CHECK(ac3::gf2::pow_mod(ac3::gf2::kInverseX, 0) == 1);
+    STATIC_CHECK(iclforge::gf2::mul_mod(1, 1) == 1);
+    STATIC_CHECK(iclforge::gf2::mul_mod(0x1234, 1) == 0x1234);
+    STATIC_CHECK(iclforge::gf2::mul_mod(2, iclforge::gf2::kInverseX) == 1);
+    STATIC_CHECK(iclforge::gf2::pow_mod(iclforge::gf2::kInverseX, 0) == 1);
     // pow(x, n) * pow(inv_x, n) == 1
-    STATIC_CHECK(ac3::gf2::mul_mod(ac3::gf2::pow_mod(2, 123), ac3::gf2::pow_mod(ac3::gf2::kInverseX, 123)) == 1);
+    STATIC_CHECK(iclforge::gf2::mul_mod(iclforge::gf2::pow_mod(2, 123), iclforge::gf2::pow_mod(iclforge::gf2::kInverseX, 123)) == 1);
 }
 
 TEST_CASE("solve_leading_crc zeroes the register over [crc || body]", "[crc16][gf2]") {
@@ -37,26 +37,27 @@ TEST_CASE("solve_leading_crc zeroes the register over [crc || body]", "[crc16][g
         for (auto& b : body) {
             b = static_cast<std::byte>(byte_dist(rng));
         }
-        const std::uint16_t crc1 = ac3::solve_leading_crc(body);
+        const std::uint16_t crc1 = iclforge::solve_leading_crc(body);
 
         std::vector<std::byte> region;
         region.push_back(static_cast<std::byte>(crc1 >> 8));
         region.push_back(static_cast<std::byte>(crc1 & 0xFF));
         region.insert(region.end(), body.begin(), body.end());
-        CHECK(ac3::crc16(region) == 0x0000);
+        CHECK(iclforge::crc16(region) == 0x0000);
     }
 }
 
 TEST_CASE("silent frame has the exact Table 5.18 size", "[frame]") {
     for (const std::uint32_t kbps : {96u, 192u, 448u, 640u}) {
-        const auto frame = ac3::build_silent_stereo_frame({.bitrate_kbps = kbps});
+        const auto frame = iclforge::build_silent_stereo_frame({.bitrate_kbps = kbps});
         REQUIRE(frame.has_value());
-        CHECK(frame->size() == ac3::frame_size_bytes(ac3::SampleRate::k48000, kbps).value());
+        CHECK(frame->size() ==
+              iclforge::frame_size_bytes(iclforge::SampleRate::k48000, kbps).value());
     }
 }
 
 TEST_CASE("silent frame header fields", "[frame]") {
-    const auto frame = ac3::build_silent_stereo_frame({.bitrate_kbps = 192});
+    const auto frame = iclforge::build_silent_stereo_frame({.bitrate_kbps = 192});
     REQUIRE(frame.has_value());
     const std::span<const std::byte> bytes{*frame};
 
@@ -77,43 +78,44 @@ TEST_CASE("silent frame header fields", "[frame]") {
 }
 
 TEST_CASE("size, CRCs, and 5.5 constraints across the full config matrix", "[frame]") {
-    using ac3::SampleRate;
+    using iclforge::SampleRate;
     for (const auto sr : {SampleRate::k48000, SampleRate::k44100, SampleRate::k32000}) {
-        for (const std::uint32_t kbps : ac3::kBitratesKbps) {
+        for (const std::uint32_t kbps : iclforge::kBitratesKbps) {
             for (const bool pad : {false, true}) {
                 if (pad && sr != SampleRate::k44100) {
                     continue;
                 }
                 CAPTURE(static_cast<int>(sr), kbps, pad);
-                const auto frame = ac3::build_silent_stereo_frame(
+                const auto frame = iclforge::build_silent_stereo_frame(
                     {.sample_rate = sr, .bitrate_kbps = kbps, .pad441 = pad});
                 REQUIRE(frame.has_value());
-                CHECK(frame->size() == ac3::frame_size_bytes(sr, kbps, pad).value());
+                CHECK(frame->size() == iclforge::frame_size_bytes(sr, kbps, pad).value());
 
                 const std::span<const std::byte> bytes{*frame};
                 const auto words = static_cast<std::uint32_t>(frame->size()) / 2;
-                const std::uint32_t words58 = ac3::frame_size_58_words(words);
+                const std::uint32_t words58 = iclforge::frame_size_58_words(words);
                 CHECK(words58 == (words >> 1) + (words >> 3));
 
                 // crc1: register reads zero over bytes [2, 2*words58) — sync
                 // word excluded, crc1 word leading the region (A/52 7.10.1).
-                CHECK(ac3::crc16(bytes.subspan(2, 2 * words58 - 2)) == 0x0000);
+                CHECK(iclforge::crc16(bytes.subspan(2, 2 * words58 - 2)) == 0x0000);
                 // crc2: register reads zero over the whole frame minus sync.
-                CHECK(ac3::crc16(bytes.subspan(2)) == 0x0000);
+                CHECK(iclforge::crc16(bytes.subspan(2)) == 0x0000);
 
                 // A/52 5.5 bullet 2: aux + errorcheck tail must fit in the
                 // final 3/8 of the syncframe (block 5 has no mantissa data).
-                const auto plan = ac3::detail::plan_padding(
-                    static_cast<std::uint32_t>(frame->size()) * 8 - ac3::detail::kContentBits -
-                    ac3::detail::kTailBits);
+                const auto plan = iclforge::detail::plan_padding(
+                    static_cast<std::uint32_t>(frame->size()) * 8 - iclforge::detail::kContentBits -
+                    iclforge::detail::kTailBits);
                 const std::uint32_t final38_bits = (words - words58) * 16;
-                CHECK(plan.aux_bits + ac3::detail::kTailBits <= final38_bits);
+                CHECK(plan.aux_bits + iclforge::detail::kTailBits <= final38_bits);
 
                 // A/52 5.5 bullet 1: syncinfo + bsi + blocks 0-1 must fit in
                 // the first 5/8 (skip fill is rear-loaded, so blocks 0-1 only
                 // carry skip data in the very largest frames).
-                std::uint32_t head_bits = ac3::detail::kSyncinfoBsiBits + ac3::detail::kBlock0Bits +
-                                          ac3::detail::kReuseBlockBits;
+                std::uint32_t head_bits = iclforge::detail::kSyncinfoBsiBits +
+                                          iclforge::detail::kBlock0Bits +
+                                          iclforge::detail::kReuseBlockBits;
                 for (int block = 0; block < 2; ++block) {
                     if (const auto skip = plan.skip_bytes[static_cast<std::size_t>(block)]) {
                         head_bits += 9 + 8u * skip;
@@ -126,10 +128,10 @@ TEST_CASE("size, CRCs, and 5.5 constraints across the full config matrix", "[fra
 }
 
 TEST_CASE("invalid configs are rejected", "[frame]") {
-    CHECK(ac3::build_silent_stereo_frame({.bitrate_kbps = 100}).error() ==
-          ac3::FrameError::kInvalidBitrate);
-    CHECK(ac3::build_silent_stereo_frame({.bitrate_kbps = 192, .dialnorm = 0}).error() ==
-          ac3::FrameError::kInvalidDialnorm);
-    CHECK(ac3::build_silent_stereo_frame({.bitrate_kbps = 192, .dialnorm = 32}).error() ==
-          ac3::FrameError::kInvalidDialnorm);
+    CHECK(iclforge::build_silent_stereo_frame({.bitrate_kbps = 100}).error() ==
+          iclforge::FrameError::kInvalidBitrate);
+    CHECK(iclforge::build_silent_stereo_frame({.bitrate_kbps = 192, .dialnorm = 0}).error() ==
+          iclforge::FrameError::kInvalidDialnorm);
+    CHECK(iclforge::build_silent_stereo_frame({.bitrate_kbps = 192, .dialnorm = 32}).error() ==
+          iclforge::FrameError::kInvalidDialnorm);
 }

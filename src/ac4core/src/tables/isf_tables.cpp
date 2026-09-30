@@ -1,6 +1,6 @@
 #include "iclforge/ac4core/tables/isf_tables.hpp"
 
-namespace ac4::detail::tables {
+namespace iclforge::ac4::detail::tables {
 namespace {
 
 constexpr std::array<float, 8> kSR3100To2 = {
@@ -1572,4 +1572,4 @@ constinit const std::array<std::array<std::span<const float>, 10>, 6>
         }},
     }};
 
-}  // namespace ac4::detail::tables
+}  // namespace iclforge::ac4::detail::tables

@@ -13,22 +13,22 @@
 
 #include "iclforge/sendspin/json.hpp"
 
-// ac3::sendspin::json, the reader and writer every Sendspin message goes
+// iclforge::sendspin::json, the reader and writer every Sendspin message goes
 // through. The reader is the first thing a peer's bytes reach, on the server and
 // on a sink, so most of what is here is about refusing: every malformed shape a
 // careless or hostile peer could send, and the limits that keep its cost bounded.
 
 namespace {
 
-using ac3::sendspin::json::Document;
-using ac3::sendspin::json::Error;
-using ac3::sendspin::json::Limits;
-using ac3::sendspin::json::Member;
-using ac3::sendspin::json::ParseResult;
-using ac3::sendspin::json::Token;
-using ac3::sendspin::json::Type;
-using ac3::sendspin::json::Value;
-using ac3::sendspin::json::Writer;
+using iclforge::sendspin::json::Document;
+using iclforge::sendspin::json::Error;
+using iclforge::sendspin::json::Limits;
+using iclforge::sendspin::json::Member;
+using iclforge::sendspin::json::ParseResult;
+using iclforge::sendspin::json::Token;
+using iclforge::sendspin::json::Type;
+using iclforge::sendspin::json::Value;
+using iclforge::sendspin::json::Writer;
 
 // A document with its own storage, for tests that only need the result.
 struct Parsed {

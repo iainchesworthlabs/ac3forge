@@ -39,7 +39,7 @@ std::vector<float> tone(std::size_t from, std::size_t count, double amplitude,
 }  // namespace
 
 TEST_CASE("a steady tone never trips the transient detector", "[transient]") {
-    ac3::TransientDetector detector(ac3::SampleRate::k48000);
+    iclforge::TransientDetector detector(iclforge::SampleRate::k48000);
     for (const auto& s : segments_of(tone(0, 256 * 16, 0.5))) {
         CHECK_FALSE(detector.detect(s));
     }
@@ -47,7 +47,7 @@ TEST_CASE("a steady tone never trips the transient detector", "[transient]") {
 
 TEST_CASE("digital silence never trips the transient detector", "[transient]") {
     std::vector<float> signal(256 * 8, 0.0F);
-    ac3::TransientDetector detector(ac3::SampleRate::k48000);
+    iclforge::TransientDetector detector(iclforge::SampleRate::k48000);
     for (const auto& s : segments_of(signal)) {
         CHECK_FALSE(detector.detect(s));
     }
@@ -60,7 +60,7 @@ TEST_CASE("a sudden loud onset trips the detector in the onset's own segment",
     // exactly the case §8.2.2 defines blksw for: a transient in the 256 new
     // samples of one block period.
     const auto segments = segments_of(tone(256 * 7, 256 * 2, 0.9));
-    ac3::TransientDetector detector(ac3::SampleRate::k48000);
+    iclforge::TransientDetector detector(iclforge::SampleRate::k48000);
     for (std::size_t i = 0; i < 7; ++i) {
         CHECK_FALSE(detector.detect(segments[i]));
     }
@@ -77,7 +77,7 @@ TEST_CASE("the very first segment a detector sees never trips it", "[transient]"
     // SECOND segment, steady at the same level, must not trip either (the
     // suppressed pass still primed real history).
     const auto segments = segments_of(tone(0, 256 * 2, 0.9));
-    ac3::TransientDetector detector(ac3::SampleRate::k48000);
+    iclforge::TransientDetector detector(iclforge::SampleRate::k48000);
     CHECK_FALSE(detector.detect(segments[0]));
     CHECK_FALSE(detector.detect(segments[1]));
 }
@@ -92,7 +92,7 @@ TEST_CASE("the very first segment a detector sees never trips it", "[transient]"
 // see that entry for the empirical result) at every rate this project ships.
 TEST_CASE("a loud onset trips the detector at every A/52 sample rate", "[transient]") {
     struct Case {
-        ac3::SampleRate rate;
+        iclforge::SampleRate rate;
         bool onset_trips;
     };
     // k16000 is deliberately excluded from "trips": A/52's 8 kHz cutoff
@@ -107,17 +107,17 @@ TEST_CASE("a loud onset trips the detector at every A/52 sample rate", "[transie
     // rate, not something this test's own scope changes or fixes - see
     // cross-toolchain bitstream audit's note on it.
     const std::array<Case, 6> cases{{
-        {ac3::SampleRate::k48000, true},
-        {ac3::SampleRate::k44100, true},
-        {ac3::SampleRate::k32000, true},
-        {ac3::SampleRate::k24000, true},
-        {ac3::SampleRate::k22050, true},
-        {ac3::SampleRate::k16000, false},
+        {iclforge::SampleRate::k48000, true},
+        {iclforge::SampleRate::k44100, true},
+        {iclforge::SampleRate::k32000, true},
+        {iclforge::SampleRate::k24000, true},
+        {iclforge::SampleRate::k22050, true},
+        {iclforge::SampleRate::k16000, false},
     }};
     for (const Case& c : cases) {
-        const double fs = static_cast<double>(ac3::sample_rate_hz(c.rate));
+        const double fs = static_cast<double>(iclforge::sample_rate_hz(c.rate));
         const auto segments = segments_of(tone(256 * 7, 256 * 2, 0.9, fs));
-        ac3::TransientDetector detector(c.rate);
+        iclforge::TransientDetector detector(c.rate);
         for (std::size_t i = 0; i < 7; ++i) {
             CHECK_FALSE(detector.detect(segments[i]));
         }
@@ -127,13 +127,13 @@ TEST_CASE("a loud onset trips the detector at every A/52 sample rate", "[transie
 }
 
 TEST_CASE("the float detector decides as the double one does on a loud onset", "[transient]") {
-    // ac3::BasicTransientDetector<float> is the minimum-footprint profile's
+    // iclforge::BasicTransientDetector<float> is the minimum-footprint profile's
     // form (ac3/internal/encode_scalar.hpp). The recipe is identical; only
     // the rounding differs, so on a clear onset the two must agree segment
     // by segment - and the tone's steady segments must not trip either.
     const auto segments = segments_of(tone(256 * 7, 256 * 2, 0.9));
-    ac3::TransientDetector wide(ac3::SampleRate::k48000);
-    ac3::BasicTransientDetector<float> narrow(ac3::SampleRate::k48000);
+    iclforge::TransientDetector wide(iclforge::SampleRate::k48000);
+    iclforge::BasicTransientDetector<float> narrow(iclforge::SampleRate::k48000);
     for (std::size_t i = 0; i < segments.size(); ++i) {
         CAPTURE(i);
         const bool wide_hit = wide.detect(segments[i]);

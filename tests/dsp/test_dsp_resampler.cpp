@@ -11,16 +11,16 @@
 
 #include "iclforge/dsp/resampler.hpp"
 
-using ac3::dsp::resample;
-using ac3::dsp::resample_planar;
+using iclforge::dsp::resample;
+using iclforge::dsp::resample_planar;
 
 namespace {
 
 // Mono sine generator - deliberately local rather than shared with
 // tests/audio/test_resampler.cpp's own generate_sine/generate_sine_mono: these are
-// two independent test binaries' worth of helpers (ac3::dsp::resample is a
+// two independent test binaries' worth of helpers (iclforge::dsp::resample is a
 // plain single-channel std::vector<float>, not interleaved multi-channel PCM
-// like ac3::audio::DriftResampler operates on), and the rest of tests/
+// like iclforge::audio::DriftResampler operates on), and the rest of tests/
 // already keeps this kind of helper local per file rather than sharing a
 // header for it.
 std::vector<float> generate_sine(std::size_t frames, double freq, double sample_rate,

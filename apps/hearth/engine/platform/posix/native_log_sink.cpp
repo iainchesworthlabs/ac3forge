@@ -5,8 +5,8 @@
 // log sink on macOS or Linux, so this installs none rather than inventing
 // one.
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 void install_native_log_sink() {}
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

@@ -24,7 +24,7 @@
 // before is served from the cache, unless the request asks for it to be read
 // again.
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 class MediaInspector {
 public:
@@ -85,4 +85,4 @@ private:
     std::jthread thread_;
 };
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

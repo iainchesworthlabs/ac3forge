@@ -23,7 +23,7 @@
 // (src/audio/src/backend/macos/monitor.cpp's own header says why). None of
 // that is what a player wants. Which speaker a rendered channel comes out of
 // is the room's business, and the renderer already has the type that records
-// it: ac3::render::Routing.
+// it: iclforge::render::Routing.
 //
 // So this opens the stream at the DEVICE's channel count and writes each
 // rendered channel to the output the patch names, with silence in the outputs
@@ -39,11 +39,11 @@
 //
 // Everything else - the queue, the position, flush, pause - is MonitorSink's,
 // forwarded unchanged. Per-output trim and delay are deliberately NOT applied
-// here: they are ac3::render::TrimDelay's, applied to the rendered channels
+// here: they are iclforge::render::TrimDelay's, applied to the rendered channels
 // before they are submitted, so one pass covers every output whatever it is
 // plugged into.
 
-namespace ac3::audio {
+namespace iclforge::audio {
 
 // How wide to open for `device`: its own channel count where the backend can
 // say, else `rendered_channels`. RenderDeviceInfo::channels is 0 for "cannot
@@ -112,7 +112,7 @@ public:
     // default is opened and the layout's width is used.
     //
     // kDeviceNotFound if the endpoint is not there, or is wider than a patch
-    // can name (ac3::render::Routing::kMaxOutputs) - such a device cannot be
+    // can name (iclforge::render::Routing::kMaxOutputs) - such a device cannot be
     // driven this way at all, and opening it narrower would hand the widening
     // back to the platform mixer this class exists to avoid. kComFailure for
     // a layout with no slots, there being no stream to open for it.
@@ -154,4 +154,4 @@ private:
     std::unique_ptr<Impl> impl_;
 };
 
-}  // namespace ac3::audio
+}  // namespace iclforge::audio

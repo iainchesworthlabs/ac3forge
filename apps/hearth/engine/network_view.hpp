@@ -26,7 +26,7 @@
 // controller.cpp) already sets the precedent of doing that conversion in the
 // Qt controller itself, not a separate hand-tested view layer - network_
 // controller.cpp follows the same pattern for the same reason. ac3forge_player.hpp
-// is a lightweight, dependency-free header (no Qt, no ac3::render), the same
+// is a lightweight, dependency-free header (no Qt, no iclforge::render), the same
 // reason network_sinks.hpp already includes sendspin headers directly.
 //
 // Wording follows planning/hearth-sendspin-extension.md's own terms: "roles",
@@ -34,7 +34,7 @@
 // roles, the codecs and data types a sink accepts, its output slot count and
 // width, its required lead time, and whether its time filter has converged.
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 enum class SinkKind : std::uint8_t {
     // Offers `_ac3forge_player@v1`: takes the bitstream itself, rendered on
@@ -237,7 +237,7 @@ struct SinkDetail {
 
 // One member of a group NetworkSinks has made: which sink it is, whether it
 // is connected right now, and the volume/mute it currently reports
-// (ac3::sendspin::Group::member_player() - not a value this layer invents).
+// (iclforge::sendspin::Group::member_player() - not a value this layer invents).
 // A member whose sink NetworkSinks no longer knows about at all (it dropped
 // off mDNS and disconnected) still keeps its row, named by its bare id, so
 // removing it from the group stays possible.
@@ -256,7 +256,7 @@ struct GroupMemberFacts {
     std::optional<std::uint32_t> required_lead_time_ms{};
 };
 
-// One group NetworkSinks has made (ac3::sendspin::ServerHost::make_group()),
+// One group NetworkSinks has made (iclforge::sendspin::ServerHost::make_group()),
 // gathered from its own membership bookkeeping (the library keeps no member
 // list of its own to read back) and each member's current facts.
 struct GroupFacts {
@@ -321,4 +321,4 @@ struct GroupDetail {
 
 [[nodiscard]] GroupDetail to_group_detail(const GroupFacts& facts);
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

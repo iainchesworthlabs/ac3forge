@@ -22,7 +22,7 @@
 // belong to, as A-CPL's and A-JCC's are. The core (ajoc/ajoc.hpp) holds the
 // interpolation, the decorrelators and the reconstruction.
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 // Pseudocode 16's mtx_dry_q_prev and mtx_wet_q_prev per upmix object, with the
 // quantisation and band count they were decoded at; `centre` for an object
@@ -96,4 +96,4 @@ class AjocStage {
     std::vector<std::vector<QmfValue>*> outputs_;
 };
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

@@ -42,26 +42,26 @@ std::vector<std::span<const float>> views(std::span<const std::vector<float>> ch
 }  // namespace
 
 TEST_CASE("dBFS conversion and meter scaling", "[analysis]") {
-    CHECK(ac3::analysis::to_dbfs(1.0) == Approx(0.0));
-    CHECK(ac3::analysis::to_dbfs(0.5) == Approx(-6.0205999));
-    CHECK(ac3::analysis::to_dbfs(0.25) == Approx(-12.0411998));
-    CHECK(ac3::analysis::to_dbfs(-0.5) == Approx(-6.0205999));  // magnitude only
-    CHECK(ac3::analysis::to_dbfs(0.0) == ac3::analysis::kFloorDb);
+    CHECK(iclforge::analysis::to_dbfs(1.0) == Approx(0.0));
+    CHECK(iclforge::analysis::to_dbfs(0.5) == Approx(-6.0205999));
+    CHECK(iclforge::analysis::to_dbfs(0.25) == Approx(-12.0411998));
+    CHECK(iclforge::analysis::to_dbfs(-0.5) == Approx(-6.0205999));  // magnitude only
+    CHECK(iclforge::analysis::to_dbfs(0.0) == iclforge::analysis::kFloorDb);
     // Nothing may report below the floor, however quiet.
-    CHECK(ac3::analysis::to_dbfs(1e-30) == ac3::analysis::kFloorDb);
+    CHECK(iclforge::analysis::to_dbfs(1e-30) == iclforge::analysis::kFloorDb);
 
-    CHECK(ac3::analysis::meter_fraction(0.0) == Approx(1.0));
-    CHECK(ac3::analysis::meter_fraction(-30.0) == Approx(0.5));
-    CHECK(ac3::analysis::meter_fraction(-60.0) == Approx(0.0));
-    CHECK(ac3::analysis::meter_fraction(-90.0) == Approx(0.0));   // clamped
-    CHECK(ac3::analysis::meter_fraction(6.0) == Approx(1.0));     // clamped
-    CHECK(ac3::analysis::meter_fraction(-20.0, -40.0) == Approx(0.5));
-    static_assert(ac3::analysis::meter_fraction(-30.0) > 0.49);
+    CHECK(iclforge::analysis::meter_fraction(0.0) == Approx(1.0));
+    CHECK(iclforge::analysis::meter_fraction(-30.0) == Approx(0.5));
+    CHECK(iclforge::analysis::meter_fraction(-60.0) == Approx(0.0));
+    CHECK(iclforge::analysis::meter_fraction(-90.0) == Approx(0.0));   // clamped
+    CHECK(iclforge::analysis::meter_fraction(6.0) == Approx(1.0));     // clamped
+    CHECK(iclforge::analysis::meter_fraction(-20.0, -40.0) == Approx(0.5));
+    static_assert(iclforge::analysis::meter_fraction(-30.0) > 0.49);
 }
 
 TEST_CASE("channel names follow A/52 Table 5.8", "[analysis]") {
-    using ac3::Acmod;
-    using ac3::analysis::channel_name;
+    using iclforge::Acmod;
+    using iclforge::analysis::channel_name;
 
     CHECK(channel_name(Acmod::kDualMono, false, 0) == "Ch1");
     CHECK(channel_name(Acmod::kDualMono, false, 1) == "Ch2");
@@ -88,14 +88,14 @@ TEST_CASE("channel names follow A/52 Table 5.8", "[analysis]") {
     CHECK(channel_name(Acmod::k1_0, true, 1) == "LFE");
     CHECK(channel_name(Acmod::k2_0, true, 2) == "LFE");
 
-    CHECK(ac3::analysis::layout_name(Acmod::k3_2, true) == "3/2 + LFE");
-    CHECK(ac3::analysis::layout_name(Acmod::k2_0, false) == "2/0 stereo");
-    CHECK(ac3::analysis::layout_name(Acmod::k1_0, true) == "1/0 mono + LFE");
+    CHECK(iclforge::analysis::layout_name(Acmod::k3_2, true) == "3/2 + LFE");
+    CHECK(iclforge::analysis::layout_name(Acmod::k2_0, false) == "2/0 stereo");
+    CHECK(iclforge::analysis::layout_name(Acmod::k1_0, true) == "1/0 mono + LFE");
 }
 
 TEST_CASE("channel azimuths sit on the BS.775 ring", "[analysis]") {
-    using ac3::Acmod;
-    using ac3::analysis::channel_azimuth_deg;
+    using iclforge::Acmod;
+    using iclforge::analysis::channel_azimuth_deg;
 
     CHECK(channel_azimuth_deg(Acmod::k3_2, true, 0) == 30.0);    // L
     CHECK(channel_azimuth_deg(Acmod::k3_2, true, 1) == 0.0);     // C
@@ -117,7 +117,7 @@ TEST_CASE("channel azimuths sit on the BS.775 ring", "[analysis]") {
     for (int ch = 0; ch < 5; ++ch) {
         const auto azimuth = channel_azimuth_deg(Acmod::k3_2, false, ch);
         REQUIRE(azimuth.has_value());
-        const auto gains = ac3::spatial::pan_azimuth(*azimuth);
+        const auto gains = iclforge::spatial::pan_azimuth(*azimuth);
         CHECK(gains[static_cast<std::size_t>(ch)] == Approx(1.0));
     }
 }
@@ -126,7 +126,7 @@ TEST_CASE("summary reports exact peak and RMS", "[analysis]") {
     // 1 s of a half-scale tone: peak 0.5 (-6.02 dBFS), RMS 0.5/sqrt(2)
     // (-9.03 dBFS). The second channel is 6 dB quieter.
     const std::vector<std::vector<float>> channels = {sine(0.5, 48000), sine(0.25, 48000)};
-    ac3::analysis::LevelMeter meter{ac3::Acmod::k2_0, false, 48000};
+    iclforge::analysis::LevelMeter meter{iclforge::Acmod::k2_0, false, 48000};
     meter.process(views(channels));
 
     const auto summary = meter.summary();
@@ -147,13 +147,13 @@ TEST_CASE("summary reports exact peak and RMS", "[analysis]") {
 
     meter.reset();
     CHECK(meter.summary()[0].samples == 0);
-    CHECK(meter.levels()[0].peak_db == ac3::analysis::kFloorDb);
+    CHECK(meter.levels()[0].peak_db == iclforge::analysis::kFloorDb);
 }
 
 TEST_CASE("meter ballistics: instant attack, timed fallback, held peak", "[analysis]") {
     const std::vector<std::vector<float>> loud = {sine(1.0, 4800)};   // 100 ms, 0 dBFS
     const std::vector<std::vector<float>> quiet = {std::vector<float>(4800, 0.0f)};
-    ac3::analysis::LevelMeter meter{ac3::Acmod::k1_0, false, 48000};
+    iclforge::analysis::LevelMeter meter{iclforge::Acmod::k1_0, false, 48000};
 
     meter.process(views(loud));
     CHECK(meter.levels()[0].peak_db == Approx(0.0).margin(1e-6));  // attack is instant
@@ -180,12 +180,12 @@ TEST_CASE("meter ballistics: instant attack, timed fallback, held peak", "[analy
     for (int block = 0; block < 200; ++block) {
         meter.process(views(quiet));
     }
-    CHECK(meter.levels()[0].peak_db == ac3::analysis::kFloorDb);
+    CHECK(meter.levels()[0].peak_db == iclforge::analysis::kFloorDb);
 }
 
 TEST_CASE("integrated RMS converges on the signal's true level", "[analysis]") {
     const std::vector<std::vector<float>> tone = {sine(0.5, 480)};  // 10 ms blocks
-    ac3::analysis::LevelMeter meter{ac3::Acmod::k1_0, false, 48000};
+    iclforge::analysis::LevelMeter meter{iclforge::Acmod::k1_0, false, 48000};
 
     // One 10 ms block into a 300 ms integration must not already read full
     // level - that is the whole point of the average.
@@ -202,11 +202,11 @@ TEST_CASE("integrated RMS converges on the signal's true level", "[analysis]") {
 }
 
 TEST_CASE("clipping is detected at PCM16 full scale", "[analysis]") {
-    ac3::analysis::LevelMeter meter{ac3::Acmod::k2_0, false, 48000};
+    iclforge::analysis::LevelMeter meter{iclforge::Acmod::k2_0, false, 48000};
     // 32767/32768 is as loud as a PCM16 source can be; a meter that insisted
     // on 1.0f would never flag a file mastered to 0 dBFS.
-    std::vector<std::vector<float>> channels = {std::vector<float>(480, ac3::analysis::kFullScale),
-                                                std::vector<float>(480, 0.9f)};
+    std::vector<std::vector<float>> channels = {
+        std::vector<float>(480, iclforge::analysis::kFullScale), std::vector<float>(480, 0.9f)};
     meter.process(views(channels));
     CHECK(meter.levels()[0].clipped);
     CHECK(meter.summary()[0].clipped_samples == 480);
@@ -227,8 +227,8 @@ TEST_CASE("interleaved metering matches planar", "[analysis]") {
         packed[n * 2 + 1] = planar[1][n];
     }
 
-    ac3::analysis::LevelMeter a{ac3::Acmod::k2_0, false, 48000};
-    ac3::analysis::LevelMeter b{ac3::Acmod::k2_0, false, 48000};
+    iclforge::analysis::LevelMeter a{iclforge::Acmod::k2_0, false, 48000};
+    iclforge::analysis::LevelMeter b{iclforge::Acmod::k2_0, false, 48000};
     a.process(views(planar));
     b.process_interleaved(packed, 2);
 
@@ -241,17 +241,17 @@ TEST_CASE("interleaved metering matches planar", "[analysis]") {
 
     // Channels the caller does not supply are metered as silence, so they
     // fall away instead of freezing on their last value.
-    ac3::analysis::LevelMeter wide{ac3::Acmod::k3_2, true, 48000};
+    iclforge::analysis::LevelMeter wide{iclforge::Acmod::k3_2, true, 48000};
     wide.process_interleaved(packed, 2);
     CHECK(wide.levels()[0].peak_db > -12.0);
-    CHECK(wide.levels()[5].peak_db == ac3::analysis::kFloorDb);
+    CHECK(wide.levels()[5].peak_db == iclforge::analysis::kFloorDb);
     CHECK(wide.summary()[5].samples == 4800);
 }
 
 TEST_CASE("energy vector points where the energy is", "[analysis]") {
-    using ac3::analysis::ChannelLevel;
-    using ac3::analysis::energy_vector;
-    const double floor_db = ac3::analysis::kFloorDb;
+    using iclforge::analysis::ChannelLevel;
+    using iclforge::analysis::energy_vector;
+    const double floor_db = iclforge::analysis::kFloorDb;
 
     std::vector<ChannelLevel> levels(6);
     for (auto& level : levels) {
@@ -260,7 +260,7 @@ TEST_CASE("energy vector points where the energy is", "[analysis]") {
 
     // Everything in the centre: a hard image dead ahead.
     levels[1].rms_db = 0.0;
-    auto vector = energy_vector(levels, ac3::Acmod::k3_2);
+    auto vector = energy_vector(levels, iclforge::Acmod::k3_2);
     CHECK(vector.azimuth_deg == Approx(0.0).margin(1e-9));
     CHECK(vector.magnitude == Approx(1.0));
     CHECK(vector.level_db == Approx(0.0).margin(1e-9));
@@ -271,7 +271,7 @@ TEST_CASE("energy vector points where the energy is", "[analysis]") {
     levels[1].rms_db = floor_db;
     levels[0].rms_db = -6.0;
     levels[2].rms_db = -6.0;
-    vector = energy_vector(levels, ac3::Acmod::k3_2);
+    vector = energy_vector(levels, iclforge::Acmod::k3_2);
     CHECK(vector.azimuth_deg == Approx(0.0).margin(1e-9));
     CHECK(vector.magnitude == Approx(std::cos(30.0 * std::numbers::pi / 180.0)));
     CHECK(vector.level_db == Approx(-2.9897).margin(1e-3));  // two equal sources sum to +3 dB
@@ -280,7 +280,7 @@ TEST_CASE("energy vector points where the energy is", "[analysis]") {
     levels[0].rms_db = floor_db;
     levels[2].rms_db = floor_db;
     levels[3].rms_db = -20.0;
-    vector = energy_vector(levels, ac3::Acmod::k3_2);
+    vector = energy_vector(levels, iclforge::Acmod::k3_2);
     CHECK(vector.azimuth_deg == Approx(110.0));
     CHECK(vector.magnitude == Approx(1.0));
     CHECK(vector.level_db == Approx(-20.0));
@@ -290,7 +290,7 @@ TEST_CASE("energy vector points where the energy is", "[analysis]") {
     for (int ch = 0; ch < 5; ++ch) {
         levels[static_cast<std::size_t>(ch)].rms_db = 0.0;
     }
-    vector = energy_vector(levels, ac3::Acmod::k3_2);
+    vector = energy_vector(levels, iclforge::Acmod::k3_2);
     CHECK(vector.magnitude < 0.5);
     CHECK(vector.azimuth_deg == Approx(0.0).margin(1e-9));
 
@@ -298,42 +298,42 @@ TEST_CASE("energy vector points where the energy is", "[analysis]") {
     for (auto& level : levels) {
         level.rms_db = floor_db;
     }
-    vector = energy_vector(levels, ac3::Acmod::k3_2);
+    vector = energy_vector(levels, iclforge::Acmod::k3_2);
     CHECK(vector.magnitude == 0.0);
     CHECK(vector.level_db == floor_db);
 
     // The LFE never steers the image, however loud it gets.
     levels[5].rms_db = 0.0;
-    vector = energy_vector(levels, ac3::Acmod::k3_2);
+    vector = energy_vector(levels, iclforge::Acmod::k3_2);
     CHECK(vector.magnitude == 0.0);
 }
 
 TEST_CASE("WAV and A/52 channel orders are inverse permutations", "[analysis]") {
     // 5.1 is where they differ: WAV is FL FR FC LFE BL BR, A/52 is
     // L C R SL SR LFE.
-    const auto surround = ac3::io::ac3_layout_for(6);
+    const auto surround = iclforge::io::ac3_layout_for(6);
     REQUIRE(surround.has_value());
-    CHECK(surround->acmod == ac3::Acmod::k3_2);
+    CHECK(surround->acmod == iclforge::Acmod::k3_2);
     CHECK(surround->lfe);
     CHECK(surround->wav_index == std::vector<std::size_t>{0, 2, 1, 4, 5, 3});
-    CHECK(ac3::io::wav_channel_order(ac3::Acmod::k3_2, true) ==
+    CHECK(iclforge::io::wav_channel_order(iclforge::Acmod::k3_2, true) ==
           std::vector<std::size_t>{0, 2, 1, 5, 3, 4});
 
-    CHECK(ac3::io::ac3_layout_for(1)->acmod == ac3::Acmod::k1_0);
-    CHECK(ac3::io::ac3_layout_for(2)->acmod == ac3::Acmod::k2_0);
-    CHECK(ac3::io::ac3_layout_for(4)->acmod == ac3::Acmod::k2_2);
-    CHECK(ac3::io::ac3_layout_for(5)->acmod == ac3::Acmod::k3_2);
-    CHECK_FALSE(ac3::io::ac3_layout_for(5)->lfe);
-    CHECK_FALSE(ac3::io::ac3_layout_for(0).has_value());
-    CHECK_FALSE(ac3::io::ac3_layout_for(7).has_value());
+    CHECK(iclforge::io::ac3_layout_for(1)->acmod == iclforge::Acmod::k1_0);
+    CHECK(iclforge::io::ac3_layout_for(2)->acmod == iclforge::Acmod::k2_0);
+    CHECK(iclforge::io::ac3_layout_for(4)->acmod == iclforge::Acmod::k2_2);
+    CHECK(iclforge::io::ac3_layout_for(5)->acmod == iclforge::Acmod::k3_2);
+    CHECK_FALSE(iclforge::io::ac3_layout_for(5)->lfe);
+    CHECK_FALSE(iclforge::io::ac3_layout_for(0).has_value());
+    CHECK_FALSE(iclforge::io::ac3_layout_for(7).has_value());
 
     // Round trip: reading a WAV into A/52 order and writing it back out must
     // put every channel where it started.
     for (std::size_t count = 1; count <= 6; ++count) {
         CAPTURE(count);
-        const auto layout = ac3::io::ac3_layout_for(count);
+        const auto layout = iclforge::io::ac3_layout_for(count);
         REQUIRE(layout.has_value());
-        const auto order = ac3::io::wav_channel_order(layout->acmod, layout->lfe);
+        const auto order = iclforge::io::wav_channel_order(layout->acmod, layout->lfe);
         REQUIRE(order.size() == count);
         for (std::size_t ac3 = 0; ac3 < count; ++ac3) {
             CHECK(order[layout->wav_index[ac3]] == ac3);
@@ -343,9 +343,9 @@ TEST_CASE("WAV and A/52 channel orders are inverse permutations", "[analysis]") 
     // 1+1 is the one acmod with no speaker positions to sort - two
     // independent programmes rather than a soundfield - so it alone falls
     // back to the codec's own order rather than inventing one.
-    CHECK(ac3::io::wav_channel_order(ac3::Acmod::kDualMono, false) ==
+    CHECK(iclforge::io::wav_channel_order(iclforge::Acmod::kDualMono, false) ==
           std::vector<std::size_t>{0, 1});
-    CHECK(ac3::io::wav_channel_order(ac3::Acmod::kDualMono, true) ==
+    CHECK(iclforge::io::wav_channel_order(iclforge::Acmod::kDualMono, true) ==
           std::vector<std::size_t>{0, 1, 2});
 }
 
@@ -369,31 +369,31 @@ TEST_CASE("wav_channel_order places every acmod by WAV speaker position", "[anal
     // FATE's millers_crossing_4.0.ac3 declares dwChannelMask 0x107 for the
     // 3/1 row (see tools/checks/verify_fate_interop.py).
     struct Expect {
-        ac3::Acmod acmod;
+        iclforge::Acmod acmod;
         bool lfe;
         std::vector<std::size_t> order;
         std::string_view wav;  // the channels as they land in the file
     };
     const std::vector<Expect> table = {
-        {ac3::Acmod::k1_0, false, {0}, "C"},
-        {ac3::Acmod::k1_0, true, {0, 1}, "C LFE"},
-        {ac3::Acmod::k2_0, false, {0, 1}, "L R"},
-        {ac3::Acmod::k2_0, true, {0, 1, 2}, "L R LFE"},
-        {ac3::Acmod::k3_0, false, {0, 2, 1}, "L R C"},
-        {ac3::Acmod::k3_0, true, {0, 2, 1, 3}, "L R C LFE"},
-        {ac3::Acmod::k2_1, false, {0, 1, 2}, "L R S"},
-        {ac3::Acmod::k2_1, true, {0, 1, 3, 2}, "L R LFE S"},
-        {ac3::Acmod::k3_1, false, {0, 2, 1, 3}, "L R C S"},
-        {ac3::Acmod::k3_1, true, {0, 2, 1, 4, 3}, "L R C LFE S"},
-        {ac3::Acmod::k2_2, false, {0, 1, 2, 3}, "L R Ls Rs"},
-        {ac3::Acmod::k2_2, true, {0, 1, 4, 2, 3}, "L R LFE Ls Rs"},
-        {ac3::Acmod::k3_2, false, {0, 2, 1, 3, 4}, "L R C Ls Rs"},
-        {ac3::Acmod::k3_2, true, {0, 2, 1, 5, 3, 4}, "L R C LFE Ls Rs"},
+        {iclforge::Acmod::k1_0, false, {0}, "C"},
+        {iclforge::Acmod::k1_0, true, {0, 1}, "C LFE"},
+        {iclforge::Acmod::k2_0, false, {0, 1}, "L R"},
+        {iclforge::Acmod::k2_0, true, {0, 1, 2}, "L R LFE"},
+        {iclforge::Acmod::k3_0, false, {0, 2, 1}, "L R C"},
+        {iclforge::Acmod::k3_0, true, {0, 2, 1, 3}, "L R C LFE"},
+        {iclforge::Acmod::k2_1, false, {0, 1, 2}, "L R S"},
+        {iclforge::Acmod::k2_1, true, {0, 1, 3, 2}, "L R LFE S"},
+        {iclforge::Acmod::k3_1, false, {0, 2, 1, 3}, "L R C S"},
+        {iclforge::Acmod::k3_1, true, {0, 2, 1, 4, 3}, "L R C LFE S"},
+        {iclforge::Acmod::k2_2, false, {0, 1, 2, 3}, "L R Ls Rs"},
+        {iclforge::Acmod::k2_2, true, {0, 1, 4, 2, 3}, "L R LFE Ls Rs"},
+        {iclforge::Acmod::k3_2, false, {0, 2, 1, 3, 4}, "L R C Ls Rs"},
+        {iclforge::Acmod::k3_2, true, {0, 2, 1, 5, 3, 4}, "L R C LFE Ls Rs"},
     };
 
     for (const auto& row : table) {
         CAPTURE(static_cast<int>(row.acmod), row.lfe, row.wav);
-        const auto order = ac3::io::wav_channel_order(row.acmod, row.lfe);
+        const auto order = iclforge::io::wav_channel_order(row.acmod, row.lfe);
         CHECK(order == row.order);
         // Whatever the layout, the result has to be a permutation: every
         // coded channel present exactly once, nothing invented or dropped.

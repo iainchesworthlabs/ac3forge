@@ -7,7 +7,7 @@
 // rather than the API disappearing - callers keep compiling, and get told no
 // instead of getting nothing. See posix/monitor.cpp for the same convention.
 
-namespace ac3::audio {
+namespace iclforge::audio {
 
 std::string_view describe(SpatialError error) {
     switch (error) {
@@ -47,4 +47,4 @@ void SpatialObjectSink::stop() {}
 bool SpatialObjectSink::running() const { return false; }
 SpatialObjectStats SpatialObjectSink::stats() const { return {}; }
 
-}  // namespace ac3::audio
+}  // namespace iclforge::audio

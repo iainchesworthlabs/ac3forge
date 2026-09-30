@@ -18,7 +18,7 @@
 // decoder's tests build presentations of other encoders' substreams, and of
 // object audio substreams, with it (tests/ac4dec/ac4dec_mux.hpp).
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 // One ac4_substream_info_chan() (clause 6.2.1.8) of a group whose substreams
 // are in the stream, at 48 kHz or 44.1 kHz, with no bit rate indicator and a
@@ -165,4 +165,4 @@ void write_toc(BitWriter& w, const TocLayout& layout, std::size_t payload_base,
 // Whether assemble_frame() can write the layout over `substreams` substreams.
 [[nodiscard]] bool writable(const TocLayout& layout, std::size_t substreams);
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

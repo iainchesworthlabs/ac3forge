@@ -21,7 +21,7 @@
 
 namespace ac3cli {
 
-namespace plan = ac3::plan;
+namespace plan = iclforge::plan;
 
 std::size_t offset_samples_for(std::span<const std::pair<std::size_t, double>> offsets,
                                std::size_t index, std::uint32_t sample_rate) {
@@ -37,9 +37,9 @@ std::size_t offset_samples_for(std::span<const std::pair<std::size_t, double>> o
 std::optional<LoadedSources> load_sources(
     std::string_view in_path, std::span<const std::string> extra,
     std::span<const std::pair<std::size_t, double>> offsets) {
-    auto primary = ac3::io::read_wav(std::string{in_path});
+    auto primary = iclforge::io::read_wav(std::string{in_path});
     if (!primary) {
-        fmt::println(stderr, "error: {}: {}", in_path, ac3::io::describe(primary.error()));
+        fmt::println(stderr, "error: {}: {}", in_path, iclforge::io::describe(primary.error()));
         return std::nullopt;
     }
     LoadedSources out;
@@ -48,9 +48,9 @@ std::optional<LoadedSources> load_sources(
     out.wavs.push_back(std::move(*primary));
 
     for (const auto& path : extra) {
-        auto wav = ac3::io::read_wav(path);
+        auto wav = iclforge::io::read_wav(path);
         if (!wav) {
-            fmt::println(stderr, "error: {}: {}", path, ac3::io::describe(wav.error()));
+            fmt::println(stderr, "error: {}: {}", path, iclforge::io::describe(wav.error()));
             return std::nullopt;
         }
         if (wav->sample_rate != out.sample_rate) {
@@ -97,7 +97,7 @@ std::optional<plan::Routing> routing_for_sources(const plan::Plan& p, const Load
         return std::nullopt;
     }
     const auto target = plan::resolve(p);
-    const bool dual_mono = target.bed_acmod == ac3::Acmod::kDualMono;
+    const bool dual_mono = target.bed_acmod == iclforge::Acmod::kDualMono;
     if (!dual_mono) {
         // route() (below) only carries kLocation rows into the output - see
         // its own comment. obj/objm reach it here because this CLI has no

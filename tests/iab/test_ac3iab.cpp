@@ -304,7 +304,7 @@ TEST_CASE("parses the full Preamble+IAFrame segment framing", "[ac3iab]") {
     auto frame_bytes = build_iabitstream(build_iaframe_payload(kSampleRate48k, kBitDepth24, kFrameRate48Fps, {}));
     std::istringstream in(to_string(frame_bytes));
 
-    auto result = ac3iab::parse_iabitstream(in);
+    auto result = iclforge::iab::parse_iabitstream(in);
     REQUIRE(result.has_value());
     REQUIRE(result->size() == 1);
     CHECK(result->front().preamble.empty());
@@ -314,19 +314,19 @@ TEST_CASE("parses the full Preamble+IAFrame segment framing", "[ac3iab]") {
 
 TEST_CASE("parses IAFrame header fields", "[ac3iab]") {
     auto payload = build_iaframe_payload(kSampleRate48k, kBitDepth24, kFrameRate48Fps, {});
-    auto frame = ac3iab::parse_iaframe(payload);
+    auto frame = iclforge::iab::parse_iaframe(payload);
     REQUIRE(frame.has_value());
     CHECK(frame->sample_rate == 48000);
     CHECK(frame->bit_depth == 24);
     CHECK(frame->frame_rate_code == kFrameRate48Fps);
     CHECK(frame->max_rendered == 300);
-    CHECK(ac3iab::num_pan_sub_blocks(frame->frame_rate_code) == 4);
+    CHECK(iclforge::iab::num_pan_sub_blocks(frame->frame_rate_code) == 4);
 }
 
 TEST_CASE("parses a BedDefinition with gain, decorrelation and a Child BedRemap", "[ac3iab]") {
     auto bed = wrap_element(0x10, build_bed_payload(4));
     auto payload = build_iaframe_payload(kSampleRate48k, kBitDepth24, kFrameRate48Fps, {bed});
-    auto frame = ac3iab::parse_iaframe(payload);
+    auto frame = iclforge::iab::parse_iaframe(payload);
     REQUIRE(frame.has_value());
     REQUIRE(frame->beds.size() == 1);
 
@@ -353,7 +353,7 @@ TEST_CASE("parses a BedDefinition with gain, decorrelation and a Child BedRemap"
 TEST_CASE("parses an ObjectDefinition at the position/spread/zone formula boundaries", "[ac3iab]") {
     auto object = wrap_element(0x40, build_object_payload(4));
     auto payload = build_iaframe_payload(kSampleRate48k, kBitDepth24, kFrameRate48Fps, {object});
-    auto frame = ac3iab::parse_iaframe(payload);
+    auto frame = iclforge::iab::parse_iaframe(payload);
     REQUIRE(frame.has_value());
     REQUIRE(frame->objects.size() == 1);
 
@@ -378,7 +378,7 @@ TEST_CASE("parses an ObjectDefinition at the position/spread/zone formula bounda
     for (double gain : *sb0.zone_gains) {
         CHECK(gain == Approx(511.0 / 1023.0));
     }
-    CHECK(sb0.spread.mode == ac3iab::ObjectSpreadMode::kThreeD);
+    CHECK(sb0.spread.mode == iclforge::iab::ObjectSpreadMode::kThreeD);
     CHECK(sb0.spread.x == Approx(1.0));
     CHECK(sb0.spread.y == Approx(0.0));
     CHECK(sb0.spread.z == Approx(2047.0 / 4095.0));
@@ -406,7 +406,7 @@ TEST_CASE("decodes little-endian AudioDataPCM at 24-bit depth", "[ac3iab]") {
     auto pcm = wrap_element(0x400, build_pcm_payload(7, 3, samples));
     auto payload = build_iaframe_payload(kSampleRate48k, kBitDepth24, kFrameRate48Fps, {pcm});
 
-    auto frame = ac3iab::parse_iaframe(payload);
+    auto frame = iclforge::iab::parse_iaframe(payload);
     REQUIRE(frame.has_value());
     REQUIRE(frame->audio_pcm.size() == 1);
     const auto& audio = frame->audio_pcm.front();
@@ -424,7 +424,7 @@ TEST_CASE("reads AudioDataDLC identity without decoding its coded residual", "[a
     auto dlc = wrap_element(0x200, build_dlc_payload(11, opaque));
     auto payload = build_iaframe_payload(kSampleRate48k, kBitDepth24, kFrameRate48Fps, {dlc});
 
-    auto frame = ac3iab::parse_iaframe(payload);
+    auto frame = iclforge::iab::parse_iaframe(payload);
     REQUIRE(frame.has_value());
     REQUIRE(frame->audio_dlc.size() == 1);
     CHECK(frame->audio_dlc.front().audio_data_id == 11);
@@ -436,7 +436,7 @@ TEST_CASE("parses AuthoringToolInfo and UserData", "[ac3iab]") {
     auto user = wrap_element(0x101, build_user_data_payload());
     auto payload = build_iaframe_payload(kSampleRate48k, kBitDepth24, kFrameRate48Fps, {info, user});
 
-    auto frame = ac3iab::parse_iaframe(payload);
+    auto frame = iclforge::iab::parse_iaframe(payload);
     REQUIRE(frame.has_value());
     REQUIRE(frame->authoring_tool.has_value());
     CHECK(frame->authoring_tool->uri == "https://example.test/tool");
@@ -449,7 +449,7 @@ TEST_CASE("skips an ElementID this reader does not recognize", "[ac3iab]") {
     auto bed = wrap_element(0x10, build_bed_payload(4));
     auto payload = build_iaframe_payload(kSampleRate48k, kBitDepth24, kFrameRate48Fps, {unknown, bed});
 
-    auto frame = ac3iab::parse_iaframe(payload);
+    auto frame = iclforge::iab::parse_iaframe(payload);
     REQUIRE(frame.has_value());
     CHECK(frame->beds.size() == 1);
 }
@@ -472,7 +472,7 @@ TEST_CASE("ignores a Child element type not allowed in its Parent context", "[ac
     auto bed = wrap_element(0x10, bed_bytes);
     auto payload = build_iaframe_payload(kSampleRate48k, kBitDepth24, kFrameRate48Fps, {bed});
 
-    auto frame = ac3iab::parse_iaframe(payload);
+    auto frame = iclforge::iab::parse_iaframe(payload);
     REQUIRE(frame.has_value());
     REQUIRE(frame->beds.size() == 1);
     CHECK(frame->beds.front().beds.empty());
@@ -501,9 +501,9 @@ TEST_CASE("propagates a nested BedDefinition Child's own parse failure", "[ac3ia
     auto bed = wrap_element(0x10, bed_bytes);
     auto payload = build_iaframe_payload(kSampleRate48k, kBitDepth24, kFrameRate48Fps, {bed});
 
-    auto frame = ac3iab::parse_iaframe(payload);
+    auto frame = iclforge::iab::parse_iaframe(payload);
     REQUIRE_FALSE(frame.has_value());
-    CHECK(frame.error() == ac3iab::IabError::kTruncated);
+    CHECK(frame.error() == iclforge::iab::IabError::kTruncated);
 }
 
 TEST_CASE("propagates a nested ObjectDefinition Child's own parse failure", "[ac3iab]") {
@@ -565,9 +565,9 @@ TEST_CASE("propagates a nested ObjectDefinition Child's own parse failure", "[ac
     auto object = wrap_element(0x40, object_bytes);
     auto payload = build_iaframe_payload(kSampleRate48k, kBitDepth24, kFrameRate48Fps, {object});
 
-    auto frame = ac3iab::parse_iaframe(payload);
+    auto frame = iclforge::iab::parse_iaframe(payload);
     REQUIRE_FALSE(frame.has_value());
-    CHECK(frame.error() == ac3iab::IabError::kTruncated);
+    CHECK(frame.error() == iclforge::iab::IabError::kTruncated);
 }
 
 TEST_CASE("BedDefinition/ObjectDefinition Conditional activation carries its UseCaseCode",
@@ -579,7 +579,7 @@ TEST_CASE("BedDefinition/ObjectDefinition Conditional activation carries its Use
         BitWriter bw;
         bw.push_plex(1, 8);  // MetaID
         bw.push_bits(1, 1);  // ConditionalBed = 1
-        bw.push_bits(ac3iab::kUseCaseAlwaysUse, 8);
+        bw.push_bits(iclforge::iab::kUseCaseAlwaysUse, 8);
         bw.push_plex(0, 4);  // ChannelCount = 0
         bw.push_bits(0x180, 10);
         bw.align_to_byte();
@@ -588,11 +588,11 @@ TEST_CASE("BedDefinition/ObjectDefinition Conditional activation carries its Use
         auto bed = wrap_element(0x10, bw.bytes());
         auto payload = build_iaframe_payload(kSampleRate48k, kBitDepth24, kFrameRate48Fps, {bed});
 
-        auto frame = ac3iab::parse_iaframe(payload);
+        auto frame = iclforge::iab::parse_iaframe(payload);
         REQUIRE(frame.has_value());
         REQUIRE(frame->beds.size() == 1);
         CHECK(frame->beds.front().activation.conditional);
-        CHECK(frame->beds.front().activation.use_case == ac3iab::kUseCaseAlwaysUse);
+        CHECK(frame->beds.front().activation.use_case == iclforge::iab::kUseCaseAlwaysUse);
     }
     SECTION("ObjectDefinition") {
         BitWriter bw;
@@ -600,7 +600,7 @@ TEST_CASE("BedDefinition/ObjectDefinition Conditional activation carries its Use
         bw.push_plex(3, 8);  // AudioDataID
         bw.push_bits(1, 1);  // ConditionalObject = 1
         bw.push_bits(1, 1);  // Reserved, set to 1
-        bw.push_bits(ac3iab::kUseCaseAlwaysUse, 8);
+        bw.push_bits(iclforge::iab::kUseCaseAlwaysUse, 8);
         bw.push_bits(0, 1);  // Reserved, set to 0
         // sb == 0, minimal: Snap/ZoneControl cleared, spread = kNone (no value follows) - this
         // test is about Conditional/UseCaseCode, not the sub-block body.
@@ -623,11 +623,11 @@ TEST_CASE("BedDefinition/ObjectDefinition Conditional activation carries its Use
         auto object = wrap_element(0x40, bw.bytes());
         auto payload = build_iaframe_payload(kSampleRate48k, kBitDepth24, kFrameRate48Fps, {object});
 
-        auto frame = ac3iab::parse_iaframe(payload);
+        auto frame = iclforge::iab::parse_iaframe(payload);
         REQUIRE(frame.has_value());
         REQUIRE(frame->objects.size() == 1);
         CHECK(frame->objects.front().activation.conditional);
-        CHECK(frame->objects.front().activation.use_case == ac3iab::kUseCaseAlwaysUse);
+        CHECK(frame->objects.front().activation.use_case == iclforge::iab::kUseCaseAlwaysUse);
     }
 }
 
@@ -670,11 +670,11 @@ TEST_CASE("ObjectSpreadMode LowRez/None/OneD resolve via DistanceZ at their own 
         auto object = build(0x0, 128, 8);
         auto payload =
                 build_iaframe_payload(kSampleRate48k, kBitDepth24, kFrameRate48Fps, {object});
-        auto frame = ac3iab::parse_iaframe(payload);
+        auto frame = iclforge::iab::parse_iaframe(payload);
         REQUIRE(frame.has_value());
         REQUIRE(frame->objects.size() == 1);
         const auto& sb0 = frame->objects.front().sub_blocks.front();
-        CHECK(sb0.spread.mode == ac3iab::ObjectSpreadMode::kLowRez);
+        CHECK(sb0.spread.mode == iclforge::iab::ObjectSpreadMode::kLowRez);
         const double expected = 128.0 / 255.0;
         CHECK(sb0.spread.x == Approx(expected));
         CHECK(sb0.spread.y == Approx(expected));
@@ -685,22 +685,22 @@ TEST_CASE("ObjectSpreadMode LowRez/None/OneD resolve via DistanceZ at their own 
         auto object = build(0x1, 0, 0);
         auto payload =
                 build_iaframe_payload(kSampleRate48k, kBitDepth24, kFrameRate48Fps, {object});
-        auto frame = ac3iab::parse_iaframe(payload);
+        auto frame = iclforge::iab::parse_iaframe(payload);
         REQUIRE(frame.has_value());
         REQUIRE(frame->objects.size() == 1);
         const auto& sb0 = frame->objects.front().sub_blocks.front();
-        CHECK(sb0.spread.mode == ac3iab::ObjectSpreadMode::kNone);
+        CHECK(sb0.spread.mode == iclforge::iab::ObjectSpreadMode::kNone);
     }
     {
         // kOneD: one 12-bit code, applied isotropically.
         auto object = build(0x2, 2048, 12);
         auto payload =
                 build_iaframe_payload(kSampleRate48k, kBitDepth24, kFrameRate48Fps, {object});
-        auto frame = ac3iab::parse_iaframe(payload);
+        auto frame = iclforge::iab::parse_iaframe(payload);
         REQUIRE(frame.has_value());
         REQUIRE(frame->objects.size() == 1);
         const auto& sb0 = frame->objects.front().sub_blocks.front();
-        CHECK(sb0.spread.mode == ac3iab::ObjectSpreadMode::kOneD);
+        CHECK(sb0.spread.mode == iclforge::iab::ObjectSpreadMode::kOneD);
         const double expected = 2048.0 / 4095.0;
         CHECK(sb0.spread.x == Approx(expected));
         CHECK(sb0.spread.y == Approx(expected));
@@ -732,7 +732,7 @@ TEST_CASE("ChannelDecorCoefPrefix/ObjectDecorCoefPrefix's shared 8-bit escape co
     auto bed = wrap_element(0x10, bw.bytes());
     auto payload = build_iaframe_payload(kSampleRate48k, kBitDepth24, kFrameRate48Fps, {bed});
 
-    auto frame = ac3iab::parse_iaframe(payload);
+    auto frame = iclforge::iab::parse_iaframe(payload);
     REQUIRE(frame.has_value());
     REQUIRE(frame->beds.size() == 1);
     REQUIRE(frame->beds.front().channels.size() == 1);
@@ -746,27 +746,27 @@ TEST_CASE("rejects a bad PreambleTag/IAFrameTag and a truncated stream", "[ac3ia
         auto bytes = good;
         bytes[0] = std::byte{0x00};
         std::istringstream in(to_string(bytes));
-        auto result = ac3iab::parse_iabitstream(in);
+        auto result = iclforge::iab::parse_iabitstream(in);
         REQUIRE_FALSE(result.has_value());
-        CHECK(result.error() == ac3iab::IabError::kBadPreambleTag);
+        CHECK(result.error() == iclforge::iab::IabError::kBadPreambleTag);
     }
 
     SECTION("bad IAFrameTag") {
         auto bytes = good;
         bytes[5] = std::byte{0x00};  // byte 5: right after the 5-byte Preamble header
         std::istringstream in(to_string(bytes));
-        auto result = ac3iab::parse_iabitstream(in);
+        auto result = iclforge::iab::parse_iabitstream(in);
         REQUIRE_FALSE(result.has_value());
-        CHECK(result.error() == ac3iab::IabError::kBadFrameTag);
+        CHECK(result.error() == iclforge::iab::IabError::kBadFrameTag);
     }
 
     SECTION("truncated") {
         auto bytes = good;
         bytes.resize(bytes.size() - 3);
         std::istringstream in(to_string(bytes));
-        auto result = ac3iab::parse_iabitstream(in);
+        auto result = iclforge::iab::parse_iabitstream(in);
         REQUIRE_FALSE(result.has_value());
-        CHECK(result.error() == ac3iab::IabError::kTruncated);
+        CHECK(result.error() == iclforge::iab::IabError::kTruncated);
     }
 }
 
@@ -774,26 +774,26 @@ TEST_CASE("rejects Reserved Version/SampleRate/BitDepth/FrameRate codes", "[ac3i
     SECTION("Version") {
         auto payload = build_iaframe_payload(kSampleRate48k, kBitDepth24, kFrameRate48Fps, {});
         payload[0] = std::byte{0};  // Version, the payload's first byte
-        auto frame = ac3iab::parse_iaframe(payload);
+        auto frame = iclforge::iab::parse_iaframe(payload);
         REQUIRE_FALSE(frame.has_value());
-        CHECK(frame.error() == ac3iab::IabError::kReservedVersion);
+        CHECK(frame.error() == iclforge::iab::IabError::kReservedVersion);
     }
 
     SECTION("SampleRate") {
-        auto frame = ac3iab::parse_iaframe(build_iaframe_payload(0x2, kBitDepth24, kFrameRate48Fps, {}));
+        auto frame = iclforge::iab::parse_iaframe(build_iaframe_payload(0x2, kBitDepth24, kFrameRate48Fps, {}));
         REQUIRE_FALSE(frame.has_value());
-        CHECK(frame.error() == ac3iab::IabError::kReservedSampleRate);
+        CHECK(frame.error() == iclforge::iab::IabError::kReservedSampleRate);
     }
 
     SECTION("BitDepth") {
-        auto frame = ac3iab::parse_iaframe(build_iaframe_payload(kSampleRate48k, 0x3, kFrameRate48Fps, {}));
+        auto frame = iclforge::iab::parse_iaframe(build_iaframe_payload(kSampleRate48k, 0x3, kFrameRate48Fps, {}));
         REQUIRE_FALSE(frame.has_value());
-        CHECK(frame.error() == ac3iab::IabError::kReservedBitDepth);
+        CHECK(frame.error() == iclforge::iab::IabError::kReservedBitDepth);
     }
 
     SECTION("FrameRate") {
-        auto frame = ac3iab::parse_iaframe(build_iaframe_payload(kSampleRate48k, kBitDepth24, 0xA, {}));
+        auto frame = iclforge::iab::parse_iaframe(build_iaframe_payload(kSampleRate48k, kBitDepth24, 0xA, {}));
         REQUIRE_FALSE(frame.has_value());
-        CHECK(frame.error() == ac3iab::IabError::kReservedFrameRate);
+        CHECK(frame.error() == iclforge::iab::IabError::kReservedFrameRate);
     }
 }

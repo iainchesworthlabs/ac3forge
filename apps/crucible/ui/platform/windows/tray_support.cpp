@@ -7,7 +7,7 @@
 // Qt's own question is the right one here - a session with the notification
 // area turned off answers no, and the setting greys with the reason below.
 
-namespace ac3::crucible::ui {
+namespace iclforge::crucible::ui {
 
 bool tray_is_published() { return QSystemTrayIcon::isSystemTrayAvailable(); }
 
@@ -17,4 +17,4 @@ QString tray_absent_reason() {
                : QObject::tr("This session has no notification area, so closing the window quits.");
 }
 
-}  // namespace ac3::crucible::ui
+}  // namespace iclforge::crucible::ui

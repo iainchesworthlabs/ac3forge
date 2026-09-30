@@ -17,7 +17,7 @@ Each script's header says what it does and takes. This page says in what order.
 | S2, moves and include spellings | `python tools/n1b/n1b_apply.py --root <worktree> --phase all --json <plan.json>` moves `src/` and `tests/` (the default scope, `src,tests`): it stages the renames (`git mv`) and edits the includes; the first commit is the renames alone (`git commit` with nothing added), the second is `git add -A`. |
 | S2, build files | `python tools/n1b/n1b_cmake.py --root <worktree> --plan <plan.json>`: target names, output names and moved paths, and the paths `tests/CMakeLists.txt` names relative to itself. The build files of the split libraries are written by hand. |
 | S2, paths in text | `python tools/n1b/n1b_paths.py --root <worktree> --plan <plan.json>`: every other file that names a moved file by its repository path (pages, plans, comments, strings, a Python path built from its components, workflows, scripts) follows it, so `check_doc_paths.py` stays green. It lists the directories whose files went to several libraries and are still named. |
-| S3, the namespace root | `python tools/n1b/n1b_names.py --root <worktree>`. |
+| S3, the namespace root | `python tools/n1b/n1b_names.py --root <worktree>`; then `python tools/n1b/n1b_reflow.py --root <worktree> --base HEAD~1`, which wraps the lines the first pass pushed past the column limit. Each is committed alone (below). |
 
 The plan a stage writes is what the build-file pass reads, since the pass runs after the files have moved.
 All the passes are idempotent: a second run on a finished tree changes nothing.
@@ -105,6 +105,58 @@ output alone (`git read-tree` into a scratch index, then `git apply --cached`) m
 the commit. What the patch leaves, and the scripts list: variant directories that became
 `variants/<axis>-<choice>/` and are still named in comments, and the comments and pages that name a
 library file by its old name (`libac3forge.so`), which S4 and S5 rewrite.
+
+## S3, start to finish
+
+In a worktree of `main` with S2 merged, with `<before>` an MSVC build of that `main` (every option on, no
+`--target`) and `<work>` a directory outside the tree:
+
+    python tools/n1b/baseline.py record --build <before> --out <work>/before
+    python tools/n1b/n1b_names.py --root . --dry-run          # 1,208 files, under a minute
+    python tools/n1b/n1b_names.py --root .
+    git add -A && git commit -m "S3: namespace root ac3 to iclforge"
+    python tools/n1b/n1b_reflow.py --root . --base HEAD~1     # 1,365 lines in 294 files, 6 left over
+    git add -A && git commit -m "S3: wrap the lines the namespace pass pushed past 100 columns"
+
+Both commits are what the script gives on its parent, and a run of the two in a scratch repository made
+from `git -c core.autocrlf=false archive` of the parent gives their trees blob for blob. The reflow uses
+the clang-format of the machine (22.1.2 for S3): nothing in CI checks the length of a C++ line, so it
+keeps to `.clang-format` and not to a gate, and it touches only the lines the pass lengthened. The plan's
+count of 657 lines (190 files) was of `ac3::` alone; `ac4::` and `mp4::` gain ten columns, not five.
+
+What the two passes cannot see is done by hand, in a commit of its own after them:
+
+- Libraries that were top-level namespaces nest under `iclforge`, so libadm's own `adm` (a third-party
+  namespace) is found from inside `iclforge::adm` first: `n1b_names.py` writes every unqualified `adm::`
+  as `::adm::`. It surfaced as C2039 in `src/adm` on the first build; the plan's two hazards did not
+  include it.
+- Mangled names cannot be rewritten as text (`_ZN3ac3...` becomes `_ZN8iclforge3ac4...`; the length
+  prefix and the substitution indices change): `check_shared_forge_binding.sh` (its pattern and the
+  `has_avx2` exclusion), the `-Wl,--undefined=` of the `hearth_sink` example, and the sample text of
+  `footprint_report.py` and its test. The ABI allowlists hold demangled names: regenerate them with
+  `check_abi_symbols.py --update` over the libraries-only shared tree, and check the result against
+  the old files rewritten as text (`abi_compare.py`, in the proof below).
+- Qt names the context of a `tr()` after the class's qualified name, so the six `ac3hearth_*.ts` name
+  `iclforge::hearth::ui::HearthController` and `NetworkController` now: rename them before the `*_lupdate`
+  targets run, or every translation of the two classes turns obsolete. The three targets restamp the
+  `<location>` lines the reflow moved (the GUI and Crucible gates compare them).
+- The generators that emit `namespace ac3::...` or `namespace ac4::...` (nine scripts under `tools/` and
+  `tools/references/`) and `tools/packaging/pack_esp_component.py`, which writes a `main.cpp`. Each
+  generator, run against the tree, reproduces the committed header; `gen_joc_tables.py` needs TS 103 420's
+  text and was not run.
+- The lines over the limit that the formatter does not touch (`// clang-format off` regions).
+
+The proof: `baseline.py compare <work>/before <work>/after --only hashes,cli` is identical (the headers
+and the exported names change by design, so those two are not compared), and
+
+    python tools/n1b/export_diff.py --old <work>/before/symbols-msvc.json \
+        --new <work>/after/symbols-msvc.json --rewrite names     # every library the same
+    python tools/n1b/abi_compare.py <the parent's allowlists> tools/ci/abi-allowlist \
+        --map identity --rewrite names                            # every library -0 +0
+
+What S3 leaves for S4: the CMake helper targets (`ac3::warnings`, `coverage`, `fmt`, `fmt_private`,
+`tracy`, `minimal_profile`), the C++ namespaces named for a program or a package (`ac3cli`, `ac3gui`,
+`ac3probe`, `ac3forge`, `ac3forge_c`) and `sendspin::ac3forge`.
 
 ## Proof
 

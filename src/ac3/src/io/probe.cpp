@@ -24,7 +24,7 @@
 #include "iclforge/ac3/meta/drc.hpp"
 #include "iclforge/objects/oamd.hpp"
 
-namespace ac3::io {
+namespace iclforge::io {
 
 namespace {
 
@@ -521,4 +521,4 @@ std::expected<std::span<const std::byte>, ScanError> AccessUnitReader::next() {
     return std::span<const std::byte>{impl.unit};
 }
 
-}  // namespace ac3::io
+}  // namespace iclforge::io

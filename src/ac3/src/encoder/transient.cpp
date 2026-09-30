@@ -9,7 +9,7 @@
 #include "iclforge/ac3/export.hpp"
 #include <span>
 
-namespace ac3 {
+namespace iclforge {
 
 namespace {
 
@@ -143,4 +143,4 @@ bool BasicTransientDetector<Scalar>::detect(std::span<const float, 256> pcm) {
 template class ICLFORGE_AC3_TEMPLATE_INSTANTIATE BasicTransientDetector<double>;
 template class ICLFORGE_AC3_TEMPLATE_INSTANTIATE BasicTransientDetector<float>;
 
-}  // namespace ac3
+}  // namespace iclforge

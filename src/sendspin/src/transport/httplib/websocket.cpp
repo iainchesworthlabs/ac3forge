@@ -28,7 +28,7 @@
 // The WebSocket transport over cpp-httplib 0.56. The macros that configure cpp-httplib come
 // from src/sendspin/CMakeLists.txt.
 
-namespace ac3::sendspin::transport::websocket {
+namespace iclforge::sendspin::transport::websocket {
 
 namespace {
 
@@ -390,4 +390,4 @@ std::expected<std::unique_ptr<Connection>, ConnectError> connect(const std::stri
     return std::unique_ptr<Connection>(std::make_unique<DialledConnection>(std::move(client), url));
 }
 
-}  // namespace ac3::sendspin::transport::websocket
+}  // namespace iclforge::sendspin::transport::websocket

@@ -22,7 +22,7 @@
 //
 // Thread-safe: sessions on different threads look up PSKs while another stores a pairing.
 
-namespace ac3::hearth::testsink {
+namespace iclforge::hearth::testsink {
 
 using sendspin::crypto::Key32;
 
@@ -72,4 +72,4 @@ class Store final : public sendspin::handshake::ClientKeyring {
 [[nodiscard]] std::string hex_of(const Key32& bytes);
 [[nodiscard]] std::optional<Key32> key_from_hex(std::string_view text);
 
-}  // namespace ac3::hearth::testsink
+}  // namespace iclforge::hearth::testsink

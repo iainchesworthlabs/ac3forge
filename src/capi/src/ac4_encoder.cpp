@@ -1,6 +1,6 @@
 // ac3forge_ac4_encoder_* and the table-of-contents/sync-frame helpers - see
-// ac3forge.h's AC-4 section, ac4::Encoder (src/ac4enc/include/iclforge/ac4enc/encoder.hpp)
-// and ac4/ac4.hpp's carriage section.
+// ac3forge.h's AC-4 section, iclforge::ac4::Encoder
+// (src/ac4enc/include/iclforge/ac4enc/encoder.hpp) and ac4/ac4.hpp's carriage section.
 
 #include <algorithm>
 #include <cstdint>
@@ -31,16 +31,16 @@ constexpr const char* kNotAnArgument =
     "enumeration";
 constexpr const char* kInternalError = "an exception reached the C boundary";
 
-// The objects of `in`, as ac4::ObjectsConfig. Only as many entries are read as
+// The objects of `in`, as iclforge::ac4::ObjectsConfig. Only as many entries are read as
 // the encoder's own limit lets it accept, one more than which it refuses by
 // count first: a caller's absurd object_count then costs no more than 65.
-std::expected<ac4::ObjectsConfig, ac3forge_status_t> objects_config_to_cpp(
+std::expected<iclforge::ac4::ObjectsConfig, ac3forge_status_t> objects_config_to_cpp(
     const ac3forge_ac4_objects_config_t& in) {
     if ((in.object_count > 0 && in.objects == nullptr) || !ac3forge_c::valid(in.coding) ||
         !ac3forge_c::valid(in.downmix)) {
         return std::unexpected(AC3FORGE_ERROR_INVALID_ARGUMENT);
     }
-    ac4::ObjectsConfig out;
+    iclforge::ac4::ObjectsConfig out;
     const std::size_t count =
         std::min(in.object_count, static_cast<std::size_t>(AC3FORGE_AC4_MAX_OBJECTS) + 1);
     for (std::size_t i = 0; i < count; ++i) {
@@ -48,9 +48,9 @@ std::expected<ac4::ObjectsConfig, ac3forge_status_t> objects_config_to_cpp(
         if (object.has_bed != 0 && !ac3forge_c::valid(object.bed)) {
             return std::unexpected(AC3FORGE_ERROR_INVALID_ARGUMENT);
         }
-        ac4::ObjectConfig& converted = out.objects.emplace_back();
+        iclforge::ac4::ObjectConfig& converted = out.objects.emplace_back();
         if (object.has_bed != 0) {
-            converted.bed = static_cast<ac4::BedChannel>(object.bed);
+            converted.bed = static_cast<iclforge::ac4::BedChannel>(object.bed);
         }
         converted.lfe = object.lfe != 0;
         converted.properties = ac3forge_c::to_cpp(object.properties);
@@ -85,14 +85,14 @@ std::vector<std::int64_t> copy_of(const std::int64_t* array, std::size_t count) 
     return out;
 }
 
-std::expected<ac4::EncoderConfig, ac3forge_status_t> encoder_config_to_cpp(
+std::expected<iclforge::ac4::EncoderConfig, ac3forge_status_t> encoder_config_to_cpp(
     const ac3forge_ac4_encoder_config_t& config) {
     if ((config.iframe_count > 0 && config.iframes == nullptr) ||
         (config.fragment_start_count > 0 && config.fragment_starts == nullptr) ||
         !ac3forge_c::valid(config.experimental.seven_x)) {
         return std::unexpected(AC3FORGE_ERROR_INVALID_ARGUMENT);
     }
-    ac4::EncoderConfig out;
+    iclforge::ac4::EncoderConfig out;
     out.channels = config.channels;
     out.sample_rate_hz = config.sample_rate_hz;
     out.frame_rate_index = config.frame_rate_index;
@@ -119,12 +119,12 @@ std::expected<ac4::EncoderConfig, ac3forge_status_t> encoder_config_to_cpp(
             return std::unexpected(objects.error());
         }
         // With substreams set, the substreams' own codec_mode is the one in
-        // force (ac4::EncoderConfig::substreams), and the object substream is
+        // force (iclforge::ac4::EncoderConfig::substreams), and the object substream is
         // the stream's only one: the codec mode given is its, and the
         // stream's own stays at kAuto, as ac3cli's ac4-encode objects= leaves it.
-        ac4::SubstreamConfig substream;
+        iclforge::ac4::SubstreamConfig substream;
         substream.codec_mode = out.codec_mode;
-        out.codec_mode = ac4::CodecMode::kAuto;
+        out.codec_mode = iclforge::ac4::CodecMode::kAuto;
         substream.objects = std::move(*objects);
         out.substreams.push_back(std::move(substream));
     }
@@ -146,7 +146,7 @@ std::expected<std::vector<std::span<const float>>, ac3forge_status_t> spans_of(
     return spans;
 }
 
-ac3forge_status_t build_encoded_frame_array(std::vector<ac4::EncodedFrame>&& frames,
+ac3forge_status_t build_encoded_frame_array(std::vector<iclforge::ac4::EncodedFrame>&& frames,
                                              ac3forge_ac4_encoded_frame_t*** out_frames,
                                              size_t* out_count) {
     if (frames.empty()) {
@@ -173,7 +173,7 @@ void ac3forge_ac4_object_config_init(ac3forge_ac4_object_config_t* config) {
     if (config == nullptr) {
         return;
     }
-    const ac4::ObjectConfig defaults{};
+    const iclforge::ac4::ObjectConfig defaults{};
     *config = ac3forge_ac4_object_config_t{.has_bed = defaults.bed.has_value() ? 1 : 0,
                                            .bed = defaults.bed.has_value()
                                                       ? ac3forge_c::from_cpp(*defaults.bed)
@@ -186,12 +186,13 @@ void ac3forge_ac4_objects_config_init(ac3forge_ac4_objects_config_t* config) {
     if (config == nullptr) {
         return;
     }
-    const ac4::ObjectsConfig defaults{};
+    const iclforge::ac4::ObjectsConfig defaults{};
     *config = ac3forge_ac4_objects_config_t{
         .objects = nullptr,
         .object_count = 0,
-        .coding = defaults.coding == ac4::ObjectCoding::kAjoc ? AC3FORGE_AC4_OBJECT_CODING_AJOC
-                                                              : AC3FORGE_AC4_OBJECT_CODING_DIRECT,
+        .coding = defaults.coding == iclforge::ac4::ObjectCoding::kAjoc
+                      ? AC3FORGE_AC4_OBJECT_CODING_AJOC
+                      : AC3FORGE_AC4_OBJECT_CODING_DIRECT,
         .downmix = static_cast<ac3forge_ac4_ajoc_downmix_t>(defaults.downmix),
         .has_downmix_signals = defaults.downmix_signals.has_value() ? 1 : 0,
         .downmix_signals = defaults.downmix_signals.value_or(0),
@@ -209,7 +210,7 @@ void ac3forge_ac4_object_metadata_update_init(ac3forge_ac4_object_metadata_updat
     if (update == nullptr) {
         return;
     }
-    const ac4::ObjectMetadataUpdate defaults{};
+    const iclforge::ac4::ObjectMetadataUpdate defaults{};
     *update = ac3forge_ac4_object_metadata_update_t{
         .object = static_cast<size_t>(defaults.object),
         .sample = defaults.sample,
@@ -221,8 +222,8 @@ void ac3forge_ac4_encoder_config_init(ac3forge_ac4_encoder_config_t* config) {
     if (config == nullptr) {
         return;
     }
-    const ac4::EncoderConfig defaults{};
-    const ac4::EncoderConfig::Experimental& experimental = defaults.experimental;
+    const iclforge::ac4::EncoderConfig defaults{};
+    const iclforge::ac4::EncoderConfig::Experimental& experimental = defaults.experimental;
     *config = ac3forge_ac4_encoder_config_t{
         .channels = defaults.channels,
         .sample_rate_hz = defaults.sample_rate_hz,
@@ -258,11 +259,11 @@ const char* ac3forge_ac4_encoder_refusal_reason(const ac3forge_ac4_encoder_confi
         if (!converted.has_value()) {
             return kNotAnArgument;
         }
-        // A string literal or empty, ac4::Encoder::refusal_reason()'s own
+        // A string literal or empty, iclforge::ac4::Encoder::refusal_reason()'s own
         // contract. The empty case is std::string_view{}, whose data() is NULL
         // by the standard, so it is returned as "" rather than as NULL - the
         // same normalization ac3forge_ac4_dac4_refusal() makes.
-        const std::string_view reason = ac4::Encoder::refusal_reason(*converted);
+        const std::string_view reason = iclforge::ac4::Encoder::refusal_reason(*converted);
         return reason.empty() ? "" : reason.data();
     } catch (...) {
         return kInternalError;
@@ -279,7 +280,7 @@ ac3forge_status_t ac3forge_ac4_encoder_create(const ac3forge_ac4_encoder_config_
         if (!converted.has_value()) {
             return converted.error();
         }
-        auto result = ac4::Encoder::create(*converted);
+        auto result = iclforge::ac4::Encoder::create(*converted);
         if (!result.has_value()) {
             return ac3forge_c::from_cpp(result.error());
         }
@@ -370,7 +371,7 @@ ac3forge_status_t ac3forge_ac4_encoder_encode_objects(
         if (!spans.has_value()) {
             return spans.error();
         }
-        std::vector<ac4::ObjectMetadataUpdate> converted;
+        std::vector<iclforge::ac4::ObjectMetadataUpdate> converted;
         converted.reserve(update_count);
         for (size_t i = 0; i < update_count; ++i) {
             const ac3forge_ac4_object_metadata_update_t& update = updates[i];
@@ -378,7 +379,7 @@ ac3forge_status_t ac3forge_ac4_encoder_encode_objects(
             if (update.object > static_cast<size_t>(std::numeric_limits<int>::max())) {
                 return AC3FORGE_ERROR_AC4_ENCODE_INVALID_INPUT;
             }
-            ac4::ObjectMetadataUpdate& out = converted.emplace_back();
+            iclforge::ac4::ObjectMetadataUpdate& out = converted.emplace_back();
             out.object = static_cast<int>(update.object);
             out.sample = update.sample;
             out.ramp_samples = update.ramp_samples;
@@ -429,14 +430,14 @@ ac3forge_status_t ac3forge_ac4_build_dac4(const ac3forge_ac4_toc_t* toc,
     }
     return guard([&toc, &out_box] {
         auto owned = std::make_unique<ac3forge_bytes>();
-        owned->data = ac4::build_dac4(toc->data);
+        owned->data = iclforge::ac4::build_dac4(toc->data);
         *out_box = owned.release();
         return AC3FORGE_OK;
     });
 }
 
 const char* ac3forge_ac4_dac4_refusal(const ac3forge_ac4_toc_t* toc) {
-    // Library-owned storage valid for the process lifetime: ac4::dac4_refusal()
+    // Library-owned storage valid for the process lifetime: iclforge::ac4::dac4_refusal()
     // always returns a string literal naming what it cannot describe, or an
     // empty view - never a dynamically composed string. The empty case is
     // std::string_view{} (ac4/src/ac4.cpp), whose data() is NULL by the
@@ -446,7 +447,7 @@ const char* ac3forge_ac4_dac4_refusal(const ac3forge_ac4_toc_t* toc) {
     if (toc == nullptr) {
         return "";
     }
-    const std::string_view refusal = ac4::dac4_refusal(toc->data);
+    const std::string_view refusal = iclforge::ac4::dac4_refusal(toc->data);
     return refusal.empty() ? "" : refusal.data();
 }
 
@@ -455,7 +456,7 @@ int ac3forge_ac4_media_timing(const ac3forge_ac4_toc_t* toc, uint32_t* out_times
     if (toc == nullptr) {
         return 0;
     }
-    const auto timing = ac4::media_timing(toc->data);
+    const auto timing = iclforge::ac4::media_timing(toc->data);
     if (!timing.has_value()) {
         return 0;
     }
@@ -472,7 +473,7 @@ int ac3forge_ac4_samples_per_frame(const ac3forge_ac4_toc_t* toc, uint32_t* out_
     if (toc == nullptr) {
         return 0;
     }
-    const auto samples = ac4::samples_per_frame(toc->data);
+    const auto samples = iclforge::ac4::samples_per_frame(toc->data);
     if (!samples.has_value()) {
         return 0;
     }
@@ -489,7 +490,7 @@ ac3forge_status_t ac3forge_ac4_sync_frame(const uint8_t* raw_frame, size_t raw_f
     }
     return guard([&raw_frame, &raw_frame_size, &crc, &out_bytes] {
         auto owned = std::make_unique<ac3forge_bytes>();
-        owned->data = ac4::sync_frame(
+        owned->data = iclforge::ac4::sync_frame(
             std::as_bytes(std::span<const uint8_t>(raw_frame, raw_frame_size)), crc != 0);
         *out_bytes = owned.release();
         return AC3FORGE_OK;

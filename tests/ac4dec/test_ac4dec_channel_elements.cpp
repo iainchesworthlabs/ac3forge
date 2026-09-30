@@ -28,34 +28,34 @@
 
 namespace {
 
-using ac4::DecodeError;
-using ac4::detail::AcplConfig1ch;
-using ac4::detail::AcplConfig2ch;
-using ac4::detail::AcplConfigKind;
-using ac4::detail::AcplData1ch;
-using ac4::detail::AcplData2ch;
-using ac4::detail::AcplDataType;
-using ac4::detail::AcplHcbType;
-using ac4::detail::AspxConfig;
-using ac4::detail::AspxData1ch;
-using ac4::detail::AspxData2ch;
-using ac4::detail::AspxDataType;
-using ac4::detail::AspxElementState;
-using ac4::detail::AspxHcbType;
-using ac4::detail::AspxIntClass;
-using ac4::detail::AspxStereoMode;
-using ac4::detail::BitReader;
-using ac4::detail::ChannelElement;
-using ac4::detail::ChannelElementState;
-using ac4::detail::Codebook;
-using ac4::detail::ElementKind;
-using ac4::detail::ParseResult;
-using ac4::detail::SubstreamContext;
+using iclforge::ac4::DecodeError;
+using iclforge::ac4::detail::AcplConfig1ch;
+using iclforge::ac4::detail::AcplConfig2ch;
+using iclforge::ac4::detail::AcplConfigKind;
+using iclforge::ac4::detail::AcplData1ch;
+using iclforge::ac4::detail::AcplData2ch;
+using iclforge::ac4::detail::AcplDataType;
+using iclforge::ac4::detail::AcplHcbType;
+using iclforge::ac4::detail::AspxConfig;
+using iclforge::ac4::detail::AspxData1ch;
+using iclforge::ac4::detail::AspxData2ch;
+using iclforge::ac4::detail::AspxDataType;
+using iclforge::ac4::detail::AspxElementState;
+using iclforge::ac4::detail::AspxHcbType;
+using iclforge::ac4::detail::AspxIntClass;
+using iclforge::ac4::detail::AspxStereoMode;
+using iclforge::ac4::detail::BitReader;
+using iclforge::ac4::detail::ChannelElement;
+using iclforge::ac4::detail::ChannelElementState;
+using iclforge::ac4::detail::Codebook;
+using iclforge::ac4::detail::ElementKind;
+using iclforge::ac4::detail::ParseResult;
+using iclforge::ac4::detail::SubstreamContext;
 using ac4dec_test::BitWriter;
 using ac4dec_test::Recorder;
-namespace ch_mode = ac4::detail::ch_mode;
-namespace codec_mode = ac4::detail::codec_mode;
-namespace immersive_mode = ac4::detail::immersive_mode;
+namespace ch_mode = iclforge::ac4::detail::ch_mode;
+namespace codec_mode = iclforge::ac4::detail::codec_mode;
+namespace immersive_mode = iclforge::ac4::detail::immersive_mode;
 
 // The shortest codeword of a codebook, and its index.
 void put_shortest(BitWriter& w, const Codebook& codebook) {
@@ -194,10 +194,10 @@ struct ElementWriter {
         w.put(0, 1);    // aspx_freq_res
     }
     void aspx_envelopes(AspxStereoMode mode) {
-        put_shortest(w, ac4::detail::aspx_codebook(AspxDataType::kSignal, 0, mode, AspxHcbType::kF0));
+        put_shortest(w, iclforge::ac4::detail::aspx_codebook(AspxDataType::kSignal, 0, mode, AspxHcbType::kF0));
     }
     void aspx_noise(AspxStereoMode mode) {
-        put_shortest(w, ac4::detail::aspx_codebook(AspxDataType::kNoise, 0, mode, AspxHcbType::kF0));
+        put_shortest(w, iclforge::ac4::detail::aspx_codebook(AspxDataType::kNoise, 0, mode, AspxHcbType::kF0));
     }
     void aspx_1ch() {
         if (iframe) {
@@ -255,9 +255,10 @@ struct ElementWriter {
     }
     void acpl_params(AcplDataType type, int quant_mode, int start, int bands) {
         w.put(0, 1);    // diff_type: DIFF_FREQ
-        put_shortest(w, ac4::detail::acpl_codebook(type, quant_mode, AcplHcbType::kF0));
+        put_shortest(w, iclforge::ac4::detail::acpl_codebook(type, quant_mode, AcplHcbType::kF0));
         for (int band = start + 1; band < bands; ++band) {
-            put_shortest(w, ac4::detail::acpl_codebook(type, quant_mode, AcplHcbType::kDf));
+            put_shortest(w,
+                         iclforge::ac4::detail::acpl_codebook(type, quant_mode, AcplHcbType::kDf));
         }
     }
     void acpl_1ch(bool partial) {
@@ -288,7 +289,8 @@ ParseResult read_element(const BitWriter& w, const SubstreamContext& ctx, Channe
     const std::vector<std::byte> bytes = w.bytes();
     Recorder local;
     BitReader reader(bytes, 0, rec != nullptr ? *rec : local);
-    const ParseResult result = ac4::detail::parse_audio_data_chan(reader, ctx, state, out);
+    const ParseResult result =
+        iclforge::ac4::detail::parse_audio_data_chan(reader, ctx, state, out);
     if (result) {
         CHECK(reader.position() == w.size());
     }
@@ -357,7 +359,7 @@ TEST_CASE("single_channel_element reads SIMPLE and ASPX mono", "[ac4dec][channel
         CHECK(aspx.groups.num_sbg_noise == 1);
         CHECK(aspx.channel.tna_mode[0] == 1);
         CHECK(aspx.channel.sig[0].huff_index[0] ==
-              shortest_index(ac4::detail::aspx_codebook(AspxDataType::kSignal, 0, AspxStereoMode::kLevel,
+              shortest_index(iclforge::ac4::detail::aspx_codebook(AspxDataType::kSignal, 0, AspxStereoMode::kLevel,
                                                         AspxHcbType::kF0)));
         REQUIRE(state.aspx_config.has_value());
         CHECK(state.aspx_config->start_freq == 7);
@@ -440,7 +442,7 @@ TEST_CASE("channel_pair_element reads every stereo codec mode", "[ac4dec][channe
         CHECK(acpl.num_bands == 7);
         CHECK(acpl.start_band == 4);
         CHECK(acpl.alpha1.sets[0].huff_index[4] ==
-              shortest_index(ac4::detail::acpl_codebook(AcplDataType::kAlpha, 0, AcplHcbType::kF0)));
+              shortest_index(iclforge::ac4::detail::acpl_codebook(AcplDataType::kAlpha, 0, AcplHcbType::kF0)));
     }
     SECTION("ASPX_ACPL_1, without: a side-limited side channel") {
         ElementWriter e;
@@ -929,7 +931,8 @@ ParseResult read_aspx_1ch(const BitWriter& w, const SubstreamContext& ctx, const
     const std::vector<std::byte> bytes = w.bytes();
     Recorder rec;
     BitReader reader(bytes, 0, rec);
-    const ParseResult result = ac4::detail::parse_aspx_data_1ch(reader, ctx, config, state, out);
+    const ParseResult result =
+        iclforge::ac4::detail::parse_aspx_data_1ch(reader, ctx, config, state, out);
     if (result && exact) {
         CHECK(reader.position() == w.size());
     }
@@ -940,13 +943,13 @@ ParseResult read_aspx_1ch(const BitWriter& w, const SubstreamContext& ctx, const
 // each and `noise` noise envelopes of one, all frequency-differential.
 void put_envelopes(BitWriter& w, int sig, int sig_bands, int noise, int qmode, AspxStereoMode mode) {
     for (int env = 0; env < sig; ++env) {
-        put_shortest(w, ac4::detail::aspx_codebook(AspxDataType::kSignal, qmode, mode, AspxHcbType::kF0));
+        put_shortest(w, iclforge::ac4::detail::aspx_codebook(AspxDataType::kSignal, qmode, mode, AspxHcbType::kF0));
         for (int band = 1; band < sig_bands; ++band) {
-            put_shortest(w, ac4::detail::aspx_codebook(AspxDataType::kSignal, qmode, mode, AspxHcbType::kDf));
+            put_shortest(w, iclforge::ac4::detail::aspx_codebook(AspxDataType::kSignal, qmode, mode, AspxHcbType::kDf));
         }
     }
     for (int env = 0; env < noise; ++env) {
-        put_shortest(w, ac4::detail::aspx_codebook(AspxDataType::kNoise, 0, mode, AspxHcbType::kF0));
+        put_shortest(w, iclforge::ac4::detail::aspx_codebook(AspxDataType::kNoise, 0, mode, AspxHcbType::kF0));
     }
 }
 
@@ -976,10 +979,10 @@ TEST_CASE("aspx_data_1ch reads each interval class", "[ac4dec][channel_elements]
         // Signal: four high-resolution envelopes of 3 bands, the second
         // time-differential; two noise envelopes.
         const auto sig = [](AspxHcbType type) {
-            return ac4::detail::aspx_codebook(AspxDataType::kSignal, 0, AspxStereoMode::kLevel, type);
+            return iclforge::ac4::detail::aspx_codebook(AspxDataType::kSignal, 0, AspxStereoMode::kLevel, type);
         };
         const auto noise = [](AspxHcbType type) {
-            return ac4::detail::aspx_codebook(AspxDataType::kNoise, 0, AspxStereoMode::kLevel, type);
+            return iclforge::ac4::detail::aspx_codebook(AspxDataType::kNoise, 0, AspxStereoMode::kLevel, type);
         };
         for (int env = 0; env < 4; ++env) {
             if (env == 1) {
@@ -1207,8 +1210,8 @@ TEST_CASE("derive_aspx_subband_groups counts the noise groups and the timeslots"
     config.start_freq = 0;
     config.master_freq_scale = 1;
     config.noise_sbg = 3;
-    ac4::detail::AspxSubbandGroups groups;
-    REQUIRE(ac4::detail::derive_aspx_subband_groups(config, 0, groups).has_value());
+    iclforge::ac4::detail::AspxSubbandGroups groups;
+    REQUIRE(iclforge::ac4::detail::derive_aspx_subband_groups(config, 0, groups).has_value());
     CHECK(groups.num_sbg_master == 22);
     CHECK(groups.sba == 18);
     CHECK(groups.sbz == 62);
@@ -1216,17 +1219,17 @@ TEST_CASE("derive_aspx_subband_groups counts the noise groups and the timeslots"
     CHECK(groups.num_sbg_sig_lowres == 11);
     // 3 * log2(62 / 18) + 0.5 = 5.85: five noise groups.
     CHECK(groups.num_sbg_noise == 5);
-    CHECK_FALSE(ac4::detail::derive_aspx_subband_groups(config, -1, groups).has_value());
+    CHECK_FALSE(iclforge::ac4::detail::derive_aspx_subband_groups(config, -1, groups).has_value());
 
     // A lower crossover with a wider noise band: more than five groups.
     AspxConfig wide = aspx_config(0);
     wide.start_freq = 0;
     wide.noise_sbg = 3;
-    const auto refused = ac4::detail::derive_aspx_subband_groups(wide, 0, groups);
+    const auto refused = iclforge::ac4::detail::derive_aspx_subband_groups(wide, 0, groups);
     REQUIRE_FALSE(refused.has_value());
     CHECK(refused.error().error == DecodeError::kInvalidStream);
 
-    using ac4::detail::aspx_num_timeslots;
+    using iclforge::ac4::detail::aspx_num_timeslots;
     CHECK(aspx_num_timeslots(2048) == 16);
     CHECK(aspx_num_timeslots(1920) == 15);
     CHECK(aspx_num_timeslots(1536) == 12);
@@ -1277,11 +1280,11 @@ TEST_CASE("aspx_data_2ch reads the interleaved-waveform flags of both channels",
         }
         w.put(0xAAAA, 16);  // the one channel's aspx_tic_used_in_slot
         for (int ch = 0; ch < 2; ++ch) {
-            put_shortest(w, ac4::detail::aspx_codebook(AspxDataType::kSignal, 0, AspxStereoMode::kLevel,
+            put_shortest(w, iclforge::ac4::detail::aspx_codebook(AspxDataType::kSignal, 0, AspxStereoMode::kLevel,
                                                        AspxHcbType::kF0));
         }
         for (int ch = 0; ch < 2; ++ch) {
-            put_shortest(w, ac4::detail::aspx_codebook(AspxDataType::kNoise, 0, AspxStereoMode::kLevel,
+            put_shortest(w, iclforge::ac4::detail::aspx_codebook(AspxDataType::kNoise, 0, AspxStereoMode::kLevel,
                                                        AspxHcbType::kF0));
         }
         const std::vector<std::byte> bytes = w.bytes();
@@ -1289,7 +1292,7 @@ TEST_CASE("aspx_data_2ch reads the interleaved-waveform flags of both channels",
         BitReader reader(bytes, 0, rec);
         AspxElementState state;
         AspxData2ch out;
-        REQUIRE(ac4::detail::parse_aspx_data_2ch(reader, context(ch_mode::kStereo, true), config, state, out)
+        REQUIRE(iclforge::ac4::detail::parse_aspx_data_2ch(reader, context(ch_mode::kStereo, true), config, state, out)
                     .has_value());
         CHECK(reader.position() == w.size());
         CHECK(out.channels[1].tna_mode[0] == 3);
@@ -1313,7 +1316,7 @@ TEST_CASE("acpl_data_1ch reads steep interpolation with two parameter sets", "[a
     Recorder rec;
     BitReader config_reader(config_bytes, 0, rec);
     AcplConfig1ch config;
-    REQUIRE(ac4::detail::parse_acpl_config_1ch(config_reader, AcplConfigKind::kFull, config).has_value());
+    REQUIRE(iclforge::ac4::detail::parse_acpl_config_1ch(config_reader, AcplConfigKind::kFull, config).has_value());
     CHECK(config.num_param_bands == 15);
     CHECK(config.quant_mode == 1);
 
@@ -1325,27 +1328,27 @@ TEST_CASE("acpl_data_1ch reads steep interpolation with two parameter sets", "[a
     for (const AcplDataType type : {AcplDataType::kAlpha, AcplDataType::kBeta}) {
         // Set 0 frequency-differential, set 1 time-differential.
         w.put(0, 1);
-        put_shortest(w, ac4::detail::acpl_codebook(type, 1, AcplHcbType::kF0));
+        put_shortest(w, iclforge::ac4::detail::acpl_codebook(type, 1, AcplHcbType::kF0));
         for (int band = 1; band < 15; ++band) {
-            put_shortest(w, ac4::detail::acpl_codebook(type, 1, AcplHcbType::kDf));
+            put_shortest(w, iclforge::ac4::detail::acpl_codebook(type, 1, AcplHcbType::kDf));
         }
         w.put(1, 1);
         for (int band = 0; band < 15; ++band) {
-            put_shortest(w, ac4::detail::acpl_codebook(type, 1, AcplHcbType::kDt));
+            put_shortest(w, iclforge::ac4::detail::acpl_codebook(type, 1, AcplHcbType::kDt));
         }
     }
     const std::vector<std::byte> bytes = w.bytes();
     BitReader reader(bytes, 0, rec);
     AcplData1ch out;
-    REQUIRE(ac4::detail::parse_acpl_data_1ch(reader, context(ch_mode::kStereo, true), config, out).has_value());
+    REQUIRE(iclforge::ac4::detail::parse_acpl_data_1ch(reader, context(ch_mode::kStereo, true), config, out).has_value());
     CHECK(reader.position() == w.size());
     CHECK(out.framing.interpolation_type == 1);
     CHECK(out.framing.num_param_sets == 2);
     CHECK(out.framing.param_timeslot[0] == 3);
     CHECK(out.framing.param_timeslot[1] == 9);
     CHECK(out.beta1.sets[1].diff_type == 1);
-    CHECK(out.beta1.sets[1].huff_index[14] ==
-          shortest_index(ac4::detail::acpl_codebook(AcplDataType::kBeta, 1, AcplHcbType::kDt)));
+    CHECK(out.beta1.sets[1].huff_index[14] == shortest_index(iclforge::ac4::detail::acpl_codebook(
+                                                  AcplDataType::kBeta, 1, AcplHcbType::kDt)));
 }
 
 TEST_CASE("A-CPL data refuses a missing configuration and a truncated codeword", "[ac4dec][channel_elements]") {
@@ -1356,7 +1359,7 @@ TEST_CASE("A-CPL data refuses a missing configuration and a truncated codeword",
     {
         BitReader reader(bytes, 0, rec);
         AcplData1ch out;
-        const auto result = ac4::detail::parse_acpl_data_1ch(reader, context(ch_mode::kStereo, true), AcplConfig1ch{},
+        const auto result = iclforge::ac4::detail::parse_acpl_data_1ch(reader, context(ch_mode::kStereo, true), AcplConfig1ch{},
                                                              out);
         REQUIRE_FALSE(result.has_value());
         CHECK(result.error().error == DecodeError::kMissingIFrame);
@@ -1364,7 +1367,7 @@ TEST_CASE("A-CPL data refuses a missing configuration and a truncated codeword",
     {
         BitReader reader(bytes, 0, rec);
         AcplData2ch out;
-        const auto result = ac4::detail::parse_acpl_data_2ch(reader, context(ch_mode::k5_0, true), AcplConfig2ch{},
+        const auto result = iclforge::ac4::detail::parse_acpl_data_2ch(reader, context(ch_mode::k5_0, true), AcplConfig2ch{},
                                                              out);
         REQUIRE_FALSE(result.has_value());
         CHECK(result.error().error == DecodeError::kMissingIFrame);
@@ -1376,7 +1379,7 @@ TEST_CASE("A-CPL data refuses a missing configuration and a truncated codeword",
         config.valid = true;
         BitReader reader(bytes, 0, rec);
         AcplData2ch out;
-        const auto result = ac4::detail::parse_acpl_data_2ch(reader, context(ch_mode::k5_0, true), config, out);
+        const auto result = iclforge::ac4::detail::parse_acpl_data_2ch(reader, context(ch_mode::k5_0, true), config, out);
         REQUIRE_FALSE(result.has_value());
         CHECK(result.error().error == DecodeError::kTruncated);
     }
@@ -1389,9 +1392,9 @@ TEST_CASE("ac4_substream checks audio_size against the substream and the element
         const std::vector<std::byte> bytes = w.bytes();
         Recorder rec;
         BitReader reader(bytes, 0, rec);
-        ac4::detail::AudioSubstreamState state;
-        ac4::detail::AudioSubstream out;
-        return ac4::detail::parse_audio_substream(reader, ctx, state, out);
+        iclforge::ac4::detail::AudioSubstreamState state;
+        iclforge::ac4::detail::AudioSubstream out;
+        return iclforge::ac4::detail::parse_audio_substream(reader, ctx, state, out);
     };
     SECTION("an escaped audio_size past the end") {
         BitWriter w;

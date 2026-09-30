@@ -5,10 +5,10 @@
 
 #include "bed_mixer.hpp"
 
-using ac3::crucible::add_to_bed;
-using ac3::crucible::BedChannel;
-using ac3::crucible::BedMix;
-using ac3::crucible::fold_to_mono;
+using iclforge::crucible::add_to_bed;
+using iclforge::crucible::BedChannel;
+using iclforge::crucible::BedMix;
+using iclforge::crucible::fold_to_mono;
 using Catch::Approx;
 
 namespace {
@@ -108,7 +108,7 @@ TEST_CASE("a short input leaves the tail of the output silent", "[crucible]") {
 }
 
 TEST_CASE("fold_to_pair passes stereo through and shares the centre of 5.1", "[crucible]") {
-    using ac3::crucible::fold_to_pair;
+    using iclforge::crucible::fold_to_pair;
     std::vector<float> left(4), right(4);
     const std::vector<float> stereo{0.5F, -0.25F, 0.5F, -0.25F, 0.5F, -0.25F, 0.5F, -0.25F};
     fold_to_pair(stereo, 2, left, right);
@@ -135,7 +135,7 @@ TEST_CASE("fold_to_pair passes stereo through and shares the centre of 5.1", "[c
 }
 
 TEST_CASE("fold_to_pair gives each side of 7.1 its front, side and rear with the shared centre", "[crucible]") {
-    using ac3::crucible::fold_to_pair;
+    using iclforge::crucible::fold_to_pair;
     std::vector<float> left(2, 9.0F), right(2, 9.0F);
     // L R C LFE Lss Rss Lrs Rrs, every channel driven: each side normalises to 1.
     const std::vector<float> full(8 * 2, 1.0F);
@@ -151,7 +151,7 @@ TEST_CASE("fold_to_pair gives each side of 7.1 its front, side and rear with the
 }
 
 TEST_CASE("a zero-channel tap folds to silence and adds nothing to the bed", "[crucible]") {
-    using ac3::crucible::fold_to_pair;
+    using iclforge::crucible::fold_to_pair;
     const std::vector<float> samples = {0.5F, 0.5F};
     std::vector<float> mono(2, 9.0F);
     fold_to_mono(samples, 0, mono);

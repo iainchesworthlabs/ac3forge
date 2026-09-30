@@ -6,7 +6,7 @@
 #include <array>
 #include <cstdint>
 
-namespace ac3::golden {
+namespace iclforge::golden {
 
 struct BitAllocCase {
     const char* name;
@@ -462,4 +462,4 @@ inline constexpr std::array<BitAllocCase, 15> kBitAllocCases = {{
      {{0, 2, 0, 0, 0, 0, 0, 0}}, {{8, 3, 0, 0, 0, 0, 0, 0}}, {{5, 2, 0, 0, 0, 0, 0, 0}}},
 }};
 
-}  // namespace ac3::golden
+}  // namespace iclforge::golden

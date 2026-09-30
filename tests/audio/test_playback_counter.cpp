@@ -8,7 +8,7 @@
 #include "iclforge/audio/passthrough.hpp"
 #include "iclforge/audio/playback_counter.hpp"
 
-// ac3::audio::PlaybackCounter against a fake device's clock
+// iclforge::audio::PlaybackCounter against a fake device's clock
 // (src/audio/include/iclforge/audio/playback_counter.hpp).
 //
 // The counter is the platform-independent half of MonitorPosition: every
@@ -41,7 +41,7 @@ struct FakeDevice {
 
 TEST_CASE("playback counter: the reported position follows the device's own clock",
           "[audio-backend][playback-counter]") {
-    ac3::audio::PlaybackCounter counter;
+    iclforge::audio::PlaybackCounter counter;
     FakeDevice device;
 
     // A caller that has submitted 4800 frames and a sink passing them on a
@@ -79,7 +79,7 @@ TEST_CASE("playback counter: the reported position follows the device's own cloc
 
 TEST_CASE("playback counter: a restart counts from zero again",
           "[audio-backend][playback-counter]") {
-    ac3::audio::PlaybackCounter counter;
+    iclforge::audio::PlaybackCounter counter;
 
     counter.report(48'000, 1'200);
     CHECK(counter.position(0, 0).frames_played == 46'800);
@@ -97,7 +97,7 @@ TEST_CASE("playback counter: a restart counts from zero again",
 
 TEST_CASE("playback counter: a device is never further ahead than what it was given",
           "[audio-backend][playback-counter]") {
-    ac3::audio::PlaybackCounter counter;
+    iclforge::audio::PlaybackCounter counter;
 
     // Every backend's unplayed figure comes from the platform, and a device
     // that has just been prepared, paused or restarted can report a delay
@@ -114,7 +114,7 @@ TEST_CASE("playback counter: a device is never further ahead than what it was gi
 
 TEST_CASE("playback counter: the queue and the device's buffer are both reported",
           "[audio-backend][playback-counter]") {
-    ac3::audio::PlaybackCounter counter;
+    iclforge::audio::PlaybackCounter counter;
 
     counter.report(/*handed_over=*/2'400, /*unplayed=*/900);
     const auto position = counter.position(/*queued=*/7'200, /*latency=*/256);
@@ -127,7 +127,7 @@ TEST_CASE("playback counter: the queue and the device's buffer are both reported
 
 TEST_CASE("playback counter: a reader sees a consistent position while the device reports",
           "[audio-backend][playback-counter][concurrency]") {
-    ac3::audio::PlaybackCounter counter;
+    iclforge::audio::PlaybackCounter counter;
     std::atomic_bool stop{false};
     std::atomic<std::uint64_t> reads{0};
     std::atomic_bool wrong{false};
@@ -171,7 +171,7 @@ TEST_CASE("playback counter: a reader sees a consistent position while the devic
 }
 
 TEST_CASE("play head: a 32-bit count is widened past its wrap", "[audio-backend][playback-counter]") {
-    ac3::audio::PlayHead head;
+    iclforge::audio::PlayHead head;
     CHECK(head.read(0) == 0);
     CHECK(head.read(1000) == 1000);
     CHECK(head.read(0xFFFFFF00U) == 0xFFFFFF00U);
@@ -184,7 +184,7 @@ TEST_CASE("play head: a 32-bit count is widened past its wrap", "[audio-backend]
 
 TEST_CASE("play head: a zero reading holds, and a count that starts again carries on",
           "[audio-backend][playback-counter]") {
-    ac3::audio::PlayHead head;
+    iclforge::audio::PlayHead head;
     CHECK(head.read(48'000) == 48'000);
     // The HAL did not answer: nothing is taken from that.
     CHECK(head.read(0) == 48'000);
@@ -206,7 +206,7 @@ TEST_CASE("play head: a zero reading holds, and a count that starts again carrie
 
 TEST_CASE("play head: after a flush the old count reads as nothing played",
           "[audio-backend][playback-counter]") {
-    ac3::audio::PlayHead head;
+    iclforge::audio::PlayHead head;
     CHECK(head.read(96'000) == 96'000);
     head.restart();
     // The flush has not reached the hardware: the old count, still rising.
@@ -223,12 +223,12 @@ TEST_CASE("play head: after a flush the old count reads as nothing played",
     CHECK(head.read(720) == 720);
 
     // A flush before anything was read holds nothing back.
-    ac3::audio::PlayHead fresh;
+    iclforge::audio::PlayHead fresh;
     fresh.restart();
     CHECK(fresh.read(5'000) == 5'000);
 
     // A count that had gone round starts from zero too.
-    ac3::audio::PlayHead wrapped;
+    iclforge::audio::PlayHead wrapped;
     CHECK(wrapped.read(0xFFFFFF00U) == 0xFFFFFF00U);
     CHECK(wrapped.read(0x100U) == 0x100000100ULL);
     wrapped.restart();
@@ -237,7 +237,7 @@ TEST_CASE("play head: after a flush the old count reads as nothing played",
 
     // An old count that never comes down is taken as it is, in the end.
     head.restart();
-    for (int i = 0; i < ac3::audio::PlayHead::kStaleReadings; ++i) {
+    for (int i = 0; i < iclforge::audio::PlayHead::kStaleReadings; ++i) {
         CHECK(head.read(1'000'000) == 0);
     }
     CHECK(head.read(1'000'480) == 1'000'480);
@@ -247,22 +247,23 @@ TEST_CASE("playback counter: a passthrough link counts in the content's frames",
           "[audio-backend][playback-counter]") {
     // An E-AC-3 link runs four frames to each content frame, so a burst's
     // 6144 link frames are the 1536 content frames the player counts.
-    ac3::audio::PlaybackCounter counter;
+    iclforge::audio::PlaybackCounter counter;
     FakeDevice link;
     link.hand_over(6144 * 3);
     link.play(6144 + 5);
     counter.report(link.handed_over, link.unplayed());
-    const auto eac3 = ac3::audio::per_content_frame(counter.position(6144, 960),
-                                                    ac3::audio::carrier_ratio(
-                                                        ac3::audio::BitstreamFormat::kEac3));
+    const auto eac3 = iclforge::audio::per_content_frame(counter.position(6144, 960),
+                                                    iclforge::audio::carrier_ratio(
+                                                        iclforge::audio::BitstreamFormat::kEac3));
     CHECK(eac3.frames_played == 1536 + 1);
     CHECK(eac3.frames_queued == (6144 * 3 - 6144 - 5 + 6144) / 4);
     CHECK(eac3.latency_frames == 240);
 
     // AC-3's link is the content's own rate.
-    const auto ac3_link = ac3::audio::per_content_frame(
-        counter.position(0, 0), ac3::audio::carrier_ratio(ac3::audio::BitstreamFormat::kAc3));
+    const auto ac3_link = iclforge::audio::per_content_frame(
+        counter.position(0, 0),
+        iclforge::audio::carrier_ratio(iclforge::audio::BitstreamFormat::kAc3));
     CHECK(ac3_link.frames_played == 6144 + 5);
     // A ratio of zero is taken as one rather than divided by.
-    CHECK(ac3::audio::per_content_frame(counter.position(0, 0), 0).frames_played == 6144 + 5);
+    CHECK(iclforge::audio::per_content_frame(counter.position(0, 0), 0).frames_played == 6144 + 5);
 }

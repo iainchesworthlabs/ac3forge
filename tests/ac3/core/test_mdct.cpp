@@ -23,8 +23,8 @@ double max_abs_diff(std::span<const double> a, std::span<const double> b) {
 std::array<double, 256> forward_of(const std::array<double, 512>& input) {
     std::array<double, 512> windowed{};
     std::array<double, 256> coeffs{};
-    ac3::apply_analysis_window(input, windowed);
-    ac3::mdct512_forward(windowed, coeffs);
+    iclforge::apply_analysis_window(input, windowed);
+    iclforge::mdct512_forward(windowed, coeffs);
     return coeffs;
 }
 
@@ -35,11 +35,11 @@ struct ShortCoeffs {
 
 ShortCoeffs short_forward_of(const std::array<double, 512>& input) {
     std::array<double, 512> windowed{};
-    ac3::apply_analysis_window(input, windowed);
+    iclforge::apply_analysis_window(input, windowed);
     const std::span<const double, 512> full(windowed);
     ShortCoeffs out{};
-    ac3::mdct256_forward_first(full.first<256>(), out.first);
-    ac3::mdct256_forward_second(full.last<256>(), out.second);
+    iclforge::mdct256_forward_first(full.first<256>(), out.first);
+    iclforge::mdct256_forward_second(full.last<256>(), out.second);
     return out;
 }
 
@@ -50,16 +50,16 @@ TEST_CASE("analysis window reproduces spec Table 7.33", "[window]") {
     // must round to exactly the printed value.
     for (std::size_t n = 0; n < 256; ++n) {
         CAPTURE(n);
-        CHECK(std::abs(ac3::kAnalysisWindow[n] - ac3::golden::kTable733[n]) < 5.01e-6);
+        CHECK(std::abs(iclforge::kAnalysisWindow[n] - iclforge::golden::kTable733[n]) < 5.01e-6);
     }
 }
 
 TEST_CASE("analysis window matches the independent numpy evaluation", "[window]") {
-    CHECK(max_abs_diff(ac3::kAnalysisWindow, ac3::golden::kKbdWindow512) < 1e-12);
+    CHECK(max_abs_diff(iclforge::kAnalysisWindow, iclforge::golden::kKbdWindow512) < 1e-12);
 }
 
 TEST_CASE("analysis window symmetry and Princen-Bradley condition", "[window]") {
-    const auto& w = ac3::kAnalysisWindow;
+    const auto& w = iclforge::kAnalysisWindow;
     for (std::size_t n = 0; n < 256; ++n) {
         CAPTURE(n);
         // 8.2.3.1: 256 coefficients used back-to-back, symmetric.
@@ -71,16 +71,16 @@ TEST_CASE("analysis window symmetry and Princen-Bradley condition", "[window]") 
 }
 
 TEST_CASE("forward MDCT matches numpy goldens", "[mdct]") {
-    CHECK(max_abs_diff(forward_of(ac3::golden::kGoldenImpulse0Input),
-                       ac3::golden::kGoldenImpulse0Coeffs) < 1e-10);
-    CHECK(max_abs_diff(forward_of(ac3::golden::kGoldenImpulse100Input),
-                       ac3::golden::kGoldenImpulse100Coeffs) < 1e-10);
-    CHECK(max_abs_diff(forward_of(ac3::golden::kGoldenDcInput), ac3::golden::kGoldenDcCoeffs) <
-          1e-10);
-    CHECK(max_abs_diff(forward_of(ac3::golden::kGoldenSineInput), ac3::golden::kGoldenSineCoeffs) <
-          1e-10);
-    CHECK(max_abs_diff(forward_of(ac3::golden::kGoldenRandomInput),
-                       ac3::golden::kGoldenRandomCoeffs) < 1e-10);
+    CHECK(max_abs_diff(forward_of(iclforge::golden::kGoldenImpulse0Input),
+                       iclforge::golden::kGoldenImpulse0Coeffs) < 1e-10);
+    CHECK(max_abs_diff(forward_of(iclforge::golden::kGoldenImpulse100Input),
+                       iclforge::golden::kGoldenImpulse100Coeffs) < 1e-10);
+    CHECK(max_abs_diff(forward_of(iclforge::golden::kGoldenDcInput),
+                       iclforge::golden::kGoldenDcCoeffs) < 1e-10);
+    CHECK(max_abs_diff(forward_of(iclforge::golden::kGoldenSineInput),
+                       iclforge::golden::kGoldenSineCoeffs) < 1e-10);
+    CHECK(max_abs_diff(forward_of(iclforge::golden::kGoldenRandomInput),
+                       iclforge::golden::kGoldenRandomCoeffs) < 1e-10);
 }
 
 TEST_CASE("short forward MDCT matches numpy goldens", "[mdct]") {
@@ -90,23 +90,23 @@ TEST_CASE("short forward MDCT matches numpy goldens", "[mdct]") {
         CHECK(max_abs_diff(coeffs.first, first) < 1e-10);
         CHECK(max_abs_diff(coeffs.second, second) < 1e-10);
     };
-    check(ac3::golden::kGoldenImpulse0Input, ac3::golden::kGoldenImpulse0Short1Coeffs,
-          ac3::golden::kGoldenImpulse0Short2Coeffs);
-    check(ac3::golden::kGoldenImpulse100Input, ac3::golden::kGoldenImpulse100Short1Coeffs,
-          ac3::golden::kGoldenImpulse100Short2Coeffs);
-    check(ac3::golden::kGoldenDcInput, ac3::golden::kGoldenDcShort1Coeffs,
-          ac3::golden::kGoldenDcShort2Coeffs);
-    check(ac3::golden::kGoldenSineInput, ac3::golden::kGoldenSineShort1Coeffs,
-          ac3::golden::kGoldenSineShort2Coeffs);
-    check(ac3::golden::kGoldenRandomInput, ac3::golden::kGoldenRandomShort1Coeffs,
-          ac3::golden::kGoldenRandomShort2Coeffs);
+    check(iclforge::golden::kGoldenImpulse0Input, iclforge::golden::kGoldenImpulse0Short1Coeffs,
+          iclforge::golden::kGoldenImpulse0Short2Coeffs);
+    check(iclforge::golden::kGoldenImpulse100Input, iclforge::golden::kGoldenImpulse100Short1Coeffs,
+          iclforge::golden::kGoldenImpulse100Short2Coeffs);
+    check(iclforge::golden::kGoldenDcInput, iclforge::golden::kGoldenDcShort1Coeffs,
+          iclforge::golden::kGoldenDcShort2Coeffs);
+    check(iclforge::golden::kGoldenSineInput, iclforge::golden::kGoldenSineShort1Coeffs,
+          iclforge::golden::kGoldenSineShort2Coeffs);
+    check(iclforge::golden::kGoldenRandomInput, iclforge::golden::kGoldenRandomShort1Coeffs,
+          iclforge::golden::kGoldenRandomShort2Coeffs);
 }
 
 TEST_CASE("IMDCT of silence is silence", "[mdct]") {
     std::array<double, 256> coeffs{};
     std::array<double, 512> x{};
     x.fill(1.0);  // must be overwritten with zeros
-    ac3::imdct512_windowed(coeffs, x);
+    iclforge::imdct512_windowed(coeffs, x);
     for (const double v : x) {
         CHECK(v == 0.0);
     }
@@ -116,7 +116,7 @@ TEST_CASE("short IMDCT of silence is silence", "[mdct]") {
     std::array<double, 256> coeffs{};
     std::array<double, 512> x{};
     x.fill(1.0);  // must be overwritten with zeros
-    ac3::imdct256_pair_windowed(coeffs, x);
+    iclforge::imdct256_pair_windowed(coeffs, x);
     for (const double v : x) {
         CHECK(v == 0.0);
     }
@@ -147,9 +147,9 @@ TEST_CASE("TDAC round-trip through the normative inverse reconstructs input", "[
         }
         std::array<double, 512> windowed{};
         std::array<double, 256> coeffs{};
-        ac3::apply_analysis_window(block, windowed);
-        ac3::mdct512_forward(windowed, coeffs);
-        ac3::imdct512_windowed(coeffs, decoded[static_cast<std::size_t>(b)]);
+        iclforge::apply_analysis_window(block, windowed);
+        iclforge::mdct512_forward(windowed, coeffs);
+        iclforge::imdct512_windowed(coeffs, decoded[static_cast<std::size_t>(b)]);
     }
 
     double worst = 0.0;
@@ -195,24 +195,24 @@ TEST_CASE("long-short-long overlap-add reconstructs input across the transition"
             block[static_cast<std::size_t>(n)] = input[static_cast<std::size_t>(b * kHop + n)];
         }
         std::array<double, 512> windowed{};
-        ac3::apply_analysis_window(block, windowed);
+        iclforge::apply_analysis_window(block, windowed);
         if (!kShort[b]) {
             std::array<double, 256> coeffs{};
-            ac3::mdct512_forward(windowed, coeffs);
-            ac3::imdct512_windowed(coeffs, decoded[static_cast<std::size_t>(b)]);
+            iclforge::mdct512_forward(windowed, coeffs);
+            iclforge::imdct512_windowed(coeffs, decoded[static_cast<std::size_t>(b)]);
             continue;
         }
         const std::span<const double, 512> full(windowed);
         std::array<double, 128> first{};
         std::array<double, 128> second{};
-        ac3::mdct256_forward_first(full.first<256>(), first);
-        ac3::mdct256_forward_second(full.last<256>(), second);
+        iclforge::mdct256_forward_first(full.first<256>(), first);
+        iclforge::mdct256_forward_second(full.last<256>(), second);
         std::array<double, 256> interleaved{};
         for (int k = 0; k < 128; ++k) {
             interleaved[static_cast<std::size_t>(2 * k)] = first[static_cast<std::size_t>(k)];
             interleaved[static_cast<std::size_t>(2 * k + 1)] = second[static_cast<std::size_t>(k)];
         }
-        ac3::imdct256_pair_windowed(interleaved, decoded[static_cast<std::size_t>(b)]);
+        iclforge::imdct256_pair_windowed(interleaved, decoded[static_cast<std::size_t>(b)]);
     }
 
     double worst = 0.0;

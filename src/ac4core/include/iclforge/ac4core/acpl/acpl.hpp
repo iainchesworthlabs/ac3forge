@@ -18,7 +18,7 @@
 // to see what a decoder will make of the parameters it sends. A matrix of
 // slots is laid out as the QMF banks' (dsp/qmf.hpp): value [ts * 64 + sb].
 
-namespace ac4::detail::acpl {
+namespace iclforge::ac4::detail::acpl {
 
 inline constexpr int kSubbands = 64;       // num_qmf_subbands
 inline constexpr int kMaxSlots = 32;       // num_qmf_timeslots of a 2 048-sample frame, the longest
@@ -169,4 +169,4 @@ class TransientDucker {
 extern template class Decorrelator<Real>;
 extern template class TransientDucker<Real>;
 
-}  // namespace ac4::detail::acpl
+}  // namespace iclforge::ac4::detail::acpl

@@ -11,7 +11,7 @@
 // and their shape are the shared core's (src/ac4core/include/iclforge/ac4core/huffman_codebook.hpp
 // and tables/huffman_tables.hpp); reading them is the decoder's.
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 // Reads one codeword and returns its index, recording one SyntaxRecord named
 // `element` with the codeword's length and that index. Returns -1, with
@@ -36,4 +36,4 @@ struct CodewordReasons {
                                                             std::string_view element,
                                                             const CodewordReasons& reasons);
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

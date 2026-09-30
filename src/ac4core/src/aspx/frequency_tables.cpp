@@ -5,7 +5,7 @@
 #include <cstddef>
 #include <span>
 
-namespace ac4::detail::aspx {
+namespace iclforge::ac4::detail::aspx {
 namespace {
 
 // 5.7.6.3.1.1.
@@ -222,4 +222,4 @@ bool derive_patch_tables(const SubbandGroups& groups, int master_freq_scale, boo
     return true;
 }
 
-}  // namespace ac4::detail::aspx
+}  // namespace iclforge::ac4::detail::aspx

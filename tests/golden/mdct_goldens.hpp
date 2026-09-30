@@ -8,7 +8,7 @@
 
 #include <array>
 
-namespace ac3::golden {
+namespace iclforge::golden {
 
 inline constexpr std::array<double, 256> kTable733 = {
     0.00013999999999999999, 0.00024000000000000001, 0.00036999999999999999, 0.00051000000000000004, 0.00067000000000000002, 0.00085999999999999998, 0.00107, 0.0012999999999999999,
@@ -1516,4 +1516,4 @@ inline constexpr std::array<double, 128> kGoldenRandomShort2Coeffs = {
     -0.0055770693715524776, -0.019330563287249521, 0.013244046808520035, 0.083699838295814066,
 };
 
-}  // namespace ac3::golden
+}  // namespace iclforge::golden

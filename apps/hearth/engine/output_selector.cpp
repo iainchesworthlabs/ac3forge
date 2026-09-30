@@ -7,7 +7,7 @@
 
 // See output_selector.hpp.
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 namespace {
 
@@ -172,4 +172,4 @@ OutputChoice OutputSelector::choose(const ItemFacts& item, const HeldOutput& hel
     return choose_output(request);
 }
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

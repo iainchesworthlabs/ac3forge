@@ -39,7 +39,7 @@ inline constexpr std::uint16_t kSendspinPort = 8928;
 // server has given a layout onto `layout`. Nothing without either, or while
 // the player runs. app_main calls it at boot, and again when a network joined
 // after boot comes up.
-void sendspin_start(const ac3::render::OutputLayout& layout);
+void sendspin_start(const iclforge::render::OutputLayout& layout);
 
 // Whether this build has a player, running.
 [[nodiscard]] bool sendspin_running();
@@ -54,7 +54,7 @@ void sendspin_set_external(bool external);
 
 // The layout the control surface set, for streams no server sets one for. One
 // set before the player has started, or while it starts, is kept for it.
-[[nodiscard]] bool sendspin_set_layout(const ac3::render::OutputLayout& layout);
+[[nodiscard]] bool sendspin_set_layout(const iclforge::render::OutputLayout& layout);
 
 // The board's name, slot width or wiring changed: what it tells servers in
 // its hello follows, and a server that was told otherwise connects again. A

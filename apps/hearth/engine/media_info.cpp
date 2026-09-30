@@ -15,7 +15,7 @@
 
 // See media_info.hpp.
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 namespace {
 
@@ -37,7 +37,7 @@ namespace {
 }
 
 // The first syncframe's bitstream information - an AC-3 frame's, a legacy
-// core's, or an E-AC-3 independent substream's - parsed as ac3::io::probe
+// core's, or an E-AC-3 independent substream's - parsed as iclforge::io::probe
 // parses it, with the transform left out. Dependent substreams extend the
 // programme's channels, not its bitstream information.
 [[nodiscard]] std::optional<MediaBitstream> read_bitstream(std::span<const std::byte> unit) {
@@ -88,7 +88,7 @@ namespace {
     return std::nullopt;
 }
 
-// ac3::sendspin's writer, taken as the sink probe_json writes to.
+// iclforge::sendspin's writer, taken as the sink probe_json writes to.
 class StringSink final : public apps::JsonSink {
 public:
     explicit StringSink(std::string& out) : writer_(out) {}
@@ -227,10 +227,10 @@ void write_container(JsonSink& json, const apps::ContainerFacts& facts) {
             // over vs. karaoke), and channel_flags() - the only acmod-shaped
             // thing this descriptor carries - is a many-to-one summary that
             // cannot be read back into an exact acmod (see
-            // mpegts::parse_service_descriptor's own comment). Showing one
+            // iclforge::mpegts::parse_service_descriptor's own comment). Showing one
             // label anyway would sometimes just be wrong; a caller that has
             // the elementary stream can label service_bsmod itself with the
-            // acmod ac3::io::scan() actually read.
+            // acmod iclforge::io::scan() actually read.
             member_or_null(json, "full_service", facts.service_full_service);
             json.member("bsid", static_cast<std::int64_t>(facts.service_bsid));
             member_or_null(json, "mainid", facts.service_mainid);
@@ -710,16 +710,17 @@ MediaInfo describe_media(const std::string& path, const LoadedItem& loaded) {
         info.codec = MediaCodec::kAc4;
         auto summary = apps::probe_json::summarize_ac4(bytes);
         if (summary.first_frame) {
-            const ac4::Toc& toc = summary.first_frame->toc;
+            const iclforge::ac4::Toc& toc = summary.first_frame->toc;
             info.sample_rate = static_cast<std::uint32_t>(toc.sample_rate_hz);
-            if (const auto per_frame = ac4::samples_per_frame(toc)) {
+            if (const auto per_frame = iclforge::ac4::samples_per_frame(toc)) {
                 info.stream_samples = static_cast<std::uint64_t>(*per_frame) * summary.sync_frames;
             }
         }
         if (summary.sync_frames == 0) {
-            info.error = fmt::format(
-                "No AC-4 sync frame could be read: {}.",
-                summary.parse_error ? ac4::describe(*summary.parse_error) : "none was found");
+            info.error =
+                fmt::format("No AC-4 sync frame could be read: {}.",
+                            summary.parse_error ? iclforge::ac4::describe(*summary.parse_error)
+                                                : "none was found");
         }
         info.ac4 = std::move(summary);
         return info;
@@ -815,4 +816,4 @@ std::string media_info_json(const MediaInfo& info) {
     return out;
 }
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

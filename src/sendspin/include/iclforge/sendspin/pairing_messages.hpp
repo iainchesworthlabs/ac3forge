@@ -20,7 +20,7 @@
 //
 // The type names are the same in both dialects.
 
-namespace ac3::sendspin::pairing_messages {
+namespace iclforge::sendspin::pairing_messages {
 
 using crypto::Digest32;
 using crypto::Digest64;
@@ -115,4 +115,4 @@ enum class AbortReason : std::uint8_t {
 [[nodiscard]] std::string write_pair_abort(AbortReason reason, Dialect dialect);
 [[nodiscard]] std::expected<AbortReason, MessageError> read_pair_abort(json::Value payload, Dialect dialect);
 
-}  // namespace ac3::sendspin::pairing_messages
+}  // namespace iclforge::sendspin::pairing_messages

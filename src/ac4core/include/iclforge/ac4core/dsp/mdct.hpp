@@ -35,12 +35,12 @@
 // Both need N to be a multiple of 4 whose half is 2^a * 3^b * 5^c, which
 // every block length of clause 5.5.3 is.
 
-namespace ac4::detail::dsp {
+namespace iclforge::ac4::detail::dsp {
 
 template <typename Real>
 class Imdct {
    public:
-    using Complex = ac4::detail::dsp::Complex<Real>;
+    using Complex = iclforge::ac4::detail::dsp::Complex<Real>;
 
     explicit Imdct(std::size_t length);
 
@@ -65,7 +65,7 @@ class Imdct {
 template <typename Real>
 class Mdct {
    public:
-    using Complex = ac4::detail::dsp::Complex<Real>;
+    using Complex = iclforge::ac4::detail::dsp::Complex<Real>;
 
     explicit Mdct(std::size_t length);
 
@@ -85,4 +85,4 @@ class Mdct {
 extern template class Imdct<Real>;
 extern template class Mdct<Real>;
 
-}  // namespace ac4::detail::dsp
+}  // namespace iclforge::ac4::detail::dsp

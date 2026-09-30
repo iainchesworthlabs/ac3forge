@@ -4,7 +4,7 @@
 
 // See unit_reports.hpp.
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 void UnitReports::add(const UnitReport& report, std::uint64_t output_frame) {
     if (count_ == ring_.size()) {
@@ -39,4 +39,4 @@ bool UnitReports::release(std::uint64_t heard, UnitReport& latest) {
     return true;
 }
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

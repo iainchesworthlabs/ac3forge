@@ -34,7 +34,7 @@
 // process_loopback_available() saying the same thing, which the backend
 // contract test requires of every platform.
 
-namespace ac3::audio {
+namespace iclforge::audio {
 
 const AudioBackend& audio_backend() {
     static const AudioBackend kBackend = [] {
@@ -65,4 +65,4 @@ const AudioBackend& audio_backend() {
     return kBackend;
 }
 
-}  // namespace ac3::audio
+}  // namespace iclforge::audio

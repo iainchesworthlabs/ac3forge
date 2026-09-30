@@ -11,7 +11,7 @@
 #include "iclforge/ac3/encoder/encoder.hpp"
 
 // The live session's parallel 5.1 downmix receiver leg (bundle B2, item 16)
-// feeds a second, independent ac3::FrameEncoder the main plan's ALREADY-
+// feeds a second, independent iclforge::FrameEncoder the main plan's ALREADY-
 // COMPUTED bed channels - see encoder_controller.cpp's runLiveSession, and
 // its own comment on why no separate §7.8 fold exists for this: every layout
 // in this codebase renders its bed-position coded channels as a self-
@@ -30,9 +30,9 @@ namespace {
 std::vector<std::vector<float>> bed_frame(std::span<const double> tones_hz, std::uint64_t start,
                                           double amplitude = 0.3) {
     std::vector<std::vector<float>> pcm(tones_hz.size(),
-                                        std::vector<float>(ac3::kSamplesPerFrame));
+                                        std::vector<float>(iclforge::kSamplesPerFrame));
     for (std::size_t ch = 0; ch < tones_hz.size(); ++ch) {
-        for (int i = 0; i < ac3::kSamplesPerFrame; ++i) {
+        for (int i = 0; i < iclforge::kSamplesPerFrame; ++i) {
             const auto n = static_cast<double>(start + static_cast<std::uint64_t>(i));
             pcm[ch][static_cast<std::size_t>(i)] = static_cast<float>(
                 amplitude * std::sin(2.0 * std::numbers::pi * tones_hz[ch] * n / 48000.0));
@@ -77,22 +77,22 @@ TEST_CASE("clamp_to_legal_ac3_bitrate feeds a bitrate the downmix leg's encoder 
     // it ever reaches EncoderConfig - is_valid_bitrate would otherwise
     // reject it outright.
     const std::uint32_t requested = 500;
-    REQUIRE_FALSE(ac3::is_valid_bitrate(requested));
-    const auto clamped = ac3::clamp_to_legal_ac3_bitrate(requested);
-    CHECK(ac3::is_valid_bitrate(clamped));
+    REQUIRE_FALSE(iclforge::is_valid_bitrate(requested));
+    const auto clamped = iclforge::clamp_to_legal_ac3_bitrate(requested);
+    CHECK(iclforge::is_valid_bitrate(clamped));
     CHECK(clamped == 448);
 
-    const ac3::EncoderConfig config{.sample_rate = ac3::SampleRate::k48000,
+    const iclforge::EncoderConfig config{.sample_rate = iclforge::SampleRate::k48000,
                                     .bitrate_kbps = clamped,
-                                    .acmod = ac3::Acmod::k3_2,
+                                    .acmod = iclforge::Acmod::k3_2,
                                     .lfe = true};
     // The encoder never throws - a rate it cannot carry surfaces as
     // kInvalidBitrate from encode_frame - so constructing one proves
     // nothing. Encoding a frame is what shows the clamped value is one the
     // encoder actually accepts, not just one is_valid_bitrate agrees with in
     // isolation.
-    ac3::FrameEncoder encoder{config};
-    const std::vector<float> silence(ac3::kSamplesPerFrame, 0.0f);
+    iclforge::FrameEncoder encoder{config};
+    const std::vector<float> silence(iclforge::kSamplesPerFrame, 0.0f);
     const std::vector<std::span<const float>> channels(6, silence);
     const auto frame = encoder.encode_frame(channels);
     REQUIRE(frame.has_value());
@@ -100,13 +100,13 @@ TEST_CASE("clamp_to_legal_ac3_bitrate feeds a bitrate the downmix leg's encoder 
     CHECK(frame->size() == 448U * 1000U / 8U * 1536U / 48000U);
 
     // The unclamped rate is the one it would have refused.
-    ac3::FrameEncoder unclamped{{.sample_rate = ac3::SampleRate::k48000,
+    iclforge::FrameEncoder unclamped{{.sample_rate = iclforge::SampleRate::k48000,
                                  .bitrate_kbps = requested,
-                                 .acmod = ac3::Acmod::k3_2,
+                                 .acmod = iclforge::Acmod::k3_2,
                                  .lfe = true}};
     const auto refused = unclamped.encode_frame(channels);
     REQUIRE_FALSE(refused.has_value());
-    CHECK(refused.error() == ac3::FrameError::kInvalidBitrate);
+    CHECK(refused.error() == iclforge::FrameError::kInvalidBitrate);
 }
 
 TEST_CASE("the downmix leg's encoder carries every bed channel's own content, not a silent or "
@@ -120,20 +120,20 @@ TEST_CASE("the downmix leg's encoder carries every bed channel's own content, no
     const std::vector<double> full_band_tones = {220.0, 330.0, 440.0, 550.0, 660.0};
     constexpr double kLfeToneHz = 60.0;
 
-    const auto requested_kbps = ac3::clamp_to_legal_ac3_bitrate(500);
-    const ac3::EncoderConfig config{.sample_rate = ac3::SampleRate::k48000,
+    const auto requested_kbps = iclforge::clamp_to_legal_ac3_bitrate(500);
+    const iclforge::EncoderConfig config{.sample_rate = iclforge::SampleRate::k48000,
                                     .bitrate_kbps = requested_kbps,
                                     .dialnorm = 27,
-                                    .acmod = ac3::Acmod::k3_2,
+                                    .acmod = iclforge::Acmod::k3_2,
                                     .lfe = true};
-    ac3::FrameEncoder encoder{config};
+    iclforge::FrameEncoder encoder{config};
 
     std::vector<std::byte> last_frame;
     std::uint64_t n = 0;
     for (int f = 0; f < 3; ++f) {
         auto pcm = bed_frame(full_band_tones, n);
         pcm.push_back(bed_frame(std::span{&kLfeToneHz, 1}, n, 0.5).front());
-        n += static_cast<std::uint64_t>(ac3::kSamplesPerFrame);
+        n += static_cast<std::uint64_t>(iclforge::kSamplesPerFrame);
 
         std::vector<std::span<const float>> views;
         views.reserve(pcm.size());
@@ -146,10 +146,10 @@ TEST_CASE("the downmix leg's encoder carries every bed channel's own content, no
         last_frame = std::move(*frame);
     }
 
-    ac3::FrameDecoder decoder;
+    iclforge::FrameDecoder decoder;
     const auto decoded = decoder.decode_frame(last_frame);
     REQUIRE(decoded.has_value());
-    CHECK(decoded->acmod == ac3::Acmod::k3_2);
+    CHECK(decoded->acmod == iclforge::Acmod::k3_2);
     CHECK(decoded->lfe);
     // The frame really did carry the CLAMPED rate, not the plan's original
     // (illegal-for-AC-3) one - proves the clamp actually reached the encoder

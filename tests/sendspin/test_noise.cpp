@@ -24,16 +24,16 @@
 
 namespace {
 
-using ac3::sendspin::crypto::Digest32;
-using ac3::sendspin::crypto::Key32;
-using ac3::sendspin::noise::Handshake;
-using ac3::sendspin::noise::KeyPair;
-using ac3::sendspin::noise::Role;
-using ac3::sendspin::noise::Suite;
-using ac3::sendspin::test::bytes_of;
-using ac3::sendspin::test::from_hex;
-using ac3::sendspin::test::key_from_hex;
-using ac3::sendspin::test::to_hex;
+using iclforge::sendspin::crypto::Digest32;
+using iclforge::sendspin::crypto::Key32;
+using iclforge::sendspin::noise::Handshake;
+using iclforge::sendspin::noise::KeyPair;
+using iclforge::sendspin::noise::Role;
+using iclforge::sendspin::noise::Suite;
+using iclforge::sendspin::test::bytes_of;
+using iclforge::sendspin::test::from_hex;
+using iclforge::sendspin::test::key_from_hex;
+using iclforge::sendspin::test::to_hex;
 
 struct Vector {
     Suite suite;
@@ -98,10 +98,10 @@ std::optional<Session> handshake(Suite suite, const Key32& server_psk, const Key
     Handshake client(suite, Role::kResponder, *client_key, server_key->public_key(), client_prologue);
 
     std::vector<std::uint8_t> message_1;
-    const std::optional<Digest32> id = ac3::sendspin::handshake::psk_id(server_psk);
+    const std::optional<Digest32> id = iclforge::sendspin::handshake::psk_id(server_psk);
     REQUIRE(id.has_value());
-    const std::string payload_1 = ac3::sendspin::handshake::write_message_1_payload(
-        *id, ac3::sendspin::handshake::PskCategory::kLongTerm);
+    const std::string payload_1 = iclforge::sendspin::handshake::write_message_1_payload(
+        *id, iclforge::sendspin::handshake::PskCategory::kLongTerm);
     REQUIRE(server.write_message_1(bytes_of(payload_1), message_1));
 
     std::vector<std::uint8_t> received_1;
@@ -112,7 +112,7 @@ std::optional<Session> handshake(Suite suite, const Key32& server_psk, const Key
 
     std::vector<std::uint8_t> message_2;
     REQUIRE(client.write_message_2(client_psk,
-                                   bytes_of(ac3::sendspin::handshake::kMessage2Payload),
+                                   bytes_of(iclforge::sendspin::handshake::kMessage2Payload),
                                    message_2));
     std::vector<std::uint8_t> received_2;
     if (!server.read_message_2(server_psk, message_2, received_2)) {
@@ -129,7 +129,7 @@ std::optional<Session> handshake(Suite suite, const Key32& server_psk, const Key
 
 TEST_CASE("noise: KKpsk2 cacophony vectors, both suites", "[sendspin][noise]") {
     for (const Vector& v : kVectors) {
-        INFO(ac3::sendspin::noise::protocol_name(v.suite));
+        INFO(iclforge::sendspin::noise::protocol_name(v.suite));
         const KeyPair init_static = pair_from_hex(kInitStatic);
         const KeyPair resp_static = pair_from_hex(kRespStatic);
         CHECK(to_hex(init_static.public_key()) == kInitStaticPublic);
@@ -201,7 +201,7 @@ TEST_CASE("noise: a Sendspin handshake with late PSK binding", "[sendspin][noise
 TEST_CASE("noise: message 2 under another PSK fails, and the Sentinel retry succeeds",
           "[sendspin][noise]") {
     const Key32 long_term = key_from_hex("0202020202020202020202020202020202020202020202020202020202020202");
-    const Key32& sentinel = ac3::sendspin::handshake::sentinel_psk();
+    const Key32& sentinel = iclforge::sendspin::handshake::sentinel_psk();
     const std::optional<KeyPair> server_key = KeyPair::generate();
     const std::optional<KeyPair> client_key = KeyPair::generate();
     REQUIRE(server_key.has_value());
@@ -245,7 +245,7 @@ TEST_CASE("noise: a re-handshake chains from the previous handshake hash",
     const std::optional<KeyPair> client_key = KeyPair::generate();
     REQUIRE(server_key.has_value());
     REQUIRE(client_key.has_value());
-    const Key32& sentinel = ac3::sendspin::handshake::sentinel_psk();
+    const Key32& sentinel = iclforge::sendspin::handshake::sentinel_psk();
     const Key32 paired = key_from_hex("0303030303030303030303030303030303030303030303030303030303030303");
 
     const auto run = [&](const Key32& psk, std::span<const std::uint8_t> prologue) {
@@ -295,9 +295,9 @@ TEST_CASE("noise: messages out of turn and truncated messages fail", "[sendspin]
 }
 
 TEST_CASE("noise: suite names", "[sendspin][noise]") {
-    using ac3::sendspin::noise::parse_suite;
-    using ac3::sendspin::noise::protocol_name;
-    using ac3::sendspin::noise::suite_name;
+    using iclforge::sendspin::noise::parse_suite;
+    using iclforge::sendspin::noise::protocol_name;
+    using iclforge::sendspin::noise::suite_name;
     CHECK(suite_name(Suite::kChaChaPolySha256) == "25519_ChaChaPoly_SHA256");
     CHECK(suite_name(Suite::kAesGcmSha256) == "25519_AESGCM_SHA256");
     CHECK(parse_suite("25519_ChaChaPoly_SHA256") == Suite::kChaChaPolySha256);
@@ -312,13 +312,14 @@ TEST_CASE("noise: suite names", "[sendspin][noise]") {
 
 TEST_CASE("noise: the Sentinel PSK and psk_id match connection.md", "[sendspin][noise]") {
     Digest32 derived{};
-    REQUIRE(ac3::sendspin::crypto::sha256({bytes_of("sendspin-sentinel-psk-v1")}, derived));
-    CHECK(derived == ac3::sendspin::handshake::sentinel_psk());
+    REQUIRE(iclforge::sendspin::crypto::sha256({bytes_of("sendspin-sentinel-psk-v1")}, derived));
+    CHECK(derived == iclforge::sendspin::handshake::sentinel_psk());
     CHECK(to_hex(derived) == "1b5e24dbc1aed95fc2a5a338a90c05df44bd10f5ec1f4cd66cbf86272767b9d3");
 
-    const std::optional<Digest32> id = ac3::sendspin::handshake::psk_id(derived);
+    const std::optional<Digest32> id = iclforge::sendspin::handshake::psk_id(derived);
     REQUIRE(id.has_value());
-    CHECK(*id == ac3::sendspin::handshake::sentinel_psk_id());
+    CHECK(*id == iclforge::sendspin::handshake::sentinel_psk_id());
     CHECK(to_hex(*id) == "185b15f6d2da4909bd1dc156a4ab206103abef0153bcd52d926170b95cf7ce8a");
-    CHECK(ac3::sendspin::base64url::encode(*id) == "GFsV9tLaSQm9HcFWpKsgYQOr7wFTvNUtkmFwuVz3zoo");
+    CHECK(iclforge::sendspin::base64url::encode(*id) ==
+          "GFsV9tLaSQm9HcFWpKsgYQOr7wFTvNUtkmFwuVz3zoo");
 }

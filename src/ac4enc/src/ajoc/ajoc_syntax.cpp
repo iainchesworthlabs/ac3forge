@@ -9,7 +9,7 @@
 #include "iclforge/ac4core/tables/huffman_codes.hpp"
 #include "iclforge/ac4core/tables/huffman_tables.hpp"
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 namespace {
 
 enum class HcbType : std::uint8_t { kF0, kDf, kDt };
@@ -267,4 +267,4 @@ void write_ajoc_bed_info(BitWriter& w, int num_obj_with_bed_render_info) {
     }
 }
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

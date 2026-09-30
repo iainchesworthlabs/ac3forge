@@ -10,7 +10,7 @@
 // identical rule.
 #include <windows.h>
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 void install_native_log_sink() {
     process_diagnostics().add_observer([](std::string_view line) {
@@ -22,4 +22,4 @@ void install_native_log_sink() {
     });
 }
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

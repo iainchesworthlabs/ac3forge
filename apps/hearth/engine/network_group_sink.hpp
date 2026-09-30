@@ -23,16 +23,16 @@
 // std::shared_ptr<Group>, never constructs or dereferences one, so the
 // incomplete type is enough here; network_group_sink.cpp includes the real
 // header where a Group is actually used.
-namespace ac3::sendspin {
+namespace iclforge::sendspin {
 class Group;
-}  // namespace ac3::sendspin
+}  // namespace iclforge::sendspin
 
 // Where a network group's programme goes (planning/hearth-reference-player.md,
 // A6: "a group of two test sinks and the reference Python player plays one
 // programme").
 //
 // A group needs BOTH forms from the one decode at once: rendered PCM for a
-// member playing player@v1 (ac3::sendspin::Group::push()), and the item's own
+// member playing player@v1 (iclforge::sendspin::Group::push()), and the item's own
 // coded units, packed into IEC 61937 bursts, for a member playing
 // _ac3forge_player@v1 (Group::push_burst()) - a mixed group takes both from
 // the same session together (tests/hearth/test_group.cpp's own proof).
@@ -41,13 +41,13 @@ class Group;
 // is its own interface rather than a third mode bent into either.
 //
 // push_burst() takes one whole burst at an absolute programme frame
-// (ac3::sendspin::Group::Burst::frame), not a running byte stream, so a
+// (iclforge::sendspin::Group::Burst::frame), not a running byte stream, so a
 // caller does not have to keep the PCM and the bursts in lock-step - Player
 // paces each independently (player.cpp), and this interface mirrors that:
 // submit_pcm() and submit_burst() are unrelated calls, each with its own
 // backpressure.
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 class NetworkGroupSink {
 public:
@@ -81,7 +81,7 @@ public:
     // retries what was not taken.
     [[nodiscard]] virtual std::size_t submit_pcm(std::span<const std::span<const float>> slots,
                                                  std::size_t frames) = 0;
-    // One burst: `pc`/`pd` as ac3::iec61937 writes them, `payload` the
+    // One burst: `pc`/`pd` as iclforge::iec61937 writes them, `payload` the
     // elementary-stream bytes they describe (not the IEC 61937 carrier
     // bytes - a group's members are not S/PDIF, so there is nothing to
     // word-swizzle or zero-pad here), `frame` the programme frame that is
@@ -94,7 +94,7 @@ public:
                                             std::int64_t frames) = 0;
 
     // Where the group has got to. A group plays frame n at a fixed time on its
-    // own timeline (ac3::sendspin::Group::start_time() plus n at the sample
+    // own timeline (iclforge::sendspin::Group::start_time() plus n at the sample
     // rate), and every member plays it then, so what has been taken counts
     // as played once that time has passed and as queued until it has - a
     // group reads a buffered source well ahead (a second and a half and its
@@ -121,7 +121,7 @@ public:
 };
 
 // The real one: resolves `group_name` through `resolve` at each open() -
-// which ac3::sendspin::Group backs a name, and whether that has changed
+// which iclforge::sendspin::Group backs a name, and whether that has changed
 // since the last open, is NetworkController's own business (the
 // HearthController<->NetworkController coupling, still to land - see
 // planning/hearth-reference-player.md#a6-network-outputs-in-the-application),
@@ -129,4 +129,4 @@ public:
 using GroupResolver = std::function<std::shared_ptr<sendspin::Group>(const std::string& group_name)>;
 [[nodiscard]] std::unique_ptr<NetworkGroupSink> make_group_sink(GroupResolver resolve);
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

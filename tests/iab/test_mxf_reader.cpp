@@ -10,7 +10,7 @@
 #include "iclforge/iab/ac3iab.hpp"
 #include "iclforge/iab/mxf.hpp"
 
-// ac3iab::parse_mxf_iab (mxf.hpp) - IAB reader, phase 2. These tests build MXF-level KLV
+// iclforge::iab::parse_mxf_iab (mxf.hpp) - IAB reader, phase 2. These tests build MXF-level KLV
 // fixtures byte-by-byte, independently of src/iab/src/mxf_reader.cpp's own implementation - the
 // same "independent fixture" convention test_ac3iab.cpp already establishes for its own IAB
 // bitstream fixtures. Key byte values are transcribed directly from SMPTE ST 377-1:2019 Table 4/6
@@ -104,11 +104,11 @@ std::vector<std::byte> minimal_elementary_iabitstream() {
     return out;
 }
 
-std::expected<std::vector<ac3iab::IABitstreamFrame>, ac3iab::IabError> parse(
+std::expected<std::vector<iclforge::iab::IABitstreamFrame>, iclforge::iab::IabError> parse(
     const std::vector<std::byte>& bytes) {
     std::string view(reinterpret_cast<const char*>(bytes.data()), bytes.size());
     std::istringstream in(std::move(view), std::ios::binary);
-    return ac3iab::parse_mxf_iab(in);
+    return iclforge::iab::parse_mxf_iab(in);
 }
 
 }  // namespace
@@ -159,15 +159,15 @@ TEST_CASE("parse_mxf_iab refuses a file with no matching essence element key", "
 
     auto frames = parse(file);
     REQUIRE_FALSE(frames.has_value());
-    CHECK(frames.error() == ac3iab::IabError::kMxfNoIabEssence);
-    CHECK_FALSE(ac3iab::describe(frames.error()).empty());
-    CHECK(ac3iab::describe(frames.error()) != "unknown ac3iab error");
+    CHECK(frames.error() == iclforge::iab::IabError::kMxfNoIabEssence);
+    CHECK_FALSE(iclforge::iab::describe(frames.error()).empty());
+    CHECK(iclforge::iab::describe(frames.error()) != "unknown ac3iab error");
 }
 
 TEST_CASE("parse_mxf_iab refuses an empty file", "[ac3iab][mxf]") {
     auto frames = parse({});
     REQUIRE_FALSE(frames.has_value());
-    CHECK(frames.error() == ac3iab::IabError::kMxfNoIabEssence);
+    CHECK(frames.error() == iclforge::iab::IabError::kMxfNoIabEssence);
 }
 
 TEST_CASE("parse_mxf_iab reports a truncated Key", "[ac3iab][mxf]") {
@@ -177,7 +177,7 @@ TEST_CASE("parse_mxf_iab reports a truncated Key", "[ac3iab][mxf]") {
 
     auto frames = parse(file);
     REQUIRE_FALSE(frames.has_value());
-    CHECK(frames.error() == ac3iab::IabError::kTruncated);
+    CHECK(frames.error() == iclforge::iab::IabError::kTruncated);
 }
 
 TEST_CASE("parse_mxf_iab reports a truncated Value", "[ac3iab][mxf]") {
@@ -187,7 +187,7 @@ TEST_CASE("parse_mxf_iab reports a truncated Value", "[ac3iab][mxf]") {
 
     auto frames = parse(full);
     REQUIRE_FALSE(frames.has_value());
-    CHECK(frames.error() == ac3iab::IabError::kTruncated);
+    CHECK(frames.error() == iclforge::iab::IabError::kTruncated);
 }
 
 TEST_CASE("parse_mxf_iab rejects the reserved indefinite-length BER token", "[ac3iab][mxf]") {
@@ -199,8 +199,8 @@ TEST_CASE("parse_mxf_iab rejects the reserved indefinite-length BER token", "[ac
 
     auto frames = parse(file);
     REQUIRE_FALSE(frames.has_value());
-    CHECK(frames.error() == ac3iab::IabError::kMxfBadKlv);
-    CHECK(ac3iab::describe(frames.error()) != "unknown ac3iab error");
+    CHECK(frames.error() == iclforge::iab::IabError::kMxfBadKlv);
+    CHECK(iclforge::iab::describe(frames.error()) != "unknown ac3iab error");
 }
 
 // Regression: read_klv() bounded the Value with `data.size() < value_offset + length`, and an
@@ -225,5 +225,5 @@ TEST_CASE("parse_mxf_iab reports a Length that wraps past the end of the file as
 
     auto frames = parse(file);
     REQUIRE_FALSE(frames.has_value());
-    CHECK(frames.error() == ac3iab::IabError::kTruncated);
+    CHECK(frames.error() == iclforge::iab::IabError::kTruncated);
 }

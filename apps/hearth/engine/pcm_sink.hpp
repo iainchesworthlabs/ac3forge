@@ -17,7 +17,7 @@
 // A3).
 //
 // The engine talks to this and never to a platform API. One implementation
-// drives ac3::audio::PcmOutput (A2), which opens a local device at its own
+// drives iclforge::audio::PcmOutput (A2), which opens a local device at its own
 // width and places each rendered slot by the device's speakers; ac3tests has
 // another, a fake device with a clock of its own, which is what A3's exit
 // needs - "a queue of mixed containers plays to a fake device gaplessly, with
@@ -29,7 +29,7 @@
 // each has a seam of its own, rather than a single interface with a payload
 // that means different things depending on the mode.
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 class PcmSink {
 public:
@@ -75,8 +75,8 @@ public:
     // defaults - a sink built before these existed (a test fake, mainly)
     // keeps compiling and simply does not support them, rather than every
     // implementer needing a change the day these were added. The real one,
-    // ac3::hearth::make_device_sink's DeviceSink, forwards to
-    // ac3::audio::PcmOutput, which already carries a routing patch - see
+    // iclforge::hearth::make_device_sink's DeviceSink, forwards to
+    // iclforge::audio::PcmOutput, which already carries a routing patch - see
     // that header's own comment for why trim and delay are deliberately NOT
     // here too: PcmSink::submit() takes the RENDERED (slot-ordered) blocks,
     // and Player applies TrimDelay to those before they ever reach here, so
@@ -98,22 +98,22 @@ public:
     // anything, only to say what is set up.
     [[nodiscard]] virtual std::string device_name() const { return {}; }
     // The open device's own endpoint id, the same string
-    // ac3::audio::RenderDeviceInfo::id and OutputPreferences::endpoint_id
+    // iclforge::audio::RenderDeviceInfo::id and OutputPreferences::endpoint_id
     // use - what an output picker compares against to say which row is the
     // one actually playing, rather than matching on the name two distinct
     // endpoints can share. Empty where there is none to show.
     [[nodiscard]] virtual std::string device_id() const { return {}; }
     // The open device's own speaker mask, 0 where it has none
-    // (ac3::audio::speakers.hpp) - what speaker_routing() built the default
+    // (iclforge::audio::speakers.hpp) - what speaker_routing() built the default
     // patch from, and what a settings page reads to label the routing grid's
     // columns by speaker rather than by bare output number.
     [[nodiscard]] virtual std::uint32_t speaker_mask() const { return 0; }
 };
 
-// The real one: a local render endpoint through ac3::audio::PcmOutput.
+// The real one: a local render endpoint through iclforge::audio::PcmOutput.
 // `device_id` empty selects the endpoint the enumeration marks default, as
 // PcmOutput's own start() describes.
 [[nodiscard]] std::unique_ptr<PcmSink> make_device_sink(std::string device_id,
                                                         bool low_latency = false);
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

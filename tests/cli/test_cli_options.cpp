@@ -47,7 +47,7 @@ namespace {
 // See tests/cli/test_cli.cpp's own scratch_dir for the reasoning this copy
 // shares, including the PID fold; the leaf name below is this file's own.
 std::string scratch_pid_suffix() {
-    return ac3::test::platform::process_id();
+    return iclforge::test::platform::process_id();
 }
 
 fs::path scratch_dir() {
@@ -59,7 +59,7 @@ fs::path scratch_dir() {
 int run_cli(const std::string& args, const fs::path& log) {
     const std::string command =
         "\"" + std::string(AC3CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
-    return ac3::test::platform::run_shell(command);
+    return iclforge::test::platform::run_shell(command);
 }
 
 std::string read_log(const fs::path& log) {
@@ -93,18 +93,18 @@ fs::path write_tone_wav(const fs::path& path, std::size_t channels) {
                                                            static_cast<double>(n) / kRate));
         }
     }
-    REQUIRE(ac3::io::write_wav_f32(path.string(), data, kRate).has_value());
+    REQUIRE(iclforge::io::write_wav_f32(path.string(), data, kRate).has_value());
     return path;
 }
 
 // The first syncframe of an AC-3 file, decoded - its bsi is what the
 // metadata tokens under test were meant to reach.
-ac3::DecodedFrame first_frame(const fs::path& path) {
+iclforge::DecodedFrame first_frame(const fs::path& path) {
     const auto bytes = read_bytes(path);
-    const auto frames = ac3::split_frames(bytes);
+    const auto frames = iclforge::split_frames(bytes);
     REQUIRE(frames.has_value());
     REQUIRE_FALSE(frames->empty());
-    ac3::FrameDecoder decoder;
+    iclforge::FrameDecoder decoder;
     auto decoded = decoder.decode_frame(frames->front());
     REQUIRE(decoded.has_value());
     return std::move(*decoded);
@@ -788,13 +788,14 @@ TEST_CASE("AC-3 centre and surround downmix levels reach the bsi a decoder reads
 
     struct Case {
         std::string_view tokens;
-        ac3::meta::CentreMixLevel cmixlev;
-        ac3::meta::SurroundMixLevel surmixlev;
+        iclforge::meta::CentreMixLevel cmixlev;
+        iclforge::meta::SurroundMixLevel surmixlev;
     };
-    for (const auto& c : {Case{"cmixlev=-4.5 surmixlev=-6", ac3::meta::CentreMixLevel::kMinus4_5dB,
-                               ac3::meta::SurroundMixLevel::kMinus6dB},
-                          Case{"cmixlev=-6 surmixlev=off", ac3::meta::CentreMixLevel::kMinus6dB,
-                               ac3::meta::SurroundMixLevel::kSilent}}) {
+    for (const auto& c :
+         {Case{"cmixlev=-4.5 surmixlev=-6", iclforge::meta::CentreMixLevel::kMinus4_5dB,
+               iclforge::meta::SurroundMixLevel::kMinus6dB},
+          Case{"cmixlev=-6 surmixlev=off", iclforge::meta::CentreMixLevel::kMinus6dB,
+               iclforge::meta::SurroundMixLevel::kSilent}}) {
         CAPTURE(c.tokens);
         fs::remove(out_path);
         const auto rc = run_cli("encode \"" + wav.string() + "\" \"" + out_path.string() +
@@ -820,11 +821,11 @@ TEST_CASE("AC-3 dsurmod accepts its raw code and its names, reserved code 3 read
 
     struct Case {
         std::string_view token;
-        ac3::meta::SurroundMode mode;
+        iclforge::meta::SurroundMode mode;
     };
-    for (const auto& c : {Case{"dsurmod=on", ac3::meta::SurroundMode::kDolbySurround},
-                          Case{"dsurmod=1", ac3::meta::SurroundMode::kNotDolbySurround},
-                          Case{"dsurmod=3", ac3::meta::SurroundMode::kNotIndicated}}) {
+    for (const auto& c : {Case{"dsurmod=on", iclforge::meta::SurroundMode::kDolbySurround},
+                          Case{"dsurmod=1", iclforge::meta::SurroundMode::kNotDolbySurround},
+                          Case{"dsurmod=3", iclforge::meta::SurroundMode::kNotIndicated}}) {
         CAPTURE(c.token);
         fs::remove(out_path);
         const auto rc = run_cli("encode \"" + wav.string() + "\" \"" + out_path.string() +
@@ -854,9 +855,9 @@ TEST_CASE("AC-3 Annex D downmix preferences reach xbsi1 as asked", "[cli][option
     REQUIRE(frame.alternate_bsi.has_value());
     REQUIRE(frame.alternate_bsi->mix.has_value());
     const auto& mix = *frame.alternate_bsi->mix;
-    CHECK(mix.dmixmod == ac3::meta::DownmixMode::kLoRo);
-    CHECK(mix.ltrtcmixlev == ac3::meta::MixLevel::kPlus1_5dB);
-    CHECK(mix.lorocmixlev == ac3::meta::MixLevel::kMinus4_5dB);
-    CHECK(mix.ltrtsurmixlev == ac3::meta::MixLevel::kMinus1_5dB);
-    CHECK(mix.lorosurmixlev == ac3::meta::MixLevel::kSilent);
+    CHECK(mix.dmixmod == iclforge::meta::DownmixMode::kLoRo);
+    CHECK(mix.ltrtcmixlev == iclforge::meta::MixLevel::kPlus1_5dB);
+    CHECK(mix.lorocmixlev == iclforge::meta::MixLevel::kMinus4_5dB);
+    CHECK(mix.ltrtsurmixlev == iclforge::meta::MixLevel::kMinus1_5dB);
+    CHECK(mix.lorosurmixlev == iclforge::meta::MixLevel::kSilent);
 }

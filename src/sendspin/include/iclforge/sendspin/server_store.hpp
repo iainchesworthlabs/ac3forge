@@ -17,7 +17,7 @@
 // MemoryServerStore keeps them for the life of the process, which is what the tests need; an
 // application persists them by implementing this with its own storage.
 
-namespace ac3::sendspin {
+namespace iclforge::sendspin {
 
 class ServerStore : public handshake::ServerKeyring {
    public:
@@ -56,4 +56,4 @@ class MemoryServerStore final : public ServerStore {
     std::map<crypto::Key32, bool> approvals_;
 };
 
-}  // namespace ac3::sendspin
+}  // namespace iclforge::sendspin

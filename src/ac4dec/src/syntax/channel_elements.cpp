@@ -8,7 +8,7 @@
 
 #include "iclforge/ac4core/tables/sfb_tables.hpp"
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 namespace {
 
@@ -1181,4 +1181,4 @@ ParseResult parse_audio_data_chan(BitReader& r, const SubstreamContext& ctx, Cha
     }
 }
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

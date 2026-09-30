@@ -22,9 +22,9 @@
 
 namespace {
 
-namespace packets = ac3::sendspin::discovery::mdns_packets;
-using ac3::sendspin::discovery::Advertisement;
-using ac3::sendspin::discovery::Service;
+namespace packets = iclforge::sendspin::discovery::mdns_packets;
+using iclforge::sendspin::discovery::Advertisement;
+using iclforge::sendspin::discovery::Service;
 
 const Advertisement kKitchen{.service = "_sendspin._tcp",
                              .instance = "Kitchen",
@@ -230,7 +230,7 @@ TEST_CASE("mdns: packets that end early or point at themselves, and names that n
 
 namespace {
 
-class Found final : public ac3::sendspin::discovery::BrowseListener {
+class Found final : public iclforge::sendspin::discovery::BrowseListener {
    public:
     void on_found(const Service& service) override {
         {
@@ -278,7 +278,7 @@ class Found final : public ac3::sendspin::discovery::BrowseListener {
 }  // namespace
 
 TEST_CASE("mdns: an advertiser and a browser find each other on the loopback interface", "[sendspin][mdns][network]") {
-    namespace mdns = ac3::sendspin::discovery::mdns;
+    namespace mdns = iclforge::sendspin::discovery::mdns;
     // A name of this run's own, so that another run on the same computer is not found instead.
     std::random_device random;
     const std::string instance = "Hearth test " + std::to_string(random() % 1'000'000);
@@ -293,9 +293,9 @@ TEST_CASE("mdns: an advertiser and a browser find each other on the loopback int
         .interfaces = {"127.0.0.1"}, .host = "hearth-test", .request_firewall_exception = false};
 
     Found found;
-    std::unique_ptr<ac3::sendspin::discovery::Advertiser> advertiser = mdns::advertise(advertisement, loopback);
+    std::unique_ptr<iclforge::sendspin::discovery::Advertiser> advertiser = mdns::advertise(advertisement, loopback);
     REQUIRE(advertiser != nullptr);
-    const std::unique_ptr<ac3::sendspin::discovery::Browser> browser = mdns::browse("_sendspin._tcp", found, loopback);
+    const std::unique_ptr<iclforge::sendspin::discovery::Browser> browser = mdns::browse("_sendspin._tcp", found, loopback);
     REQUIRE(browser != nullptr);
 
     const std::optional<Service> service = found.wait_found(instance, std::chrono::seconds(10));

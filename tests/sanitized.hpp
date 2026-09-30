@@ -13,8 +13,8 @@
 // AC3FORGE_SANITIZERS names any and as 0 when it does not, so that no test
 // asks the preprocessor which it is.
 
-namespace ac3::test {
+namespace iclforge::test {
 
 inline constexpr bool kSanitized = AC3FORGE_TEST_SANITIZED != 0;
 
-}  // namespace ac3::test
+}  // namespace iclforge::test

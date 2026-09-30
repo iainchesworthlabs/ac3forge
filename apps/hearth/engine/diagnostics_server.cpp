@@ -8,7 +8,7 @@
 // carries the identical rule, and httplib.h pulls windows.h in there.
 #include <httplib.h>
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 struct DiagnosticsHttpServer::Impl {
     httplib::Server server;
@@ -66,4 +66,4 @@ void DiagnosticsHttpServer::stop() {
 
 std::uint16_t DiagnosticsHttpServer::port() const { return impl_->port; }
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

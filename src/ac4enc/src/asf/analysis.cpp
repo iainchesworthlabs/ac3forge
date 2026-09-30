@@ -6,7 +6,7 @@
 
 #include "iclforge/ac4core/dsp/kbd.hpp"
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 namespace {
 
 constexpr int kLengthsPerFrame = 5;  // the full length and its halves to a sixteenth
@@ -90,4 +90,4 @@ void Analysis::transform(std::span<const double> frame, const FrameLayout& layou
     }
 }
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

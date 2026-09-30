@@ -16,7 +16,7 @@
 #include "iclforge/sendspin/codec.hpp"
 #include "iclforge/sendspin/messages.hpp"
 
-namespace ac3::hearth::testsink {
+namespace iclforge::hearth::testsink {
 
 WavOutput::WavOutput(std::filesystem::path directory, std::string prefix)
     : directory_(std::move(directory)), prefix_(std::move(prefix)) {}
@@ -92,4 +92,4 @@ void WavOutput::write(std::span<const std::uint8_t> frame, std::int64_t local_ti
     (void)writer_.write(samples_);
 }
 
-}  // namespace ac3::hearth::testsink
+}  // namespace iclforge::hearth::testsink

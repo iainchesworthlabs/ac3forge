@@ -15,17 +15,17 @@
 // File Format).
 //
 // This is a container writer and nothing more, in exactly the sense
-// matroska::matroska is: it knows how to nest ISOBMFF boxes and lay out one
+// iclforge::matroska is: it knows how to nest ISOBMFF boxes and lay out one
 // audio track's samples, and it takes each frame - and the codec's own
 // configuration box payload - as opaque bytes. It has NO dependency on
-// ac3::forge and no knowledge of AC-3: a caller muxing E-AC-3 hands over
+// iclforge::ac3 and no knowledge of AC-3: a caller muxing E-AC-3 hands over
 // whole access units plus a ready-made 'dec3' payload (see
-// ac3::io::build_codec_config_box, ac3/io/dec3.hpp); a caller muxing
+// iclforge::io::build_codec_config_box, ac3/io/dec3.hpp); a caller muxing
 // something else hands over whatever its own frames and sample-entry config
 // box are. Keeping the codec-specific box payload opaque here is exactly why
-// matroska::matroska stays codec-blind too, applied to the one place MP4
+// iclforge::matroska stays codec-blind too, applied to the one place MP4
 // needs codec-specific bytes that Matroska's plain CodecID string does not:
-// see mp4::AudioTrack::codec_config below.
+// see iclforge::mp4::AudioTrack::codec_config below.
 //
 // Deliberately small. Enough to produce a file a player will open with the
 // right channel layout, duration and codec signalling:
@@ -44,7 +44,7 @@
 // and mp4/dash.hpp build the HLS media playlist and DASH MPD that point at
 // what either produces.
 
-namespace mp4 {
+namespace iclforge::mp4 {
 
 // ISOBMFF sample entry codes (ISO/IEC 14496-15 §5.5 registers 'ac-3'; ETSI
 // TS 102 366 Annex F itself is what ties each to its dac3/dec3 box). These
@@ -58,7 +58,7 @@ inline constexpr std::string_view kCodecEac3 = "ec-3";
 // 'dac4'). Unlike the two above, the bare fourcc is NOT the whole RFC 6381
 // codec string - Annex E.13 appends bitstream/presentation/mdcompat fields -
 // so an AC-4 AudioTrack that feeds HLS/DASH should also set
-// AudioTrack::rfc6381 (ac4::rfc6381_codec_string produces it).
+// AudioTrack::rfc6381 (iclforge::ac4::rfc6381_codec_string produces it).
 inline constexpr std::string_view kCodecAc4 = "ac-4";
 
 enum class MuxError : std::uint8_t {
@@ -77,7 +77,7 @@ struct AudioTrack {
     // configuration box wraps `codec_config` ('dac3' or 'dec3' respectively -
     // see ETSI TS 102 366 Annex F). Any other value is kInvalidTrack: this
     // module only knows how to describe an AC-3/E-AC-3 sample entry, the same
-    // way matroska::AudioTrack::codec_id is free-form but this one is not -
+    // way iclforge::matroska::AudioTrack::codec_id is free-form but this one is not -
     // an MP4 sample entry's box layout genuinely depends on which codec it
     // is, unlike Matroska's CodecID string.
     std::string codec_id{kCodecEac3};
@@ -89,7 +89,7 @@ struct AudioTrack {
     // The sample entry's one child configuration box, PAYLOAD ONLY (this
     // module writes the box's own size+FourCC header, choosing 'dac3' or
     // 'dec3' from codec_id above). Opaque to this module by design - see
-    // ac3::io::build_codec_config_box (ac3/io/dec3.hpp) for how AC-3/E-AC-3
+    // iclforge::io::build_codec_config_box (ac3/io/dec3.hpp) for how AC-3/E-AC-3
     // callers produce it, and examples/mux_mp4.cpp for the full round trip.
     std::vector<std::byte> codec_config;
     std::string language{"und"};
@@ -135,8 +135,8 @@ struct MuxOptions {
 };
 
 // Mux frames into a complete .mp4, returned as bytes. No file I/O here, so
-// this stays testable without touching a disk - matroska::mux()'s own reason
-// applies unchanged. Frames arrive as views (matroska::mux's own reasoning
+// this stays testable without touching a disk - iclforge::matroska::mux()'s own reason
+// applies unchanged. Frames arrive as views (iclforge::matroska::mux's own reasoning
 // there too); the vector-list overload below forwards for owned lists.
 [[nodiscard]] MP4_EXPORT std::expected<std::vector<std::byte>, MuxError> mux(
     const AudioTrack& track, std::span<const std::span<const std::byte>> frames,
@@ -159,8 +159,8 @@ struct MuxOptions {
 // at - see mp4/hls.hpp and mp4/dash.hpp.
 //
 // A batch API, the same shape mux() already is: every frame is known up
-// front (mirrors how matroska::mux() stayed batch-only when
-// matroska::Writer was added later for a true live/incremental caller - see
+// front (mirrors how iclforge::matroska::mux() stayed batch-only when
+// iclforge::matroska::Writer was added later for a true live/incremental caller - see
 // that header's own comment). fragment() therefore fills in real
 // durations/timestamps throughout, including the track's total duration in
 // mvhd/tkhd/mdhd; FragmentWriter below is the live/incremental form, and the
@@ -176,9 +176,9 @@ struct FragmentOptions {
     // 1-10 s range the CMAF/DASH-IF interoperability guidelines assume most
     // packagers and CDNs are tuned for. Every AC-3/E-AC-3 access unit this
     // project produces is independently decodable (see
-    // AudioTrack::samples_per_frame's own comment, and how ac3::io::scan
+    // AudioTrack::samples_per_frame's own comment, and how iclforge::io::scan
     // already groups a whole access unit - independent substream plus any
-    // dependents - into the one opaque frame mp4:: ever sees), so any
+    // dependents - into the one opaque frame iclforge::mp4:: ever sees), so any
     // grouping is valid; this only trades segment count for
     // segment-switch/start-up latency. An AC-4 fragment starts at a sync
     // sample (sync_samples below), so there this is the least a fragment
@@ -288,7 +288,7 @@ struct FragmentedOutput {
     const AudioTrack& track, std::span<const std::vector<std::byte>> frames,
     const FragmentOptions& options = {});
 
-// matroska::Writer's and mpegts::Writer's sibling (ROADMAP.md's IO4), for a
+// iclforge::matroska::Writer's and iclforge::mpegts::Writer's sibling (ROADMAP.md's IO4), for a
 // session whose length is not known up front - a live capture, where
 // fragment() above cannot help: it needs every frame before it can group them
 // into fragments at all. A fragmented movie is the one container shape this
@@ -296,7 +296,7 @@ struct FragmentedOutput {
 // exists: every fragment carries its own moof, so nothing in a fragment
 // depends on a later one.
 //
-// Contract, the same one mpegts::Writer's own tests assert: for the same
+// Contract, the same one iclforge::mpegts::Writer's own tests assert: for the same
 // track, options and frames, the media segments this class hands back are
 // BYTE FOR BYTE the media segments fragment() would have built - mfhd
 // sequence numbers, tfdt decode times, trun sample sizes and mdat payload
@@ -310,7 +310,7 @@ struct FragmentedOutput {
 // duration, and ISO/IEC 14496-12 §8.8.2 says as much by providing mehd for
 // the fragmented movie that DOES know one; a track whose overall duration is
 // not in the movie header is measured by walking its fragments instead. That
-// is the identical concession matroska::Writer makes with EBML's unknown-size
+// is the identical concession iclforge::matroska::Writer makes with EBML's unknown-size
 // Segment and its omitted Duration, for the identical reason. Everything else
 // in the init segment - stsd and its opaque dec3/dac3 payload, mvex/trex, the
 // empty sample table - is byte-identical to fragment()'s.
@@ -381,4 +381,4 @@ class MP4_EXPORT FragmentWriter {
     std::vector<SegmentInfo> window_;
 };
 
-}  // namespace mp4
+}  // namespace iclforge::mp4

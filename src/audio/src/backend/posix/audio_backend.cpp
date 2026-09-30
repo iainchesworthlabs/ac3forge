@@ -1,6 +1,6 @@
 #include "iclforge/audio/audio_backend.hpp"
 
-// This is now reachable only as ac3::audio's Linux fallback, when
+// This is now reachable only as iclforge::audio's Linux fallback, when
 // libasound's development headers are not present (see the AC3FORGE_WITH_ALSA
 // AUTO/ON/OFF block in src/audio/CMakeLists.txt) - macOS gets a real
 // CoreAudio backend of its own, src/audio/src/backend/macos/, unconditionally.
@@ -20,7 +20,7 @@
 // These strings are printed verbatim when a caller is turned away, so they
 // name what is missing rather than merely reporting that something is.
 
-namespace ac3::audio {
+namespace iclforge::audio {
 
 const AudioBackend& audio_backend() {
     static constexpr AudioBackend kBackend{
@@ -50,4 +50,4 @@ const AudioBackend& audio_backend() {
     return kBackend;
 }
 
-}  // namespace ac3::audio
+}  // namespace iclforge::audio

@@ -28,7 +28,7 @@
 //   THE BED, when there are no objects to place (an AC-3 or plain E-AC-3
 //   stream, or a player that chose not to reconstruct). Every coded channel is
 //   a source at its Table E2.5 direction, panned onto the layout's speakers by
-//   ac3::spatial::pan_direction - which for a channel whose location the layout
+//   iclforge::spatial::pan_direction - which for a channel whose location the layout
 //   has is unit gain to that one slot, exactly, and for one it lacks (a 7.1
 //   stream's rear surrounds on a 5.1 room) is the pairwise spread the panner
 //   gives. The LFE goes to the LFE slots and nowhere else.
@@ -80,22 +80,22 @@
 // unless the layout has one, so a layout with any small speaker can never
 // reach render_folded() - nothing to branch on there. The filters are
 // FloatBiquad (ac3/render/float_biquad.hpp), which says why they are float
-// rather than ac3::dsp::Biquad. The corner is a setting (set_crossover_hz),
+// rather than iclforge::dsp::Biquad. The corner is a setting (set_crossover_hz),
 // in the range an AVR's speaker setup offers.
 
-namespace ac3::render {
+namespace iclforge::render {
 
 class LayoutRenderer {
    public:
-    using Location = ac3::base::Location;
+    using Location = iclforge::base::Location;
     static constexpr std::size_t kMaxSlots = OutputLayout::kMaxSlots;
     // JOC carries at most sixteen objects (TS 103 420); a rendered programme
     // has at most sixteen slots (§E3.8.2).
     static constexpr std::size_t kMaxObjects = 16;
     static constexpr std::size_t kMaxCoded = 16;
     // The standard AVR bass-management crossover - not §7.8's LFE handling
-    // (ac3::OutputConfig::mix_lfe) or bundle C's ~120 Hz LFE-channel
-    // low-pass (ac3::dsp::LfeLowpass), both different questions.
+    // (iclforge::OutputConfig::mix_lfe) or bundle C's ~120 Hz LFE-channel
+    // low-pass (iclforge::dsp::LfeLowpass), both different questions.
     static constexpr double kDefaultCrossoverHz = 80.0;
     // What set_crossover_hz() accepts: the span an AVR's speaker setup offers
     // (40 to 250 Hz is typical), well inside the rates the renderer runs at.
@@ -166,13 +166,13 @@ class LayoutRenderer {
     }
 
     // The domain the decoder reconstructs the objects in
-    // (ac3::DecoderConfig::joc_domain), which is what decides how far they
+    // (iclforge::DecoderConfig::joc_domain), which is what decides how far they
     // trail their bed: object_lag() becomes oba::joc::reconstruction_delay()
     // of it. kQmf, the decoder's default, until this says otherwise. A change
     // empties the LFE's delay line, so the LFE is silent for the new lag
     // rather than played out of order.
-    void set_joc_domain(ac3::oba::joc::Domain domain) {
-        const auto lag = static_cast<std::size_t>(ac3::oba::joc::reconstruction_delay(domain));
+    void set_joc_domain(iclforge::oba::joc::Domain domain) {
+        const auto lag = static_cast<std::size_t>(iclforge::oba::joc::reconstruction_delay(domain));
         if (lag != object_lag_) {
             object_lag_ = lag;
             size_lfe_delay();
@@ -189,7 +189,7 @@ class LayoutRenderer {
     // announces the same layout again: the LFE's delay line, when there is
     // one, is only emptied if the coded LFE channels themselves actually
     // move or change count, not on every call.
-    void set_bed(const ac3::base::Layout& coded) {
+    void set_bed(const iclforge::base::Layout& coded) {
         coded_ = coded;
         bed_channels_ = std::min(static_cast<std::size_t>(coded.count), kMaxCoded);
         for (auto& row : bed_gains_) {
@@ -246,9 +246,9 @@ class LayoutRenderer {
                 continue;
             }
             const auto direction =
-                ac3::spatial::direction_of(location, has_rears, has_side_discrete);
-            ac3::spatial::pan_direction(
-                direction, std::span<const ac3::spatial::Direction>(target_directions_.data(), targets_),
+                iclforge::spatial::direction_of(location, has_rears, has_side_discrete);
+            iclforge::spatial::pan_direction(
+                direction, std::span<const iclforge::spatial::Direction>(target_directions_.data(), targets_),
                 std::span<double>(gains.data(), targets_));
             for (std::size_t t = 0; t < targets_; ++t) {
                 bed_gains_[c][target_slots_[t]] = static_cast<float>(gains[t]);
@@ -267,7 +267,7 @@ class LayoutRenderer {
     // them: position, gain and whether active. Only the first kMaxObjects are
     // placed. The first call with any takes the LFE's delay line (see the
     // header comment); later ones reuse it.
-    void set_objects(std::span<const ac3::oba::DisplayObject> objects) {
+    void set_objects(std::span<const iclforge::oba::DisplayObject> objects) {
         object_count_ = std::min(objects.size(), kMaxObjects);
         std::array<double, kMaxSlots> gains{};
         for (std::size_t i = 0; i < object_count_; ++i) {
@@ -275,10 +275,10 @@ class LayoutRenderer {
             if (!objects[i].active || targets_ == 0) {
                 continue;
             }
-            const auto direction = ac3::spatial::position_direction(
+            const auto direction = iclforge::spatial::position_direction(
                 objects[i].position.x, objects[i].position.y, objects[i].position.z);
-            ac3::spatial::pan_direction(
-                direction, std::span<const ac3::spatial::Direction>(target_directions_.data(), targets_),
+            iclforge::spatial::pan_direction(
+                direction, std::span<const iclforge::spatial::Direction>(target_directions_.data(), targets_),
                 std::span<double>(gains.data(), targets_));
             const double linear = std::pow(10.0, objects[i].gain_db / 20.0);
             for (std::size_t t = 0; t < targets_; ++t) {
@@ -295,14 +295,14 @@ class LayoutRenderer {
     // The same, from the metadata a PcmBlock carries. `audio_count` is how
     // many object signals the block has (PcmBlock::objects.size()); the
     // description and the audio are parallel, so the shorter wins.
-    void set_objects(const ac3::oba::DecodedProgram* metadata, std::size_t audio_count) {
+    void set_objects(const iclforge::oba::DecodedProgram* metadata, std::size_t audio_count) {
         if (metadata == nullptr || audio_count == 0) {
             object_count_ = 0;
             return;
         }
-        const std::vector<ac3::oba::DisplayObject> described = ac3::oba::describe_objects(*metadata);
+        const std::vector<iclforge::oba::DisplayObject> described = iclforge::oba::describe_objects(*metadata);
         const std::size_t count = std::min(described.size(), audio_count);
-        set_objects(std::span<const ac3::oba::DisplayObject>(described.data(), count));
+        set_objects(std::span<const iclforge::oba::DisplayObject>(described.data(), count));
     }
 
     [[nodiscard]] std::size_t object_count() const { return object_count_; }
@@ -361,7 +361,7 @@ class LayoutRenderer {
     // none, the bed is placed whatever this says); `gain` is applied to
     // everything, 1.0 being free. While objects are placed, the LFE a slot
     // plays is the bed's of object_lag() samples before.
-    void render(const ac3::render::PcmBlock& block, bool objects, float gain,
+    void render(const iclforge::render::PcmBlock& block, bool objects, float gain,
                 std::span<const std::span<float>> out) {
         const std::size_t slots = std::min(out.size(), layout_.slots());
         const std::size_t n = block_length(block, out);
@@ -422,7 +422,7 @@ class LayoutRenderer {
 
     // Drops the crossover filters' delay-line state (not their
     // coefficients) and silences the LFE's delay line, for reuse across
-    // streams - the same reasoning ac3::OutputStage::reset() has for its own
+    // streams - the same reasoning iclforge::OutputStage::reset() has for its own
     // Lt/Rt phase-shift history. A no-op when nothing is small and no object
     // has been placed.
     void reset() {
@@ -441,7 +441,7 @@ class LayoutRenderer {
     // the slots have names - L to the slot named L, R to R - so a list that
     // wires a stereo DAC as "R,L" still plays the right way round. Empty and
     // LFE slots are written as zeros.
-    void render_folded(const ac3::render::PcmBlock& block, float gain,
+    void render_folded(const iclforge::render::PcmBlock& block, float gain,
                        std::span<const std::span<float>> out) const {
         const std::size_t slots = std::min(out.size(), layout_.slots());
         const std::size_t n = block_length(block, out);
@@ -529,7 +529,7 @@ class LayoutRenderer {
         }
     }
 
-    static std::size_t block_length(const ac3::render::PcmBlock& block,
+    static std::size_t block_length(const iclforge::render::PcmBlock& block,
                                     std::span<const std::span<float>> out) {
         std::size_t n = block.channels.empty() ? 0 : block.channels.front().size();
         if (n == 0 && !block.objects.empty()) {
@@ -593,7 +593,7 @@ class LayoutRenderer {
     // the line, either way, go the block's samples, a run at a time up to the
     // line's end, so a block longer than the lag works too. A channel the
     // block lacks, or has short, is silence, as add_channel() takes it.
-    void add_lfe(const ac3::render::PcmBlock& block, std::size_t n, std::size_t slots,
+    void add_lfe(const iclforge::render::PcmBlock& block, std::size_t n, std::size_t slots,
                  std::span<const std::span<float>> out, bool delayed) {
         const std::size_t lag = object_lag_;
         for (std::size_t i = 0; i < lfe_channels_; ++i) {
@@ -628,10 +628,10 @@ class LayoutRenderer {
     OutputLayout layout_;
     std::uint32_t sample_rate_hz_ = 48000;
     double crossover_hz_ = kDefaultCrossoverHz;
-    std::array<ac3::spatial::Direction, kMaxSlots> target_directions_{};
+    std::array<iclforge::spatial::Direction, kMaxSlots> target_directions_{};
     std::array<std::size_t, kMaxSlots> target_slots_{};
     std::size_t targets_ = 0;
-    ac3::base::Layout coded_{};
+    iclforge::base::Layout coded_{};
     std::size_t bed_channels_ = 0;
     std::array<std::array<float, kMaxSlots>, kMaxCoded> bed_gains_{};
     std::array<std::array<float, kMaxSlots>, kMaxObjects> object_gains_{};
@@ -657,14 +657,15 @@ class LayoutRenderer {
     // reason the header comment gives. add_lfe()'s modulo relies on the lag
     // never being zero.
     std::size_t object_lag_ = static_cast<std::size_t>(
-        ac3::oba::joc::reconstruction_delay(ac3::oba::joc::Domain::kQmf));
+        iclforge::oba::joc::reconstruction_delay(iclforge::oba::joc::Domain::kQmf));
     std::array<std::uint8_t, kMaxCoded> lfe_coded_{};
     std::size_t lfe_channels_ = 0;
     bool lfe_delay_taken_ = false;
     std::size_t lfe_delay_at_ = 0;
     std::vector<float> lfe_delay_;
-    static_assert(ac3::oba::joc::reconstruction_delay(ac3::oba::joc::Domain::kQmf) > 0 &&
-                  ac3::oba::joc::reconstruction_delay(ac3::oba::joc::Domain::kMdctBand) > 0);
+    static_assert(iclforge::oba::joc::reconstruction_delay(iclforge::oba::joc::Domain::kQmf) > 0 &&
+                  iclforge::oba::joc::reconstruction_delay(iclforge::oba::joc::Domain::kMdctBand) >
+                      0);
 };
 
-}  // namespace ac3::render
+}  // namespace iclforge::render

@@ -4,19 +4,19 @@
 #include <string>
 #include <string_view>
 
-// Compiled only when AC3FORGE_BUILD_ADM did NOT turn ac3adm::ac3adm/ac3::admbridge on (see
+// Compiled only when AC3FORGE_BUILD_ADM did NOT turn iclforge::adm/iclforge::admbridge on (see
 // apps/cli/CMakeLists.txt) - see ../atmos_adm.hpp's own top comment for why this file, rather than
 // a preprocessor conditional inside main.cpp, is the mechanism. This translation unit links
-// neither ac3adm::ac3adm nor ac3::admbridge and includes neither of their headers - it cannot,
+// neither iclforge::adm nor iclforge::admbridge and includes neither of their headers - it cannot,
 // since in this build neither target was ever add_subdirectory()'d at all.
 
 namespace ac3cli {
 
-const ac3::audio::Capability& adm_capability() {
-    static constexpr ac3::audio::Capability kUnavailable{
+const iclforge::audio::Capability& adm_capability() {
+    static constexpr iclforge::audio::Capability kUnavailable{
         .available = false,
         .reason = "this build was not configured with -DAC3FORGE_BUILD_ADM=ON "
-                  "(ac3adm::ac3adm/ac3::admbridge were not linked in)"};
+                  "(iclforge::adm/iclforge::admbridge were not linked in)"};
     return kUnavailable;
 }
 

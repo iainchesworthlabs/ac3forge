@@ -6,7 +6,7 @@
 #include "iclforge/ac4core/tables/huffman_codes.hpp"
 #include "iclforge/ac4core/tables/huffman_tables.hpp"
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 namespace {
 
 enum class Kind : std::uint8_t { kAlpha, kBeta, kDry, kWet };
@@ -175,4 +175,4 @@ std::size_t ajcc_set_bits(std::size_t param, int quant_mode, bool no_dt,
     return bits;
 }
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

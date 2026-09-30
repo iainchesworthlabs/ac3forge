@@ -5,11 +5,11 @@
 #include "iclforge/audio/passthrough.hpp"
 #include "bitstream_sink.hpp"
 
-// The BitstreamSink over a real local endpoint: ac3::audio::PassthroughSink.
+// The BitstreamSink over a real local endpoint: iclforge::audio::PassthroughSink.
 // Everything here is a translation between the two interfaces, as
 // device_sink.cpp is for the PCM side.
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 namespace {
 
@@ -65,4 +65,4 @@ std::unique_ptr<BitstreamSink> make_passthrough_sink(std::string device_id) {
     return std::make_unique<PassthroughDeviceSink>(std::move(device_id));
 }
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

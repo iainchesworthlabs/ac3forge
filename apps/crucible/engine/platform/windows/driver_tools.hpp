@@ -13,7 +13,7 @@
 // (docs/platforms/windows-demo.md, "Phase 4"). Windows-only, this
 // directory only.
 
-namespace ac3::crucible {
+namespace iclforge::crucible {
 
 struct CodeIntegrityState {
     bool test_signing = false;   // bcdedit /set testsigning on, after a reboot
@@ -56,4 +56,4 @@ private:
 // the header and footer banners removed; empty when the file is missing.
 [[nodiscard]] std::vector<std::string> transcript_tail(std::wstring_view path, std::size_t max_lines);
 
-}  // namespace ac3::crucible
+}  // namespace iclforge::crucible

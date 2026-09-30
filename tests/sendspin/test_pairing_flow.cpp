@@ -27,13 +27,13 @@
 
 namespace {
 
-using ac3::sendspin::Dialect;
-using ac3::sendspin::crypto::Digest32;
-using ac3::sendspin::crypto::Key32;
-namespace flow = ac3::sendspin::pairing_flow;
-namespace m = ac3::sendspin::messages;
-namespace hs = ac3::sendspin::handshake;
-namespace json = ac3::sendspin::json;
+using iclforge::sendspin::Dialect;
+using iclforge::sendspin::crypto::Digest32;
+using iclforge::sendspin::crypto::Key32;
+namespace flow = iclforge::sendspin::pairing_flow;
+namespace m = iclforge::sendspin::messages;
+namespace hs = iclforge::sendspin::handshake;
+namespace json = iclforge::sendspin::json;
 
 struct Parsed {
     std::string text;
@@ -86,7 +86,7 @@ const m::PairMethodDescriptor kStaticDescriptor{
 // A client and a server pairing on one connection.
 struct Pairing {
     Dialect dialect;
-    ac3::sendspin::noise::Suite suite = ac3::sendspin::noise::Suite::kAesGcmSha256;
+    iclforge::sendspin::noise::Suite suite = iclforge::sendspin::noise::Suite::kAesGcmSha256;
     flow::ClientPairingState state;
     ClientEvents events;
     std::unique_ptr<flow::ClientPairing> client;
@@ -260,7 +260,7 @@ TEST_CASE("pairing flow: aiosendspin 9.1.1's dynamic code, and no second round",
         pairing.from_server(pairing.server->enter_code(wrong));
         CHECK(pairing.client_after == flow::After::kEnded);
         CHECK(pairing.server_after == flow::After::kEnded);
-        CHECK(pairing.server->aborted() == ac3::sendspin::pairing_messages::AbortReason::kCodeMismatch);
+        CHECK(pairing.server->aborted() == iclforge::sendspin::pairing_messages::AbortReason::kCodeMismatch);
         CHECK_FALSE(pairing.events.paired.has_value());
     }
 }
@@ -316,7 +316,7 @@ TEST_CASE("pairing flow: five wrong static codes close the window", "[sendspin][
         REQUIRE(pairing.server->wants_code());
         pairing.from_server(pairing.server->enter_code(std::string("00000000")));
         CHECK(pairing.client_after == flow::After::kEnded);
-        CHECK(pairing.client->aborted() == ac3::sendspin::pairing_messages::AbortReason::kCodeMismatch);
+        CHECK(pairing.client->aborted() == iclforge::sendspin::pairing_messages::AbortReason::kCodeMismatch);
         shared = pairing.state;
     }
     CHECK(shared.window_failures == 5);
@@ -393,18 +393,18 @@ TEST_CASE("pairing flow: the attempt timeout, cancels, and a leftover pairing_in
     cancelled.from_server(cancelled.server->cancel());
     CHECK(cancelled.client_after == flow::After::kEnded);
     CHECK(cancelled.client->finished());
-    CHECK(cancelled.client->aborted() == ac3::sendspin::pairing_messages::AbortReason::kUserCancelled);
+    CHECK(cancelled.client->aborted() == iclforge::sendspin::pairing_messages::AbortReason::kUserCancelled);
 
     // Cancelled on the device instead, while the code is emitted: the round still counts.
     Pairing on_device(Dialect::kSpecification, hs::PskCategory::kSentinel, {kPskDescriptor, kDynamicDescriptor});
     on_device.start({.method = m::PairMethod::kDynamicCode, .format = m::CodeFormat::kDigits, .pin_length = 0, .languages = {}});
     on_device.to_server(on_device.client->cancel().messages);
-    CHECK(on_device.server->aborted() == ac3::sendspin::pairing_messages::AbortReason::kUserCancelled);
+    CHECK(on_device.server->aborted() == iclforge::sendspin::pairing_messages::AbortReason::kUserCancelled);
     CHECK(on_device.server_after == flow::After::kEnded);
     CHECK(on_device.state.rounds_since_verified == 1);
 
     // A client/pair-init from an earlier activation is ignored; one from a later is an error.
-    flow::ServerPairing server({.suite = ac3::sendspin::noise::Suite::kChaChaPolySha256,
+    flow::ServerPairing server({.suite = iclforge::sendspin::noise::Suite::kChaChaPolySha256,
                                 .dialect = Dialect::kSpecification,
                                 .handshake_hash = hash_of(1),
                                 .matched = hs::PskCategory::kSentinel});

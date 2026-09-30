@@ -30,8 +30,8 @@
 
 namespace {
 
-namespace detail = ac4::detail;
-using S = ac4::Speaker;
+namespace detail = iclforge::ac4::detail;
+using S = iclforge::ac4::Speaker;
 
 // A relative-tolerance scale for a value that has gone through
 // through() below, so through DownmixStage's own Real (possibly float):
@@ -265,22 +265,22 @@ Entries printed(Config output, Config input) {
     return {};
 }
 
-ac4::DownmixTarget target_of(Config c) {
+iclforge::ac4::DownmixTarget target_of(Config c) {
     switch (c) {
         case Config::k7X4:
-            return ac4::DownmixTarget::k7X4;
+            return iclforge::ac4::DownmixTarget::k7X4;
         case Config::k7X2:
-            return ac4::DownmixTarget::k7X2;
+            return iclforge::ac4::DownmixTarget::k7X2;
         case Config::k7X0:
-            return ac4::DownmixTarget::k7X0;
+            return iclforge::ac4::DownmixTarget::k7X0;
         case Config::k5X4:
-            return ac4::DownmixTarget::k5X4;
+            return iclforge::ac4::DownmixTarget::k5X4;
         case Config::k5X2:
-            return ac4::DownmixTarget::k5X2;
+            return iclforge::ac4::DownmixTarget::k5X2;
         case Config::k5X0:
-            return ac4::DownmixTarget::k5X;
+            return iclforge::ac4::DownmixTarget::k5X;
     }
-    return ac4::DownmixTarget::kAsCoded;
+    return iclforge::ac4::DownmixTarget::kAsCoded;
 }
 
 // The decoded channels of the 7.X.4 modes, as decode() names them.
@@ -327,7 +327,7 @@ detail::ImmersiveLayout layout_of(Config input, int two, bool lfe) {
                   : (input == Config::k7X2 || input == Config::k5X2) ? two
                                                                      : 0;
     layout.lfe = lfe;
-    layout.decoding = ac4::DecodingMode::kFull;
+    layout.decoding = iclforge::ac4::DecodingMode::kFull;
     return layout;
 }
 
@@ -369,7 +369,8 @@ TEST_CASE("the renderer's full decoding matrices are Tables 38 to 43 as printed"
                             const double expected = in < 0 ? 0.0
                                                            : table[static_cast<std::size_t>(out)]
                                                                   [static_cast<std::size_t>(in)];
-                            CAPTURE(ac4::describe(plan.speakers[o]), ac4::describe(decoded[d]));
+                            CAPTURE(iclforge::ac4::describe(plan.speakers[o]),
+                                    iclforge::ac4::describe(decoded[d]));
                             CHECK(std::abs(m[o][d] - expected) < 1e-12);
                         }
                     }
@@ -400,12 +401,14 @@ TEST_CASE("the renderer's core decoding matrices are Tables 45 and 46 as printed
         for (const int tops : {0, 1, 2, 3}) {
             for (const bool five_x_two : {true, false}) {
                 CAPTURE(backs, tops, five_x_two);
-                const detail::ImmersiveLayout layout{.backs = backs,
-                                                     .tops = tops,
-                                                     .lfe = true,
-                                                     .decoding = ac4::DecodingMode::kCore};
-                const detail::RenderPlan plan = detail::render_plan(
-                    layout, five_x_two ? ac4::DownmixTarget::k5X2 : ac4::DownmixTarget::k5X);
+                const detail::ImmersiveLayout layout{
+                    .backs = backs,
+                    .tops = tops,
+                    .lfe = true,
+                    .decoding = iclforge::ac4::DecodingMode::kCore};
+                const detail::RenderPlan plan =
+                    detail::render_plan(layout, five_x_two ? iclforge::ac4::DownmixTarget::k5X2
+                                                           : iclforge::ac4::DownmixTarget::k5X);
                 // Table 44: 5.X.2 and 5.X.0, as asked, whatever the source.
                 std::vector<S> expected_speakers = {S::kLeft, S::kRight,        S::kCentre,
                                                     S::kLfe,  S::kLeftSurround, S::kRightSurround};
@@ -434,7 +437,8 @@ TEST_CASE("the renderer's core decoding matrices are Tables 45 and 46 as printed
                 }
                 for (std::size_t o = 0; o < plan.speakers.size(); ++o) {
                     for (std::size_t d = 0; d < decoded.size(); ++d) {
-                        CAPTURE(ac4::describe(plan.speakers[o]), ac4::describe(decoded[d]));
+                        CAPTURE(iclforge::ac4::describe(plan.speakers[o]),
+                                iclforge::ac4::describe(decoded[d]));
                         const double expected =
                             table[static_cast<std::size_t>(index_of(plan.speakers[o]))]
                                  [static_cast<std::size_t>(index_of(decoded[d]))];
@@ -448,7 +452,7 @@ TEST_CASE("the renderer's core decoding matrices are Tables 45 and 46 as printed
 
 TEST_CASE("decode()'s layouts for an immersive element, in full and core decoding",
           "[ac4dec][renderer]") {
-    using T = ac4::DownmixTarget;
+    using T = iclforge::ac4::DownmixTarget;
     const detail::ImmersiveLayout full_514{.backs = false, .tops = 3, .lfe = true};
     CHECK(detail::render_plan(full_514, T::kAsCoded).speakers ==
           std::vector<S>{S::kLeft, S::kRight, S::kCentre, S::kLfe, S::kLeftSurround,
@@ -471,7 +475,7 @@ TEST_CASE("decode()'s layouts for an immersive element, in full and core decodin
     }
     // Core decoding: 5.X.2 at most, and 5.X.0 where the source has no tops.
     detail::ImmersiveLayout core = full_514;
-    core.decoding = ac4::DecodingMode::kCore;
+    core.decoding = iclforge::ac4::DecodingMode::kCore;
     for (const T target : {T::kAsCoded, T::k7X4, T::k7X2, T::k5X4, T::k5X2}) {
         CHECK(detail::render_plan(core, target).output ==
               detail::ChannelConfiguration{.width = 5, .tops = 2});
@@ -565,7 +569,7 @@ TEST_CASE("each output takes the loudness correction clause 4.8.5.3 gives it",
     CHECK(detail::loud_corr_output(full_512, {.width = 7, .tops = 0}) == L::k7X);
     // Core decoding's own corrections.
     detail::ImmersiveLayout core = full_714;
-    core.decoding = ac4::DecodingMode::kCore;
+    core.decoding = iclforge::ac4::DecodingMode::kCore;
     CHECK(detail::loud_corr_output(core, {.width = 5, .tops = 2}) == L::kCore5X2);
     CHECK(detail::loud_corr_output(core, {.width = 5, .tops = 0}) == L::kCore5X);
 }
@@ -631,14 +635,14 @@ TEST_CASE(
     };
 
     // As coded, 7.X.4 to itself: through.
-    stage.configure(decoded, false, ac4::DownmixTarget::kAsCoded, true, layout);
+    stage.configure(decoded, false, iclforge::ac4::DownmixTarget::kAsCoded, true, layout);
     CHECK(stage.passes_through());
     CHECK(std::vector<S>(stage.speakers().begin(), stage.speakers().end()) == decoded);
 
     // To 5.X.0: Table 43 with Table 130's defaults, then what the stream sends.
-    stage.configure(decoded, false, ac4::DownmixTarget::k5X, true, layout);
+    stage.configure(decoded, false, iclforge::ac4::DownmixTarget::k5X, true, layout);
     REQUIRE_FALSE(stage.passes_through());
-    const detail::RenderPlan plan = detail::render_plan(layout, ac4::DownmixTarget::k5X);
+    const detail::RenderPlan plan = detail::render_plan(layout, iclforge::ac4::DownmixTarget::k5X);
     const auto defaults =
         detail::render_matrix(layout, decoded, plan, detail::render_gains(nullptr, 0));
     check_near(through(stage, {}, in), apply_rows(defaults, in));
@@ -682,11 +686,11 @@ TEST_CASE("an immersive element's two channels and one follow the renderer's 5.X
     }
     for (const bool core : {false, true}) {
         CAPTURE(core);
-        const detail::ImmersiveLayout layout{
-            .backs = true,
-            .tops = 3,
-            .lfe = true,
-            .decoding = core ? ac4::DecodingMode::kCore : ac4::DecodingMode::kFull};
+        const detail::ImmersiveLayout layout{.backs = true,
+                                             .tops = 3,
+                                             .lfe = true,
+                                             .decoding = core ? iclforge::ac4::DecodingMode::kCore
+                                                              : iclforge::ac4::DecodingMode::kFull};
         const std::vector<S> channels =
             core ? std::vector<S>{S::kLeft,        S::kRight,        S::kCentre,
                                   S::kLfe,         S::kLeftSurround, S::kRightSurround,
@@ -694,7 +698,8 @@ TEST_CASE("an immersive element's two channels and one follow the renderer's 5.X
                  : decoded;
         const std::vector<double> x(in.begin(),
                                     in.begin() + static_cast<std::ptrdiff_t>(channels.size()));
-        const detail::RenderPlan plan = detail::render_plan(layout, ac4::DownmixTarget::k5X);
+        const detail::RenderPlan plan =
+            detail::render_plan(layout, iclforge::ac4::DownmixTarget::k5X);
         const auto rows = apply_rows(
             detail::render_matrix(layout, channels, plan, detail::render_gains(nullptr, 0)), x);
         // L R C LFE Ls Rs of the 5.X.0 render.
@@ -715,7 +720,7 @@ TEST_CASE("an immersive element's two channels and one follow the renderer's 5.X
         for (const bool mix_lfe : {false, true}) {
             CAPTURE(mix_lfe);
             detail::DownmixStage stage;
-            stage.configure(channels, false, ac4::DownmixTarget::kLoRo, mix_lfe, layout);
+            stage.configure(channels, false, iclforge::ac4::DownmixTarget::kLoRo, mix_lfe, layout);
             const std::vector<double> got = through(stage, values, x);
             REQUIRE(got.size() == 2);
             const double l_lfe = mix_lfe ? lfe * rows[3] : 0.0;
@@ -724,7 +729,7 @@ TEST_CASE("an immersive element's two channels and one follow the renderer's 5.X
             CHECK(std::abs(got[0] - lo) < kRelativeTolerance * std::abs(lo));
             CHECK(std::abs(got[1] - ro) < kRelativeTolerance * std::abs(ro));
             detail::DownmixStage mono;
-            mono.configure(channels, false, ac4::DownmixTarget::kMono, mix_lfe, layout);
+            mono.configure(channels, false, iclforge::ac4::DownmixTarget::kMono, mix_lfe, layout);
             const std::vector<double> c = through(mono, values, x);
             REQUIRE(c.size() == 1);
             CHECK(std::abs(c[0] - (lo + ro)) < kRelativeTolerance * std::abs(lo + ro));
@@ -738,9 +743,9 @@ TEST_CASE("core decoding's renderer never passes the core through: Table 45 take
                                  S::kLfe,         S::kLeftSurround, S::kRightSurround,
                                  S::kTopSideLeft, S::kTopSideRight};
     const detail::ImmersiveLayout layout{
-        .backs = true, .tops = 3, .lfe = true, .decoding = ac4::DecodingMode::kCore};
+        .backs = true, .tops = 3, .lfe = true, .decoding = iclforge::ac4::DecodingMode::kCore};
     detail::DownmixStage stage;
-    stage.configure(core, false, ac4::DownmixTarget::kAsCoded, true, layout);
+    stage.configure(core, false, iclforge::ac4::DownmixTarget::kAsCoded, true, layout);
     CHECK_FALSE(stage.passes_through());
     CHECK(std::vector<S>(stage.speakers().begin(), stage.speakers().end()) == core);
     const std::vector<double> in = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0};

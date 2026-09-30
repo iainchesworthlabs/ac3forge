@@ -15,15 +15,15 @@
 #include <string>
 
 // Forward-declared, not included: PairingStore and QSettingsStore both reach
-// ac3::render transitively (settings_model.hpp includes engine_thread.hpp),
+// iclforge::render transitively (settings_model.hpp includes engine_thread.hpp),
 // and this header is a Qt one - hearth_controller.hpp keeps the same distance
-// from ac3::hearth's own headers for the same reason
+// from iclforge::hearth's own headers for the same reason
 // (hearth-ui-qt-slots-macro-collides-with-render-layout). Unlike that class's
 // single Engine pointer, this one needs two objects with no natural owner
 // outside this class, so both are unique_ptr here too, constructed in
 // network_controller.cpp where the real headers - and that file's own
 // #undef slots - already are.
-namespace ac3::hearth {
+namespace iclforge::hearth {
 class NetworkSinks;
 class PairingStore;
 class SinkFirmware;
@@ -46,7 +46,7 @@ struct NetworkStatus;
 // the network settings are read through this class's own QSettings, under the
 // same "ac3forge"/"Hearth" identity HearthController's own settings file uses.
 
-namespace ac3::hearth::ui {
+namespace iclforge::hearth::ui {
 
 class QSettingsStore;
 
@@ -241,7 +241,7 @@ public:
     // way carries on either way.
     Q_INVOKABLE void watchSinkFirmware(bool watching);
     // Reads the image at `file` and checks it: that it is an application
-    // image and whole (ac3::hearth::read_firmware_file), and that the
+    // image and whole (iclforge::hearth::read_firmware_file), and that the
     // selected sink would take it, from what the sink last said. The result
     // is sinkFirmwareCandidate.
     Q_INVOKABLE void chooseSinkFirmwareFile(const QUrl& file);
@@ -271,7 +271,9 @@ public:
     // NetworkSinks::on_found() is public for exactly this use (its own
     // comment) - rather than depend on mDNS multicast, which a CI container
     // does not carry. Not Q_INVOKABLE: nothing in QML can reach it.
-    [[nodiscard]] ac3::hearth::NetworkSinks* sinks_for_test() const { return sinks_engine_.get(); }
+    [[nodiscard]] iclforge::hearth::NetworkSinks* sinks_for_test() const {
+        return sinks_engine_.get();
+    }
 
 signals:
     void sinksChanged();
@@ -282,9 +284,9 @@ private:
     // The Firmware tab's half of poll(): a client for the sink it is open
     // on, sinkFirmware from that client's latest snapshot, and the row of
     // each sink with an update under way, or whose finished update the tab
-    // shows, kept (ac3::hearth::plan_firmware_client()).
-    void poll_firmware(const ac3::hearth::NetworkStatus& status);
-    [[nodiscard]] ac3::hearth::SinkFirmware* selected_firmware() const;
+    // shows, kept (iclforge::hearth::plan_firmware_client()).
+    void poll_firmware(const iclforge::hearth::NetworkStatus& status);
+    [[nodiscard]] iclforge::hearth::SinkFirmware* selected_firmware() const;
     // Records whether a settings push to `sink_id` was actually sent
     // (NetworkSinks::push_sink_settings()'s result) and republishes, so a
     // refused one shows in that sink's report rather than vanishing.
@@ -295,12 +297,12 @@ private:
     // the identical reason. Declared before settings_store_, which depends
     // on it.
     QSettings settings_;
-    std::unique_ptr<ac3::hearth::ui::QSettingsStore> settings_store_;
+    std::unique_ptr<iclforge::hearth::ui::QSettingsStore> settings_store_;
     // The process's one pairing store (shared_pairing_store.hpp).
-    std::shared_ptr<ac3::hearth::PairingStore> pairing_store_;
+    std::shared_ptr<iclforge::hearth::PairingStore> pairing_store_;
     // Declared after everything it uses, and reset first by the destructor
     // regardless: its threads call into pairing_store_ until it is gone.
-    std::unique_ptr<ac3::hearth::NetworkSinks> sinks_engine_;
+    std::unique_ptr<iclforge::hearth::NetworkSinks> sinks_engine_;
     QTimer poll_timer_;
 
     QVariantList sinks_;
@@ -325,16 +327,16 @@ private:
     // way, by sink id; one that is neither is let go at the next poll. They
     // call back into nothing here - poll_firmware() reads them - so they can
     // go in any order.
-    std::map<std::string, std::unique_ptr<ac3::hearth::SinkFirmware>> firmware_;
+    std::map<std::string, std::unique_ptr<iclforge::hearth::SinkFirmware>> firmware_;
     bool firmware_watching_ = false;
     std::string firmware_sink_id_;  // the sink sink_firmware_ describes
     std::uint64_t firmware_generation_ = 0;
     // The file chooseSinkFirmwareFile() read and would send, and the sink it
     // was checked for.
-    std::unique_ptr<ac3::hearth::FirmwareFile> firmware_file_;
+    std::unique_ptr<iclforge::hearth::FirmwareFile> firmware_file_;
     std::string firmware_file_sink_id_;
     QVariantMap sink_firmware_;
     QVariantMap sink_firmware_candidate_;
 };
 
-}  // namespace ac3::hearth::ui
+}  // namespace iclforge::hearth::ui

@@ -31,7 +31,7 @@
 // the trial. Its words too, where the page shows them, so that the tool, the
 // board's page and this app describe one update the same way.
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 // GET /hardware, as much of it as an update needs.
 struct SinkHardware {
@@ -249,4 +249,4 @@ class SinkFirmware {
     std::thread thread_;
 };
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

@@ -24,11 +24,11 @@
 
 namespace {
 
-namespace dsp = ac4::detail::dsp;
+namespace dsp = iclforge::ac4::detail::dsp;
 
 // The decoder's scalar: float in a float build, where the converter's table is
 // kept and its dot product run at float, and double otherwise.
-using Real = ac4::detail::Real;
+using Real = iclforge::ac4::detail::Real;
 using RealFilter = dsp::BasicResamplerFilter<Real>;
 
 struct Rate {

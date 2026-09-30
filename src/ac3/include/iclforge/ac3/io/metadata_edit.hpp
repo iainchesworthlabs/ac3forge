@@ -27,7 +27,7 @@
 // CRC - recompute over the covered region and store it. crc1 is not: A/52
 // §7.10.1 puts it BEFORE the region it protects and requires the register to
 // read zero once the first 5/8 of the syncframe has been shifted through, so
-// it has to be SOLVED rather than computed. ac3::solve_leading_crc
+// it has to be SOLVED rather than computed. iclforge::solve_leading_crc
 // (ac3/core/crc16.hpp) does that with a GF(2) polynomial inverse, and is the
 // same function the encoder itself uses - see its own comment.
 //
@@ -46,10 +46,10 @@
 //     the wire and are still skipped correctly; they are simply not a compr
 //     word, so this refuses to write one into them.
 //   * strmtyp 2 (a "convertible" substream, §E2.3.1.1) is refused outright,
-//     matching ac3::plan::validate's own stance - its bsi carries an extra
+//     matching iclforge::plan::validate's own stance - its bsi carries an extra
 //     blkid/frmsizecod branch nothing in this project produces or consumes.
 
-namespace ac3::io {
+namespace iclforge::io {
 
 enum class EditError : std::uint8_t {
     kBadSyncWord,
@@ -68,7 +68,7 @@ enum class EditError : std::uint8_t {
 //
 // Read, not applied: this exists so a transcode can carry a DD+ stream's
 // downmix intent across to the two coarse levels AC-3 has room for. See
-// ac3::meta (ac3/meta/mixing.hpp) for what the values mean.
+// iclforge::meta (ac3/meta/mixing.hpp) for what the values mean.
 // Every member below carries an explicit `= std::nullopt`, even though
 // std::optional's own default constructor already produces one: a caller
 // naming only some of these in a designated initializer trips GCC's
@@ -148,7 +148,7 @@ struct MetadataEdit {
 // Re-stamps crc1 (AC-3 only) and crc2 for one syncframe, for a caller that
 // changed bsi bits itself. edit_frame_metadata already does this; this is
 // exposed because the CRCs are the non-obvious half of any in-place rewrite
-// and a caller doing its own (ac3::signing::sign_atmos_frame is the
+// and a caller doing its own (iclforge::signing::sign_atmos_frame is the
 // in-project precedent) should not have to reimplement crc1's solve.
 [[nodiscard]] ICLFORGE_AC3_EXPORT std::expected<void, EditError> restamp_crc(
     std::span<std::byte> frame);
@@ -177,4 +177,4 @@ struct EditSummary {
 [[nodiscard]] ICLFORGE_AC3_EXPORT std::expected<EditSummary, EditError> edit_stream_metadata(
     std::span<std::byte> stream, const MetadataEdit& edit);
 
-}  // namespace ac3::io
+}  // namespace iclforge::io

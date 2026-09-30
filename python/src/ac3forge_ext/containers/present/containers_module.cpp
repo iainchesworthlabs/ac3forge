@@ -17,7 +17,7 @@
 // python/CMakeLists.txt for the selection that picks this file over the
 // absent/ one beside it.
 
-namespace ac3::python {
+namespace iclforge::python {
 
 namespace py = pybind11;
 using detail::to_bytes;
@@ -52,23 +52,23 @@ void register_containers(py::module_& m) {
         return views;
     };
 
-    py::class_<matroska::AudioTrack>(containers, "MatroskaTrack")
+    py::class_<iclforge::matroska::AudioTrack>(containers, "MatroskaTrack")
         .def(py::init([](py::kwargs kwargs) {
-            return KwargBinder<matroska::AudioTrack>(std::move(kwargs))
-                .field("codec_id", &matroska::AudioTrack::codec_id)
-                .field("sample_rate", &matroska::AudioTrack::sample_rate)
-                .field("channels", &matroska::AudioTrack::channels)
-                .field("samples_per_frame", &matroska::AudioTrack::samples_per_frame)
-                .field("language", &matroska::AudioTrack::language)
+            return KwargBinder<iclforge::matroska::AudioTrack>(std::move(kwargs))
+                .field("codec_id", &iclforge::matroska::AudioTrack::codec_id)
+                .field("sample_rate", &iclforge::matroska::AudioTrack::sample_rate)
+                .field("channels", &iclforge::matroska::AudioTrack::channels)
+                .field("samples_per_frame", &iclforge::matroska::AudioTrack::samples_per_frame)
+                .field("language", &iclforge::matroska::AudioTrack::language)
                 .finish();
         }))
-        .def_readwrite("codec_id", &matroska::AudioTrack::codec_id)
-        .def_readwrite("sample_rate", &matroska::AudioTrack::sample_rate)
-        .def_readwrite("channels", &matroska::AudioTrack::channels)
-        .def_readwrite("samples_per_frame", &matroska::AudioTrack::samples_per_frame)
-        .def_readwrite("language", &matroska::AudioTrack::language);
+        .def_readwrite("codec_id", &iclforge::matroska::AudioTrack::codec_id)
+        .def_readwrite("sample_rate", &iclforge::matroska::AudioTrack::sample_rate)
+        .def_readwrite("channels", &iclforge::matroska::AudioTrack::channels)
+        .def_readwrite("samples_per_frame", &iclforge::matroska::AudioTrack::samples_per_frame)
+        .def_readwrite("language", &iclforge::matroska::AudioTrack::language);
 
-    py::class_<mp4::AudioTrack>(containers, "Mp4Track")
+    py::class_<iclforge::mp4::AudioTrack>(containers, "Mp4Track")
         .def(py::init([](py::kwargs kwargs) {
             // codec_config is bytes, which KwargBinder's field() cannot
             // convert - lifted out of the kwargs first, applied after.
@@ -77,69 +77,69 @@ void register_containers(py::module_& m) {
                 config = to_bytes(py::cast<py::buffer>(kwargs["codec_config"]));
                 kwargs.attr("pop")("codec_config");
             }
-            auto track = KwargBinder<mp4::AudioTrack>(std::move(kwargs))
-                .field("codec_id", &mp4::AudioTrack::codec_id)
-                .field("sample_rate", &mp4::AudioTrack::sample_rate)
-                .field("channels", &mp4::AudioTrack::channels)
-                .field("samples_per_frame", &mp4::AudioTrack::samples_per_frame)
-                .field("language", &mp4::AudioTrack::language)
-                .field("rfc6381", &mp4::AudioTrack::rfc6381)
+            auto track = KwargBinder<iclforge::mp4::AudioTrack>(std::move(kwargs))
+                .field("codec_id", &iclforge::mp4::AudioTrack::codec_id)
+                .field("sample_rate", &iclforge::mp4::AudioTrack::sample_rate)
+                .field("channels", &iclforge::mp4::AudioTrack::channels)
+                .field("samples_per_frame", &iclforge::mp4::AudioTrack::samples_per_frame)
+                .field("language", &iclforge::mp4::AudioTrack::language)
+                .field("rfc6381", &iclforge::mp4::AudioTrack::rfc6381)
                 .finish();
             track.codec_config = std::move(config);
             return track;
         }))
-        .def_readwrite("codec_id", &mp4::AudioTrack::codec_id)
-        .def_readwrite("sample_rate", &mp4::AudioTrack::sample_rate)
-        .def_readwrite("channels", &mp4::AudioTrack::channels)
-        .def_readwrite("samples_per_frame", &mp4::AudioTrack::samples_per_frame)
+        .def_readwrite("codec_id", &iclforge::mp4::AudioTrack::codec_id)
+        .def_readwrite("sample_rate", &iclforge::mp4::AudioTrack::sample_rate)
+        .def_readwrite("channels", &iclforge::mp4::AudioTrack::channels)
+        .def_readwrite("samples_per_frame", &iclforge::mp4::AudioTrack::samples_per_frame)
         .def_property(
             "codec_config",
-            [](const mp4::AudioTrack& t) {
+            [](const iclforge::mp4::AudioTrack& t) {
                 return py::bytes(reinterpret_cast<const char*>(t.codec_config.data()),
                                  t.codec_config.size());
             },
-            [](mp4::AudioTrack& t, const py::buffer& value) {
+            [](iclforge::mp4::AudioTrack& t, const py::buffer& value) {
                 t.codec_config = to_bytes(value);
             },
             "The dac3/dec3 sample-entry box payload - build_codec_config_box() produces it.")
-        .def_readwrite("language", &mp4::AudioTrack::language)
-        .def_readwrite("rfc6381", &mp4::AudioTrack::rfc6381);
+        .def_readwrite("language", &iclforge::mp4::AudioTrack::language)
+        .def_readwrite("rfc6381", &iclforge::mp4::AudioTrack::rfc6381);
 
-    py::class_<mpegts::AudioTrack>(containers, "TsTrack")
+    py::class_<iclforge::mpegts::AudioTrack>(containers, "TsTrack")
         .def(py::init([](py::kwargs kwargs) {
-            return KwargBinder<mpegts::AudioTrack>(std::move(kwargs))
-                .field("codec", &mpegts::AudioTrack::codec)
-                .field("sample_rate", &mpegts::AudioTrack::sample_rate)
-                .field("channels", &mpegts::AudioTrack::channels)
-                .field("samples_per_frame", &mpegts::AudioTrack::samples_per_frame)
+            return KwargBinder<iclforge::mpegts::AudioTrack>(std::move(kwargs))
+                .field("codec", &iclforge::mpegts::AudioTrack::codec)
+                .field("sample_rate", &iclforge::mpegts::AudioTrack::sample_rate)
+                .field("channels", &iclforge::mpegts::AudioTrack::channels)
+                .field("samples_per_frame", &iclforge::mpegts::AudioTrack::samples_per_frame)
                 .finish();
         }))
-        .def_readwrite("codec", &mpegts::AudioTrack::codec)
-        .def_readwrite("sample_rate", &mpegts::AudioTrack::sample_rate)
-        .def_readwrite("channels", &mpegts::AudioTrack::channels)
-        .def_readwrite("samples_per_frame", &mpegts::AudioTrack::samples_per_frame);
+        .def_readwrite("codec", &iclforge::mpegts::AudioTrack::codec)
+        .def_readwrite("sample_rate", &iclforge::mpegts::AudioTrack::sample_rate)
+        .def_readwrite("channels", &iclforge::mpegts::AudioTrack::channels)
+        .def_readwrite("samples_per_frame", &iclforge::mpegts::AudioTrack::samples_per_frame);
 
-    py::enum_<mpegts::AudioCodec>(containers, "TsCodec")
-        .value("kAc3", mpegts::AudioCodec::kAc3)
-        .value("kEac3", mpegts::AudioCodec::kEac3)
-        .value("kAc4", mpegts::AudioCodec::kAc4);
+    py::enum_<iclforge::mpegts::AudioCodec>(containers, "TsCodec")
+        .value("kAc3", iclforge::mpegts::AudioCodec::kAc3)
+        .value("kEac3", iclforge::mpegts::AudioCodec::kEac3)
+        .value("kAc4", iclforge::mpegts::AudioCodec::kAc4);
 
-    py::enum_<mpegts::BroadcastProfile>(containers, "TsProfile")
-        .value("kDvb", mpegts::BroadcastProfile::kDvb)
-        .value("kAtsc", mpegts::BroadcastProfile::kAtsc);
+    py::enum_<iclforge::mpegts::BroadcastProfile>(containers, "TsProfile")
+        .value("kDvb", iclforge::mpegts::BroadcastProfile::kDvb)
+        .value("kAtsc", iclforge::mpegts::BroadcastProfile::kAtsc);
 
     containers.def(
         "mux_matroska",
-        [frames_to_views](const matroska::AudioTrack& track,
+        [frames_to_views](const iclforge::matroska::AudioTrack& track,
                           const std::vector<py::bytes>& frames) {
             std::vector<std::vector<std::byte>> storage;
             const auto views = frames_to_views(frames, storage);
             std::vector<std::byte> file;
             {
                 py::gil_scoped_release release;
-                auto muxed = matroska::mux(track, views);
+                auto muxed = iclforge::matroska::mux(track, views);
                 if (!muxed) {
-                    throw py::value_error(std::string{matroska::describe(muxed.error())});
+                    throw py::value_error(std::string{iclforge::matroska::describe(muxed.error())});
                 }
                 file = std::move(*muxed);
             }
@@ -150,15 +150,16 @@ void register_containers(py::module_& m) {
 
     containers.def(
         "mux_mp4",
-        [frames_to_views](const mp4::AudioTrack& track, const std::vector<py::bytes>& frames) {
+        [frames_to_views](const iclforge::mp4::AudioTrack& track,
+                          const std::vector<py::bytes>& frames) {
             std::vector<std::vector<std::byte>> storage;
             const auto views = frames_to_views(frames, storage);
             std::vector<std::byte> file;
             {
                 py::gil_scoped_release release;
-                auto muxed = mp4::mux(track, views);
+                auto muxed = iclforge::mp4::mux(track, views);
                 if (!muxed) {
-                    throw py::value_error(std::string{mp4::describe(muxed.error())});
+                    throw py::value_error(std::string{iclforge::mp4::describe(muxed.error())});
                 }
                 file = std::move(*muxed);
             }
@@ -170,23 +171,25 @@ void register_containers(py::module_& m) {
 
     containers.def(
         "mux_mpegts",
-        [frames_to_views](const mpegts::AudioTrack& track, const std::vector<py::bytes>& frames,
-                          mpegts::BroadcastProfile profile) {
+        [frames_to_views](const iclforge::mpegts::AudioTrack& track,
+                          const std::vector<py::bytes>& frames,
+                          iclforge::mpegts::BroadcastProfile profile) {
             std::vector<std::vector<std::byte>> storage;
             const auto views = frames_to_views(frames, storage);
             std::vector<std::byte> file;
             {
                 py::gil_scoped_release release;
-                auto muxed = mpegts::mux(track, views, mpegts::MuxOptions{.profile = profile});
+                auto muxed = iclforge::mpegts::mux(
+                    track, views, iclforge::mpegts::MuxOptions{.profile = profile});
                 if (!muxed) {
-                    throw py::value_error(std::string{mpegts::describe(muxed.error())});
+                    throw py::value_error(std::string{iclforge::mpegts::describe(muxed.error())});
                 }
                 file = std::move(*muxed);
             }
             return py::bytes(reinterpret_cast<const char*>(file.data()), file.size());
         },
         py::arg("track"), py::arg("frames"),
-        py::arg("profile") = mpegts::BroadcastProfile::kDvb,
+        py::arg("profile") = iclforge::mpegts::BroadcastProfile::kDvb,
         "One MPEG-2 Transport Stream (PAT + PMT + one PES-wrapped audio PID), identified per "
         "the chosen broadcast profile.");
 
@@ -194,9 +197,9 @@ void register_containers(py::module_& m) {
         "demux_matroska",
         [](const py::buffer& file) {
             const auto bytes = to_bytes(file);
-            const auto demuxed = matroska::demux(bytes);
+            const auto demuxed = iclforge::matroska::demux(bytes);
             if (!demuxed) {
-                throw py::value_error(std::string{matroska::describe(demuxed.error())});
+                throw py::value_error(std::string{iclforge::matroska::describe(demuxed.error())});
             }
             return py::make_tuple(demuxed->track.codec_id,
                                   to_bytes_list(demuxed->frames));
@@ -208,9 +211,9 @@ void register_containers(py::module_& m) {
         "demux_mp4",
         [](const py::buffer& file) {
             const auto bytes = to_bytes(file);
-            const auto demuxed = mp4::demux(bytes);
+            const auto demuxed = iclforge::mp4::demux(bytes);
             if (!demuxed) {
-                throw py::value_error(std::string{mp4::describe(demuxed.error())});
+                throw py::value_error(std::string{iclforge::mp4::describe(demuxed.error())});
             }
             const auto& config = demuxed->track.codec_config;
             return py::make_tuple(
@@ -227,13 +230,13 @@ void register_containers(py::module_& m) {
         "demux_mpegts",
         [](const py::buffer& file) {
             const auto bytes = to_bytes(file);
-            const auto demuxed = mpegts::demux(bytes);
+            const auto demuxed = iclforge::mpegts::demux(bytes);
             if (!demuxed) {
-                throw py::value_error(std::string{mpegts::describe(demuxed.error())});
+                throw py::value_error(std::string{iclforge::mpegts::describe(demuxed.error())});
             }
-            const auto codec = demuxed->stream.ac4    ? mpegts::AudioCodec::kAc4
-                               : demuxed->stream.eac3 ? mpegts::AudioCodec::kEac3
-                                                      : mpegts::AudioCodec::kAc3;
+            const auto codec = demuxed->stream.ac4    ? iclforge::mpegts::AudioCodec::kAc4
+                               : demuxed->stream.eac3 ? iclforge::mpegts::AudioCodec::kEac3
+                                                      : iclforge::mpegts::AudioCodec::kAc3;
             return py::make_tuple(codec, to_bytes_list(demuxed->payloads));
         },
         py::arg("file"),
@@ -242,4 +245,4 @@ void register_containers(py::module_& m) {
         "ac3.split_access_units for the A/52 codecs.");
 }
 
-}  // namespace ac3::python
+}  // namespace iclforge::python
