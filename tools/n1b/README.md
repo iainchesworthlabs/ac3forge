@@ -134,8 +134,8 @@ What the two passes cannot see is done by hand, in a commit of its own after the
   prefix and the substitution indices change): `check_shared_forge_binding.sh` (its pattern and the
   `has_avx2` exclusion), the `-Wl,--undefined=` of the `hearth_sink` example, and the sample text of
   `footprint_report.py` and its test. The ABI allowlists hold demangled names: regenerate them with
-  `check_abi_symbols.py --update` over the shared libraries of the shared-libs pass, and check the
-  result against the old files rewritten as text (the same sets).
+  `check_abi_symbols.py --update` over the libraries-only shared tree, and check the result against
+  the old files rewritten as text (`abi_compare.py`, in the proof below).
 - Qt names the context of a `tr()` after the class's qualified name, so the six `ac3hearth_*.ts` name
   `iclforge::hearth::ui::HearthController` and `NetworkController` now: rename them before the `*_lupdate`
   targets run, or every translation of the two classes turns obsolete. The three targets restamp the
@@ -151,6 +151,8 @@ and the exported names change by design, so those two are not compared), and
 
     python tools/n1b/export_diff.py --old <work>/before/symbols-msvc.json \
         --new <work>/after/symbols-msvc.json --rewrite names     # every library the same
+    python tools/n1b/abi_compare.py <the parent's allowlists> tools/ci/abi-allowlist \
+        --map identity --rewrite names                            # every library -0 +0
 
 What S3 leaves for S4: the CMake helper targets (`ac3::warnings`, `coverage`, `fmt`, `fmt_private`,
 `tracy`, `minimal_profile`), the C++ namespaces named for a program or a package (`ac3cli`, `ac3gui`,
