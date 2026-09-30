@@ -38,7 +38,8 @@ TEST_CASE("AC-4 page settings at their defaults echo no token", "[gui]") {
     const Ac4EncodeSettings settings;
     CHECK(forge_gui::ac4_cli_tokens(settings, false).empty());
     CHECK(forge_gui::ac4_cli_tokens(settings, true).empty());
-    const iclforge::ac4::EncoderConfig config = forge_gui::ac4_encoder_config(settings, 2, 48000, 192);
+    const iclforge::ac4::EncoderConfig config =
+        forge_gui::ac4_encoder_config(settings, 2, 48000, 192);
     const iclforge::ac4::EncoderConfig plain{};
     CHECK(config.frame_rate_index == plain.frame_rate_index);
     CHECK(config.rate_mode == plain.rate_mode);
@@ -82,7 +83,8 @@ TEST_CASE("each AC-4 page option echoes the token ac4-encode parses", "[gui]") {
     // names it whenever loudness= is on.
     Ac4EncodeSettings practice;
     practice.loudness = 6;
-    CHECK(joined(forge_gui::ac4_cli_tokens(practice, false)) == "dialnorm=31 loudness=not-indicated");
+    CHECK(joined(forge_gui::ac4_cli_tokens(practice, false)) ==
+          "dialnorm=31 loudness=not-indicated");
 }
 
 TEST_CASE("AC-4 page configuration follows its tokens", "[gui]") {
@@ -183,7 +185,8 @@ TEST_CASE("AC-4 object mode echoes the coding, a dialnorm off 31 and a raw strea
     s.object_coding = 1;
     s.dialnorm_db = 27;
     s.crc = false;
-    CHECK(joined(forge_gui::ac4_object_cli_tokens(s, false)) == "coding=direct dialnorm=27 crc=off");
+    CHECK(joined(forge_gui::ac4_object_cli_tokens(s, false)) ==
+          "coding=direct dialnorm=27 crc=off");
     // An MP4 sample has no CRC to turn off, and atmos-encode refuses crc= there.
     CHECK(joined(forge_gui::ac4_object_cli_tokens(s, true)) == "coding=direct dialnorm=27");
     // Out of range or off the grid, the dialnorm is refused, not echoed.
@@ -223,10 +226,12 @@ TEST_CASE("AC-4 object parameters follow the settings", "[gui]") {
     CHECK(params.dialnorm_db == 24.0);
     CHECK(params.coding == iclforge::ac4::ObjectCoding::kDirect);
     s.object_coding = 0;
-    CHECK(forge_gui::ac4_objects_params(s, 48000, 192).coding == iclforge::ac4::ObjectCoding::kAjoc);
+    CHECK(forge_gui::ac4_objects_params(s, 48000, 192).coding ==
+          iclforge::ac4::ObjectCoding::kAjoc);
     // An index off the table is the first, as every choice here reads one.
     s.object_coding = 9;
-    CHECK(forge_gui::ac4_objects_params(s, 48000, 192).coding == iclforge::ac4::ObjectCoding::kAjoc);
+    CHECK(forge_gui::ac4_objects_params(s, 48000, 192).coding ==
+          iclforge::ac4::ObjectCoding::kAjoc);
     CHECK(joined(forge_gui::ac4_object_cli_tokens(s, false)) == "dialnorm=24");
 }
 

@@ -49,11 +49,11 @@
 // the repo-structure review's H4 monolith split - see that review for why, and main.cpp's own
 // command-table comment for the design these helpers serve.
 //
-// Everything here has external linkage (namespace forge_cli, not main.cpp's old anonymous namespace)
-// because it is now called from a different translation unit. A few helpers that are genuinely
-// private to one function's own implementation (parse_double, to_bytes, write_wav_f32_arg) stay
-// out of this header entirely and live in an anonymous namespace inside support.cpp instead,
-// preserving the original "internal unless something else needs it" default.
+// Everything here has external linkage (namespace forge_cli, not main.cpp's old anonymous
+// namespace) because it is now called from a different translation unit. A few helpers that are
+// genuinely private to one function's own implementation (parse_double, to_bytes,
+// write_wav_f32_arg) stay out of this header entirely and live in an anonymous namespace inside
+// support.cpp instead, preserving the original "internal unless something else needs it" default.
 //
 // Everything about layouts, coding tools and metadata itself lives in iclforge::plan, so the GUI
 // cannot mean something different by "514" or by "all" than this does. What is here is argument

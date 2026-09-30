@@ -348,7 +348,8 @@ int decode_fixture(const Fixture& fixture) {
                 measured.steady_bytes += allocated;
             }
             if (!decoded.has_value() || !decoded->has_value() ||
-                (*decoded)->samples != static_cast<std::size_t>(iclforge_probe::kAc4SamplesPerFrame) ||
+                (*decoded)->samples !=
+                    static_cast<std::size_t>(iclforge_probe::kAc4SamplesPerFrame) ||
                 (*decoded)->sample_rate_hz != iclforge_probe::kAc4SampleRateHz ||
                 (*decoded)->speakers.size() != fixture.rms.size()) {
                 frames_ok = false;
@@ -369,8 +370,9 @@ int decode_fixture(const Fixture& fixture) {
         fail(fixture.name, "channels", static_cast<long>(sink_channels),
              static_cast<long>(fixture.rms.size()));
     }
-    const std::size_t expected_samples = static_cast<std::size_t>(fixture.frames) *
-                                         static_cast<std::size_t>(iclforge_probe::kAc4SamplesPerFrame);
+    const std::size_t expected_samples =
+        static_cast<std::size_t>(fixture.frames) *
+        static_cast<std::size_t>(iclforge_probe::kAc4SamplesPerFrame);
     // `delivered` counts each block once, not once a channel.
     if (delivered != expected_samples) {
         fail(fixture.name, "samples", static_cast<long>(delivered),
@@ -434,8 +436,8 @@ constexpr std::array kFixtures = {
             iclforge_probe::kAc451AcplRms, 0},
     Fixture{"ac4_514_tones", iclforge_probe::kAc4514TonesStream, iclforge_probe::kAc4514TonesFrames,
             iclforge_probe::kAc4514TonesRms, 0},
-    Fixture{"ac4_20_companding", iclforge_probe::kAc420CompandingStream, iclforge_probe::kAc420CompandingFrames,
-            iclforge_probe::kAc420CompandingRms, 0},
+    Fixture{"ac4_20_companding", iclforge_probe::kAc420CompandingStream,
+            iclforge_probe::kAc420CompandingFrames, iclforge_probe::kAc420CompandingRms, 0},
 };
 
 bool over_budget(const Fixture& fixture) {

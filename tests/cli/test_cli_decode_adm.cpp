@@ -252,8 +252,8 @@ TEST_CASE("decode's ADM master lines the bed's LFE up with the object it was pul
 }
 
 // Moved from tests/cli/test_cli_inspect_edges.cpp - see that file's own comment on its sibling,
-// plain-AC-3 case. decode.cpp's run_decode_eac3 checks forge_cli::adm_capability() up front, before it
-// can tell whether this specific programme has an object layer, so an E-AC-3 stream only reaches
+// plain-AC-3 case. decode.cpp's run_decode_eac3 checks forge_cli::adm_capability() up front, before
+// it can tell whether this specific programme has an object layer, so an E-AC-3 stream only reaches
 // these two warnings (rather than exiting 2 with "this build was not configured with
 // -DICLFORGE_BUILD_ADM=ON") when ADM support was actually built - which is exactly this file's own
 // gate (tests/CMakeLists.txt's ICLFORGE_BUILD_ADM block).

@@ -191,7 +191,8 @@ bool network_start() {
 
     // The task's stack comes out of the same heap the decoder draws on;
     // network_report() says how much of it the task used.
-    if (xTaskCreate(&receive_stream, "iclforge_probe_rx", 4096, nullptr, 5, &g_receiver) != pdPASS) {
+    if (xTaskCreate(&receive_stream, "iclforge_probe_rx", 4096, nullptr, 5, &g_receiver) !=
+        pdPASS) {
         std::printf("result=fail reason=receive_task\n");
         return false;
     }

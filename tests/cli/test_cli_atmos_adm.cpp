@@ -31,18 +31,18 @@
 // test_cli.cpp's single TARGET-forge gate does not express. See tests/CMakeLists.txt's own
 // gating comment for exactly how both conditions are checked before this file is even compiled.
 //
-// ICLFORGE_CLI_EXE is supplied the same way as test_cli.cpp's own (see tests/CMakeLists.txt); run_cli
-// below is a trimmed copy of test_cli.cpp's own helper of the same name (same reasoning for the
-// double-quote wrapping on Windows - see that file's own comment on std::system() and cmd.exe's
+// ICLFORGE_CLI_EXE is supplied the same way as test_cli.cpp's own (see tests/CMakeLists.txt);
+// run_cli below is a trimmed copy of test_cli.cpp's own helper of the same name (same reasoning for
+// the double-quote wrapping on Windows - see that file's own comment on std::system() and cmd.exe's
 // quoting), and the byte-level BW64/ADM fixture helpers are a copy of
-// tests/admbridge/test_adm_bridge.cpp's own flagship-test fixture (same bed L/R + SR-then-centre moving
-// object, same known-good ring positions and hold/jump timing) - duplicated per this project's
-// own established per-file test-helper convention (see that file's own comment on this) rather
-// than shared, and deliberately kept byte-identical to that fixture rather than inventing a new
-// one: this file's own job is checking that the real forge binary wires
-// parse_bw64 -> admbridge::build -> AtmosEncoder together correctly end to end, not re-proving
-// admbridge's own BS.2076-2 §10.3 state machine or coordinate conversion, which
-// tests/admbridge/test_adm_bridge.cpp already does directly against the library API.
+// tests/admbridge/test_adm_bridge.cpp's own flagship-test fixture (same bed L/R + SR-then-centre
+// moving object, same known-good ring positions and hold/jump timing) - duplicated per this
+// project's own established per-file test-helper convention (see that file's own comment on this)
+// rather than shared, and deliberately kept byte-identical to that fixture rather than inventing a
+// new one: this file's own job is checking that the real forge binary wires parse_bw64 ->
+// admbridge::build -> AtmosEncoder together correctly end to end, not re-proving admbridge's own
+// BS.2076-2 §10.3 state machine or coordinate conversion, which tests/admbridge/test_adm_bridge.cpp
+// already does directly against the library API.
 
 namespace fs = std::filesystem;
 

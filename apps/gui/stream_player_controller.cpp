@@ -438,7 +438,8 @@ void StreamPlayerController::publishLevels(
         const bool has_location = ch < source.locations.size();
         const auto location =
             has_location ? source.locations[ch] : iclforge::eac3::chanmap::Location::kLeft;
-        const auto azimuth = has_location ? forge_gui::location_azimuth_deg(location) : std::nullopt;
+        const auto azimuth =
+            has_location ? forge_gui::location_azimuth_deg(location) : std::nullopt;
         const bool ceiling = has_location && forge_gui::is_ceiling_location(location);
         clip_latched_[ch] = clip_latched_[ch] || level.clipped;
         entries.append(QVariantMap{

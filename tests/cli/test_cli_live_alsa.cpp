@@ -86,8 +86,9 @@ int exit_code(int status) {
 }
 
 int run_cli(const fs::path& config, const std::string& args, const fs::path& log) {
-    const std::string command = alsa_null::env_prefix(config) + "\"" + std::string(ICLFORGE_CLI_EXE) +
-                                "\" " + args + " > \"" + log.string() + "\" 2>&1";
+    const std::string command = alsa_null::env_prefix(config) + "\"" +
+                                std::string(ICLFORGE_CLI_EXE) + "\" " + args + " > \"" +
+                                log.string() + "\" 2>&1";
     return exit_code(std::system(command.c_str()));
 }
 

@@ -33,16 +33,17 @@
 // the app's own NetworkSinks finds them over mDNS, pairs each by the code it shows on its own page
 // (read from its GET /status, as a person reads it off the page), puts them in one group, and the
 // app's own Engine plays an E-AC-3 programme to the group; every sink reports the bursts it played,
-// and the pairings are withdrawn at the end (server/unpair), so each board is left as it was. Another
-// server holding a sink (Music Assistant) is displaced by the pairing, and takes it back afterwards
-// if it wants it.
+// and the pairings are withdrawn at the end (server/unpair), so each board is left as it was.
+// Another server holding a sink (Music Assistant) is displaced by the pairing, and takes it back
+// afterwards if it wants it.
 //
-//   ICLFORGE_HEARTH_LIVE_SINKS    the sinks' mDNS instance names, separated by commas (hearth-47b39c,...);
+//   ICLFORGE_HEARTH_LIVE_SINKS    the sinks' mDNS instance names, separated by commas
+//   (hearth-47b39c,...);
 //                           the case is skipped without it
 //   ICLFORGE_HEARTH_LIVE_SECONDS  how long the programme plays (default 10)
 //
-// iclforge-tests has no firewall exception of its own: it asks mDNS for nothing a Windows firewall stops
-// (NetworkSinks' browser's replies come back as replies to its own queries).
+// iclforge-tests has no firewall exception of its own: it asks mDNS for nothing a Windows firewall
+// stops (NetworkSinks' browser's replies come back as replies to its own queries).
 
 namespace {
 

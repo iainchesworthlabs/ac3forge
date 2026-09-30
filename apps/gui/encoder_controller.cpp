@@ -850,7 +850,8 @@ QStringList EncoderController::ac4SurroundNames() const {
 }
 
 QStringList EncoderController::ac4PreferredDownmixNames() const {
-    return choice_labels(forge_gui::kAc4PreferredDownmixes, QStringLiteral("Stream default (Lo/Ro)"));
+    return choice_labels(forge_gui::kAc4PreferredDownmixes,
+                         QStringLiteral("Stream default (Lo/Ro)"));
 }
 
 QStringList EncoderController::ac4DialogueMaxGainNames() const {
@@ -873,8 +874,8 @@ QString EncoderController::ac4Tokens() const {
     QStringList tokens;
     const bool mp4 = container_index_ == kContainerMp4;
     // Object mode echoes atmos-encode's tokens: the coding, a dialnorm off 31 and the CRC.
-    const auto listed =
-        ac4Objects() ? forge_gui::ac4_object_cli_tokens(ac4_, mp4) : forge_gui::ac4_cli_tokens(ac4_, mp4);
+    const auto listed = ac4Objects() ? forge_gui::ac4_object_cli_tokens(ac4_, mp4)
+                                     : forge_gui::ac4_cli_tokens(ac4_, mp4);
     for (const auto& token : listed) {
         tokens.append(QString::fromStdString(token));
     }
@@ -882,7 +883,8 @@ QString EncoderController::ac4Tokens() const {
 }
 
 void EncoderController::setAc4ObjectCodingIndex(int index) {
-    if (busy_ || index < 0 || static_cast<std::size_t>(index) >= forge_gui::kAc4ObjectCodings.size() ||
+    if (busy_ || index < 0 ||
+        static_cast<std::size_t>(index) >= forge_gui::kAc4ObjectCodings.size() ||
         static_cast<std::size_t>(index) == ac4_.object_coding) {
         return;
     }
@@ -1193,7 +1195,8 @@ QString EncoderController::ac4ObjectsRefusal() const {
     }
     const auto stream_objects =
         iclforge::apps::ac4_object_slots(ac4ObjectAssignment(), sourceShapes());
-    const auto params = forge_gui::ac4_objects_params(ac4_, source_->wav.sample_rate, bitrate_kbps_);
+    const auto params =
+        forge_gui::ac4_objects_params(ac4_, source_->wav.sample_rate, bitrate_kbps_);
     if (const auto refused = iclforge::apps::ac4_objects_refusal(stream_objects, params)) {
         return QString::fromStdString(*refused) + QLatin1Char('.');
     }
@@ -1225,7 +1228,8 @@ QString EncoderController::ac4ObjectsDeepRefusal(
         }
     }
     // The writer's own refusals for this many objects at this rate.
-    const auto params = forge_gui::ac4_objects_params(ac4_, source_->wav.sample_rate, bitrate_kbps_);
+    const auto params =
+        forge_gui::ac4_objects_params(ac4_, source_->wav.sample_rate, bitrate_kbps_);
     std::vector<bool> lfe(stream_objects.size());
     for (std::size_t i = 0; i < stream_objects.size(); ++i) {
         lfe[i] = stream_objects[i].kind == iclforge::apps::Ac4ObjectSlot::Kind::kLfe;

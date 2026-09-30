@@ -27,7 +27,8 @@ int run_atmos(std::string_view out_path, std::uint32_t seconds, std::uint32_t bi
 // An object index the file never mentions holds still at room centre, the
 // same fallback the GUI uses for an object with no authored path.
 int run_atmos_path(std::string_view out_path, std::string_view paths_path, std::uint32_t seconds,
-                   std::uint32_t bitrate, std::uint32_t objects_arg, const forge_cli::Options& meta);
+                   std::uint32_t bitrate, std::uint32_t objects_arg,
+                   const forge_cli::Options& meta);
 
 // Every channel of a real file as its own object, over a 5.1 bed with JOC and
 // OAMD beside it. The synthetic 'atmos' above shows what the object layer can
