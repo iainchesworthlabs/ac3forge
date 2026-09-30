@@ -186,6 +186,19 @@ class Exports(unittest.TestCase):
         new = {"a.dll": ["iclforge::f()", "iclforge::mp4::m()"]}
         self.assertEqual(self.compare(old, new, "identity", {"names"}), 0)
 
+    def test_the_idents_rewrite_moves_the_brand_in_a_name(self) -> None:
+        old = {"c.dll": ["ac3forge_encoder_create", "ac3forge_c::hidden()", "AC3FORGE_x"]}
+        new = {"c.dll": ["iclforge_encoder_create", "iclforge_c::hidden()", "ICLFORGE_x"]}
+        self.assertEqual(self.compare(old, new, "identity", set()), 1)
+        self.assertEqual(self.compare(old, new, "identity", {"idents"}), 0)
+
+    def test_names_and_idents_combine_and_a_real_change_still_shows(self) -> None:
+        old = {"a.dll": ["ac3::f()", "ac3forge_g"]}
+        new = {"a.dll": ["iclforge::f()", "iclforge_g"]}
+        self.assertEqual(self.compare(old, new, "identity", {"names", "idents"}), 0)
+        new["a.dll"].append("iclforge_h")
+        self.assertEqual(self.compare(old, new, "identity", {"names", "idents"}), 1)
+
     def test_a_library_that_stops_re_exporting_a_copy_passes_only_with_copies(self) -> None:
         # admbridge.dll links the codec statically and carried 278 of its names; a change to what
         # its headers include changed which members it pulls in.

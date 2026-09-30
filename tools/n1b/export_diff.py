@@ -1,7 +1,7 @@
 """Compare the exported symbols of the libraries before and after a change (two `symbols` records).
 
     export_diff.py --old <symbols-msvc.json> --new <symbols-msvc.json> [--map identity|l2]
-                   [--rewrite cuts,names] [--copies] [--limit 30]
+                   [--rewrite cuts,names,idents] [--copies] [--limit 30]
 
 `baseline.py record --only symbols` writes one record per build: for every shared library, the
 names it exports, undecorated. This compares two of them. What a stage may change is named by the
@@ -13,6 +13,9 @@ options and nothing else passes.
                    (n1b_cmake.OUTPUT)
   --rewrite cuts   the types the seven cuts of S1 moved appear under their new qualified names
   --rewrite names  the namespace root is rewritten the way n1b_names.py rewrites it (S3)
+  --rewrite idents the brand in a name is rewritten the way n1b_idents.py rewrites an identifier
+                   (S4): the C API's `ac3forge_encoder_create` is `iclforge_encoder_create`, and
+                   `sendspin::ac3forge` is `sendspin::player`
   --copies         a name that leaves one library is not a difference when another library of
                    the new record exports it. A shared library that links the codec statically
                    re-exports the members it pulled in (admbridge.dll carried 278 copies of what
@@ -36,6 +39,7 @@ from pathlib import Path
 
 from n1b_apply import SPLIT_LIBS
 from n1b_cmake import OUTPUT
+from n1b_idents import symbol_rename
 
 CUT_RENAMES = [
     (r"\bac3::eac3::chanmap::(Location|Layout)\b", r"ac3::base::\1"),
@@ -58,6 +62,8 @@ def rewrite(name: str, kinds: set[str]) -> str:
         rules += NAME_RENAMES
     for pattern, replacement in rules:
         name = re.sub(pattern, replacement, name)
+    if "idents" in kinds:
+        name = symbol_rename(name)
     return name
 
 
@@ -121,12 +127,12 @@ def main() -> int:
     ap.add_argument("--old", required=True, type=Path)
     ap.add_argument("--new", required=True, type=Path)
     ap.add_argument("--map", choices=["identity", "l2"], default="identity")
-    ap.add_argument("--rewrite", default="", help="comma-separated: cuts, names")
+    ap.add_argument("--rewrite", default="", help="comma-separated: cuts, names, idents")
     ap.add_argument("--copies", action="store_true", help="a name another library exports is kept")
     ap.add_argument("--limit", type=int, default=30)
     a = ap.parse_args()
     kinds = {k for k in a.rewrite.split(",") if k}
-    unknown = kinds - {"cuts", "names"}
+    unknown = kinds - {"cuts", "names", "idents"}
     if unknown:
         sys.exit(f"export_diff: unknown --rewrite {sorted(unknown)}")
     old = json.loads(a.old.read_text(encoding="utf-8"))
