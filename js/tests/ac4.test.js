@@ -73,7 +73,7 @@ test("loadAc4Module fetches the glue, resolves the wasm beside it, and returns t
 test("Ac4Decoder's constructor defaults every option to the NaN/-1 'unset' sentinels", async () => {
   fake = makeFakeAc4Module();
   const module = await loadAc4Module(GLUE_URL);
-  new Ac4Decoder(module);
+  const decoder = new Ac4Decoder(module);
   assert.equal(fake.log.decoderConstructed.length, 1);
   const ctor = fake.log.decoderConstructed[0];
   assert.equal(Number.isNaN(ctor.outputLevelDbfs), true);
@@ -85,12 +85,13 @@ test("Ac4Decoder's constructor defaults every option to the NaN/-1 'unset' senti
   assert.equal(ctor.presentationIndex, -1);
   assert.equal(ctor.language, "");
   assert.equal(ctor.level, 3);
+  decoder.close();
 });
 
 test("Ac4Decoder's constructor passes explicit options through untouched", async () => {
   fake = makeFakeAc4Module();
   const module = await loadAc4Module(GLUE_URL);
-  new Ac4Decoder(module, {
+  const decoder = new Ac4Decoder(module, {
     outputLevelDbfs: -23,
     drc: Ac4DrcMode.FlatPanelTv,
     downmix: Ac4DownmixTarget.Stereo,
@@ -110,6 +111,7 @@ test("Ac4Decoder's constructor passes explicit options through untouched", async
     language: "en-US",
     level: 1,
   });
+  decoder.close();
 });
 
 test("decodeFrame returns the scripted frame, then null once the script is exhausted", async () => {
@@ -181,10 +183,11 @@ test("Ac4Decoder.close() deletes the native decoder exactly once", async () => {
 test("Ac4Encoder's constructor hands the native encoder the options as given, and none by default", async () => {
   fake = makeFakeAc4Module();
   const module = await loadAc4Module(GLUE_URL);
-  new Ac4Encoder(module);
+  const encoder = new Ac4Encoder(module);
   // A field left out keeps the C++ struct's default: the defaults live in
   // ac4_bindings.cpp, not here.
   assert.deepEqual(fake.log.encoderConstructed[0], {});
+  encoder.close();
 });
 
 test("Ac4Encoder's constructor passes explicit options through untouched", async () => {
@@ -203,8 +206,9 @@ test("Ac4Encoder's constructor passes explicit options through untouched", async
     fragmentStarts: [4096, 9000],
     experimental: { aspxBalance: true, sevenX: Ac4AdditionalPair.Wide, acpl: true },
   };
-  new Ac4Encoder(module, options);
+  const encoder = new Ac4Encoder(module, options);
   assert.deepEqual(fake.log.encoderConstructed[0], options);
+  encoder.close();
 });
 
 test("Ac4Encoder's constructor passes an object substream through untouched", async () => {
@@ -229,8 +233,9 @@ test("Ac4Encoder's constructor passes an object substream through untouched", as
       bedObjectChanDistribute: true,
     },
   };
-  new Ac4Encoder(module, options);
+  const encoder = new Ac4Encoder(module, options);
   assert.deepEqual(fake.log.encoderConstructed[0], options);
+  encoder.close();
 });
 
 test("constructionError reads why the constructor made no encoder", async () => {
