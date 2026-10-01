@@ -89,7 +89,7 @@ arm64 series from `linux-gcc-arm64`. Kernel and memory histories remain x86-only
 These are fixed-runner trends, not comparisons across the 11 split platform
 legs, and developer-machine numbers are not comparable to these rows.
 
-Roadmap PF2 (inlining `to_fixed25` and fusing it with exponent extraction) does not
+The change that inlined `to_fixed25` and fused it with exponent extraction does not
 show as a clean step in the whole-frame series above: the ~7% of a fast-path frame it
 targeted is smaller than this page's own run-to-run variance on a shared runner, so
 the effect is real but not visible against that noise floor in a 200-frame series.
@@ -97,7 +97,7 @@ Isolated from the rest of the frame - the exact per-bin loop, `~9,100` conversio
 sized like one real 5.1 frame's worth, minimum of several runs - it measured
 ~50 µs before and ~30 µs after per frame's worth of calls (a 1.5-1.8× speedup on that
 slice), consistent with the ~33-38 µs the change targeted. The gate that actually
-matters for this change is byte-identical output, not a timing number: see the PF2
+matters for this change is byte-identical output, not a timing number: see that change's
 commit message for the corpus that was checked.
 
 ## Profile by source line, not by symbol
@@ -759,16 +759,16 @@ PR #654, `arm-none-eabi` GCC 14.2.1 under QEMU 10.2.1's `mps2-an385`; `build-foo
 trees ([CI lane partitions](ci-lanes.md)) and in every nightly run, and
 `tools/checks/run_baremetal_probe.sh` reproduces them locally.
 
-The table below was first measured early in PF6/PF7's own feature branch (PR #351). Several
+The table below was first measured early in the bare-metal probe's own feature branch (PR #351). Several
 `develop` merges landed on that branch afterwards but before it merged to `main` — most
 significantly DC10's QMF-domain JOC reconstruction, which the decode path needs
 (`src/dsp/src/qmf.cpp` and `src/ac3/src/verify/eac3_mirror.cpp`, both correctly added to
 `src/ac3/minimal.cmake`'s source list at the time, per that merge's own commit message), plus
-the PF3/PF4 FFT/IMDCT rewrite and DC1's decoder output stage — and nobody re-measured the table
+the FFT/IMDCT rewrite and the decoder output stage — and nobody re-measured the table
 or the ceiling before merging. The image had already reached 412,516 bytes by then.
 
 The same thing happened a second time. The largest movement in that re-measurement was a
-relocation rather than growth. AP3's Pimpl sweep (`ee5ff91e`) gave both decoders a
+relocation rather than growth. The Pimpl sweep (`ee5ff91e`) gave both decoders a
 `struct Impl; std::unique_ptr<Impl> impl_;`
 (both in `src/ac3/include/iclforge/ac3/decoder/decoder.hpp`), so `sizeof(iclforge::ac3::FrameDecoder)` and
 `sizeof(iclforge::ac3::Eac3Decoder)` fell from 12,952 and 27,408 bytes to a single 4-byte pointer each, and
@@ -892,7 +892,7 @@ old number did.
 
 ### Table ROM budget
 
-The reason PF7 asks for this figure by name: the direct-form transform tables `mode=reference`
+The reason the minimum-footprint decoder profile asks for this figure by name: the direct-form transform tables `mode=reference`
 needs are **absent from this image entirely**, not merely unused. Measured on the object file
 with `dumpbin /HEADERS` (Windows) — the actual `.bss` reservation, not an estimate:
 
@@ -926,7 +926,7 @@ a silent fast-path substitution — see the building doc for why.
 | Atmos with objects allocations per frame, steady state | 31 |
 | E-AC-3 7.1.4 allocations per frame, steady state | 35 |
 
-The steady-state allocation counts are the gap [Building](building.md#gaps) records: PF7 asks
+The steady-state allocation counts are the gap [Building](building.md#gaps) records: the minimum-footprint profile asks
 for zero, and this is 1–35. What is left is no longer the per-block geometry vectors inside the
 decoders — those are `Impl` members now, reused frame to frame — but the `std::vector` members
 of the returned `DecodedFrame`/`DecodedSubstream`, which the memory programme's [`_into`

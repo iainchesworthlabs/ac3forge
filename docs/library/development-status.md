@@ -9,7 +9,7 @@ bitstream surface this repository owns — the companion to
 | **This page** | Status of each feature: done, partial, or not started |
 | [Capabilities](capabilities.md) | What each shipped feature does, with the spec sections and the limitations that shape use |
 | [Validation](../verification.md) | How claims are checked, and where external oracles do not reach |
-| [Roadmap](../roadmap.md) | Candidate work and history behind stable IDs (`IM5`, `EQ10`, …) |
+| [Roadmap](../roadmap.md) | Candidate work and history behind stable IDs (`IM5`, `AP10`, …) |
 | [Application coverage](application-coverage.md) | Which applications expose each broad library capability |
 
 [CONTRIBUTING.md](../contributing.md) still makes [Capabilities](capabilities.md) and

@@ -404,7 +404,7 @@ would never trigger a redeploy at all, and the live demo would silently drift fr
     module. A regression in any of those numbers now fails CI rather than waiting for the next
     manual pass.
 
-!!! note "Verified locally while building UX5 (this repository's own Windows host, Emscripten 6.0.6)"
+!!! note "Verified locally while building the push-frame decoder package (this repository's own Windows host, Emscripten 6.0.6)"
     `decoder_bindings.cpp`'s rewrite (the old whole-file `Decoder` class replaced by
     `scanStream()`/`PushDecoder`) was built and linked clean, and both decode Playwright specs
     (the whole-file `decodeFile()` path and the new AudioWorklet pipeline) passed against that

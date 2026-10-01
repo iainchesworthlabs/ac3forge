@@ -1109,7 +1109,7 @@ run, under QEMU on 2026-09-29.
   not parallel work, and splitting them across two cores would have halved a
   cost that could be removed instead.
 - **Per-frame allocations** are 1 to 27 per frame today (this profile's open
-  PF7 gap; the table under [7.1.4](#714-the-widest-programme) has each
+  zero-heap-traffic gap; the table under [7.1.4](#714-the-widest-programme) has each
   fixture's), where they were 1 to 36 when the passes above were made. At a
   few microseconds each they are not on the path to real time for any fixture
   here. The first three passes left the count the runner gates untouched on
@@ -1279,7 +1279,7 @@ followed on 2026-09-10 — see [Folded to stereo](#folded-to-stereo).
   internal RAM free at its lowest ([In the Sendspin sink](#in-the-sendspin-sink)). Moving the
   decoder's allocations between 4 and 16 KB to PSRAM made the board too slow, and Wi-Fi and lwIP
   already try PSRAM first. What is left to try is a decoder that makes fewer such allocations.
-- **Heap traffic in the decode loop.** PF7 asks for zero; the steady state is 1–27 allocations per
+- **Heap traffic in the decode loop.** The minimum-footprint profile asks for zero; the steady state is 1–27 allocations per
   frame depending on fixture, from per-block geometry vectors and the `std::vector` members of the
   returned `DecodedFrame`. Reaching zero means those becoming fixed-capacity, which changes public
   types. The runner gates at 100 so the distance from zero cannot grow quietly.
