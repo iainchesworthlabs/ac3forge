@@ -1,6 +1,6 @@
 {
   "color": "brightgreen",
   "label": "speed vs real time (slowest workload)",
-  "message": "AC-3 5.1 encode: 9x | E-AC-3 Atmos 4-object encode: 5x | AC-4 5.1 encode: 12x",
+  "message": "AC-3 5.1 encode: 10x | E-AC-3 Atmos 4-object encode: 6x | AC-4 5.1 encode: 12x",
   "schemaVersion": 1
 }
