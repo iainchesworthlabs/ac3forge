@@ -1,0 +1,4487 @@
+{
+ "note": "The net edit of the compiler loop (n1b_ac3ns.py --phase loop, then the by-hand fix of one namespace alias left out) against the commit named in base: the lines it replaced and the lines it put, by the line each hunk starts at. Applied by --phase sites.",
+ "base": "4359fcafe3de4c188dddfd3811ef8c87245e6a03",
+ "hunks": [
+  {
+   "file": "apps/common/probe_json.cpp",
+   "line": 25,
+   "old": [
+    "std::string_view codec_token(io::StreamKind kind) {",
+    "    return kind == io::StreamKind::kAc3 ? \"ac3\" : \"eac3\";"
+   ],
+   "new": [
+    "std::string_view codec_token(ac3::io::StreamKind kind) {",
+    "    return kind == ac3::io::StreamKind::kAc3 ? \"ac3\" : \"eac3\";"
+   ]
+  },
+  {
+   "file": "apps/common/probe_json.cpp",
+   "line": 29,
+   "old": [
+    "std::string_view codec_label(io::StreamKind kind) {",
+    "    return kind == io::StreamKind::kAc3 ? \"AC-3\" : \"E-AC-3\";"
+   ],
+   "new": [
+    "std::string_view codec_label(ac3::io::StreamKind kind) {",
+    "    return kind == ac3::io::StreamKind::kAc3 ? \"AC-3\" : \"E-AC-3\";"
+   ]
+  },
+  {
+   "file": "apps/common/probe_json.cpp",
+   "line": 33,
+   "old": [
+    "std::string_view strmtyp_token(eac3::StreamType type) {"
+   ],
+   "new": [
+    "std::string_view strmtyp_token(ac3::eac3::StreamType type) {"
+   ]
+  },
+  {
+   "file": "apps/common/probe_json.cpp",
+   "line": 35,
+   "old": [
+    "        case eac3::StreamType::kIndependent: return \"independent\";",
+    "        case eac3::StreamType::kDependent: return \"dependent\";",
+    "        case eac3::StreamType::kConvertible: return \"convertible\";",
+    "        case eac3::StreamType::kReserved: break;"
+   ],
+   "new": [
+    "        case ac3::eac3::StreamType::kIndependent: return \"independent\";",
+    "        case ac3::eac3::StreamType::kDependent: return \"dependent\";",
+    "        case ac3::eac3::StreamType::kConvertible: return \"convertible\";",
+    "        case ac3::eac3::StreamType::kReserved: break;"
+   ]
+  },
+  {
+   "file": "apps/common/probe_json.cpp",
+   "line": 47,
+   "old": [
+    "std::string_view bsmod_label(int bsmod, Acmod acmod) {"
+   ],
+   "new": [
+    "std::string_view bsmod_label(int bsmod, ac3::Acmod acmod) {"
+   ]
+  },
+  {
+   "file": "apps/common/probe_json.cpp",
+   "line": 56,
+   "old": [
+    "        case 7: return acmod == Acmod::k1_0 ? \"voice over\" : \"karaoke\";"
+   ],
+   "new": [
+    "        case 7: return acmod == ac3::Acmod::k1_0 ? \"voice over\" : \"karaoke\";"
+   ]
+  },
+  {
+   "file": "apps/common/probe_json.cpp",
+   "line": 67,
+   "old": [
+    "std::string_view exp_strategy_token(ExpStrategy strategy) {"
+   ],
+   "new": [
+    "std::string_view exp_strategy_token(ac3::ExpStrategy strategy) {"
+   ]
+  },
+  {
+   "file": "apps/common/probe_json.cpp",
+   "line": 69,
+   "old": [
+    "        case ExpStrategy::kReuse: return \"reuse\";",
+    "        case ExpStrategy::kD15: return \"D15\";",
+    "        case ExpStrategy::kD25: return \"D25\";",
+    "        case ExpStrategy::kD45: return \"D45\";"
+   ],
+   "new": [
+    "        case ac3::ExpStrategy::kReuse: return \"reuse\";",
+    "        case ac3::ExpStrategy::kD15: return \"D15\";",
+    "        case ac3::ExpStrategy::kD25: return \"D25\";",
+    "        case ac3::ExpStrategy::kD45: return \"D45\";"
+   ]
+  },
+  {
+   "file": "apps/common/probe_json.cpp",
+   "line": 135,
+   "old": [
+    "void write_range(JsonSink& json, std::string_view name, const io::MinMax& range, bool negate) {"
+   ],
+   "new": [
+    "void write_range(JsonSink& json, std::string_view name, const ac3::io::MinMax& range, bool negate) {"
+   ]
+  },
+  {
+   "file": "apps/common/probe_json.cpp",
+   "line": 151,
+   "old": [
+    "void write_stream(JsonSink& json, const io::ProbeReport& report) {"
+   ],
+   "new": [
+    "void write_stream(JsonSink& json, const ac3::io::ProbeReport& report) {"
+   ]
+  },
+  {
+   "file": "apps/common/probe_json.cpp",
+   "line": 162,
+   "old": [
+    "    json.member(\"layout_label\", analysis::layout_name(report.acmod, report.lfe));"
+   ],
+   "new": [
+    "    json.member(\"layout_label\", ac3::analysis::layout_name(report.acmod, report.lfe));"
+   ]
+  },
+  {
+   "file": "apps/common/probe_json.cpp",
+   "line": 165,
+   "old": [
+    "                static_cast<std::int64_t>(report.kind == io::StreamKind::kAc3",
+    "                                              ? kBlocksPerFrame",
+    "                                              : eac3::blocks_per_syncframe(report.numblkscod)));"
+   ],
+   "new": [
+    "                static_cast<std::int64_t>(report.kind == ac3::io::StreamKind::kAc3",
+    "                                              ? ac3::kBlocksPerFrame",
+    "                                              : ac3::eac3::blocks_per_syncframe(report.numblkscod)));"
+   ]
+  },
+  {
+   "file": "apps/common/probe_json.cpp",
+   "line": 173,
+   "old": [
+    "        json.value(eac3::chanmap::name(location));"
+   ],
+   "new": [
+    "        json.value(ac3::eac3::chanmap::name(location));"
+   ]
+  },
+  {
+   "file": "apps/common/probe_json.cpp",
+   "line": 231,
+   "old": [
+    "        json.member(\"label\", meta::describe(*report.dmixmod));"
+   ],
+   "new": [
+    "        json.member(\"label\", ac3::meta::describe(*report.dmixmod));"
+   ]
+  },
+  {
+   "file": "apps/common/probe_json.cpp",
+   "line": 1036,
+   "old": [
+    "            json.member(\"bsmod_label\", bsmod_label(box.bsmod, static_cast<Acmod>(box.acmod)));"
+   ],
+   "new": [
+    "            json.member(\"bsmod_label\", bsmod_label(box.bsmod, static_cast<ac3::Acmod>(box.acmod)));"
+   ]
+  },
+  {
+   "file": "apps/common/probe_json.hpp",
+   "line": 33,
+   "old": [
+    "[[nodiscard]] std::string_view codec_token(io::StreamKind kind);",
+    "[[nodiscard]] std::string_view codec_label(io::StreamKind kind);",
+    "[[nodiscard]] std::string_view strmtyp_token(eac3::StreamType type);"
+   ],
+   "new": [
+    "[[nodiscard]] std::string_view codec_token(ac3::io::StreamKind kind);",
+    "[[nodiscard]] std::string_view codec_label(ac3::io::StreamKind kind);",
+    "[[nodiscard]] std::string_view strmtyp_token(ac3::eac3::StreamType type);"
+   ]
+  },
+  {
+   "file": "apps/common/probe_json.hpp",
+   "line": 38,
+   "old": [
+    "[[nodiscard]] std::string_view bsmod_label(int bsmod, Acmod acmod);"
+   ],
+   "new": [
+    "[[nodiscard]] std::string_view bsmod_label(int bsmod, ac3::Acmod acmod);"
+   ]
+  },
+  {
+   "file": "apps/common/probe_json.hpp",
+   "line": 42,
+   "old": [
+    "[[nodiscard]] std::string_view exp_strategy_token(ExpStrategy strategy);"
+   ],
+   "new": [
+    "[[nodiscard]] std::string_view exp_strategy_token(ac3::ExpStrategy strategy);"
+   ]
+  },
+  {
+   "file": "apps/common/probe_json.hpp",
+   "line": 52,
+   "old": [
+    "void write_range(JsonSink& json, std::string_view name, const io::MinMax& range, bool negate);"
+   ],
+   "new": [
+    "void write_range(JsonSink& json, std::string_view name, const ac3::io::MinMax& range, bool negate);"
+   ]
+  },
+  {
+   "file": "apps/common/probe_json.hpp",
+   "line": 55,
+   "old": [
+    "void write_stream(JsonSink& json, const io::ProbeReport& report);"
+   ],
+   "new": [
+    "void write_stream(JsonSink& json, const ac3::io::ProbeReport& report);"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/ac3_transcoder.cpp",
+   "line": 18,
+   "old": [
+    "[[nodiscard]] std::optional<SampleRate> ac3_rate(std::uint32_t hz) {"
+   ],
+   "new": [
+    "[[nodiscard]] std::optional<ac3::SampleRate> ac3_rate(std::uint32_t hz) {"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/ac3_transcoder.cpp",
+   "line": 20,
+   "old": [
+    "        case 48000: return SampleRate::k48000;",
+    "        case 44100: return SampleRate::k44100;",
+    "        case 32000: return SampleRate::k32000;"
+   ],
+   "new": [
+    "        case 48000: return ac3::SampleRate::k48000;",
+    "        case 44100: return ac3::SampleRate::k44100;",
+    "        case 32000: return ac3::SampleRate::k32000;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/ac3_transcoder.cpp",
+   "line": 37,
+   "old": [
+    "constexpr std::array<std::pair<meta::CentreMixLevel, double>, 3> kCentre{{",
+    "    {meta::CentreMixLevel::kMinus3dB, meta::level::kMinus3dB},",
+    "    {meta::CentreMixLevel::kMinus4_5dB, meta::level::kMinus4_5dB},",
+    "    {meta::CentreMixLevel::kMinus6dB, meta::level::kMinus6dB},"
+   ],
+   "new": [
+    "constexpr std::array<std::pair<ac3::meta::CentreMixLevel, double>, 3> kCentre{{",
+    "    {ac3::meta::CentreMixLevel::kMinus3dB, ac3::meta::level::kMinus3dB},",
+    "    {ac3::meta::CentreMixLevel::kMinus4_5dB, ac3::meta::level::kMinus4_5dB},",
+    "    {ac3::meta::CentreMixLevel::kMinus6dB, ac3::meta::level::kMinus6dB},"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/ac3_transcoder.cpp",
+   "line": 42,
+   "old": [
+    "constexpr std::array<std::pair<meta::SurroundMixLevel, double>, 3> kSurround{{",
+    "    {meta::SurroundMixLevel::kMinus3dB, meta::level::kMinus3dB},",
+    "    {meta::SurroundMixLevel::kMinus6dB, meta::level::kMinus6dB},",
+    "    {meta::SurroundMixLevel::kSilent, meta::level::kSilent},"
+   ],
+   "new": [
+    "constexpr std::array<std::pair<ac3::meta::SurroundMixLevel, double>, 3> kSurround{{",
+    "    {ac3::meta::SurroundMixLevel::kMinus3dB, ac3::meta::level::kMinus3dB},",
+    "    {ac3::meta::SurroundMixLevel::kMinus6dB, ac3::meta::level::kMinus6dB},",
+    "    {ac3::meta::SurroundMixLevel::kSilent, ac3::meta::level::kSilent},"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/ac3_transcoder.cpp",
+   "line": 61,
+   "old": [
+    "    const auto header = io::read_frame_metadata(unit);"
+   ],
+   "new": [
+    "    const auto header = ac3::io::read_frame_metadata(unit);"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/ac3_transcoder.cpp",
+   "line": 73,
+   "old": [
+    "        const bool ltrt = header->mix->dmixmod == meta::DownmixMode::kLtRt;"
+   ],
+   "new": [
+    "        const bool ltrt = header->mix->dmixmod == ac3::meta::DownmixMode::kLtRt;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/ac3_transcoder.cpp",
+   "line": 77,
+   "old": [
+    "            out.centre = nearest(meta::coefficient(*centre), kCentre);"
+   ],
+   "new": [
+    "            out.centre = nearest(ac3::meta::coefficient(*centre), kCentre);"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/ac3_transcoder.cpp",
+   "line": 80,
+   "old": [
+    "            out.surround = nearest(meta::coefficient(*surround), kSurround);"
+   ],
+   "new": [
+    "            out.surround = nearest(ac3::meta::coefficient(*surround), kSurround);"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/ac3_transcoder.cpp",
+   "line": 118,
+   "old": [
+    "    const bool second = report.acmod == Acmod::kDualMono && dual_mono == DualMonoChoice::kSecond;"
+   ],
+   "new": [
+    "    const bool second = report.acmod == ac3::Acmod::kDualMono && dual_mono == DualMonoChoice::kSecond;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/ac3_transcoder.cpp",
+   "line": 128,
+   "old": [
+    "        (*report.bsmod != 7 || static_cast<int>(report.acmod) >= static_cast<int>(Acmod::k2_0))) {"
+   ],
+   "new": [
+    "        (*report.bsmod != 7 || static_cast<int>(report.acmod) >= static_cast<int>(ac3::Acmod::k2_0))) {"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/ac3_transcoder.cpp",
+   "line": 141,
+   "old": [
+    "    plan::Plan p;",
+    "    p.codec = plan::Codec::kAc3;",
+    "    p.layout = plan::LayoutId::k51;"
+   ],
+   "new": [
+    "    ac3::plan::Plan p;",
+    "    p.codec = ac3::plan::Codec::kAc3;",
+    "    p.layout = ac3::plan::LayoutId::k51;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/ac3_transcoder.cpp",
+   "line": 151,
+   "old": [
+    "    if (const auto bad = plan::validate(p)) {"
+   ],
+   "new": [
+    "    if (const auto bad = ac3::plan::validate(p)) {"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/ac3_transcoder.cpp",
+   "line": 153,
+   "old": [
+    "            fmt::format(\"The AC-3 encoder cannot be set up: {}.\", plan::describe(*bad)));"
+   ],
+   "new": [
+    "            fmt::format(\"The AC-3 encoder cannot be set up: {}.\", ac3::plan::describe(*bad)));"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/ac3_transcoder.cpp",
+   "line": 156,
+   "old": [
+    "    encoder_ = std::make_unique<FrameEncoder>(plan::ac3_config(p));",
+    "    heavy_.emplace(meta::HeavyConfig{}, *rate);"
+   ],
+   "new": [
+    "    encoder_ = std::make_unique<ac3::FrameEncoder>(ac3::plan::ac3_config(p));",
+    "    heavy_.emplace(ac3::meta::HeavyConfig{}, *rate);"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/ac3_transcoder.cpp",
+   "line": 165,
+   "old": [
+    "    const std::uint64_t reach_from = start - std::min<std::uint64_t>(start, kSamplesPerBlock);",
+    "    const std::uint64_t reach_to = start + std::uint64_t{kSamplesPerFrame};"
+   ],
+   "new": [
+    "    const std::uint64_t reach_from = start - std::min<std::uint64_t>(start, ac3::kSamplesPerBlock);",
+    "    const std::uint64_t reach_to = start + std::uint64_t{ac3::kSamplesPerFrame};"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/ac3_transcoder.cpp",
+   "line": 176,
+   "old": [
+    "        } else if (!said || meta::compr_gain(*said_[i].compr) < meta::compr_gain(*said)) {"
+   ],
+   "new": [
+    "        } else if (!said || ac3::meta::compr_gain(*said_[i].compr) < ac3::meta::compr_gain(*said)) {"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/ac3_transcoder.cpp",
+   "line": 182,
+   "old": [
+    "    const double peak = meta::mono_downmix_peak_dbfs(",
+    "        std::span<const std::array<float, kSamplesPerBlock>>(history_),",
+    "        channels.first(kChannels - 1), Acmod::k3_2, meta::coefficient(fold_.centre),",
+    "        meta::coefficient(fold_.surround));"
+   ],
+   "new": [
+    "    const double peak = ac3::meta::mono_downmix_peak_dbfs(",
+    "        std::span<const std::array<float, ac3::kSamplesPerBlock>>(history_),",
+    "        channels.first(kChannels - 1), ac3::Acmod::k3_2, ac3::meta::coefficient(fold_.centre),",
+    "        ac3::meta::coefficient(fold_.surround));"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/ac3_transcoder.cpp",
+   "line": 190,
+   "old": [
+    "    if (unsaid && meta::compr_gain(own) < meta::compr_gain(*said)) {"
+   ],
+   "new": [
+    "    if (unsaid && ac3::meta::compr_gain(own) < ac3::meta::compr_gain(*said)) {"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/ac3_transcoder.cpp",
+   "line": 207,
+   "old": [
+    "        std::array<float, kSamplesPerFrame>& frame = frame_[channel];"
+   ],
+   "new": [
+    "        std::array<float, ac3::kSamplesPerFrame>& frame = frame_[channel];"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/ac3_transcoder.cpp",
+   "line": 217,
+   "old": [
+    "    const std::uint64_t middle = start + std::uint64_t{kSamplesPerFrame / 2} - kDelay;"
+   ],
+   "new": [
+    "    const std::uint64_t middle = start + std::uint64_t{ac3::kSamplesPerFrame / 2} - kDelay;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/ac3_transcoder.cpp",
+   "line": 228,
+   "old": [
+    "    const auto edited = io::edit_frame_metadata("
+   ],
+   "new": [
+    "    const auto edited = ac3::io::edit_frame_metadata("
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/ac3_transcoder.cpp",
+   "line": 230,
+   "old": [
+    "        io::MetadataEdit{.dialnorm = said.dialnorm, .compr = compr, .bsmod = said.bsmod});"
+   ],
+   "new": [
+    "        ac3::io::MetadataEdit{.dialnorm = said.dialnorm, .compr = compr, .bsmod = said.bsmod});"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/ac3_transcoder.cpp",
+   "line": 234,
+   "old": [
+    "                        io::describe(edited.error())));"
+   ],
+   "new": [
+    "                        ac3::io::describe(edited.error())));"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/ac3_transcoder.cpp",
+   "line": 237,
+   "old": [
+    "        std::ranges::copy(std::span<const float>(frame_[channel]).last(kSamplesPerBlock),"
+   ],
+   "new": [
+    "        std::ranges::copy(std::span<const float>(frame_[channel]).last(ac3::kSamplesPerBlock),"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/ac3_transcoder.cpp",
+   "line": 256,
+   "old": [
+    "    encoded_ += kSamplesPerFrame;"
+   ],
+   "new": [
+    "    encoded_ += ac3::kSamplesPerFrame;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/ac3_transcoder.cpp",
+   "line": 260,
+   "old": [
+    "        consumed_ - std::min<std::uint64_t>(consumed_, kSamplesPerBlock);"
+   ],
+   "new": [
+    "        consumed_ - std::min<std::uint64_t>(consumed_, ac3::kSamplesPerBlock);"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/ac3_transcoder.cpp",
+   "line": 279,
+   "old": [
+    "    while (buffered() >= kSamplesPerFrame) {",
+    "        if (auto done = encode_frame(kSamplesPerFrame, out); !done) {"
+   ],
+   "new": [
+    "    while (buffered() >= ac3::kSamplesPerFrame) {",
+    "        if (auto done = encode_frame(ac3::kSamplesPerFrame, out); !done) {"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/ac3_transcoder.cpp",
+   "line": 294,
+   "old": [
+    "            std::min<std::uint64_t>(buffered(), kSamplesPerFrame));"
+   ],
+   "new": [
+    "            std::min<std::uint64_t>(buffered(), ac3::kSamplesPerFrame));"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/ac3_transcoder.hpp",
+   "line": 70,
+   "old": [
+    "    static constexpr std::uint64_t kDelay = kTransformDelaySamples;"
+   ],
+   "new": [
+    "    static constexpr std::uint64_t kDelay = ac3::kTransformDelaySamples;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/ac3_transcoder.hpp",
+   "line": 74,
+   "old": [
+    "        meta::CentreMixLevel centre = meta::CentreMixLevel::kMinus4_5dB;",
+    "        meta::SurroundMixLevel surround = meta::SurroundMixLevel::kMinus6dB;"
+   ],
+   "new": [
+    "        ac3::meta::CentreMixLevel centre = ac3::meta::CentreMixLevel::kMinus4_5dB;",
+    "        ac3::meta::SurroundMixLevel surround = ac3::meta::SurroundMixLevel::kMinus6dB;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/ac3_transcoder.hpp",
+   "line": 152,
+   "old": [
+    "    std::unique_ptr<FrameEncoder> encoder_;",
+    "    std::optional<meta::HeavyCompressor> heavy_;"
+   ],
+   "new": [
+    "    std::unique_ptr<ac3::FrameEncoder> encoder_;",
+    "    std::optional<ac3::meta::HeavyCompressor> heavy_;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/ac3_transcoder.hpp",
+   "line": 171,
+   "old": [
+    "    std::array<std::array<float, kSamplesPerFrame>, kChannels> frame_{};"
+   ],
+   "new": [
+    "    std::array<std::array<float, ac3::kSamplesPerFrame>, kChannels> frame_{};"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/ac3_transcoder.hpp",
+   "line": 174,
+   "old": [
+    "    std::array<std::array<float, kSamplesPerBlock>, kChannels - 1> history_{};"
+   ],
+   "new": [
+    "    std::array<std::array<float, ac3::kSamplesPerBlock>, kChannels - 1> history_{};"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/decoder_settings.cpp",
+   "line": 35,
+   "old": [
+    "[[nodiscard]] iclforge::ac4::DownmixTarget ac4_downmix(const std::optional<DownmixTarget>& fold,"
+   ],
+   "new": [
+    "[[nodiscard]] iclforge::ac4::DownmixTarget ac4_downmix(const std::optional<ac3::DownmixTarget>& fold,"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/decoder_settings.cpp",
+   "line": 41,
+   "old": [
+    "        case DownmixTarget::kMono:"
+   ],
+   "new": [
+    "        case ac3::DownmixTarget::kMono:"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/decoder_settings.cpp",
+   "line": 43,
+   "old": [
+    "        case DownmixTarget::kLtRt:"
+   ],
+   "new": [
+    "        case ac3::DownmixTarget::kLtRt:"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/decoder_settings.cpp",
+   "line": 46,
+   "old": [
+    "        case DownmixTarget::kLoRo:"
+   ],
+   "new": [
+    "        case ac3::DownmixTarget::kLoRo:"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/decoder_settings.cpp",
+   "line": 49,
+   "old": [
+    "        case DownmixTarget::kAsCoded:"
+   ],
+   "new": [
+    "        case ac3::DownmixTarget::kAsCoded:"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/decoder_settings.cpp",
+   "line": 56,
+   "old": [
+    "[[nodiscard]] iclforge::ac4::ConcealmentPolicy ac4_concealment(ConcealmentPolicy policy) {"
+   ],
+   "new": [
+    "[[nodiscard]] iclforge::ac4::ConcealmentPolicy ac4_concealment(ac3::ConcealmentPolicy policy) {"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/decoder_settings.cpp",
+   "line": 58,
+   "old": [
+    "        case ConcealmentPolicy::kNone:"
+   ],
+   "new": [
+    "        case ac3::ConcealmentPolicy::kNone:"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/decoder_settings.cpp",
+   "line": 60,
+   "old": [
+    "        case ConcealmentPolicy::kRepeatFade:"
+   ],
+   "new": [
+    "        case ac3::ConcealmentPolicy::kRepeatFade:"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/decoder_settings.cpp",
+   "line": 62,
+   "old": [
+    "        case ConcealmentPolicy::kMute:"
+   ],
+   "new": [
+    "        case ac3::ConcealmentPolicy::kMute:"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/decoder_settings.cpp",
+   "line": 70,
+   "old": [
+    "                                           const render::Serving& serving) {"
+   ],
+   "new": [
+    "                                           const ac3::render::Serving& serving) {"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/decoder_settings.cpp",
+   "line": 168,
+   "old": [
+    "    const DownmixTarget stereo = settings.stereo_fold == DownmixTarget::kLtRt",
+    "                                     ? DownmixTarget::kLtRt",
+    "                                     : DownmixTarget::kLoRo;",
+    "    setup.serving = render::serve(layout, stereo, settings.objects);"
+   ],
+   "new": [
+    "    const ac3::DownmixTarget stereo = settings.stereo_fold == ac3::DownmixTarget::kLtRt",
+    "                                     ? ac3::DownmixTarget::kLtRt",
+    "                                     : ac3::DownmixTarget::kLoRo;",
+    "    setup.serving = ac3::render::serve(layout, stereo, settings.objects);"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/decoder_settings.cpp",
+   "line": 173,
+   "old": [
+    "    DecoderConfig& config = setup.config;"
+   ],
+   "new": [
+    "    ac3::DecoderConfig& config = setup.config;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/decoder_settings.cpp",
+   "line": 196,
+   "old": [
+    "    render::configure_decoder(setup.serving, config);"
+   ],
+   "new": [
+    "    ac3::render::configure_decoder(setup.serving, config);"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/decoder_settings.cpp",
+   "line": 204,
+   "old": [
+    "        case OperatingMode::kLine: parts.emplace_back(\"line mode\"); break;",
+    "        case OperatingMode::kRf:"
+   ],
+   "new": [
+    "        case ac3::OperatingMode::kLine: parts.emplace_back(\"line mode\"); break;",
+    "        case ac3::OperatingMode::kRf:"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/decoder_settings.cpp",
+   "line": 208,
+   "old": [
+    "        case OperatingMode::kCustom:"
+   ],
+   "new": [
+    "        case ac3::OperatingMode::kCustom:"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/decoder_settings.cpp",
+   "line": 215,
+   "old": [
+    "    parts.push_back(settings.stereo_fold == DownmixTarget::kLtRt"
+   ],
+   "new": [
+    "    parts.push_back(settings.stereo_fold == ac3::DownmixTarget::kLtRt"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/decoder_settings.cpp",
+   "line": 223,
+   "old": [
+    "    const MixLevelOverride& levels = settings.mix_levels;"
+   ],
+   "new": [
+    "    const ac3::MixLevelOverride& levels = settings.mix_levels;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/decoder_settings.cpp",
+   "line": 251,
+   "old": [
+    "        case render::ObjectsPolicy::kAuto: parts.emplace_back(\"objects for height layouts\"); break;",
+    "        case render::ObjectsPolicy::kNever: parts.emplace_back(\"objects never\"); break;",
+    "        case render::ObjectsPolicy::kAlways: parts.emplace_back(\"objects always\"); break;"
+   ],
+   "new": [
+    "        case ac3::render::ObjectsPolicy::kAuto: parts.emplace_back(\"objects for height layouts\"); break;",
+    "        case ac3::render::ObjectsPolicy::kNever: parts.emplace_back(\"objects never\"); break;",
+    "        case ac3::render::ObjectsPolicy::kAlways: parts.emplace_back(\"objects always\"); break;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/decoder_settings.cpp",
+   "line": 262,
+   "old": [
+    "        case ConcealmentPolicy::kNone: parts.emplace_back(\"no concealment\"); break;",
+    "        case ConcealmentPolicy::kRepeatFade: parts.emplace_back(\"concealment: repeat and fade\"); break;",
+    "        case ConcealmentPolicy::kMute: parts.emplace_back(\"concealment: mute\"); break;"
+   ],
+   "new": [
+    "        case ac3::ConcealmentPolicy::kNone: parts.emplace_back(\"no concealment\"); break;",
+    "        case ac3::ConcealmentPolicy::kRepeatFade: parts.emplace_back(\"concealment: repeat and fade\"); break;",
+    "        case ac3::ConcealmentPolicy::kMute: parts.emplace_back(\"concealment: mute\"); break;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/decoder_settings.cpp",
+   "line": 274,
+   "old": [
+    "    neutral.mode = OperatingMode::kCustom;"
+   ],
+   "new": [
+    "    neutral.mode = ac3::OperatingMode::kCustom;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/decoder_settings.cpp",
+   "line": 280,
+   "old": [
+    "    neutral.objects = render::ObjectsPolicy::kNever;"
+   ],
+   "new": [
+    "    neutral.objects = ac3::render::ObjectsPolicy::kNever;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/decoder_settings.hpp",
+   "line": 103,
+   "old": [
+    "    OperatingMode mode = OperatingMode::kLine;"
+   ],
+   "new": [
+    "    ac3::OperatingMode mode = ac3::OperatingMode::kLine;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/decoder_settings.hpp",
+   "line": 117,
+   "old": [
+    "    DownmixTarget stereo_fold = DownmixTarget::kLoRo;"
+   ],
+   "new": [
+    "    ac3::DownmixTarget stereo_fold = ac3::DownmixTarget::kLoRo;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/decoder_settings.hpp",
+   "line": 126,
+   "old": [
+    "    MixLevelOverride mix_levels{};"
+   ],
+   "new": [
+    "    ac3::MixLevelOverride mix_levels{};"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/decoder_settings.hpp",
+   "line": 133,
+   "old": [
+    "    render::ObjectsPolicy objects = render::ObjectsPolicy::kAuto;"
+   ],
+   "new": [
+    "    ac3::render::ObjectsPolicy objects = ac3::render::ObjectsPolicy::kAuto;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/decoder_settings.hpp",
+   "line": 140,
+   "old": [
+    "    ConcealmentPolicy concealment = ConcealmentPolicy::kRepeatFade;"
+   ],
+   "new": [
+    "    ac3::ConcealmentPolicy concealment = ac3::ConcealmentPolicy::kRepeatFade;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/decoder_settings.hpp",
+   "line": 154,
+   "old": [
+    "    render::Serving serving{};",
+    "    DecoderConfig config{};"
+   ],
+   "new": [
+    "    ac3::render::Serving serving{};",
+    "    ac3::DecoderConfig config{};"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 30,
+   "old": [
+    "[[nodiscard]] MediaCodec codec_of(io::StreamKind kind) {"
+   ],
+   "new": [
+    "[[nodiscard]] MediaCodec codec_of(ac3::io::StreamKind kind) {"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 32,
+   "old": [
+    "        case io::StreamKind::kAc3: return MediaCodec::kAc3;",
+    "        case io::StreamKind::kEac3: return MediaCodec::kEac3;",
+    "        case io::StreamKind::kAc3CoreEac3Extension: return MediaCodec::kAc3WithEac3;"
+   ],
+   "new": [
+    "        case ac3::io::StreamKind::kAc3: return MediaCodec::kAc3;",
+    "        case ac3::io::StreamKind::kEac3: return MediaCodec::kEac3;",
+    "        case ac3::io::StreamKind::kAc3CoreEac3Extension: return MediaCodec::kAc3WithEac3;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 44,
+   "old": [
+    "    DecoderConfig config;"
+   ],
+   "new": [
+    "    ac3::DecoderConfig config;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 49,
+   "old": [
+    "        const auto header = io::read_frame_header(rest);"
+   ],
+   "new": [
+    "        const auto header = ac3::io::read_frame_header(rest);"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 55,
+   "old": [
+    "        if (header->kind == io::StreamKind::kAc3) {",
+    "            FrameDecoder decoder{config};"
+   ],
+   "new": [
+    "        if (header->kind == ac3::io::StreamKind::kAc3) {",
+    "            ac3::FrameDecoder decoder{config};"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 71,
+   "old": [
+    "        if (header->strmtyp == eac3::StreamType::kDependent) {"
+   ],
+   "new": [
+    "        if (header->strmtyp == ac3::eac3::StreamType::kDependent) {"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 74,
+   "old": [
+    "        Eac3Decoder decoder{config};"
+   ],
+   "new": [
+    "        ac3::Eac3Decoder decoder{config};"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 79,
+   "old": [
+    "        const DecodedSubstream& sub = **decoded;"
+   ],
+   "new": [
+    "        const ac3::DecodedSubstream& sub = **decoded;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 86,
+   "old": [
+    "                              .levels = mix_levels(sub.mixing)};"
+   ],
+   "new": [
+    "                              .levels = ac3::mix_levels(sub.mixing)};"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 192,
+   "old": [
+    "                        apps::probe_json::bsmod_label(box.bsmod, static_cast<Acmod>(box.acmod)));"
+   ],
+   "new": [
+    "                        apps::probe_json::bsmod_label(box.bsmod, static_cast<ac3::Acmod>(box.acmod)));"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 286,
+   "old": [
+    "        json.member(\"layout_label\", analysis::layout_name(programme.acmod, programme.lfe));"
+   ],
+   "new": [
+    "        json.member(\"layout_label\", ac3::analysis::layout_name(programme.acmod, programme.lfe));"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 302,
+   "old": [
+    "        const io::SubstreamService& service = info.associated_services[index];"
+   ],
+   "new": [
+    "        const ac3::io::SubstreamService& service = info.associated_services[index];"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 320,
+   "old": [
+    "                      const std::optional<meta::AudioProduction>& production) {"
+   ],
+   "new": [
+    "                      const std::optional<ac3::meta::AudioProduction>& production) {"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 329,
+   "old": [
+    "                static_cast<std::int64_t>(meta::mix_level_db_spl(production->mixlevel)));"
+   ],
+   "new": [
+    "                static_cast<std::int64_t>(ac3::meta::mix_level_db_spl(production->mixlevel)));"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 331,
+   "old": [
+    "    json.member(\"roomtyp_label\", meta::describe(production->roomtyp));"
+   ],
+   "new": [
+    "    json.member(\"roomtyp_label\", ac3::meta::describe(production->roomtyp));"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 333,
+   "old": [
+    "    json.member(\"adconvtyp_label\", meta::describe(production->adconvtyp));"
+   ],
+   "new": [
+    "    json.member(\"adconvtyp_label\", ac3::meta::describe(production->adconvtyp));"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 338,
+   "old": [
+    "void write_info(JsonSink& json, const meta::BsiInfo& info, Acmod acmod) {"
+   ],
+   "new": [
+    "void write_info(JsonSink& json, const ac3::meta::BsiInfo& info, ac3::Acmod acmod) {"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 343,
+   "old": [
+    "    json.member(\"dsurmod_label\", meta::describe(info.dsurmod));"
+   ],
+   "new": [
+    "    json.member(\"dsurmod_label\", ac3::meta::describe(info.dsurmod));"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 345,
+   "old": [
+    "    json.member(\"dheadphonmod_label\", meta::describe(info.dheadphonmod));"
+   ],
+   "new": [
+    "    json.member(\"dheadphonmod_label\", ac3::meta::describe(info.dheadphonmod));"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 347,
+   "old": [
+    "    json.member(\"dsurexmod_label\", meta::describe(info.dsurexmod));"
+   ],
+   "new": [
+    "    json.member(\"dsurexmod_label\", ac3::meta::describe(info.dsurexmod));"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 379,
+   "old": [
+    "void write_downmix_mode(JsonSink& json, std::string_view name, meta::DownmixMode mode) {"
+   ],
+   "new": [
+    "void write_downmix_mode(JsonSink& json, std::string_view name, ac3::meta::DownmixMode mode) {"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 383,
+   "old": [
+    "    json.member(\"label\", meta::describe(mode));"
+   ],
+   "new": [
+    "    json.member(\"label\", ac3::meta::describe(mode));"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 389,
+   "old": [
+    "void write_mix(JsonSink& json, const meta::MixMetadata& mix) {"
+   ],
+   "new": [
+    "void write_mix(JsonSink& json, const ac3::meta::MixMetadata& mix) {"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 392,
+   "old": [
+    "    const auto fold_level = [&json](std::string_view name, meta::MixLevel code) {",
+    "        write_level(json, name, static_cast<int>(code), level_db(meta::coefficient(code)));"
+   ],
+   "new": [
+    "    const auto fold_level = [&json](std::string_view name, ac3::meta::MixLevel code) {",
+    "        write_level(json, name, static_cast<int>(code), level_db(ac3::meta::coefficient(code)));"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 403,
+   "old": [
+    "        json.member(\"db\", meta::lfe_mix_level_db(*mix.lfemixlevcod), 2);"
+   ],
+   "new": [
+    "        json.member(\"db\", ac3::meta::lfe_mix_level_db(*mix.lfemixlevcod), 2);"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 417,
+   "old": [
+    "        if (*code == meta::kPgmScaleMute) {"
+   ],
+   "new": [
+    "        if (*code == ac3::meta::kPgmScaleMute) {"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 420,
+   "old": [
+    "            json.member(\"db\", meta::pgm_scale_db(*code), 2);"
+   ],
+   "new": [
+    "            json.member(\"db\", ac3::meta::pgm_scale_db(*code), 2);"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 431,
+   "old": [
+    "    const auto write_premix = [&json](const meta::PremixCompression& premix) {"
+   ],
+   "new": [
+    "    const auto write_premix = [&json](const ac3::meta::PremixCompression& premix) {"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 434,
+   "old": [
+    "        json.member(\"premixcmpsel_label\", premix.premixcmpsel == meta::PremixCompressionSource::kDynrng"
+   ],
+   "new": [
+    "        json.member(\"premixcmpsel_label\", premix.premixcmpsel == ac3::meta::PremixCompressionSource::kDynrng"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 439,
+   "old": [
+    "                    premix.drcsrc == meta::DrcSource::kExternal ? \"external\" : \"this_substream\");"
+   ],
+   "new": [
+    "                    premix.drcsrc == ac3::meta::DrcSource::kExternal ? \"external\" : \"this_substream\");"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 454,
+   "old": [
+    "            json.member(\"db\", meta::kExternalScaleDb[static_cast<std::size_t>(*code)], 2);"
+   ],
+   "new": [
+    "            json.member(\"db\", ac3::meta::kExternalScaleDb[static_cast<std::size_t>(*code)], 2);"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 468,
+   "old": [
+    "        case meta::MixDefinition::kNone:"
+   ],
+   "new": [
+    "        case ac3::meta::MixDefinition::kNone:"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 471,
+   "old": [
+    "        case meta::MixDefinition::kPremix:"
+   ],
+   "new": [
+    "        case ac3::meta::MixDefinition::kPremix:"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 476,
+   "old": [
+    "        case meta::MixDefinition::kReserved:"
+   ],
+   "new": [
+    "        case ac3::meta::MixDefinition::kReserved:"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 481,
+   "old": [
+    "        case meta::MixDefinition::kExtended:"
+   ],
+   "new": [
+    "        case ac3::meta::MixDefinition::kExtended:"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 544,
+   "old": [
+    "    const auto write_pan = [&json](const std::optional<meta::PanInfo>& pan) {"
+   ],
+   "new": [
+    "    const auto write_pan = [&json](const std::optional<ac3::meta::PanInfo>& pan) {"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 551,
+   "old": [
+    "        json.member(\"degrees\", static_cast<double>(pan->panmean) * meta::kPanMeanDegreesPerStep, 1);"
+   ],
+   "new": [
+    "        json.member(\"degrees\", static_cast<double>(pan->panmean) * ac3::meta::kPanMeanDegreesPerStep, 1);"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 597,
+   "old": [
+    "        const meta::AlternateBsi& alternate = *bits->alternate_bsi;"
+   ],
+   "new": [
+    "        const ac3::meta::AlternateBsi& alternate = *bits->alternate_bsi;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 607,
+   "old": [
+    "            const meta::ExtendedBsi& extended = *alternate.extended;"
+   ],
+   "new": [
+    "            const ac3::meta::ExtendedBsi& extended = *alternate.extended;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 610,
+   "old": [
+    "            json.member(\"dsurexmod_label\", meta::describe(extended.dsurexmod));"
+   ],
+   "new": [
+    "            json.member(\"dsurexmod_label\", ac3::meta::describe(extended.dsurexmod));"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 612,
+   "old": [
+    "            json.member(\"dheadphonmod_label\", meta::describe(extended.dheadphonmod));"
+   ],
+   "new": [
+    "            json.member(\"dheadphonmod_label\", ac3::meta::describe(extended.dheadphonmod));"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 614,
+   "old": [
+    "            json.member(\"adconvtyp_label\", meta::describe(extended.adconvtyp));"
+   ],
+   "new": [
+    "            json.member(\"adconvtyp_label\", ac3::meta::describe(extended.adconvtyp));"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 628,
+   "old": [
+    "                    level_db(meta::coefficient(*bits->cmixlev)));"
+   ],
+   "new": [
+    "                    level_db(ac3::meta::coefficient(*bits->cmixlev)));"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 634,
+   "old": [
+    "                    level_db(meta::coefficient(*bits->surmixlev)));"
+   ],
+   "new": [
+    "                    level_db(ac3::meta::coefficient(*bits->surmixlev)));"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 646,
+   "old": [
+    "    const MixLevels& levels = bits->levels;"
+   ],
+   "new": [
+    "    const ac3::MixLevels& levels = bits->levels;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 729,
+   "old": [
+    "    const auto scanned = io::scan(bytes);"
+   ],
+   "new": [
+    "    const auto scanned = ac3::io::scan(bytes);"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 731,
+   "old": [
+    "        info.error = fmt::format(\"The stream could not be read: {}.\", io::describe(scanned.error()));"
+   ],
+   "new": [
+    "        info.error = fmt::format(\"The stream could not be read: {}.\", ac3::io::describe(scanned.error()));"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 736,
+   "old": [
+    "    info.stream_samples = io::stream_duration_samples(*scanned);",
+    "    for (const io::ScannedProgramme& programme : scanned->programmes) {"
+   ],
+   "new": [
+    "    info.stream_samples = ac3::io::stream_duration_samples(*scanned);",
+    "    for (const ac3::io::ScannedProgramme& programme : scanned->programmes) {"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 754,
+   "old": [
+    "    io::ProbeOptions options;"
+   ],
+   "new": [
+    "    ac3::io::ProbeOptions options;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 759,
+   "old": [
+    "    options.on_access_unit = [&info](const io::ProbeAccessUnit& unit) {"
+   ],
+   "new": [
+    "    options.on_access_unit = [&info](const ac3::io::ProbeAccessUnit& unit) {"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 767,
+   "old": [
+    "        for (const io::ProbeSyncframe& frame : unit.syncframes) {"
+   ],
+   "new": [
+    "        for (const ac3::io::ProbeSyncframe& frame : unit.syncframes) {"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 777,
+   "old": [
+    "    io::Prober prober{std::move(options)};"
+   ],
+   "new": [
+    "    ac3::io::Prober prober{std::move(options)};"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 781,
+   "old": [
+    "                                     io::describe(pushed.error()));"
+   ],
+   "new": [
+    "                                     ac3::io::describe(pushed.error()));"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.cpp",
+   "line": 797,
+   "old": [
+    "    json.member(\"generator\", version_full);"
+   ],
+   "new": [
+    "    json.member(\"generator\", ac3::version_full);"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.hpp",
+   "line": 101,
+   "old": [
+    "    Acmod acmod = Acmod::k2_0;"
+   ],
+   "new": [
+    "    ac3::Acmod acmod = ac3::Acmod::k2_0;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.hpp",
+   "line": 116,
+   "old": [
+    "    Acmod acmod = Acmod::k2_0;"
+   ],
+   "new": [
+    "    ac3::Acmod acmod = ac3::Acmod::k2_0;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.hpp",
+   "line": 118,
+   "old": [
+    "    std::optional<meta::BsiInfo> info = std::nullopt;"
+   ],
+   "new": [
+    "    std::optional<ac3::meta::BsiInfo> info = std::nullopt;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.hpp",
+   "line": 120,
+   "old": [
+    "    std::optional<meta::AlternateBsi> alternate_bsi = std::nullopt;"
+   ],
+   "new": [
+    "    std::optional<ac3::meta::AlternateBsi> alternate_bsi = std::nullopt;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.hpp",
+   "line": 122,
+   "old": [
+    "    std::optional<meta::CentreMixLevel> cmixlev = std::nullopt;",
+    "    std::optional<meta::SurroundMixLevel> surmixlev = std::nullopt;"
+   ],
+   "new": [
+    "    std::optional<ac3::meta::CentreMixLevel> cmixlev = std::nullopt;",
+    "    std::optional<ac3::meta::SurroundMixLevel> surmixlev = std::nullopt;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.hpp",
+   "line": 125,
+   "old": [
+    "    std::optional<meta::MixMetadata> mixing = std::nullopt;"
+   ],
+   "new": [
+    "    std::optional<ac3::meta::MixMetadata> mixing = std::nullopt;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.hpp",
+   "line": 128,
+   "old": [
+    "    MixLevels levels{};"
+   ],
+   "new": [
+    "    ac3::MixLevels levels{};"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.hpp",
+   "line": 149,
+   "old": [
+    "    std::array<io::SubstreamService, 3> associated_services{};"
+   ],
+   "new": [
+    "    std::array<ac3::io::SubstreamService, 3> associated_services{};"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/media_info.hpp",
+   "line": 151,
+   "old": [
+    "    std::optional<io::ProbeReport> probe = std::nullopt;"
+   ],
+   "new": [
+    "    std::optional<ac3::io::ProbeReport> probe = std::nullopt;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/play_meters.cpp",
+   "line": 20,
+   "old": [
+    "[[nodiscard]] SampleRate rate_code(std::uint32_t rate) {",
+    "    for (const SampleRate code : {SampleRate::k48000, SampleRate::k44100, SampleRate::k32000}) {"
+   ],
+   "new": [
+    "[[nodiscard]] ac3::SampleRate rate_code(std::uint32_t rate) {",
+    "    for (const ac3::SampleRate code : {ac3::SampleRate::k48000, ac3::SampleRate::k44100, ac3::SampleRate::k32000}) {"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/play_meters.cpp",
+   "line": 26,
+   "old": [
+    "    return SampleRate::k48000;"
+   ],
+   "new": [
+    "    return ac3::SampleRate::k48000;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/play_meters.cpp",
+   "line": 38,
+   "old": [
+    "      levels_(Acmod::k1_0, false, sample_rate, static_cast<int>(std::max<std::size_t>(slots_, 1))) {"
+   ],
+   "new": [
+    "      levels_(ac3::Acmod::k1_0, false, sample_rate, static_cast<int>(std::max<std::size_t>(slots_, 1))) {"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/play_meters.cpp",
+   "line": 41,
+   "old": [
+    "        if (location && loudness_layout_.count < eac3::chanmap::kMaxChannels) {"
+   ],
+   "new": [
+    "        if (location && loudness_layout_.count < ac3::eac3::chanmap::kMaxChannels) {"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/play_meters.cpp",
+   "line": 53,
+   "old": [
+    "meta::LoudnessMeter PlayMeters::make_loudness() const {",
+    "    return meta::LoudnessMeter{rate_code(rate_), loudness_layout_};"
+   ],
+   "new": [
+    "ac3::meta::LoudnessMeter PlayMeters::make_loudness() const {",
+    "    return ac3::meta::LoudnessMeter{rate_code(rate_), loudness_layout_};"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/play_meters.cpp",
+   "line": 104,
+   "old": [
+    "        const meta::LoudnessMeter& recent = outgoing_ ? *outgoing_ : *loudness_;"
+   ],
+   "new": [
+    "        const ac3::meta::LoudnessMeter& recent = outgoing_ ? *outgoing_ : *loudness_;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/play_meters.hpp",
+   "line": 49,
+   "old": [
+    "    std::vector<analysis::ChannelLevel> levels{};"
+   ],
+   "new": [
+    "    std::vector<ac3::analysis::ChannelLevel> levels{};"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/play_meters.hpp",
+   "line": 92,
+   "old": [
+    "    [[nodiscard]] meta::LoudnessMeter make_loudness() const;"
+   ],
+   "new": [
+    "    [[nodiscard]] ac3::meta::LoudnessMeter make_loudness() const;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/play_meters.hpp",
+   "line": 97,
+   "old": [
+    "    analysis::LevelMeter levels_;"
+   ],
+   "new": [
+    "    ac3::analysis::LevelMeter levels_;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/play_meters.hpp",
+   "line": 100,
+   "old": [
+    "    eac3::chanmap::Layout loudness_layout_{};"
+   ],
+   "new": [
+    "    ac3::eac3::chanmap::Layout loudness_layout_{};"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/play_meters.hpp",
+   "line": 104,
+   "old": [
+    "    std::optional<meta::LoudnessMeter> loudness_;",
+    "    std::optional<meta::LoudnessMeter> outgoing_;"
+   ],
+   "new": [
+    "    std::optional<ac3::meta::LoudnessMeter> loudness_;",
+    "    std::optional<ac3::meta::LoudnessMeter> outgoing_;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/player.cpp",
+   "line": 254,
+   "old": [
+    "    constexpr auto kBlock = static_cast<std::uint64_t>(kSamplesPerBlock);",
+    "    constexpr auto kBurstBlocks = static_cast<std::uint64_t>(kBlocksPerFrame);"
+   ],
+   "new": [
+    "    constexpr auto kBlock = static_cast<std::uint64_t>(ac3::kSamplesPerBlock);",
+    "    constexpr auto kBurstBlocks = static_cast<std::uint64_t>(ac3::kBlocksPerFrame);"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/player.cpp",
+   "line": 480,
+   "old": [
+    "        block.frames = static_cast<std::size_t>(kSamplesPerFrame);"
+   ],
+   "new": [
+    "        block.frames = static_cast<std::size_t>(ac3::kSamplesPerFrame);"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/player.hpp",
+   "line": 422,
+   "old": [
+    "        std::int64_t frames = kSamplesPerFrame;"
+   ],
+   "new": [
+    "        std::int64_t frames = ac3::kSamplesPerFrame;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/session.cpp",
+   "line": 87,
+   "old": [
+    "[[nodiscard]] audio::BitstreamFormat format_of(io::StreamKind kind) {",
+    "    return kind == io::StreamKind::kAc3 ? audio::BitstreamFormat::kAc3"
+   ],
+   "new": [
+    "[[nodiscard]] audio::BitstreamFormat format_of(ac3::io::StreamKind kind) {",
+    "    return kind == ac3::io::StreamKind::kAc3 ? audio::BitstreamFormat::kAc3"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/session.cpp",
+   "line": 96,
+   "old": [
+    "    const auto header = io::read_frame_header(unit);",
+    "    if (!header || header->kind != io::StreamKind::kEac3) {",
+    "        return static_cast<std::uint32_t>(kSamplesPerFrame);"
+   ],
+   "new": [
+    "    const auto header = ac3::io::read_frame_header(unit);",
+    "    if (!header || header->kind != ac3::io::StreamKind::kEac3) {",
+    "        return static_cast<std::uint32_t>(ac3::kSamplesPerFrame);"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/session.cpp",
+   "line": 102,
+   "old": [
+    "    return kBlocks[code] * static_cast<std::uint32_t>(kSamplesPerBlock);"
+   ],
+   "new": [
+    "    return kBlocks[code] * static_cast<std::uint32_t>(ac3::kSamplesPerBlock);"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/session.cpp",
+   "line": 152,
+   "old": [
+    "        auto scanned = io::scan(session.bytes_);"
+   ],
+   "new": [
+    "        auto scanned = ac3::io::scan(session.bytes_);"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/session.cpp",
+   "line": 165,
+   "old": [
+    "        const io::ScannedProgramme* chosen = nullptr;"
+   ],
+   "new": [
+    "        const ac3::io::ScannedProgramme* chosen = nullptr;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/session.cpp",
+   "line": 168,
+   "old": [
+    "                                                 &io::ScannedProgramme::substreamid);"
+   ],
+   "new": [
+    "                                                 &ac3::io::ScannedProgramme::substreamid);"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/session.hpp",
+   "line": 237,
+   "old": [
+    "    io::ScannedStream scanned_{};"
+   ],
+   "new": [
+    "    ac3::io::ScannedStream scanned_{};"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 18,
+   "old": [
+    "eac3::chanmap::Layout ac4_bed(std::span<const iclforge::ac4::Speaker> speakers) {",
+    "    using eac3::chanmap::Location;",
+    "    eac3::chanmap::Layout bed;"
+   ],
+   "new": [
+    "ac3::eac3::chanmap::Layout ac4_bed(std::span<const iclforge::ac4::Speaker> speakers) {",
+    "    using ac3::eac3::chanmap::Location;",
+    "    ac3::eac3::chanmap::Layout bed;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 22,
+   "old": [
+    "        if (bed.count >= eac3::chanmap::kMaxChannels) {"
+   ],
+   "new": [
+    "        if (bed.count >= ac3::eac3::chanmap::kMaxChannels) {"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 52,
+   "old": [
+    "Acmod ac4_acmod(std::span<const iclforge::ac4::Speaker> speakers) {"
+   ],
+   "new": [
+    "ac3::Acmod ac4_acmod(std::span<const iclforge::ac4::Speaker> speakers) {"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 57,
+   "old": [
+    "        return Acmod::k1_0;"
+   ],
+   "new": [
+    "        return ac3::Acmod::k1_0;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 60,
+   "old": [
+    "        return has(iclforge::ac4::Speaker::kCentre) ? Acmod::k3_2 : Acmod::k2_2;"
+   ],
+   "new": [
+    "        return has(iclforge::ac4::Speaker::kCentre) ? ac3::Acmod::k3_2 : ac3::Acmod::k2_2;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 62,
+   "old": [
+    "    return has(iclforge::ac4::Speaker::kCentre) ? Acmod::k3_0 : Acmod::k2_0;"
+   ],
+   "new": [
+    "    return has(iclforge::ac4::Speaker::kCentre) ? ac3::Acmod::k3_0 : ac3::Acmod::k2_0;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 72,
+   "old": [
+    "[[nodiscard]] std::optional<eac3::chanmap::Layout> peek_layout(std::span<const std::byte> unit) {"
+   ],
+   "new": [
+    "[[nodiscard]] std::optional<ac3::eac3::chanmap::Layout> peek_layout(std::span<const std::byte> unit) {"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 76,
+   "old": [
+    "        const auto header = io::read_frame_header(unit.subspan(offset));"
+   ],
+   "new": [
+    "        const auto header = ac3::io::read_frame_header(unit.subspan(offset));"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 80,
+   "old": [
+    "        const std::uint16_t own = eac3::chanmap::acmod_map(header->acmod, header->lfe);",
+    "        if (header->kind == io::StreamKind::kEac3 &&",
+    "            header->strmtyp == eac3::StreamType::kDependent) {"
+   ],
+   "new": [
+    "        const std::uint16_t own = ac3::eac3::chanmap::acmod_map(header->acmod, header->lfe);",
+    "        if (header->kind == ac3::io::StreamKind::kEac3 &&",
+    "            header->strmtyp == ac3::eac3::StreamType::kDependent) {"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 92,
+   "old": [
+    "    return eac3::chanmap::expand(map);"
+   ],
+   "new": [
+    "    return ac3::eac3::chanmap::expand(map);"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 95,
+   "old": [
+    "[[nodiscard]] bool same_layout(const eac3::chanmap::Layout& a, const eac3::chanmap::Layout& b) {"
+   ],
+   "new": [
+    "[[nodiscard]] bool same_layout(const ac3::eac3::chanmap::Layout& a, const ac3::eac3::chanmap::Layout& b) {"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 111,
+   "old": [
+    "[[nodiscard]] MixLevels levels_of(const DecodedSubstream& substream) {"
+   ],
+   "new": [
+    "[[nodiscard]] ac3::MixLevels levels_of(const ac3::DecodedSubstream& substream) {"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 116,
+   "old": [
+    "    return mix_levels(substream.mixing);"
+   ],
+   "new": [
+    "    return ac3::mix_levels(substream.mixing);"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 121,
+   "old": [
+    "[[nodiscard]] MixLevels levels_of(const DecodedAccessUnit& unit) {"
+   ],
+   "new": [
+    "[[nodiscard]] ac3::MixLevels levels_of(const ac3::DecodedAccessUnit& unit) {"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 125,
+   "old": [
+    "    return mix_levels(unit.mixing);"
+   ],
+   "new": [
+    "    return ac3::mix_levels(unit.mixing);"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 128,
+   "old": [
+    "[[nodiscard]] std::optional<int> bsmod_of(const std::optional<meta::BsiInfo>& info) {"
+   ],
+   "new": [
+    "[[nodiscard]] std::optional<int> bsmod_of(const std::optional<ac3::meta::BsiInfo>& info) {"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 135,
+   "old": [
+    "void report_frame(const DecodedFrame& frame, UnitReport& out) {"
+   ],
+   "new": [
+    "void report_frame(const ac3::DecodedFrame& frame, UnitReport& out) {"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 139,
+   "old": [
+    "    out.layout = frame.acmod == Acmod::kDualMono",
+    "                     ? eac3::chanmap::Layout{}",
+    "                     : eac3::chanmap::expand(eac3::chanmap::acmod_map(frame.acmod, frame.lfe));"
+   ],
+   "new": [
+    "    out.layout = frame.acmod == ac3::Acmod::kDualMono",
+    "                     ? ac3::eac3::chanmap::Layout{}",
+    "                     : ac3::eac3::chanmap::expand(ac3::eac3::chanmap::acmod_map(frame.acmod, frame.lfe));"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 148,
+   "old": [
+    "    out.blocks = kBlocksPerFrame;"
+   ],
+   "new": [
+    "    out.blocks = ac3::kBlocksPerFrame;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 150,
+   "old": [
+    "    for (int blk = 0; blk < kBlocksPerFrame; ++blk) {"
+   ],
+   "new": [
+    "    for (int blk = 0; blk < ac3::kBlocksPerFrame; ++blk) {"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 152,
+   "old": [
+    "            frame.blksw, [blk](const std::array<bool, kBlocksPerFrame>& channel) {"
+   ],
+   "new": [
+    "            frame.blksw, [blk](const std::array<bool, ac3::kBlocksPerFrame>& channel) {"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 164,
+   "old": [
+    "void report_unit(const DecodedAccessUnit& unit, UnitReport& out) {"
+   ],
+   "new": [
+    "void report_unit(const ac3::DecodedAccessUnit& unit, UnitReport& out) {"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 166,
+   "old": [
+    "    out.layout = unit.acmod == Acmod::kDualMono ? eac3::chanmap::Layout{} : unit.layout;",
+    "    out.lfe = unit.layout.index_of(eac3::chanmap::Location::kLfe) >= 0;"
+   ],
+   "new": [
+    "    out.layout = unit.acmod == ac3::Acmod::kDualMono ? ac3::eac3::chanmap::Layout{} : unit.layout;",
+    "    out.lfe = unit.layout.index_of(ac3::eac3::chanmap::Location::kLfe) >= 0;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 175,
+   "old": [
+    "    out.blocks = eac3::blocks_per_syncframe(unit.numblkscod);"
+   ],
+   "new": [
+    "    out.blocks = ac3::eac3::blocks_per_syncframe(unit.numblkscod);"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 186,
+   "old": [
+    "[[nodiscard]] Concealment concealment_of(const iclforge::ac4::Concealment& concealed) {",
+    "    return Concealment{.error = DecodeError::kInvalidStream,"
+   ],
+   "new": [
+    "[[nodiscard]] ac3::Concealment concealment_of(const iclforge::ac4::Concealment& concealed) {",
+    "    return ac3::Concealment{.error = ac3::DecodeError::kInvalidStream,"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 189,
+   "old": [
+    "                                     ? ConcealmentAction::kRepeatFade",
+    "                                     : ConcealmentAction::kMute};"
+   ],
+   "new": [
+    "                                     ? ac3::ConcealmentAction::kRepeatFade",
+    "                                     : ac3::ConcealmentAction::kMute};"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 246,
+   "old": [
+    "        static_cast<double>(out.blocks) * kSamplesPerBlock / static_cast<double>(sample_rate_);"
+   ],
+   "new": [
+    "        static_cast<double>(out.blocks) * ac3::kSamplesPerBlock / static_cast<double>(sample_rate_);"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 260,
+   "old": [
+    "    const auto header = io::read_frame_header(whole);"
+   ],
+   "new": [
+    "    const auto header = ac3::io::read_frame_header(whole);"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 271,
+   "old": [
+    "    if (header->kind == io::StreamKind::kEac3) {"
+   ],
+   "new": [
+    "    if (header->kind == ac3::io::StreamKind::kEac3) {"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 280,
+   "old": [
+    "    const std::optional<eac3::chanmap::Layout> bed = peek_layout(unit);"
+   ],
+   "new": [
+    "    const std::optional<ac3::eac3::chanmap::Layout> bed = peek_layout(unit);"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 285,
+   "old": [
+    "    beds_.push_back(UnitBed{.layout = *bed, .dual_mono = header->acmod == Acmod::kDualMono});",
+    "    const auto sink = [this, &deliver](const PcmBlock& block) { place(block, deliver); };"
+   ],
+   "new": [
+    "    beds_.push_back(UnitBed{.layout = *bed, .dual_mono = header->acmod == ac3::Acmod::kDualMono});",
+    "    const auto sink = [this, &deliver](const ac3::PcmBlock& block) { place(block, deliver); };"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 291,
+   "old": [
+    "    if (header->kind == io::StreamKind::kAc3 && header->bytes == unit.size()) {"
+   ],
+   "new": [
+    "    if (header->kind == ac3::io::StreamKind::kAc3 && header->bytes == unit.size()) {"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 327,
+   "old": [
+    "void StreamDecoder::place(const PcmBlock& block, const BlockFn& deliver) {"
+   ],
+   "new": [
+    "void StreamDecoder::place(const ac3::PcmBlock& block, const BlockFn& deliver) {"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 348,
+   "old": [
+    "    PcmBlock chosen = block;",
+    "    std::array<std::span<const float>, eac3::chanmap::kMaxChannels> channels{};"
+   ],
+   "new": [
+    "    ac3::PcmBlock chosen = block;",
+    "    std::array<std::span<const float>, ac3::eac3::chanmap::kMaxChannels> channels{};"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 382,
+   "old": [
+    "        std::vector<DecodedSubstream> released = eac3_decoder_->flush();"
+   ],
+   "new": [
+    "        std::vector<ac3::DecodedSubstream> released = eac3_decoder_->flush();"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 524,
+   "old": [
+    "        const PcmBlock placed{"
+   ],
+   "new": [
+    "        const ac3::PcmBlock placed{"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 568,
+   "old": [
+    "    out.levels = MixLevels{};"
+   ],
+   "new": [
+    "    out.levels = ac3::MixLevels{};"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 570,
+   "old": [
+    "        info.concealed ? std::optional<Concealment>{concealment_of(*info.concealed)} : std::nullopt;"
+   ],
+   "new": [
+    "        info.concealed ? std::optional<ac3::Concealment>{concealment_of(*info.concealed)} : std::nullopt;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 590,
+   "old": [
+    "std::size_t StreamDecoder::render_flushed(std::span<DecodedSubstream> substreams,"
+   ],
+   "new": [
+    "std::size_t StreamDecoder::render_flushed(std::span<ac3::DecodedSubstream> substreams,"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 599,
+   "old": [
+    "    const DecodedSubstream* independent = nullptr;",
+    "    std::vector<const DecodedSubstream*> dependents;",
+    "    for (const DecodedSubstream& substream : substreams) {",
+    "        if (substream.strmtyp == eac3::StreamType::kDependent) {"
+   ],
+   "new": [
+    "    const ac3::DecodedSubstream* independent = nullptr;",
+    "    std::vector<const ac3::DecodedSubstream*> dependents;",
+    "    for (const ac3::DecodedSubstream& substream : substreams) {",
+    "        if (substream.strmtyp == ac3::eac3::StreamType::kDependent) {"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 620,
+   "old": [
+    "    for (const DecodedSubstream* dependent : dependents) {"
+   ],
+   "new": [
+    "    for (const ac3::DecodedSubstream* dependent : dependents) {"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 626,
+   "old": [
+    "    const eac3::chanmap::Layout layout = eac3::chanmap::expand(map);"
+   ],
+   "new": [
+    "    const ac3::eac3::chanmap::Layout layout = ac3::eac3::chanmap::expand(map);"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 629,
+   "old": [
+    "    const auto lay_over = [&](const DecodedSubstream& substream) {",
+    "        const eac3::chanmap::Layout own = eac3::chanmap::expand(substream.location_map());"
+   ],
+   "new": [
+    "    const auto lay_over = [&](const ac3::DecodedSubstream& substream) {",
+    "        const ac3::eac3::chanmap::Layout own = ac3::eac3::chanmap::expand(substream.location_map());"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 643,
+   "old": [
+    "    for (const DecodedSubstream* dependent : dependents) {"
+   ],
+   "new": [
+    "    for (const ac3::DecodedSubstream* dependent : dependents) {"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 655,
+   "old": [
+    "    OutputStage stage{config_.output};"
+   ],
+   "new": [
+    "    ac3::OutputStage stage{config_.output};"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 676,
+   "old": [
+    "    dual_mono_ = independent->acmod == Acmod::kDualMono;"
+   ],
+   "new": [
+    "    dual_mono_ = independent->acmod == ac3::Acmod::kDualMono;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 678,
+   "old": [
+    "    const std::size_t blocks = length / kSamplesPerBlock;"
+   ],
+   "new": [
+    "    const std::size_t blocks = length / ac3::kSamplesPerBlock;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 683,
+   "old": [
+    "        const std::size_t offset = b * kSamplesPerBlock;"
+   ],
+   "new": [
+    "        const std::size_t offset = b * ac3::kSamplesPerBlock;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 685,
+   "old": [
+    "            channel_views[c] = std::span<const float>(channels[c]).subspan(offset, kSamplesPerBlock);"
+   ],
+   "new": [
+    "            channel_views[c] = std::span<const float>(channels[c]).subspan(offset, ac3::kSamplesPerBlock);"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 689,
+   "old": [
+    "            object_views[o] = audio.size() >= offset + kSamplesPerBlock",
+    "                                  ? std::span<const float>(audio).subspan(offset, kSamplesPerBlock)"
+   ],
+   "new": [
+    "            object_views[o] = audio.size() >= offset + ac3::kSamplesPerBlock",
+    "                                  ? std::span<const float>(audio).subspan(offset, ac3::kSamplesPerBlock)"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 693,
+   "old": [
+    "        const PcmBlock block{"
+   ],
+   "new": [
+    "        const ac3::PcmBlock block{"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 712,
+   "old": [
+    "        report_.layout = independent->acmod == Acmod::kDualMono ? eac3::chanmap::Layout{} : layout;"
+   ],
+   "new": [
+    "        report_.layout = independent->acmod == ac3::Acmod::kDualMono ? ac3::eac3::chanmap::Layout{} : layout;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 719,
+   "old": [
+    "        report_.blocks = eac3::blocks_per_syncframe(independent->numblkscod);"
+   ],
+   "new": [
+    "        report_.blocks = ac3::eac3::blocks_per_syncframe(independent->numblkscod);"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.cpp",
+   "line": 725,
+   "old": [
+    "        for (const DecodedSubstream* dependent : dependents) {"
+   ],
+   "new": [
+    "        for (const ac3::DecodedSubstream* dependent : dependents) {"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.hpp",
+   "line": 97,
+   "old": [
+    "[[nodiscard]] eac3::chanmap::Layout ac4_bed(std::span<const iclforge::ac4::Speaker> speakers);"
+   ],
+   "new": [
+    "[[nodiscard]] ac3::eac3::chanmap::Layout ac4_bed(std::span<const iclforge::ac4::Speaker> speakers);"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.hpp",
+   "line": 102,
+   "old": [
+    "[[nodiscard]] Acmod ac4_acmod(std::span<const iclforge::ac4::Speaker> speakers);"
+   ],
+   "new": [
+    "[[nodiscard]] ac3::Acmod ac4_acmod(std::span<const iclforge::ac4::Speaker> speakers);"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.hpp",
+   "line": 123,
+   "old": [
+    "    Acmod acmod = Acmod::k2_0;"
+   ],
+   "new": [
+    "    ac3::Acmod acmod = ac3::Acmod::k2_0;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.hpp",
+   "line": 129,
+   "old": [
+    "    eac3::chanmap::Layout layout{};"
+   ],
+   "new": [
+    "    ac3::eac3::chanmap::Layout layout{};"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.hpp",
+   "line": 138,
+   "old": [
+    "    std::array<std::uint8_t, kBlocksPerFrame> dynrng{};",
+    "    int blocks = kBlocksPerFrame;"
+   ],
+   "new": [
+    "    std::array<std::uint8_t, ac3::kBlocksPerFrame> dynrng{};",
+    "    int blocks = ac3::kBlocksPerFrame;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.hpp",
+   "line": 143,
+   "old": [
+    "    MixLevels levels{};"
+   ],
+   "new": [
+    "    ac3::MixLevels levels{};"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.hpp",
+   "line": 145,
+   "old": [
+    "    std::optional<Concealment> concealed = std::nullopt;"
+   ],
+   "new": [
+    "    std::optional<ac3::Concealment> concealed = std::nullopt;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.hpp",
+   "line": 242,
+   "old": [
+    "    [[nodiscard]] const render::Serving& serving() const { return serving_; }"
+   ],
+   "new": [
+    "    [[nodiscard]] const ac3::render::Serving& serving() const { return serving_; }"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.hpp",
+   "line": 252,
+   "old": [
+    "        eac3::chanmap::Layout layout{};"
+   ],
+   "new": [
+    "        ac3::eac3::chanmap::Layout layout{};"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.hpp",
+   "line": 256,
+   "old": [
+    "    void place(const PcmBlock& block, const BlockFn& deliver);",
+    "    std::size_t render_flushed(std::span<DecodedSubstream> substreams, const BlockFn& deliver,"
+   ],
+   "new": [
+    "    void place(const ac3::PcmBlock& block, const BlockFn& deliver);",
+    "    std::size_t render_flushed(std::span<ac3::DecodedSubstream> substreams, const BlockFn& deliver,"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.hpp",
+   "line": 289,
+   "old": [
+    "    render::Serving serving_;",
+    "    DecoderConfig config_;"
+   ],
+   "new": [
+    "    ac3::render::Serving serving_;",
+    "    ac3::DecoderConfig config_;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.hpp",
+   "line": 295,
+   "old": [
+    "    std::optional<FrameDecoder> ac3_decoder_;",
+    "    std::optional<Eac3Decoder> eac3_decoder_;"
+   ],
+   "new": [
+    "    std::optional<ac3::FrameDecoder> ac3_decoder_;",
+    "    std::optional<ac3::Eac3Decoder> eac3_decoder_;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.hpp",
+   "line": 299,
+   "old": [
+    "    std::optional<eac3::chanmap::Layout> renderer_bed_;"
+   ],
+   "new": [
+    "    std::optional<ac3::eac3::chanmap::Layout> renderer_bed_;"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.hpp",
+   "line": 302,
+   "old": [
+    "    std::array<std::array<float, kSamplesPerBlock>, render::OutputLayout::kMaxSlots> block_{};"
+   ],
+   "new": [
+    "    std::array<std::array<float, ac3::kSamplesPerBlock>, render::OutputLayout::kMaxSlots> block_{};"
+   ]
+  },
+  {
+   "file": "apps/hearth/engine/stream_decoder.hpp",
+   "line": 325,
+   "old": [
+    "    std::array<float, kSamplesPerBlock> zeros_{};"
+   ],
+   "new": [
+    "    std::array<float, ac3::kSamplesPerBlock> zeros_{};"
+   ]
+  },
+  {
+   "file": "apps/hearth/testsink/burst_output.cpp",
+   "line": 41,
+   "old": [
+    "[[nodiscard]] std::optional<eac3::chanmap::Layout> peek_layout(std::span<const std::byte> unit) {"
+   ],
+   "new": [
+    "[[nodiscard]] std::optional<ac3::eac3::chanmap::Layout> peek_layout(std::span<const std::byte> unit) {"
+   ]
+  },
+  {
+   "file": "apps/hearth/testsink/burst_output.cpp",
+   "line": 45,
+   "old": [
+    "        const auto header = io::read_frame_header(unit.subspan(offset));"
+   ],
+   "new": [
+    "        const auto header = ac3::io::read_frame_header(unit.subspan(offset));"
+   ]
+  },
+  {
+   "file": "apps/hearth/testsink/burst_output.cpp",
+   "line": 49,
+   "old": [
+    "        const std::uint16_t own = eac3::chanmap::acmod_map(header->acmod, header->lfe);",
+    "        if (header->kind == io::StreamKind::kEac3 && header->strmtyp == eac3::StreamType::kDependent) {"
+   ],
+   "new": [
+    "        const std::uint16_t own = ac3::eac3::chanmap::acmod_map(header->acmod, header->lfe);",
+    "        if (header->kind == ac3::io::StreamKind::kEac3 && header->strmtyp == ac3::eac3::StreamType::kDependent) {"
+   ]
+  },
+  {
+   "file": "apps/hearth/testsink/burst_output.cpp",
+   "line": 60,
+   "old": [
+    "    return eac3::chanmap::expand(map);"
+   ],
+   "new": [
+    "    return ac3::eac3::chanmap::expand(map);"
+   ]
+  },
+  {
+   "file": "apps/hearth/testsink/burst_output.cpp",
+   "line": 70,
+   "old": [
+    "        const auto header = io::read_frame_header(payload.subspan(offset));"
+   ],
+   "new": [
+    "        const auto header = ac3::io::read_frame_header(payload.subspan(offset));"
+   ]
+  },
+  {
+   "file": "apps/hearth/testsink/burst_output.cpp",
+   "line": 74,
+   "old": [
+    "        const bool dependent = header->kind == io::StreamKind::kEac3 && header->strmtyp == eac3::StreamType::kDependent;"
+   ],
+   "new": [
+    "        const bool dependent = header->kind == ac3::io::StreamKind::kEac3 && header->strmtyp == ac3::eac3::StreamType::kDependent;"
+   ]
+  },
+  {
+   "file": "apps/hearth/testsink/burst_output.cpp",
+   "line": 87,
+   "old": [
+    "[[nodiscard]] bool same_layout(const eac3::chanmap::Layout& a, const eac3::chanmap::Layout& b) {"
+   ],
+   "new": [
+    "[[nodiscard]] bool same_layout(const ac3::eac3::chanmap::Layout& a, const ac3::eac3::chanmap::Layout& b) {"
+   ]
+  },
+  {
+   "file": "apps/hearth/testsink/burst_output.cpp",
+   "line": 99,
+   "old": [
+    "[[nodiscard]] DecoderConfig configured(const render::Serving& serving) {",
+    "    DecoderConfig config;",
+    "    config.output.mode = OperatingMode::kLine;",
+    "    render::configure_decoder(serving, config);"
+   ],
+   "new": [
+    "[[nodiscard]] ac3::DecoderConfig configured(const ac3::render::Serving& serving) {",
+    "    ac3::DecoderConfig config;",
+    "    config.output.mode = ac3::OperatingMode::kLine;",
+    "    ac3::render::configure_decoder(serving, config);"
+   ]
+  },
+  {
+   "file": "apps/hearth/testsink/burst_output.cpp",
+   "line": 159,
+   "old": [
+    "eac3::chanmap::Layout ac4_bed(std::span<const iclforge::ac4::Speaker> speakers) {",
+    "    using eac3::chanmap::Location;",
+    "    eac3::chanmap::Layout bed;"
+   ],
+   "new": [
+    "ac3::eac3::chanmap::Layout ac4_bed(std::span<const iclforge::ac4::Speaker> speakers) {",
+    "    using ac3::eac3::chanmap::Location;",
+    "    ac3::eac3::chanmap::Layout bed;"
+   ]
+  },
+  {
+   "file": "apps/hearth/testsink/burst_output.cpp",
+   "line": 163,
+   "old": [
+    "        if (bed.count >= eac3::chanmap::kMaxChannels) {"
+   ],
+   "new": [
+    "        if (bed.count >= ac3::eac3::chanmap::kMaxChannels) {"
+   ]
+  },
+  {
+   "file": "apps/hearth/testsink/burst_output.cpp",
+   "line": 197,
+   "old": [
+    "      serving_(render::serve(layout, DownmixTarget::kLoRo, render::ObjectsPolicy::kAuto)),"
+   ],
+   "new": [
+    "      serving_(ac3::render::serve(layout, ac3::DownmixTarget::kLoRo, ac3::render::ObjectsPolicy::kAuto)),"
+   ]
+  },
+  {
+   "file": "apps/hearth/testsink/burst_output.cpp",
+   "line": 276,
+   "old": [
+    "    const auto header = io::read_frame_header(unit);"
+   ],
+   "new": [
+    "    const auto header = ac3::io::read_frame_header(unit);"
+   ]
+  },
+  {
+   "file": "apps/hearth/testsink/burst_output.cpp",
+   "line": 282,
+   "old": [
+    "    if (header->kind == io::StreamKind::kEac3) {"
+   ],
+   "new": [
+    "    if (header->kind == ac3::io::StreamKind::kEac3) {"
+   ]
+  },
+  {
+   "file": "apps/hearth/testsink/burst_output.cpp",
+   "line": 290,
+   "old": [
+    "    const std::optional<eac3::chanmap::Layout> bed = peek_layout(unit);"
+   ],
+   "new": [
+    "    const std::optional<ac3::eac3::chanmap::Layout> bed = peek_layout(unit);"
+   ]
+  },
+  {
+   "file": "apps/hearth/testsink/burst_output.cpp",
+   "line": 297,
+   "old": [
+    "    const auto deliver = [this](const PcmBlock& block) { place(block); };"
+   ],
+   "new": [
+    "    const auto deliver = [this](const ac3::PcmBlock& block) { place(block); };"
+   ]
+  },
+  {
+   "file": "apps/hearth/testsink/burst_output.cpp",
+   "line": 301,
+   "old": [
+    "    if (header->kind == io::StreamKind::kAc3 && header->bytes == unit.size()) {"
+   ],
+   "new": [
+    "    if (header->kind == ac3::io::StreamKind::kAc3 && header->bytes == unit.size()) {"
+   ]
+  },
+  {
+   "file": "apps/hearth/testsink/burst_output.cpp",
+   "line": 305,
+   "old": [
+    "        const std::expected<DecodedFrame, DecodeError> decoded = ac3_decoder_->decode_frame_by_block(unit, deliver);"
+   ],
+   "new": [
+    "        const std::expected<ac3::DecodedFrame, ac3::DecodeError> decoded = ac3_decoder_->decode_frame_by_block(unit, deliver);"
+   ]
+  },
+  {
+   "file": "apps/hearth/testsink/burst_output.cpp",
+   "line": 325,
+   "old": [
+    "    const std::expected<std::optional<DecodedAccessUnit>, DecodeError> decoded ="
+   ],
+   "new": [
+    "    const std::expected<std::optional<ac3::DecodedAccessUnit>, ac3::DecodeError> decoded ="
+   ]
+  },
+  {
+   "file": "apps/hearth/testsink/burst_output.cpp",
+   "line": 337,
+   "old": [
+    "    const DecodedAccessUnit& au = **decoded;"
+   ],
+   "new": [
+    "    const ac3::DecodedAccessUnit& au = **decoded;"
+   ]
+  },
+  {
+   "file": "apps/hearth/testsink/burst_output.cpp",
+   "line": 342,
+   "old": [
+    "                                 .lfe = au.layout.index_of(eac3::chanmap::Location::kLfe) >= 0,"
+   ],
+   "new": [
+    "                                 .lfe = au.layout.index_of(ac3::eac3::chanmap::Location::kLfe) >= 0,"
+   ]
+  },
+  {
+   "file": "apps/hearth/testsink/burst_output.cpp",
+   "line": 349,
+   "old": [
+    "void BurstOutput::place(const PcmBlock& block) {"
+   ],
+   "new": [
+    "void BurstOutput::place(const ac3::PcmBlock& block) {"
+   ]
+  },
+  {
+   "file": "apps/hearth/testsink/burst_output.cpp",
+   "line": 358,
+   "old": [
+    "        const eac3::chanmap::Layout bed = beds_.front();"
+   ],
+   "new": [
+    "        const ac3::eac3::chanmap::Layout bed = beds_.front();"
+   ]
+  },
+  {
+   "file": "apps/hearth/testsink/burst_output.cpp",
+   "line": 420,
+   "old": [
+    "    const eac3::chanmap::Layout bed = ac4_bed(frame.speakers);"
+   ],
+   "new": [
+    "    const ac3::eac3::chanmap::Layout bed = ac4_bed(frame.speakers);"
+   ]
+  },
+  {
+   "file": "apps/hearth/testsink/burst_output.cpp",
+   "line": 433,
+   "old": [
+    "    const auto blocks = static_cast<int>((n + kSamplesPerBlock - 1) / kSamplesPerBlock);",
+    "    for (std::size_t at = 0; at < n; at += kSamplesPerBlock) {",
+    "        const std::size_t m = std::min<std::size_t>(kSamplesPerBlock, n - at);"
+   ],
+   "new": [
+    "    const auto blocks = static_cast<int>((n + ac3::kSamplesPerBlock - 1) / ac3::kSamplesPerBlock);",
+    "    for (std::size_t at = 0; at < n; at += ac3::kSamplesPerBlock) {",
+    "        const std::size_t m = std::min<std::size_t>(ac3::kSamplesPerBlock, n - at);"
+   ]
+  },
+  {
+   "file": "apps/hearth/testsink/burst_output.cpp",
+   "line": 439,
+   "old": [
+    "        const PcmBlock block{.index = static_cast<int>(at / kSamplesPerBlock),"
+   ],
+   "new": [
+    "        const ac3::PcmBlock block{.index = static_cast<int>(at / ac3::kSamplesPerBlock),"
+   ]
+  },
+  {
+   "file": "apps/hearth/testsink/burst_output.hpp",
+   "line": 58,
+   "old": [
+    "[[nodiscard]] eac3::chanmap::Layout ac4_bed(std::span<const iclforge::ac4::Speaker> speakers);"
+   ],
+   "new": [
+    "[[nodiscard]] ac3::eac3::chanmap::Layout ac4_bed(std::span<const iclforge::ac4::Speaker> speakers);"
+   ]
+  },
+  {
+   "file": "apps/hearth/testsink/burst_output.hpp",
+   "line": 90,
+   "old": [
+    "    void place(const PcmBlock& block);"
+   ],
+   "new": [
+    "    void place(const ac3::PcmBlock& block);"
+   ]
+  },
+  {
+   "file": "apps/hearth/testsink/burst_output.hpp",
+   "line": 99,
+   "old": [
+    "    render::Serving serving_;",
+    "    DecoderConfig config_;"
+   ],
+   "new": [
+    "    ac3::render::Serving serving_;",
+    "    ac3::DecoderConfig config_;"
+   ]
+  },
+  {
+   "file": "apps/hearth/testsink/burst_output.hpp",
+   "line": 103,
+   "old": [
+    "    std::optional<FrameDecoder> ac3_decoder_;",
+    "    std::optional<Eac3Decoder> eac3_decoder_;"
+   ],
+   "new": [
+    "    std::optional<ac3::FrameDecoder> ac3_decoder_;",
+    "    std::optional<ac3::Eac3Decoder> eac3_decoder_;"
+   ]
+  },
+  {
+   "file": "apps/hearth/testsink/burst_output.hpp",
+   "line": 111,
+   "old": [
+    "    std::deque<eac3::chanmap::Layout> beds_;",
+    "    std::optional<eac3::chanmap::Layout> renderer_bed_;"
+   ],
+   "new": [
+    "    std::deque<ac3::eac3::chanmap::Layout> beds_;",
+    "    std::optional<ac3::eac3::chanmap::Layout> renderer_bed_;"
+   ]
+  },
+  {
+   "file": "apps/hearth/testsink/burst_output.hpp",
+   "line": 115,
+   "old": [
+    "    std::array<std::array<float, kSamplesPerBlock>, render::OutputLayout::kMaxSlots> block_{};"
+   ],
+   "new": [
+    "    std::array<std::array<float, ac3::kSamplesPerBlock>, render::OutputLayout::kMaxSlots> block_{};"
+   ]
+  },
+  {
+   "file": "apps/hearth/testsink/burst_output.hpp",
+   "line": 117,
+   "old": [
+    "    io::WavStreamWriter writer_;"
+   ],
+   "new": [
+    "    ac3::io::WavStreamWriter writer_;"
+   ]
+  },
+  {
+   "file": "apps/hearth/testsink/wav_output.hpp",
+   "line": 56,
+   "old": [
+    "    io::WavStreamWriter writer_;"
+   ],
+   "new": [
+    "    ac3::io::WavStreamWriter writer_;"
+   ]
+  },
+  {
+   "file": "apps/hearth/ui/hearth_controller.cpp",
+   "line": 163,
+   "old": [
+    "                to_qstring(apps::probe_json::bsmod_label(box.bsmod, static_cast<Acmod>(box.acmod)));"
+   ],
+   "new": [
+    "                to_qstring(apps::probe_json::bsmod_label(box.bsmod, static_cast<ac3::Acmod>(box.acmod)));"
+   ]
+  },
+  {
+   "file": "apps/hearth/ui/hearth_controller.cpp",
+   "line": 190,
+   "old": [
+    "            to_qstring(analysis::layout_name(programme.acmod, programme.lfe));"
+   ],
+   "new": [
+    "            to_qstring(ac3::analysis::layout_name(programme.acmod, programme.lfe));"
+   ]
+  },
+  {
+   "file": "apps/hearth/ui/hearth_controller.cpp",
+   "line": 227,
+   "old": [
+    "        const meta::BsiInfo& info = *bits.info;"
+   ],
+   "new": [
+    "        const ac3::meta::BsiInfo& info = *bits.info;"
+   ]
+  },
+  {
+   "file": "apps/hearth/ui/hearth_controller.cpp",
+   "line": 230,
+   "old": [
+    "        map[QStringLiteral(\"dsurmodLabel\")] = to_qstring(meta::describe(info.dsurmod));"
+   ],
+   "new": [
+    "        map[QStringLiteral(\"dsurmodLabel\")] = to_qstring(ac3::meta::describe(info.dsurmod));"
+   ]
+  },
+  {
+   "file": "apps/hearth/ui/hearth_controller.cpp",
+   "line": 234,
+   "old": [
+    "            map[QStringLiteral(\"mixLevelDbSpl\")] = meta::mix_level_db_spl(info.audprod->mixlevel);",
+    "            map[QStringLiteral(\"roomTypeLabel\")] = to_qstring(meta::describe(info.audprod->roomtyp));"
+   ],
+   "new": [
+    "            map[QStringLiteral(\"mixLevelDbSpl\")] = ac3::meta::mix_level_db_spl(info.audprod->mixlevel);",
+    "            map[QStringLiteral(\"roomTypeLabel\")] = to_qstring(ac3::meta::describe(info.audprod->roomtyp));"
+   ]
+  },
+  {
+   "file": "apps/hearth/ui/hearth_controller.cpp",
+   "line": 238,
+   "old": [
+    "    const MixLevels& levels = bits.levels;"
+   ],
+   "new": [
+    "    const ac3::MixLevels& levels = bits.levels;"
+   ]
+  },
+  {
+   "file": "apps/hearth/ui/hearth_controller.cpp",
+   "line": 251,
+   "old": [
+    "    mix[QStringLiteral(\"preferredDownmixLabel\")] = to_qstring(meta::describe(levels.preferred));"
+   ],
+   "new": [
+    "    mix[QStringLiteral(\"preferredDownmixLabel\")] = to_qstring(ac3::meta::describe(levels.preferred));"
+   ]
+  },
+  {
+   "file": "apps/hearth/ui/hearth_controller.cpp",
+   "line": 256,
+   "old": [
+    "[[nodiscard]] QVariantMap media_probe_to_map(const io::ProbeReport& report) {"
+   ],
+   "new": [
+    "[[nodiscard]] QVariantMap media_probe_to_map(const ac3::io::ProbeReport& report) {"
+   ]
+  },
+  {
+   "file": "apps/hearth/ui/hearth_controller.cpp",
+   "line": 289,
+   "old": [
+    "        const double at_min = 20.0 * std::log10(meta::compr_gain(static_cast<std::uint8_t>(report.compr.min)));",
+    "        const double at_max = 20.0 * std::log10(meta::compr_gain(static_cast<std::uint8_t>(report.compr.max)));"
+   ],
+   "new": [
+    "        const double at_min = 20.0 * std::log10(ac3::meta::compr_gain(static_cast<std::uint8_t>(report.compr.min)));",
+    "        const double at_max = 20.0 * std::log10(ac3::meta::compr_gain(static_cast<std::uint8_t>(report.compr.max)));"
+   ]
+  },
+  {
+   "file": "apps/hearth/ui/hearth_controller.cpp",
+   "line": 295,
+   "old": [
+    "        const double at_min = 20.0 * std::log10(meta::dynrng_gain(static_cast<std::uint8_t>(report.dynrng.min)));",
+    "        const double at_max = 20.0 * std::log10(meta::dynrng_gain(static_cast<std::uint8_t>(report.dynrng.max)));"
+   ],
+   "new": [
+    "        const double at_min = 20.0 * std::log10(ac3::meta::dynrng_gain(static_cast<std::uint8_t>(report.dynrng.min)));",
+    "        const double at_max = 20.0 * std::log10(ac3::meta::dynrng_gain(static_cast<std::uint8_t>(report.dynrng.max)));"
+   ]
+  },
+  {
+   "file": "src/ac3/include/iclforge/ac3/decoder/decoder.hpp",
+   "line": 236,
+   "old": [
+    "    oba::joc::Domain joc_domain = oba::joc::Domain::kQmf;"
+   ],
+   "new": [
+    "    iclforge::oba::joc::Domain joc_domain = iclforge::oba::joc::Domain::kQmf;"
+   ]
+  },
+  {
+   "file": "src/ac3/include/iclforge/ac3/decoder/decoder.hpp",
+   "line": 580,
+   "old": [
+    "    std::optional<oba::DecodedProgram> object_metadata = std::nullopt;"
+   ],
+   "new": [
+    "    std::optional<iclforge::oba::DecodedProgram> object_metadata = std::nullopt;"
+   ]
+  },
+  {
+   "file": "src/ac3/include/iclforge/ac3/decoder/decoder.hpp",
+   "line": 694,
+   "old": [
+    "    std::optional<oba::DecodedProgram> object_metadata = std::nullopt;"
+   ],
+   "new": [
+    "    std::optional<iclforge::oba::DecodedProgram> object_metadata = std::nullopt;"
+   ]
+  },
+  {
+   "file": "src/ac3/include/iclforge/ac3/decoder/serving.hpp",
+   "line": 42,
+   "old": [
+    "[[nodiscard]] inline Serving serve(const OutputLayout& layout, iclforge::ac3::DownmixTarget stereo_fold,"
+   ],
+   "new": [
+    "[[nodiscard]] inline Serving serve(const iclforge::render::OutputLayout& layout, iclforge::ac3::DownmixTarget stereo_fold,"
+   ]
+  },
+  {
+   "file": "src/ac3/include/iclforge/ac3/io/probe.hpp",
+   "line": 134,
+   "old": [
+    "    std::optional<oba::DecodedProgram> objects = std::nullopt;"
+   ],
+   "new": [
+    "    std::optional<iclforge::oba::DecodedProgram> objects = std::nullopt;"
+   ]
+  },
+  {
+   "file": "src/ac3/include/iclforge/ac3/io/probe.hpp",
+   "line": 222,
+   "old": [
+    "    std::optional<oba::Program> program = std::nullopt;"
+   ],
+   "new": [
+    "    std::optional<iclforge::oba::Program> program = std::nullopt;"
+   ]
+  },
+  {
+   "file": "src/ac3/include/iclforge/ac3/oba/atmos.hpp",
+   "line": 100,
+   "old": [
+    "    joc::Domain joc_domain = joc::Domain::kQmf;"
+   ],
+   "new": [
+    "    iclforge::oba::joc::Domain joc_domain = iclforge::oba::joc::Domain::kQmf;"
+   ]
+  },
+  {
+   "file": "src/ac3/include/iclforge/ac3/oba/atmos.hpp",
+   "line": 154,
+   "old": [
+    "        std::span<const ObjectPlacement> placement);"
+   ],
+   "new": [
+    "        std::span<const iclforge::oba::ObjectPlacement> placement);"
+   ]
+  },
+  {
+   "file": "src/ac3/include/iclforge/ac3/oba/atmos.hpp",
+   "line": 219,
+   "old": [
+    "    [[nodiscard]] const Program& program() const;"
+   ],
+   "new": [
+    "    [[nodiscard]] const iclforge::oba::Program& program() const;"
+   ]
+  },
+  {
+   "file": "src/ac3/include/iclforge/ac3/oba/joc.hpp",
+   "line": 497,
+   "old": [
+    "    Domain domain = Domain::kQmf);"
+   ],
+   "new": [
+    "    iclforge::oba::joc::Domain domain = iclforge::oba::joc::Domain::kQmf);"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/bitalloc.cpp",
+   "line": 80,
+   "old": [
+    "    const auto base = internal::arch::i32x4::broadcast(3072);"
+   ],
+   "new": [
+    "    const auto base = iclforge::internal::arch::i32x4::broadcast(3072);"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/bitalloc.cpp",
+   "line": 83,
+   "old": [
+    "        const auto raw = internal::arch::i32x4::load_u8_widen(exps.data() + bin);",
+    "        (base - internal::arch::shift_left<7>(raw)).store(psd.data() + bin);"
+   ],
+   "new": [
+    "        const auto raw = iclforge::internal::arch::i32x4::load_u8_widen(exps.data() + bin);",
+    "        (base - iclforge::internal::arch::shift_left<7>(raw)).store(psd.data() + bin);"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/bitalloc.cpp",
+   "line": 513,
+   "old": [
+    "                                static_cast<Scalar>(128) * internal::scalar_log2(magnitude)))"
+   ],
+   "new": [
+    "                                static_cast<Scalar>(128) * iclforge::internal::scalar_log2(magnitude)))"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/eac3_tools.cpp",
+   "line": 600,
+   "old": [
+    "struct EcplTables<internal::Fixed32> {",
+    "    std::array<internal::Fixed32, 512> window{};",
+    "    std::array<internal::Fixed32, 512> cos3{};",
+    "    std::array<internal::Fixed32, 512> sin3{};",
+    "    std::array<internal::Fixed32, 256> y{};"
+   ],
+   "new": [
+    "struct EcplTables<iclforge::internal::Fixed32> {",
+    "    std::array<iclforge::internal::Fixed32, 512> window{};",
+    "    std::array<iclforge::internal::Fixed32, 512> cos3{};",
+    "    std::array<iclforge::internal::Fixed32, 512> sin3{};",
+    "    std::array<iclforge::internal::Fixed32, 256> y{};"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/eac3_tools.cpp",
+   "line": 609,
+   "old": [
+    "            window[i] = internal::Fixed32{kAnalysisWindow[i]};",
+    "            cos3[i] = internal::Fixed32{xcos3.cos[i]};",
+    "            sin3[i] = internal::Fixed32{xcos3.sin[i]};"
+   ],
+   "new": [
+    "            window[i] = iclforge::internal::Fixed32{kAnalysisWindow[i]};",
+    "            cos3[i] = iclforge::internal::Fixed32{xcos3.cos[i]};",
+    "            sin3[i] = iclforge::internal::Fixed32{xcos3.sin[i]};"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/eac3_tools.cpp",
+   "line": 615,
+   "old": [
+    "            y[m] = internal::Fixed32{y_table[m]};"
+   ],
+   "new": [
+    "            y[m] = iclforge::internal::Fixed32{y_table[m]};"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/eac3_tools.cpp",
+   "line": 842,
+   "old": [
+    "using internal::Fixed32;"
+   ],
+   "new": [
+    "using iclforge::internal::Fixed32;"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/eac3_tools.cpp",
+   "line": 877,
+   "old": [
+    "    static const internal::FftTables<512, Fixed32> tables;"
+   ],
+   "new": [
+    "    static const iclforge::internal::FftTables<512, Fixed32> tables;"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/eac3_tools.cpp",
+   "line": 901,
+   "old": [
+    "    internal::fft_radix4_stage<512, 4, Fixed32, Fixed32>(tables, real_out, imag_out);"
+   ],
+   "new": [
+    "    iclforge::internal::fft_radix4_stage<512, 4, Fixed32, Fixed32>(tables, real_out, imag_out);"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/eac3_tools.cpp",
+   "line": 903,
+   "old": [
+    "    internal::fft_radix4_stage<512, 16, Fixed32, Fixed32>(tables, real_out, imag_out);"
+   ],
+   "new": [
+    "    iclforge::internal::fft_radix4_stage<512, 16, Fixed32, Fixed32>(tables, real_out, imag_out);"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/eac3_tools.cpp",
+   "line": 905,
+   "old": [
+    "    internal::fft_radix4_stage<512, 64, Fixed32, Fixed32>(tables, real_out, imag_out);"
+   ],
+   "new": [
+    "    iclforge::internal::fft_radix4_stage<512, 64, Fixed32, Fixed32>(tables, real_out, imag_out);"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/eac3_tools.cpp",
+   "line": 907,
+   "old": [
+    "    internal::fft_radix4_stage<512, 256, Fixed32, Fixed32>(tables, real_out, imag_out);"
+   ],
+   "new": [
+    "    iclforge::internal::fft_radix4_stage<512, 256, Fixed32, Fixed32>(tables, real_out, imag_out);"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/eac3_tools.cpp",
+   "line": 909,
+   "old": [
+    "    internal::fft_radix2_final_stage<512, Fixed32, Fixed32>(tables, real_out, imag_out);"
+   ],
+   "new": [
+    "    iclforge::internal::fft_radix2_final_stage<512, Fixed32, Fixed32>(tables, real_out, imag_out);"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/eac3_tools.cpp",
+   "line": 1028,
+   "old": [
+    "    if (ecpl_scratch_ever_built<internal::Fixed32>()) {",
+    "        ecpl_spectrum_scratch_slot<internal::Fixed32>().reset();"
+   ],
+   "new": [
+    "    if (ecpl_scratch_ever_built<iclforge::internal::Fixed32>()) {",
+    "        ecpl_spectrum_scratch_slot<iclforge::internal::Fixed32>().reset();"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/eac3_tools_fixed.hpp",
+   "line": 35,
+   "old": [
+    "    std::array<std::array<internal::Fixed32, 3>, kSpxAttenCodes> cell{};"
+   ],
+   "new": [
+    "    std::array<std::array<iclforge::internal::Fixed32, 3>, kSpxAttenCodes> cell{};"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/eac3_tools_fixed.hpp",
+   "line": 41,
+   "old": [
+    "                    internal::Fixed32{spx_attenuation(code, tap)};"
+   ],
+   "new": [
+    "                    iclforge::internal::Fixed32{spx_attenuation(code, tap)};"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/eac3_tools_fixed.hpp",
+   "line": 59,
+   "old": [
+    "    std::array<std::array<internal::Fixed32, kBlocksPerFrameSize>, kBlocksPerFrameSize> row{};"
+   ],
+   "new": [
+    "    std::array<std::array<iclforge::internal::Fixed32, kBlocksPerFrameSize>, kBlocksPerFrameSize> row{};"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/eac3_tools_fixed.hpp",
+   "line": 68,
+   "old": [
+    "                row[j][m] = internal::Fixed32{out[m]};"
+   ],
+   "new": [
+    "                row[j][m] = iclforge::internal::Fixed32{out[m]};"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/eac3_tools_fixed.hpp",
+   "line": 83,
+   "old": [
+    "inline void spx_apply_notch(std::span<internal::Fixed32> synth, int startmant,"
+   ],
+   "new": [
+    "inline void spx_apply_notch(std::span<iclforge::internal::Fixed32> synth, int startmant,"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/eac3_tools_fixed.hpp",
+   "line": 120,
+   "old": [
+    "inline void aht_inverse(std::span<const internal::Fixed32, kBlocksPerFrameSize> coefficients,",
+    "                        std::span<internal::Fixed32, kBlocksPerFrameSize> out) {"
+   ],
+   "new": [
+    "inline void aht_inverse(std::span<const iclforge::internal::Fixed32, kBlocksPerFrameSize> coefficients,",
+    "                        std::span<iclforge::internal::Fixed32, kBlocksPerFrameSize> out) {"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/eac3_tools_fixed.hpp",
+   "line": 124,
+   "old": [
+    "        internal::Fixed32 sum{};"
+   ],
+   "new": [
+    "        iclforge::internal::Fixed32 sum{};"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/eac3_tools_fixed.hpp",
+   "line": 126,
+   "old": [
+    "            sum += internal::Fixed32::product_unsaturated(coefficients[j], basis.row[j][m]);"
+   ],
+   "new": [
+    "            sum += iclforge::internal::Fixed32::product_unsaturated(coefficients[j], basis.row[j][m]);"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/eac3_tools_fixed.hpp",
+   "line": 141,
+   "old": [
+    "inline void sincos_pi(internal::Fixed32 a, internal::Fixed32& sine,",
+    "                      internal::Fixed32& cosine) {",
+    "    using internal::Fixed32;"
+   ],
+   "new": [
+    "inline void sincos_pi(iclforge::internal::Fixed32 a, iclforge::internal::Fixed32& sine,",
+    "                      iclforge::internal::Fixed32& cosine) {",
+    "    using iclforge::internal::Fixed32;"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/eac3_tools_fixed.hpp",
+   "line": 190,
+   "old": [
+    "void ecpl_channel_spectrum_fixed(std::span<const internal::Fixed32, 256> prev_mant, int prev_norm,",
+    "                                 std::span<const internal::Fixed32, 256> curr_mant, int curr_norm,",
+    "                                 std::span<const internal::Fixed32, 256> next_mant, int next_norm,",
+    "                                 std::span<internal::Fixed32, 256> real_out,",
+    "                                 std::span<internal::Fixed32, 256> imag_out, int& out_norm);"
+   ],
+   "new": [
+    "void ecpl_channel_spectrum_fixed(std::span<const iclforge::internal::Fixed32, 256> prev_mant, int prev_norm,",
+    "                                 std::span<const iclforge::internal::Fixed32, 256> curr_mant, int curr_norm,",
+    "                                 std::span<const iclforge::internal::Fixed32, 256> next_mant, int next_norm,",
+    "                                 std::span<iclforge::internal::Fixed32, 256> real_out,",
+    "                                 std::span<iclforge::internal::Fixed32, 256> imag_out, int& out_norm);"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/eac3_tools_fixed.hpp",
+   "line": 199,
+   "old": [
+    "                           std::span<internal::Fixed32> amp_out);"
+   ],
+   "new": [
+    "                           std::span<iclforge::internal::Fixed32> amp_out);"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/eac3_tools_fixed.hpp",
+   "line": 204,
+   "old": [
+    "                       std::span<internal::Fixed32> angle_out, bool interpolate = false);"
+   ],
+   "new": [
+    "                       std::span<iclforge::internal::Fixed32> angle_out, bool interpolate = false);"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/eac3_tools_fixed.hpp",
+   "line": 206,
+   "old": [
+    "void ecpl_channel_coefficients_fixed(std::span<const internal::Fixed32, 256> real_in,",
+    "                                     std::span<const internal::Fixed32, 256> imag_in,",
+    "                                     std::span<const internal::Fixed32> amp_bin,",
+    "                                     std::span<const internal::Fixed32> angle_bin, int begin_mant,"
+   ],
+   "new": [
+    "void ecpl_channel_coefficients_fixed(std::span<const iclforge::internal::Fixed32, 256> real_in,",
+    "                                     std::span<const iclforge::internal::Fixed32, 256> imag_in,",
+    "                                     std::span<const iclforge::internal::Fixed32> amp_bin,",
+    "                                     std::span<const iclforge::internal::Fixed32> angle_bin, int begin_mant,"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/eac3_tools_fixed.hpp",
+   "line": 211,
+   "old": [
+    "                                     std::span<internal::Fixed32, 256> mant_out);"
+   ],
+   "new": [
+    "                                     std::span<iclforge::internal::Fixed32, 256> mant_out);"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/exponents.cpp",
+   "line": 67,
+   "old": [
+    "    const auto scale = internal::arch::f64x2::broadcast(16777216.0);  // 2^24"
+   ],
+   "new": [
+    "    const auto scale = iclforge::internal::arch::f64x2::broadcast(16777216.0);  // 2^24"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/exponents.cpp",
+   "line": 70,
+   "old": [
+    "        const auto scaled = internal::arch::round_ties_away(",
+    "            internal::arch::f64x2::load(coefficients.data() + i) * scale);"
+   ],
+   "new": [
+    "        const auto scaled = iclforge::internal::arch::round_ties_away(",
+    "            iclforge::internal::arch::f64x2::load(coefficients.data() + i) * scale);"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/mdct.cpp",
+   "line": 169,
+   "old": [
+    "    internal::FftTables<kP, Scalar> fft{};"
+   ],
+   "new": [
+    "    iclforge::internal::FftTables<kP, Scalar> fft{};"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/mdct.cpp",
+   "line": 239,
+   "old": [
+    "    if (internal::cpu::has_avx2()) {"
+   ],
+   "new": [
+    "    if (iclforge::internal::cpu::has_avx2()) {"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/mdct.cpp",
+   "line": 243,
+   "old": [
+    "            const auto a = internal::arch::f64x2::set(u[2 * m], u[2 * m + 2]);",
+    "            const auto b = internal::arch::f64x2::set(u[M - 1 - 2 * m], u[M - 3 - 2 * m]);",
+    "            const auto pre_re = internal::arch::f64x2::load(&t.pre_re[m]);",
+    "            const auto pre_im = internal::arch::f64x2::load(&t.pre_im[m]);"
+   ],
+   "new": [
+    "            const auto a = iclforge::internal::arch::f64x2::set(u[2 * m], u[2 * m + 2]);",
+    "            const auto b = iclforge::internal::arch::f64x2::set(u[M - 1 - 2 * m], u[M - 3 - 2 * m]);",
+    "            const auto pre_re = iclforge::internal::arch::f64x2::load(&t.pre_re[m]);",
+    "            const auto pre_im = iclforge::internal::arch::f64x2::load(&t.pre_im[m]);"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/mdct.cpp",
+   "line": 266,
+   "old": [
+    "    internal::fft_forward_bitrev<P, Scalar>(t.fft, z_re, z_im);"
+   ],
+   "new": [
+    "    iclforge::internal::fft_forward_bitrev<P, Scalar>(t.fft, z_re, z_im);"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/mdct.cpp",
+   "line": 269,
+   "old": [
+    "    if (internal::cpu::has_avx2()) {"
+   ],
+   "new": [
+    "    if (iclforge::internal::cpu::has_avx2()) {"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/mdct.cpp",
+   "line": 273,
+   "old": [
+    "    const auto scale_v = internal::arch::f64x2::broadcast(scale);"
+   ],
+   "new": [
+    "    const auto scale_v = iclforge::internal::arch::f64x2::broadcast(scale);"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/mdct.cpp",
+   "line": 275,
+   "old": [
+    "        const auto zr = internal::arch::f64x2::load(&z_re[k]);",
+    "        const auto zi = internal::arch::f64x2::load(&z_im[k]);",
+    "        const auto post_re = internal::arch::f64x2::load(&t.post_re[k]);",
+    "        const auto post_im = internal::arch::f64x2::load(&t.post_im[k]);"
+   ],
+   "new": [
+    "        const auto zr = iclforge::internal::arch::f64x2::load(&z_re[k]);",
+    "        const auto zi = iclforge::internal::arch::f64x2::load(&z_im[k]);",
+    "        const auto post_re = iclforge::internal::arch::f64x2::load(&t.post_re[k]);",
+    "        const auto post_im = iclforge::internal::arch::f64x2::load(&t.post_im[k]);"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/mdct.cpp",
+   "line": 328,
+   "old": [
+    "    if (internal::cpu::has_avx2()) {"
+   ],
+   "new": [
+    "    if (iclforge::internal::cpu::has_avx2()) {"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/mdct.cpp",
+   "line": 335,
+   "old": [
+    "        (internal::arch::f64x2::load(in + n) *",
+    "         internal::arch::f64x2::load(&kAnalysisWindow[n]))"
+   ],
+   "new": [
+    "        (iclforge::internal::arch::f64x2::load(in + n) *",
+    "         iclforge::internal::arch::f64x2::load(&kAnalysisWindow[n]))"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/mdct.cpp",
+   "line": 514,
+   "old": [
+    "                const auto a = internal::arch::f32x4::set("
+   ],
+   "new": [
+    "                const auto a = iclforge::internal::arch::f32x4::set("
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/mdct.cpp",
+   "line": 517,
+   "old": [
+    "                const auto b = internal::arch::f32x4::set(coeffs[2 * k], coeffs[2 * k + 2],"
+   ],
+   "new": [
+    "                const auto b = iclforge::internal::arch::f32x4::set(coeffs[2 * k], coeffs[2 * k + 2],"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/mdct.cpp",
+   "line": 519,
+   "old": [
+    "                const auto c = internal::arch::f32x4::load(&tw.cos1[k]);",
+    "                const auto sn = internal::arch::f32x4::load(&tw.sin1[k]);"
+   ],
+   "new": [
+    "                const auto c = iclforge::internal::arch::f32x4::load(&tw.cos1[k]);",
+    "                const auto sn = iclforge::internal::arch::f32x4::load(&tw.sin1[k]);"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/mdct.cpp",
+   "line": 536,
+   "old": [
+    "        } else if (internal::cpu::has_avx2()) {"
+   ],
+   "new": [
+    "        } else if (iclforge::internal::cpu::has_avx2()) {"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/mdct.cpp",
+   "line": 542,
+   "old": [
+    "                const auto a = internal::arch::f64x2::set(coeffs[kHalfN - 2 * k - 1],"
+   ],
+   "new": [
+    "                const auto a = iclforge::internal::arch::f64x2::set(coeffs[kHalfN - 2 * k - 1],"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/mdct.cpp",
+   "line": 544,
+   "old": [
+    "                const auto b = internal::arch::f64x2::set(coeffs[2 * k], coeffs[2 * k + 2]);",
+    "                const auto c = internal::arch::f64x2::load(&tw.cos1[k]);",
+    "                const auto sn = internal::arch::f64x2::load(&tw.sin1[k]);"
+   ],
+   "new": [
+    "                const auto b = iclforge::internal::arch::f64x2::set(coeffs[2 * k], coeffs[2 * k + 2]);",
+    "                const auto c = iclforge::internal::arch::f64x2::load(&tw.cos1[k]);",
+    "                const auto sn = iclforge::internal::arch::f64x2::load(&tw.sin1[k]);"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/mdct.cpp",
+   "line": 557,
+   "old": [
+    "        internal::fft_forward_bitrev<static_cast<std::size_t>(kQuarter), Scalar>(fft, z_re, z_im);"
+   ],
+   "new": [
+    "        iclforge::internal::fft_forward_bitrev<static_cast<std::size_t>(kQuarter), Scalar>(fft, z_re, z_im);"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/mdct.cpp",
+   "line": 562,
+   "old": [
+    "                internal::arch::f32x4::load(&z_re[n]).store(&t_re[n]);",
+    "                (-internal::arch::f32x4::load(&z_im[n])).store(&t_im[n]);"
+   ],
+   "new": [
+    "                iclforge::internal::arch::f32x4::load(&z_re[n]).store(&t_re[n]);",
+    "                (-iclforge::internal::arch::f32x4::load(&z_im[n])).store(&t_im[n]);"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/mdct.cpp",
+   "line": 565,
+   "old": [
+    "        } else if (internal::cpu::has_avx2()) {"
+   ],
+   "new": [
+    "        } else if (iclforge::internal::cpu::has_avx2()) {"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/mdct.cpp",
+   "line": 569,
+   "old": [
+    "                internal::arch::f64x2::load(&z_re[n]).store(&t_re[n]);",
+    "                (-internal::arch::f64x2::load(&z_im[n])).store(&t_im[n]);"
+   ],
+   "new": [
+    "                iclforge::internal::arch::f64x2::load(&z_re[n]).store(&t_re[n]);",
+    "                (-iclforge::internal::arch::f64x2::load(&z_im[n])).store(&t_im[n]);"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/mdct.cpp",
+   "line": 599,
+   "old": [
+    "            const auto c = internal::arch::f32x4::load(&tw.cos1[n]);",
+    "            const auto sn = internal::arch::f32x4::load(&tw.sin1[n]);",
+    "            const auto tr = internal::arch::f32x4::load(&t_re[n]);",
+    "            const auto ti = internal::arch::f32x4::load(&t_im[n]);"
+   ],
+   "new": [
+    "            const auto c = iclforge::internal::arch::f32x4::load(&tw.cos1[n]);",
+    "            const auto sn = iclforge::internal::arch::f32x4::load(&tw.sin1[n]);",
+    "            const auto tr = iclforge::internal::arch::f32x4::load(&t_re[n]);",
+    "            const auto ti = iclforge::internal::arch::f32x4::load(&t_im[n]);"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/mdct.cpp",
+   "line": 606,
+   "old": [
+    "    } else if (internal::cpu::has_avx2()) {"
+   ],
+   "new": [
+    "    } else if (iclforge::internal::cpu::has_avx2()) {"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/mdct.cpp",
+   "line": 610,
+   "old": [
+    "            const auto c = internal::arch::f64x2::load(&tw.cos1[n]);",
+    "            const auto sn = internal::arch::f64x2::load(&tw.sin1[n]);",
+    "            const auto tr = internal::arch::f64x2::load(&t_re[n]);",
+    "            const auto ti = internal::arch::f64x2::load(&t_im[n]);"
+   ],
+   "new": [
+    "            const auto c = iclforge::internal::arch::f64x2::load(&tw.cos1[n]);",
+    "            const auto sn = iclforge::internal::arch::f64x2::load(&tw.sin1[n]);",
+    "            const auto tr = iclforge::internal::arch::f64x2::load(&t_re[n]);",
+    "            const auto ti = iclforge::internal::arch::f64x2::load(&t_im[n]);"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/mdct.cpp",
+   "line": 675,
+   "old": [
+    "    if (internal::cpu::has_avx2()) {"
+   ],
+   "new": [
+    "    if (iclforge::internal::cpu::has_avx2()) {"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/mdct.cpp",
+   "line": 692,
+   "old": [
+    "    if (internal::cpu::has_avx2()) {"
+   ],
+   "new": [
+    "    if (iclforge::internal::cpu::has_avx2()) {"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/mdct.cpp",
+   "line": 765,
+   "old": [
+    "        internal::fft_forward_bitrev<static_cast<std::size_t>(kEighth), Scalar>(fft, z1_re, z1_im);",
+    "        internal::fft_forward_bitrev<static_cast<std::size_t>(kEighth), Scalar>(fft, z2_re, z2_im);"
+   ],
+   "new": [
+    "        iclforge::internal::fft_forward_bitrev<static_cast<std::size_t>(kEighth), Scalar>(fft, z1_re, z1_im);",
+    "        iclforge::internal::fft_forward_bitrev<static_cast<std::size_t>(kEighth), Scalar>(fft, z2_re, z2_im);"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/mdct.cpp",
+   "line": 804,
+   "old": [
+    "            const auto c = internal::arch::f32x4::load(&tw.cos2[n]);",
+    "            const auto sn = internal::arch::f32x4::load(&tw.sin2[n]);",
+    "            const auto t1r = internal::arch::f32x4::load(&t1_re[n]);",
+    "            const auto t1i = internal::arch::f32x4::load(&t1_im[n]);",
+    "            const auto t2r = internal::arch::f32x4::load(&t2_re[n]);",
+    "            const auto t2i = internal::arch::f32x4::load(&t2_im[n]);"
+   ],
+   "new": [
+    "            const auto c = iclforge::internal::arch::f32x4::load(&tw.cos2[n]);",
+    "            const auto sn = iclforge::internal::arch::f32x4::load(&tw.sin2[n]);",
+    "            const auto t1r = iclforge::internal::arch::f32x4::load(&t1_re[n]);",
+    "            const auto t1i = iclforge::internal::arch::f32x4::load(&t1_im[n]);",
+    "            const auto t2r = iclforge::internal::arch::f32x4::load(&t2_re[n]);",
+    "            const auto t2i = iclforge::internal::arch::f32x4::load(&t2_im[n]);"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/mdct.cpp",
+   "line": 815,
+   "old": [
+    "    } else if (internal::cpu::has_avx2()) {"
+   ],
+   "new": [
+    "    } else if (iclforge::internal::cpu::has_avx2()) {"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/mdct.cpp",
+   "line": 820,
+   "old": [
+    "            const auto c = internal::arch::f64x2::load(&tw.cos2[n]);",
+    "            const auto sn = internal::arch::f64x2::load(&tw.sin2[n]);",
+    "            const auto t1r = internal::arch::f64x2::load(&t1_re[n]);",
+    "            const auto t1i = internal::arch::f64x2::load(&t1_im[n]);",
+    "            const auto t2r = internal::arch::f64x2::load(&t2_re[n]);",
+    "            const auto t2i = internal::arch::f64x2::load(&t2_im[n]);"
+   ],
+   "new": [
+    "            const auto c = iclforge::internal::arch::f64x2::load(&tw.cos2[n]);",
+    "            const auto sn = iclforge::internal::arch::f64x2::load(&tw.sin2[n]);",
+    "            const auto t1r = iclforge::internal::arch::f64x2::load(&t1_re[n]);",
+    "            const auto t1i = iclforge::internal::arch::f64x2::load(&t1_im[n]);",
+    "            const auto t2r = iclforge::internal::arch::f64x2::load(&t2_re[n]);",
+    "            const auto t2i = iclforge::internal::arch::f64x2::load(&t2_im[n]);"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/mdct_fixed.hpp",
+   "line": 86,
+   "old": [
+    "    friend constexpr ImdctValue operator*(ImdctValue a, Fixed32 w) {",
+    "        return {Fixed32::product_unsaturated(Fixed32::from_raw(a.raw), w).raw};"
+   ],
+   "new": [
+    "    friend constexpr ImdctValue operator*(ImdctValue a, iclforge::internal::Fixed32 w) {",
+    "        return {iclforge::internal::Fixed32::product_unsaturated(iclforge::internal::Fixed32::from_raw(a.raw), w).raw};"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/mdct_fixed.hpp",
+   "line": 91,
+   "old": [
+    "[[nodiscard]] constexpr ImdctValue imdct_value(Fixed32 v) {"
+   ],
+   "new": [
+    "[[nodiscard]] constexpr ImdctValue imdct_value(iclforge::internal::Fixed32 v) {"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/mdct_fixed.hpp",
+   "line": 98,
+   "old": [
+    "    std::array<Fixed32, kN / 4> cos1{};",
+    "    std::array<Fixed32, kN / 4> sin1{};"
+   ],
+   "new": [
+    "    std::array<iclforge::internal::Fixed32, kN / 4> cos1{};",
+    "    std::array<iclforge::internal::Fixed32, kN / 4> sin1{};"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/mdct_fixed.hpp",
+   "line": 101,
+   "old": [
+    "    std::array<Fixed32, kN / 8> cos2{};",
+    "    std::array<Fixed32, kN / 8> sin2{};"
+   ],
+   "new": [
+    "    std::array<iclforge::internal::Fixed32, kN / 8> cos2{};",
+    "    std::array<iclforge::internal::Fixed32, kN / 8> sin2{};"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/mdct_fixed.hpp",
+   "line": 104,
+   "old": [
+    "    FftTables<kN / 4, Fixed32> fft128{};",
+    "    FftTables<kN / 8, Fixed32> fft64{};"
+   ],
+   "new": [
+    "    iclforge::internal::FftTables<kN / 4, iclforge::internal::Fixed32> fft128{};",
+    "    iclforge::internal::FftTables<kN / 8, iclforge::internal::Fixed32> fft64{};"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/mdct_fixed.hpp",
+   "line": 107,
+   "old": [
+    "    std::array<Fixed32, kN> window{};"
+   ],
+   "new": [
+    "    std::array<iclforge::internal::Fixed32, kN> window{};"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/mdct_fixed.hpp",
+   "line": 114,
+   "old": [
+    "            cos1[k] = Fixed32{-std::cos(angle)};",
+    "            sin1[k] = Fixed32{-std::sin(angle)};"
+   ],
+   "new": [
+    "            cos1[k] = iclforge::internal::Fixed32{-std::cos(angle)};",
+    "            sin1[k] = iclforge::internal::Fixed32{-std::sin(angle)};"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/mdct_fixed.hpp",
+   "line": 120,
+   "old": [
+    "            cos2[k] = Fixed32{-std::cos(angle)};",
+    "            sin2[k] = Fixed32{-std::sin(angle)};"
+   ],
+   "new": [
+    "            cos2[k] = iclforge::internal::Fixed32{-std::cos(angle)};",
+    "            sin2[k] = iclforge::internal::Fixed32{-std::sin(angle)};"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/mdct_fixed.hpp",
+   "line": 124,
+   "old": [
+    "            window[i] = Fixed32{kAnalysisWindow[i]};"
+   ],
+   "new": [
+    "            window[i] = iclforge::internal::Fixed32{kAnalysisWindow[i]};"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/mdct_fixed.hpp",
+   "line": 136,
+   "old": [
+    "inline constexpr std::int32_t kFixedImdctInputLimit = Fixed32::kOne / 2;"
+   ],
+   "new": [
+    "inline constexpr std::int32_t kFixedImdctInputLimit = iclforge::internal::Fixed32::kOne / 2;"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/mdct_fixed.hpp",
+   "line": 140,
+   "old": [
+    "inline void imdct512_windowed_fixed(std::span<const Fixed32, 256> coeffs,",
+    "                                    std::span<Fixed32, 512> x) {"
+   ],
+   "new": [
+    "inline void imdct512_windowed_fixed(std::span<const iclforge::internal::Fixed32, 256> coeffs,",
+    "                                    std::span<iclforge::internal::Fixed32, 512> x) {"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/mdct_fixed.hpp",
+   "line": 156,
+   "old": [
+    "        const Fixed32 c = t.cos1[k];",
+    "        const Fixed32 s = t.sin1[k];"
+   ],
+   "new": [
+    "        const iclforge::internal::Fixed32 c = t.cos1[k];",
+    "        const iclforge::internal::Fixed32 s = t.sin1[k];"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/mdct_fixed.hpp",
+   "line": 162,
+   "old": [
+    "    fft_forward_bitrev<kQuarter, ImdctValue, Fixed32>(t.fft128, z_re, z_im);"
+   ],
+   "new": [
+    "    fft_forward_bitrev<kQuarter, ImdctValue, iclforge::internal::Fixed32>(t.fft128, z_re, z_im);"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/mdct_fixed.hpp",
+   "line": 171,
+   "old": [
+    "        const Fixed32 c = t.cos1[n];",
+    "        const Fixed32 s = t.sin1[n];"
+   ],
+   "new": [
+    "        const iclforge::internal::Fixed32 c = t.cos1[n];",
+    "        const iclforge::internal::Fixed32 s = t.sin1[n];"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/mdct_fixed.hpp",
+   "line": 180,
+   "old": [
+    "    const auto out = [&x](std::size_t i, ImdctValue v) { x[i] = Fixed32::from_raw(v.raw); };"
+   ],
+   "new": [
+    "    const auto out = [&x](std::size_t i, ImdctValue v) { x[i] = iclforge::internal::Fixed32::from_raw(v.raw); };"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/mdct_fixed.hpp",
+   "line": 196,
+   "old": [
+    "inline void imdct256_pair_windowed_fixed(std::span<const Fixed32, 256> coeffs,",
+    "                                         std::span<Fixed32, 512> x) {"
+   ],
+   "new": [
+    "inline void imdct256_pair_windowed_fixed(std::span<const iclforge::internal::Fixed32, 256> coeffs,",
+    "                                         std::span<iclforge::internal::Fixed32, 512> x) {"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/mdct_fixed.hpp",
+   "line": 210,
+   "old": [
+    "        const Fixed32 c = t.cos2[k];",
+    "        const Fixed32 s = t.sin2[k];"
+   ],
+   "new": [
+    "        const iclforge::internal::Fixed32 c = t.cos2[k];",
+    "        const iclforge::internal::Fixed32 s = t.sin2[k];"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/mdct_fixed.hpp",
+   "line": 224,
+   "old": [
+    "    fft_forward_bitrev<kEighth, ImdctValue, Fixed32>(t.fft64, z1_re, z1_im);",
+    "    fft_forward_bitrev<kEighth, ImdctValue, Fixed32>(t.fft64, z2_re, z2_im);"
+   ],
+   "new": [
+    "    fft_forward_bitrev<kEighth, ImdctValue, iclforge::internal::Fixed32>(t.fft64, z1_re, z1_im);",
+    "    fft_forward_bitrev<kEighth, ImdctValue, iclforge::internal::Fixed32>(t.fft64, z2_re, z2_im);"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/mdct_fixed.hpp",
+   "line": 233,
+   "old": [
+    "        const Fixed32 c = t.cos2[n];",
+    "        const Fixed32 s = t.sin2[n];"
+   ],
+   "new": [
+    "        const iclforge::internal::Fixed32 c = t.cos2[n];",
+    "        const iclforge::internal::Fixed32 s = t.sin2[n];"
+   ]
+  },
+  {
+   "file": "src/ac3/src/core/mdct_fixed.hpp",
+   "line": 247,
+   "old": [
+    "    const auto out = [&x](std::size_t i, ImdctValue v) { x[i] = Fixed32::from_raw(v.raw); };"
+   ],
+   "new": [
+    "    const auto out = [&x](std::size_t i, ImdctValue v) { x[i] = iclforge::internal::Fixed32::from_raw(v.raw); };"
+   ]
+  },
+  {
+   "file": "src/ac3/src/decoder/block_norm.hpp",
+   "line": 61,
+   "old": [
+    "inline constexpr bool kNormalisedStore = std::is_same_v<Scalar, Fixed32>;"
+   ],
+   "new": [
+    "inline constexpr bool kNormalisedStore = std::is_same_v<Scalar, iclforge::internal::Fixed32>;"
+   ]
+  },
+  {
+   "file": "src/ac3/src/decoder/block_norm.hpp",
+   "line": 147,
+   "old": [
+    "        return exp - (raw_width(peak) - Fixed32::kFractionBits);"
+   ],
+   "new": [
+    "        return exp - (raw_width(peak) - iclforge::internal::Fixed32::kFractionBits);"
+   ]
+  },
+  {
+   "file": "src/ac3/src/decoder/block_norm.hpp",
+   "line": 174,
+   "old": [
+    "        return std::max(0, synthesis_width - (Fixed32::kFractionBits - kNormGuardBits));"
+   ],
+   "new": [
+    "        return std::max(0, synthesis_width - (iclforge::internal::Fixed32::kFractionBits - kNormGuardBits));"
+   ]
+  },
+  {
+   "file": "src/ac3/src/decoder/block_norm.hpp",
+   "line": 318,
+   "old": [
+    "        const int power = -(Fixed32::kFractionBits - 1) - aligned;"
+   ],
+   "new": [
+    "        const int power = -(iclforge::internal::Fixed32::kFractionBits - 1) - aligned;"
+   ]
+  },
+  {
+   "file": "src/ac3/src/decoder/decoder.cpp",
+   "line": 1639,
+   "old": [
+    "                                    internal::scalar_ldexp(coeff * coordinate * sign, shift);"
+   ],
+   "new": [
+    "                                    iclforge::internal::scalar_ldexp(coeff * coordinate * sign, shift);"
+   ]
+  },
+  {
+   "file": "src/ac3/src/decoder/eac3_decoder.cpp",
+   "line": 1261,
+   "old": [
+    "        return internal::scalar_sqrt(accum / static_cast<Scalar>(size));"
+   ],
+   "new": [
+    "        return iclforge::internal::scalar_sqrt(accum / static_cast<Scalar>(size));"
+   ]
+  },
+  {
+   "file": "src/ac3/src/decoder/eac3_decoder.cpp",
+   "line": 1266,
+   "old": [
+    "struct BandEnergy<internal::Fixed32> {"
+   ],
+   "new": [
+    "struct BandEnergy<iclforge::internal::Fixed32> {"
+   ]
+  },
+  {
+   "file": "src/ac3/src/decoder/eac3_decoder.cpp",
+   "line": 1268,
+   "old": [
+    "    void add(internal::Fixed32 value) {"
+   ],
+   "new": [
+    "    void add(iclforge::internal::Fixed32 value) {"
+   ]
+  },
+  {
+   "file": "src/ac3/src/decoder/eac3_decoder.cpp",
+   "line": 1272,
+   "old": [
+    "    [[nodiscard]] internal::Fixed32 rms(int size) const {"
+   ],
+   "new": [
+    "    [[nodiscard]] iclforge::internal::Fixed32 rms(int size) const {"
+   ]
+  },
+  {
+   "file": "src/ac3/src/decoder/eac3_decoder.cpp",
+   "line": 1275,
+   "old": [
+    "        return internal::Fixed32::from_raw(static_cast<std::int32_t>(",
+    "            internal::isqrt64(sum / static_cast<std::uint64_t>(size))));"
+   ],
+   "new": [
+    "        return iclforge::internal::Fixed32::from_raw(static_cast<std::int32_t>(",
+    "            iclforge::internal::isqrt64(sum / static_cast<std::uint64_t>(size))));"
+   ]
+  },
+  {
+   "file": "src/ac3/src/decoder/eac3_decoder.cpp",
+   "line": 1312,
+   "old": [
+    "    if constexpr (std::is_same_v<Scalar, internal::Fixed32>) {"
+   ],
+   "new": [
+    "    if constexpr (std::is_same_v<Scalar, iclforge::internal::Fixed32>) {"
+   ]
+  },
+  {
+   "file": "src/ac3/src/decoder/eac3_decoder.cpp",
+   "line": 2919,
+   "old": [
+    "                            out.object_metadata = oba::parse_payload(payload.bytes);"
+   ],
+   "new": [
+    "                            out.object_metadata = iclforge::oba::parse_payload(payload.bytes);"
+   ]
+  },
+  {
+   "file": "src/ac3/src/decoder/eac3_decoder.cpp",
+   "line": 3358,
+   "old": [
+    "                        value = internal::scalar_ldexp(value, shift);"
+   ],
+   "new": [
+    "                        value = iclforge::internal::scalar_ldexp(value, shift);"
+   ]
+  },
+  {
+   "file": "src/ac3/src/decoder/eac3_decoder.cpp",
+   "line": 3506,
+   "old": [
+    "                            target[ubin] = internal::scalar_ldexp(coeff * coordinate * sign, shift);"
+   ],
+   "new": [
+    "                            target[ubin] = iclforge::internal::scalar_ldexp(coeff * coordinate * sign, shift);"
+   ]
+  },
+  {
+   "file": "src/ac3/src/decoder/eac3_decoder.cpp",
+   "line": 3740,
+   "old": [
+    "                    const Scalar nscale = band_rms[ubnd] * internal::scalar_sqrt(nratio);",
+    "                    const Scalar sscale = internal::scalar_sqrt(Scalar{1} - nratio);"
+   ],
+   "new": [
+    "                    const Scalar nscale = band_rms[ubnd] * iclforge::internal::scalar_sqrt(nratio);",
+    "                    const Scalar sscale = iclforge::internal::scalar_sqrt(Scalar{1} - nratio);"
+   ]
+  },
+  {
+   "file": "src/ac3/src/decoder/eac3_decoder.cpp",
+   "line": 3756,
+   "old": [
+    "                                internal::scalar_product_unsaturated(tc[at], sscale) +",
+    "                                internal::scalar_product_unsaturated(spx_noise.next_as<Scalar>(),"
+   ],
+   "new": [
+    "                                iclforge::internal::scalar_product_unsaturated(tc[at], sscale) +",
+    "                                iclforge::internal::scalar_product_unsaturated(spx_noise.next_as<Scalar>(),"
+   ]
+  },
+  {
+   "file": "src/ac3/src/decoder/eac3_decoder.cpp",
+   "line": 3759,
+   "old": [
+    "                            tc[at] = internal::scalar_ldexp(",
+    "                                internal::scalar_product_unsaturated(blended, mantissa), shift);"
+   ],
+   "new": [
+    "                            tc[at] = iclforge::internal::scalar_ldexp(",
+    "                                iclforge::internal::scalar_product_unsaturated(blended, mantissa), shift);"
+   ]
+  },
+  {
+   "file": "src/ac3/src/decoder/eac3_decoder.cpp",
+   "line": 3945,
+   "old": [
+    "            const auto indices = oba::joc_object_indices(out.object_metadata->program);"
+   ],
+   "new": [
+    "            const auto indices = iclforge::oba::joc_object_indices(out.object_metadata->program);"
+   ]
+  },
+  {
+   "file": "src/ac3/src/decoder/eac3_decoder.cpp",
+   "line": 4593,
+   "old": [
+    "        const oba::DecodedProgram* const metadata ="
+   ],
+   "new": [
+    "        const iclforge::oba::DecodedProgram* const metadata ="
+   ]
+  },
+  {
+   "file": "src/ac3/src/decoder/eac3_decoder.cpp",
+   "line": 4701,
+   "old": [
+    "                                      ? oba::joc_object_indices(out.object_metadata->program)"
+   ],
+   "new": [
+    "                                      ? iclforge::oba::joc_object_indices(out.object_metadata->program)"
+   ]
+  },
+  {
+   "file": "src/ac3/src/decoder/eac3_decoder.cpp",
+   "line": 4746,
+   "old": [
+    "                                      impl_->config_.fast_imdct, oba::joc::Domain::kMdctBand);"
+   ],
+   "new": [
+    "                                      impl_->config_.fast_imdct, iclforge::oba::joc::Domain::kMdctBand);"
+   ]
+  },
+  {
+   "file": "src/ac3/src/decoder/output.cpp",
+   "line": 440,
+   "old": [
+    "        peak = std::max(peak, internal::scalar_abs(static_cast<Scalar>(left[i])));"
+   ],
+   "new": [
+    "        peak = std::max(peak, iclforge::internal::scalar_abs(static_cast<Scalar>(left[i])));"
+   ]
+  },
+  {
+   "file": "src/ac3/src/decoder/output.cpp",
+   "line": 442,
+   "old": [
+    "            peak = std::max(peak, internal::scalar_abs(static_cast<Scalar>(right[i])));"
+   ],
+   "new": [
+    "            peak = std::max(peak, iclforge::internal::scalar_abs(static_cast<Scalar>(right[i])));"
+   ]
+  },
+  {
+   "file": "src/ac3/src/decoder/output.cpp",
+   "line": 491,
+   "old": [
+    "        if constexpr (std::is_same_v<Scalar, internal::Fixed32>) {"
+   ],
+   "new": [
+    "        if constexpr (std::is_same_v<Scalar, iclforge::internal::Fixed32>) {"
+   ]
+  },
+  {
+   "file": "src/ac3/src/decoder/scalar_inverse.hpp",
+   "line": 35,
+   "old": [
+    "    if constexpr (std::is_same_v<Scalar, Fixed32>) {"
+   ],
+   "new": [
+    "    if constexpr (std::is_same_v<Scalar, iclforge::internal::Fixed32>) {"
+   ]
+  },
+  {
+   "file": "src/ac3/src/encoder/eac3_frame.cpp",
+   "line": 1021,
+   "old": [
+    "                    log_sum += internal::scalar_log(power + static_cast<Scalar>(1e-30));"
+   ],
+   "new": [
+    "                    log_sum += iclforge::internal::scalar_log(power + static_cast<Scalar>(1e-30));"
+   ]
+  },
+  {
+   "file": "src/ac3/src/encoder/eac3_frame.cpp",
+   "line": 1032,
+   "old": [
+    "    const Scalar geometric = internal::scalar_exp(log_sum / static_cast<Scalar>(count));"
+   ],
+   "new": [
+    "    const Scalar geometric = iclforge::internal::scalar_exp(log_sum / static_cast<Scalar>(count));"
+   ]
+  },
+  {
+   "file": "src/ac3/src/encoder/eac3_frame.cpp",
+   "line": 1254,
+   "old": [
+    "        log_sum += internal::scalar_log(power);"
+   ],
+   "new": [
+    "        log_sum += iclforge::internal::scalar_log(power);"
+   ]
+  },
+  {
+   "file": "src/ac3/src/encoder/eac3_frame.cpp",
+   "line": 1261,
+   "old": [
+    "    const Scalar flatness = internal::scalar_exp(log_sum / static_cast<Scalar>(count)) /"
+   ],
+   "new": [
+    "    const Scalar flatness = iclforge::internal::scalar_exp(log_sum / static_cast<Scalar>(count)) /"
+   ]
+  },
+  {
+   "file": "src/ac3/src/oba/atmos.cpp",
+   "line": 124,
+   "old": [
+    "[[nodiscard]] std::optional<double> bed_label_azimuth_deg(BedLabel label) {"
+   ],
+   "new": [
+    "[[nodiscard]] std::optional<double> bed_label_azimuth_deg(iclforge::oba::BedLabel label) {"
+   ]
+  },
+  {
+   "file": "src/ac3/src/oba/atmos.cpp",
+   "line": 126,
+   "old": [
+    "        case BedLabel::kL:",
+    "        case BedLabel::kTfl:  return 30.0;",
+    "        case BedLabel::kC:    return 0.0;",
+    "        case BedLabel::kR:",
+    "        case BedLabel::kTfr:  return -30.0;",
+    "        case BedLabel::kLs:",
+    "        case BedLabel::kTsl:  return 110.0;",
+    "        case BedLabel::kRs:",
+    "        case BedLabel::kTsr:  return -110.0;",
+    "        case BedLabel::kLb:",
+    "        case BedLabel::kTbl:  return 150.0;",
+    "        case BedLabel::kRb:",
+    "        case BedLabel::kTbr:  return -150.0;",
+    "        case BedLabel::kLw:   return 60.0;",
+    "        case BedLabel::kRw:   return -60.0;",
+    "        case BedLabel::kLfe:",
+    "        case BedLabel::kLfe2: return std::nullopt;"
+   ],
+   "new": [
+    "        case iclforge::oba::BedLabel::kL:",
+    "        case iclforge::oba::BedLabel::kTfl:  return 30.0;",
+    "        case iclforge::oba::BedLabel::kC:    return 0.0;",
+    "        case iclforge::oba::BedLabel::kR:",
+    "        case iclforge::oba::BedLabel::kTfr:  return -30.0;",
+    "        case iclforge::oba::BedLabel::kLs:",
+    "        case iclforge::oba::BedLabel::kTsl:  return 110.0;",
+    "        case iclforge::oba::BedLabel::kRs:",
+    "        case iclforge::oba::BedLabel::kTsr:  return -110.0;",
+    "        case iclforge::oba::BedLabel::kLb:",
+    "        case iclforge::oba::BedLabel::kTbl:  return 150.0;",
+    "        case iclforge::oba::BedLabel::kRb:",
+    "        case iclforge::oba::BedLabel::kTbr:  return -150.0;",
+    "        case iclforge::oba::BedLabel::kLw:   return 60.0;",
+    "        case iclforge::oba::BedLabel::kRw:   return -60.0;",
+    "        case iclforge::oba::BedLabel::kLfe:",
+    "        case iclforge::oba::BedLabel::kLfe2: return std::nullopt;"
+   ]
+  },
+  {
+   "file": "src/ac3/src/oba/atmos.cpp",
+   "line": 162,
+   "old": [
+    "[[nodiscard]] constexpr bool is_base_ring_label(BedLabel label) {",
+    "    return label == BedLabel::kL || label == BedLabel::kC || label == BedLabel::kR ||",
+    "          label == BedLabel::kLs || label == BedLabel::kRs;"
+   ],
+   "new": [
+    "[[nodiscard]] constexpr bool is_base_ring_label(iclforge::oba::BedLabel label) {",
+    "    return label == iclforge::oba::BedLabel::kL || label == iclforge::oba::BedLabel::kC || label == iclforge::oba::BedLabel::kR ||",
+    "          label == iclforge::oba::BedLabel::kLs || label == iclforge::oba::BedLabel::kRs;"
+   ]
+  },
+  {
+   "file": "src/ac3/src/oba/atmos.cpp",
+   "line": 251,
+   "old": [
+    "    Program program_{};"
+   ],
+   "new": [
+    "    iclforge::oba::Program program_{};"
+   ]
+  },
+  {
+   "file": "src/ac3/src/oba/atmos.cpp",
+   "line": 341,
+   "old": [
+    "        if (config.joc_domain == joc::Domain::kQmf) {"
+   ],
+   "new": [
+    "        if (config.joc_domain == iclforge::oba::joc::Domain::kQmf) {"
+   ]
+  },
+  {
+   "file": "src/ac3/src/oba/atmos.cpp",
+   "line": 354,
+   "old": [
+    "          essences_(joc_object_count(Program{.dynamic_only = false, .bed = bed.bed})),"
+   ],
+   "new": [
+    "          essences_(joc_object_count(iclforge::oba::Program{.dynamic_only = false, .bed = bed.bed})),"
+   ]
+  },
+  {
+   "file": "src/ac3/src/oba/atmos.cpp",
+   "line": 379,
+   "old": [
+    "        if (config.joc_domain == joc::Domain::kQmf) {"
+   ],
+   "new": [
+    "        if (config.joc_domain == iclforge::oba::joc::Domain::kQmf) {"
+   ]
+  },
+  {
+   "file": "src/ac3/src/oba/atmos.cpp",
+   "line": 389,
+   "old": [
+    "        for (const auto label : bed_labels(program_.bed)) {"
+   ],
+   "new": [
+    "        for (const auto label : iclforge::oba::bed_labels(program_.bed)) {"
+   ]
+  },
+  {
+   "file": "src/ac3/src/oba/atmos.cpp",
+   "line": 436,
+   "old": [
+    "        budget.transform_samples += joc::reconstruction_delay(impl_->config_.joc_domain);"
+   ],
+   "new": [
+    "        budget.transform_samples += iclforge::oba::joc::reconstruction_delay(impl_->config_.joc_domain);"
+   ]
+  },
+  {
+   "file": "src/ac3/src/oba/atmos.cpp",
+   "line": 442,
+   "old": [
+    "const Program& AtmosEncoder::program() const { return impl_->program_; }"
+   ],
+   "new": [
+    "const iclforge::oba::Program& AtmosEncoder::program() const { return impl_->program_; }"
+   ]
+  },
+  {
+   "file": "src/ac3/src/oba/atmos.cpp",
+   "line": 518,
+   "old": [
+    "        if (config_.joc_domain == joc::Domain::kQmf) {"
+   ],
+   "new": [
+    "        if (config_.joc_domain == iclforge::oba::joc::Domain::kQmf) {"
+   ]
+  },
+  {
+   "file": "src/ac3/src/oba/atmos.cpp",
+   "line": 609,
+   "old": [
+    "    std::span<const ObjectPlacement> placement) {"
+   ],
+   "new": [
+    "    std::span<const iclforge::oba::ObjectPlacement> placement) {"
+   ]
+  },
+  {
+   "file": "src/ac3/src/oba/atmos.cpp",
+   "line": 661,
+   "old": [
+    "    std::vector<DynamicObject> described(count);"
+   ],
+   "new": [
+    "    std::vector<iclforge::oba::DynamicObject> described(count);"
+   ]
+  },
+  {
+   "file": "src/ac3/src/oba/joc.cpp",
+   "line": 1304,
+   "old": [
+    "                                            bool fast_imdct, Domain domain) {"
+   ],
+   "new": [
+    "                                            bool fast_imdct, iclforge::oba::joc::Domain domain) {"
+   ]
+  },
+  {
+   "file": "src/ac3/src/oba/joc.cpp",
+   "line": 1316,
+   "old": [
+    "    auto objects = domain == Domain::kQmf"
+   ],
+   "new": [
+    "    auto objects = domain == iclforge::oba::joc::Domain::kQmf"
+   ]
+  },
+  {
+   "file": "src/signing/src/emdf_atmos_signer.cpp",
+   "line": 24,
+   "old": [
+    "using emdf::BitRange;",
+    "using emdf::FrameLayout;"
+   ],
+   "new": [
+    "using ac3::emdf::BitRange;",
+    "using ac3::emdf::FrameLayout;"
+   ]
+  },
+  {
+   "file": "src/signing/src/emdf_atmos_signer.cpp",
+   "line": 66,
+   "old": [
+    "    const FrameLayout p = emdf::walk_frame(frame);"
+   ],
+   "new": [
+    "    const FrameLayout p = ac3::emdf::walk_frame(frame);"
+   ]
+  },
+  {
+   "file": "src/signing/src/emdf_atmos_signer.cpp",
+   "line": 132,
+   "old": [
+    "    const FrameLayout p = emdf::walk_frame(frame);"
+   ],
+   "new": [
+    "    const FrameLayout p = ac3::emdf::walk_frame(frame);"
+   ]
+  },
+  {
+   "file": "src/signing/src/emdf_atmos_signer.cpp",
+   "line": 196,
+   "old": [
+    "        const std::size_t size = emdf::syncframe_size(stream.subspan(off));"
+   ],
+   "new": [
+    "        const std::size_t size = ac3::emdf::syncframe_size(stream.subspan(off));"
+   ]
+  },
+  {
+   "file": "src/signing/src/emdf_atmos_signer.cpp",
+   "line": 226,
+   "old": [
+    "        const std::size_t size = emdf::syncframe_size(stream.subspan(off));"
+   ],
+   "new": [
+    "        const std::size_t size = ac3::emdf::syncframe_size(stream.subspan(off));"
+   ]
+  },
+  {
+   "file": "tests/ac3/encoder/test_exp_strategy.cpp",
+   "line": 337,
+   "old": [
+    "    using namespace iclforge::internal;"
+   ],
+   "new": [
+    "    using namespace iclforge::ac3;",
+    "    using namespace iclforge::ac3::internal;"
+   ]
+  }
+ ]
+}
