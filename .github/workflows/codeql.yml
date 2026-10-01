@@ -21,11 +21,13 @@
 # `nightly-analysis` issue through .github/actions/report-nightly-failure.
 #
 # The C++ leg is modelled on CountdownSolver's .github/workflows/codeql.yml
-# (same CMake+vcpkg shape, same gitflow model) - build-mode: manual,
-# library+CLI only, no Qt app: the GUI adds nothing CodeQL needs to see and
-# config-linux-gcc already defaults ICLFORGE_BUILD_GUI off (see
-# CMakePresets.json), so this is the same build ci.yml's static-analysis
-# (clang-tidy) nightly already proves clean.
+# (same CMake+vcpkg shape, same gitflow model) - build-mode: manual, over the
+# code the project ships: the libraries, the CLI and the Hearth and Crucible
+# engines. No Qt app (config-linux-gcc already defaults ICLFORGE_BUILD_GUI off,
+# see CMakePresets.json), no tests and no examples, and vcpkg's installed
+# headers live outside the checkout; the Configure step says why for each. The
+# paths options of the CodeQL config file do not apply to a language that is
+# built, so what the build compiles is what the C++ leg scans.
 #
 # The other two legs (non-C++ lint and scan) cover code the C++ leg never saw: ~30
 # Python files (the oracles and CI gates under tools/, plus the python/
@@ -73,7 +75,9 @@ on:
 concurrency:
   # One nightly at a time; a manual dispatch queues behind a running nightly
   # rather than cancelling it (an analysis that never finishes uploads nothing).
-  group: codeql-nightly
+  # The group names the ref, so a trial dispatch from a branch has a queue of
+  # its own and neither waits for nor delays main's nightly.
+  group: codeql-nightly-${{ github.ref_name }}
   cancel-in-progress: false
 
 permissions:
@@ -269,7 +273,7 @@ jobs:
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
-          # Path filtering only - see the file's own header.
+          # Path filtering and query filters - see the file's own header.
           config-file: ./.github/codeql/codeql-config.yml
           # security-and-quality layers CodeQL's maintainability/reliability
           # queries on top of the default security set - the same
@@ -279,19 +283,41 @@ jobs:
           # adopted a priori: a measured dispatch run on this codebase first
           # (2026-08-22, the same discipline as .clang-tidy's curation)
           # showed 179 rules and ZERO findings against the default suite's
-          # 58 rules / zero - the suite starts from a clean baseline, so any
-          # future finding is new signal, not inherited noise.
+          # 58 rules / zero.
           #
-          # The same suite is used for Python and JavaScript, but that
-          # measurement does NOT transfer - it was taken against the C++
-          # extractor's rule set. Both were dispatched on this branch before
-          # landing (run 32637028120, 2026-08-23) and completed clean, so
-          # they start from the same zero-findings baseline the C++ leg does.
+          # That zero was an empty scan for C++, found on 2026-10-01: the C++
+          # leg's log said "CodeQL scanned 1 out of 991 C++ files" until
+          # 2026-09-24, and from 2026-09-25 (CodeQL 2.27.1) it scans about
+          # 1,000 files and raised 3,826 alerts on its first night. The suite
+          # is therefore filtered in the config file: advisory queries and two
+          # that misfire here are out, everything that can point at a defect
+          # stays, and a new alert after that is a finding to fix.
+          #
+          # Python and JavaScript were dispatched on this branch before
+          # landing (run 32637028120, 2026-08-23), completed clean, and scan
+          # their files (the Python alerts of 2026-09-24 and later show it).
           queries: security-and-quality
 
+      # What this build compiles is what the C++ leg scans. Three settings keep the scan on the
+      # code the project ships, each for a reason measured on 2026-10-01:
+      #  - ICLFORGE_BUILD_TESTS=OFF: the Catch2 tests were 4,540 of the 4,733 open alerts,
+      #    3,591 of the first night's 3,826 being cpp/unused-static-function on TEST_CASE
+      #    bodies. Test code is not shipped, and the tests run in ci.yml's own legs.
+      #  - ICLFORGE_BUILD_EXAMPLES=OFF: the examples are sample programs that open the path
+      #    their command line names, which is every cpp/path-injection alert they raise (6).
+      #    The CLI is the program the same flow is analysed in.
+      #  - VCPKG_INSTALLED_DIR under RUNNER_TEMP: by default vcpkg installs into the build
+      #    directory, inside the checkout, so CodeQL treated {fmt}, httplib, mbedtls, Opus and
+      #    Catch2 as project source (47 alerts). Outside the checkout their headers are still
+      #    extracted for the data flow, and no alert is reported against a file CodeQL does
+      #    not hold in the source archive.
       - name: Configure
         if: matrix.language == 'cpp'
-        run: cmake --preset config-linux-gcc
+        run: >-
+          cmake --preset config-linux-gcc
+          -DICLFORGE_BUILD_TESTS=OFF
+          -DICLFORGE_BUILD_EXAMPLES=OFF
+          -DVCPKG_INSTALLED_DIR="${RUNNER_TEMP}/vcpkg_installed"
 
       - name: Build
         if: matrix.language == 'cpp'
@@ -325,10 +351,11 @@ jobs:
   # still reported rather than skipped past, but a run someone cancelled by
   # hand does not open an issue over it. analyze keeps codeql-action's
   # default wait-for-processing: true, so the alerts exist by the time this
-  # runs. The query is pinned to refs/heads/main, the ref the schedule
-  # analyses; a workflow_dispatch from another branch uploads against that
-  # branch and this job does not see it, so the alert-to-issue path can only
-  # be exercised on main.
+  # runs. The query names the ref this run analysed: refs/heads/main on the
+  # schedule, which is the nightly as it always was, and the dispatched branch
+  # on a trial run, so a branch shows what the next nightly will see (an alert
+  # keeps its creation time across refs, so one main already holds is not new
+  # on the branch either). The issue is opened or commented on only for main.
   surface:
     name: Surface findings
     needs: analyze
@@ -348,6 +375,7 @@ jobs:
       - name: Fail on code-scanning alerts created since the last nightly
         env:
           GH_TOKEN: ${{ github.token }}
+          ANALYSED_REF: ${{ github.ref }}
           # Nightly cadence plus an hour of slack for a late-starting run.
           # The 25 h window overlaps the previous run by about an hour, so an
           # alert from night N is listed again on night N+1 while it stays
@@ -361,19 +389,19 @@ jobs:
           # newest first and filter client-side. One page of 100 bounds the
           # call; more than 100 new alerts in one night would be truncated,
           # which is acceptable for a "did anything new appear" signal.
-          gh api "repos/${GITHUB_REPOSITORY}/code-scanning/alerts?state=open&ref=refs/heads/main&tool_name=${TOOL}&sort=created&direction=desc&per_page=100" \
+          gh api "repos/${GITHUB_REPOSITORY}/code-scanning/alerts?state=open&ref=${ANALYSED_REF}&tool_name=${TOOL}&sort=created&direction=desc&per_page=100" \
             --jq ".[] | select(.created_at > \"${since}\") | \"\\(.number)\\t\\(.rule.id)\\t\\(.most_recent_instance.location.path):\\(.most_recent_instance.location.start_line)\\t\\(.html_url)\"" \
             > new-alerts.tsv
           count="$(wc -l < new-alerts.tsv | tr -d '[:space:]')"
           if [ "${count}" -gt 0 ]; then
-            echo "::error::${count} new ${TOOL} alert(s) on main since ${since}:"
+            echo "::error::${count} new ${TOOL} alert(s) on ${ANALYSED_REF} since ${since}:"
             cat new-alerts.tsv
             exit 1
           fi
-          echo "No new ${TOOL} alerts on main since ${since}."
+          echo "No new ${TOOL} alerts on ${ANALYSED_REF} since ${since}."
 
       - uses: ./.github/actions/report-nightly-failure
-        if: failure() || needs.analyze.result != 'success'
+        if: (failure() || needs.analyze.result != 'success') && github.ref == 'refs/heads/main'
         with:
           engine: ${{ env.TOOL }}
           detail: "New CodeQL alerts on main since the previous nightly, or the analysis itself failed. See the run log, then Security > Code scanning filtered to refs/heads/main and tool CodeQL."
