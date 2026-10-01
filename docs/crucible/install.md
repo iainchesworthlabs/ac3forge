@@ -8,7 +8,10 @@ mute captured applications.
 
 ### Get it
 
-`iclforge-crucible-<version>-win64.zip`, from the releases page. It carries the window, the
+`iclforge-crucible-<version>-win64.zip`, from the releases page. No release has carried it yet:
+`v0.10.0-beta.1` is older than the Crucible packages, so the first release made after the rename is
+the first that can, and until then a checkout builds the same file (`cpack -D
+CPACK_COMPONENTS_ALL=crucible` in the build directory). It carries the window, the
 console runner, its own Qt runtime, the driver's install and remove scripts, the third-party
 notices (`NOTICES.txt`) and the licence (`LICENSE.txt`). It does not carry the driver those
 scripts install — the next section says why, and what that means before you change any security
@@ -83,7 +86,9 @@ The window says which of these you are in rather than leaving you to work it out
 
 `iclforge-crucible-<version>-Linux-x86_64.tar.gz`, or the `iclforge-crucible_<version>_amd64.deb`
 beside it, from the releases page; on a Raspberry Pi 4 or 5, or any other 64-bit ARM Debian or
-Ubuntu machine, the `-Linux-aarch64.tar.gz` and the `_arm64.deb` beside those. All four come off
+Ubuntu machine, the `-Linux-aarch64.tar.gz` and the `_arm64.deb` beside those. No release has
+carried them yet (the first release made after the rename is the first that can; [Build
+it](#build-it) makes the same files). All four come off
 the same Crucible pass on the two Linux LLVM legs — the CI legs that build against PipeWire,
 which is the only backend Crucible accepts, one per architecture — and are collected into the
 release with every other package ([docs/releasing.md](../releasing.md#what-gets-published) says

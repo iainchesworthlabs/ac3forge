@@ -2139,7 +2139,7 @@
       "platform": "Windows",
       "variant": "x64",
       "state": "published",
-      "artifact": "iclforge-dev ZIP",
+      "artifact": "Development ZIP (the -dev- archive)",
       "action": "Open GitHub releases",
       "url": "https://github.com/iainchesworthlabs/iclforge/releases/latest",
       "note": "Contains headers, libraries and CMake package files."
@@ -2149,7 +2149,7 @@
       "platform": "Windows",
       "variant": "ARM64",
       "state": "published",
-      "artifact": "iclforge-dev ZIP",
+      "artifact": "Development ZIP (the -dev- archive)",
       "action": "Open GitHub releases",
       "url": "https://github.com/iainchesworthlabs/iclforge/releases/latest",
       "note": "The CI leg is experimental."
@@ -2159,7 +2159,7 @@
       "platform": "Linux",
       "variant": "x86_64",
       "state": "published",
-      "artifact": "iclforge-dev TGZ, DEB or RPM development package",
+      "artifact": "TGZ, DEB or RPM development package (the -dev- archive and the -dev packages)",
       "action": "Open GitHub releases",
       "url": "https://github.com/iainchesworthlabs/iclforge/releases/latest",
       "note": "The system packages separate runtime libraries from headers and CMake files."
@@ -2169,7 +2169,7 @@
       "platform": "Linux",
       "variant": "aarch64",
       "state": "published",
-      "artifact": "iclforge-dev TGZ, DEB or RPM development package",
+      "artifact": "TGZ, DEB or RPM development package (the -dev- archive and the -dev packages)",
       "action": "Open GitHub releases",
       "url": "https://github.com/iainchesworthlabs/iclforge/releases/latest",
       "note": "Suitable for a 64-bit Raspberry Pi."
@@ -2179,7 +2179,7 @@
       "platform": "macOS",
       "variant": "Universal (Apple Silicon + Intel)",
       "state": "published",
-      "artifact": "Best-effort iclforge-dev ZIP",
+      "artifact": "Best-effort development ZIP (the -dev- archive)",
       "action": "Open GitHub releases",
       "url": "https://github.com/iainchesworthlabs/iclforge/releases/latest",
       "note": "The development archive may be absent from a release."
@@ -2189,50 +2189,50 @@
       "platform": "Windows",
       "variant": "x64",
       "state": "published",
-      "artifact": "iclforge wheel from PyPI",
+      "artifact": "Python wheel from PyPI",
       "action": "Open PyPI",
-      "url": "https://pypi.org/project/iclforge/",
-      "note": "Install with pip install iclforge. Wheels up to 0.10.0b1 predate the iclforge.ac4 module."
+      "url": "https://pypi.org/project/ac3forge/",
+      "note": "The pre-releases 0.9.0b1 and 0.10.0b1 are the project ac3forge: pip install ac3forge. A release made after the rename publishes the project iclforge: pip install iclforge. Wheels up to 0.10.0b1 have no AC-4 module."
     },
     {
       "product": "Python package",
       "platform": "Linux",
       "variant": "x86_64",
       "state": "published",
-      "artifact": "iclforge wheel from PyPI",
+      "artifact": "Python wheel from PyPI",
       "action": "Open PyPI",
-      "url": "https://pypi.org/project/iclforge/",
-      "note": "Install with pip install iclforge. Wheels up to 0.10.0b1 predate the iclforge.ac4 module."
+      "url": "https://pypi.org/project/ac3forge/",
+      "note": "The pre-releases 0.9.0b1 and 0.10.0b1 are the project ac3forge: pip install ac3forge. A release made after the rename publishes the project iclforge: pip install iclforge. Wheels up to 0.10.0b1 have no AC-4 module."
     },
     {
       "product": "Python package",
       "platform": "Linux",
       "variant": "aarch64",
       "state": "configured",
-      "artifact": "iclforge wheel, built by CI",
+      "artifact": "Python wheel, built by CI",
       "action": "Open PyPI",
-      "url": "https://pypi.org/project/iclforge/",
-      "note": "CI builds this wheel, but no release has carried it and PyPI has none for Linux on aarch64. Build from a checkout with pip install ./python."
+      "url": "https://pypi.org/project/ac3forge/",
+      "note": "CI builds this wheel, but no release has carried it and PyPI has none for Linux on aarch64. Build from a checkout with pip install ./python. The pre-releases are the project ac3forge; the project iclforge starts with a release made after the rename."
     },
     {
       "product": "Python package",
       "platform": "macOS",
       "variant": "Apple Silicon",
       "state": "published",
-      "artifact": "iclforge wheel from PyPI",
+      "artifact": "Python wheel from PyPI",
       "action": "Open PyPI",
-      "url": "https://pypi.org/project/iclforge/",
-      "note": "Install with pip install iclforge. Wheels up to 0.10.0b1 predate the iclforge.ac4 module."
+      "url": "https://pypi.org/project/ac3forge/",
+      "note": "The pre-releases 0.9.0b1 and 0.10.0b1 are the project ac3forge: pip install ac3forge. A release made after the rename publishes the project iclforge: pip install iclforge. Wheels up to 0.10.0b1 have no AC-4 module."
     },
     {
       "product": "Python package",
       "platform": "macOS",
       "variant": "Intel",
       "state": "configured",
-      "artifact": "iclforge wheel, built by CI",
+      "artifact": "Python wheel, built by CI",
       "action": "Open PyPI",
-      "url": "https://pypi.org/project/iclforge/",
-      "note": "CI builds this wheel, but no release has carried it and PyPI has none for macOS on Intel. Build from a checkout with pip install ./python."
+      "url": "https://pypi.org/project/ac3forge/",
+      "note": "CI builds this wheel, but no release has carried it and PyPI has none for macOS on Intel. Build from a checkout with pip install ./python. The pre-releases are the project ac3forge; the project iclforge starts with a release made after the rename."
     },
     {
       "product": "Browser demos",

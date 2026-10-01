@@ -27,6 +27,12 @@ forge
 `forge` installs as part of Forge. See [Installing Forge](../index.md#installing) for the
 prebuilt archives, Homebrew, winget, and source-build paths.
 
+`forge` is also the name of Foundry's command (the Ethereum toolkit) and of Laravel Forge's. On a
+computer that has either, the one that comes first on the `PATH` runs. Put ICL Forge's directory
+before it, or call `forge` by its full path, when a shell answers with the wrong program;
+`forge --version` of this one starts with `iclforge`. The pre-releases up to `0.10.0-beta.1` call
+the program `ac3cli`, and [Renamed](../../renamed.md) lists the other old names.
+
 ## Version
 
 ```bash
@@ -40,7 +46,7 @@ nearest reachable `v*` git tag at configure time, so it tracks the latest releas
 build time by `cmake/GenerateVersion.cmake`. A build from past the tag looks like this:
 
 ```
-ac3forge 0.10.0-beta.1+2637
+iclforge 0.10.0-beta.1+2637
   release: v0.10.0-beta.1-2637-g8d797cb05
   commit:  8d797cb05765bacfc61ef23c72429d8fd3aff045
   branch:  main

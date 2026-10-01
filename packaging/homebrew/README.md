@@ -4,17 +4,19 @@
 tarball. `Casks/iclforge.rb` packages `forge-gui` — the GUI, as the prebuilt `.app` bundle from a
 release's DragNDrop `.dmg`. Both live here first and are copied into the personal tap
 [`iainchesworthlabs/homebrew-iclforge`](https://github.com/iainchesworthlabs/homebrew-iclforge),
-which is public and carries both at `v0.10.0-beta.1`. Neither is submitted to `homebrew-core`.
+which is public. Until the tap repository has been renamed from `homebrew-ac3forge` and a release made
+after the rename has reached it, the tap holds the formula `ac3forge` and the cask `ac3gui` at
+`v0.10.0-beta.1`. Neither is submitted to `homebrew-core`.
 
 ```bash
 brew install iainchesworthlabs/iclforge/iclforge          # forge, built from source
-brew install --cask iainchesworthlabs/iclforge/iclforge     # forge-gui.app, prebuilt
+brew install --cask iainchesworthlabs/iclforge/iclforge   # forge-gui.app, prebuilt
 ```
 
 The formula and the cask are named `iclforge` from the first release made after the rename of
 the family (`planning/ac4.md`, decision 41). `tap_migrations.json` here maps the old names
-(`iclforge`, `forge-gui`) to them, and goes to the root of the tap, which `manifest-bump.yml`
-copies it to with the formula and the cask, removing `Formula/iclforge.rb` and `Casks/forge-gui.rb`
+(`ac3forge`, `ac3gui`) to them, and goes to the root of the tap, which `manifest-bump.yml`
+copies it to with the formula and the cask, removing `Formula/ac3forge.rb` and `Casks/ac3gui.rb`
 in the same pull request (Homebrew reads the map for a name that has no file).
 
 After a release, [`manifest-bump.yml`](../../.github/workflows/manifest-bump.yml) rewrites both
@@ -48,7 +50,10 @@ staying library-only but pointed the other way: Homebrew formulae are for end-us
 for a bundled `.app` — Homebrew formulae build from source, and a Qt6 GUI app is idiomatically
 distributed prebuilt and signed (or, here, prebuilt and *not* Apple-signed — see the cask's own
 `caveats` block). `Casks/iclforge.rb` names one release: `version` is its tag and `sha256` is the
-digest of its `iclforge-*-Darwin.dmg` (the digest GitHub reports for that asset). `v0.8.0-beta.2`
+digest of its `iclforge-*-Darwin.dmg` (the digest GitHub reports for that asset). Its `url` names the
+file the way a release made after the rename does, and `v0.10.0-beta.1` has it as
+`ac3forge-0.10.0-Darwin.dmg`, so the staged cask cannot download the release it names until the first
+bump after the rename. `v0.8.0-beta.2`
 was the first tag whose `macos-llvm` CI leg builds `ICLFORGE_BUILD_GUI=ON` (see
 [docs/platforms/macos.md](../../docs/platforms/macos.md#gui-on-macos)), so it was the first
 `iclforge-*-Darwin.dmg` that contains `forge-gui.app`.
@@ -76,7 +81,9 @@ brew uninstall iclforge
 `homebrew-core` PR review. No CI job runs `brew audit`, `brew install` or `brew test` on either
 file, so this validation is manual, macOS-only, and not automated —
 see [docs/releasing.md](../../docs/releasing.md#homebrew-formula-and-cask) for the per-release update
-flow.
+flow. The formula's `sha256` is that of a tag's source tarball, and GitHub names the top directory of
+a tarball after the repository, so after the repository rename a formula that still names a tag made
+before it fails its checksum until the first bump replaces the `sha256`.
 
 The cask points at a downloadable `.dmg`, so it can be validated the same way, from a macOS
 machine with Homebrew installed:

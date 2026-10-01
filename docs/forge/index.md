@@ -19,22 +19,29 @@ Choose an installation method:
 
 - **A prebuilt archive** — every
   [release](https://github.com/iainchesworthlabs/iclforge/releases) publishes a
-  `.zip`/`.tar.gz`/`.dmg` per platform with `forge` (and `forge-gui` where the leg builds it)
-  inside. Windows also carries an NSIS `iclforge-<version>-win64.exe` installer from
-  `0.10.0-beta.1` on; `0.9.0-beta.1` and earlier ship the `.zip` only.
-- **Homebrew** (macOS/Linux) — the formula and cask are published to
+  `.zip`/`.tar.gz`/`.dmg` per platform with the programs inside: `forge` (and `forge-gui` where
+  the leg builds it) from the first release made after the rename, `ac3cli` (and `ac3gui`) in the
+  releases up to `0.10.0-beta.1`. The files are named `iclforge-<version>-<platform>` from that
+  release on and `ac3forge-<version>-<platform>` before it
+  ([Renamed](../renamed.md#what-a-release-carries)). Windows also carries an NSIS installer
+  (`.exe`) from `0.10.0-beta.1` on; `0.9.0-beta.1` and earlier ship the `.zip` only.
+- **Homebrew** (macOS/Linux) — the formula and cask are in the personal tap
   [`iainchesworthlabs/homebrew-iclforge`](https://github.com/iainchesworthlabs/homebrew-iclforge).
   `brew install iainchesworthlabs/iclforge/iclforge` builds and installs `forge`;
   `brew install --cask iainchesworthlabs/iclforge/iclforge` installs the prebuilt `forge-gui.app`
-  from the release `.dmg`. Both paths are validated manually. The cask has not been installed
-  end to end on a Mac. See
+  from the release `.dmg`. Those are the names from the first release made after the rename. Until
+  that release has reached the tap, the tap holds the formula `ac3forge` and the cask `ac3gui` at
+  `0.10.0-beta.1`, which install `ac3cli` and `ac3gui.app`. Both paths are validated manually. The
+  cask has not been installed end to end on a Mac. See
   [Homebrew formula and cask](../releasing.md#homebrew-formula-and-cask).
 - **winget** (Windows) — the manifest is staged in-tree at
   [`packaging/winget/`](https://github.com/iainchesworthlabs/iclforge/tree/main/packaging/winget).
-  It has not been submitted to `microsoft/winget-pkgs`, so
+  It has not been submitted to `microsoft/winget-pkgs` (the one submission, under the identifier
+  `iainchesworthlabs.ac3forge`, was closed unmerged), so
   `winget install iainchesworthlabs.iclforge` does not resolve. From a clone,
   `winget install --manifest packaging/winget/manifests/i/iainchesworthlabs/ac3forge/<version>`
-  installs `forge` and `forge-gui`. See
+  installs `ac3cli` and `ac3gui` from a release up to `0.10.0-beta.1`; the directory of a later
+  release is `iclforge`, and installs `forge` and `forge-gui`. See
   [winget manifest](../releasing.md#winget-manifest).
 
 Building from source is covered by [Quick start](../quickstart.md). Publication status for each
@@ -42,7 +49,9 @@ package is recorded under [Releasing](../releasing.md#what-gets-published).
 
 The library ships separately, as the `iclforge-dev-*` archives and, on Linux, the
 `libiclforge0` runtime package with `libiclforge-dev` (DEB) or `iclforge-devel` (RPM)
-beside it; [What it is](../library/index.md) covers consuming it.
+beside it, from the first release made after the rename (`ac3forge-dev-*`, `libac3forge0`,
+`libac3forge-dev` and `ac3forge-devel` before it); [What it is](../library/index.md) covers
+consuming it.
 
 ## Where to go next
 

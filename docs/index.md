@@ -17,6 +17,7 @@ and no ESP32 network sink decodes it in a Sendspin group.
 | Decode or encode AC-4 | [AC-4 in the library](library/ac4.md) |
 | Link the codec from C++, C, Python, Rust, or WebAssembly | [Library](library/index.md) |
 | Compare products and features by platform and architecture | [Platforms](platforms/index.md) |
+| Find the new name of something from a pre-release (`ac3cli`, `ac3forge`, ...) | [Renamed](renamed.md) |
 
 The [Quick start](quickstart.md) covers installation, source builds, and the ESP32-S3 sink.
 
@@ -44,6 +45,7 @@ performance, decoder-accuracy, listening-quality, object-quality, and memory his
   application exposes.
 - [Validation](verification.md) — how output is checked and where independent checking ends.
 - [Building from source](building.md) — toolchains, presets, options, and platform details.
+- [Renamed](renamed.md) — the old name and the new one of every program, library, package and setting.
 - [Contributing](contributing.md) — repository structure and contribution requirements.
 
 !!! warning "Standards and trademarks"

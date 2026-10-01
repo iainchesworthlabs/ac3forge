@@ -248,7 +248,7 @@ to `AudioDeviceCreateIOProcID` succeeds on one hosted runner while that call doe
 The first macOS CI attempt at any of it never reached a compiler: it stopped during configure, at
 an `install(TARGETS crucible)` rule that named no `BUNDLE DESTINATION` for a target with
 `MACOSX_BUNDLE` on. With that fixed, both legs compiled `process_tap.mm` and linked it into
-`ac3audio`. Their `ctest` runs cover the version gate
+`iclforge_audio`. Their `ctest` runs cover the version gate
 (`tests/audio/backend/macos/test_macos_support.cpp`, the one place the `__builtin_available` lowering
 is executed rather than merely compiled), the agreement between the capability report and
 `process_loopback_available()` and their shared refusal sentence, and — since the Crucible Qt
@@ -361,9 +361,11 @@ tagged yet. See [Packaging](../building.md#packaging).
 
 Through Homebrew, the personal tap `iainchesworthlabs/iclforge` (the `homebrew-iclforge`
 repository, [staged here](https://github.com/iainchesworthlabs/iclforge/tree/main/packaging/homebrew))
-carries the source formula `iclforge` for the CLI and the cask `forge-gui` for the GUI:
-`brew tap iainchesworthlabs/iclforge`, then `brew install iclforge` or `brew install --cask
-forge-gui`. The app is neither code-signed nor notarized, so Gatekeeper refuses it on first launch
+carries the source formula `iclforge` for the CLI and the cask `iclforge` for the GUI, from the first
+release made after the rename: `brew tap iainchesworthlabs/iclforge`, then `brew install iclforge`
+or `brew install --cask iclforge`. Until that release has reached the tap, it carries the formula
+`ac3forge` and the cask `ac3gui` ([Renamed](../renamed.md#what-a-release-carries)). The app is
+neither code-signed nor notarized, so Gatekeeper refuses it on first launch
 until it is opened from Finder's context menu or `xattr -dr com.apple.quarantine` is run on it.
 Neither route has been run end to end on a Mac.
 

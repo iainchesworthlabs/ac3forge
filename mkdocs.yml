@@ -185,6 +185,7 @@ nav:
       - Contributing: contributing.md
       - Security policy: security.md
       - Release notes: https://github.com/iainchesworthlabs/iclforge/blob/main/CHANGELOG.md
+      - Renamed: renamed.md
       - Releasing: releasing.md
       - Self-hosted CI runners: ci-self-hosted-runners.md
       - CI lane partitions: ci-lanes.md

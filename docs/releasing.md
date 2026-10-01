@@ -5,6 +5,11 @@ release publishes and where, and how to set up the signing keys. Modelled on an 
 project's release process, with the parts that don't apply to ICL Forge (APT/DNF repository
 publishing, a Docker image, a Home Assistant add-on) removed.
 
+ICL Forge was called AC3Forge up to the pre-release 0.10.0-beta.1. The repository, the packages and
+the release files have new names, and the packages and release files carry them from the first
+release made after the rename. [Renamed](renamed.md) lists which release carries which name, and the
+sections below say so where it decides what a step does.
+
 ## What a release does today
 
 A tag push, or a dispatch of `release.yml`, starts the workflows below. Each row says what the
@@ -14,11 +19,13 @@ workflow publishes and where:
 |---|---|---|
 | `release.yml` | builds and tests everything `_build.yml` builds (`tier: all`) with packaging on, checks the package list, signs with GPG, writes an SBOM, attests build provenance, creates the GitHub Release from the CHANGELOG section, uploads the assets and redeploys the documentation site | a GitHub Release on this repository, marked a prerelease when the tag has a suffix |
 | `manifest-bump.yml`, called by `release.yml` once the release is up | rewrites the four staged packaging manifests to the new tag and opens a pull request on this repository; with `HOMEBREW_TAP_TOKEN` it also opens a pull request on the Homebrew tap | the Homebrew tap, once a person merges its pull request; the pull request on this repository publishes nothing |
-| `wheels.yml` | builds the Python wheels; its `publish` job uploads them to PyPI through trusted publishing | PyPI, package `iclforge` |
+| `wheels.yml` | builds the Python wheels; its `publish` job uploads them to PyPI through trusted publishing | PyPI, package `iclforge`; the pre-releases went to the project `ac3forge` |
 | `npm.yml` | builds and tests `js/` and packs the tarball; its `publish` job runs only from a manual dispatch on a tag | nothing |
 | `esp-component.yml` | packs and verifies the ESP-IDF component; its `publish` job runs only from a manual dispatch on a tag, and needs an `esp-component` environment and token that do not exist | nothing |
 
-What has been published so far, from each registry's own listing and from GitHub:
+What had been published on 2026-10-01, from each registry's own listing and from GitHub. The names are
+the ones each artifact was published under; [Renamed](renamed.md#what-a-release-carries) lists
+what the first release made after the rename calls them:
 
 - **GitHub Releases:** ten prereleases, `v0.2.0-beta.1` through `v0.10.0-beta.1`
   (`v0.8.0-beta.2` is the second one for 0.8.0). No stable release has been tagged. What each
@@ -27,31 +34,33 @@ What has been published so far, from each registry's own listing and from GitHub
     - `v0.2.0-beta.1`, 25 assets: the Windows zip, one Linux set (`.deb`, `.rpm`, `.tar.gz`,
       `.zip`), the macOS `.dmg` and `.zip`, the SPDX SBOM, `SHA512SUMS` and GPG signatures. No
       provenance attestations yet.
-    - `v0.3.0-beta.1` and `v0.4.0-beta.1`, 52 each: the `iclforge-dev-*` library archives, the
+    - `v0.3.0-beta.1` and `v0.4.0-beta.1`, 52 each: the `ac3forge-dev-*` library archives, the
       Shield APK and the `.intoto.jsonl` provenance attestations are added.
     - `v0.5.0-beta.1`, 68: the Linux `.deb` and `.rpm` split into `runtime`, `library` and
       `libruntime` packages.
     - `v0.6.0-beta.1` to `v0.9.0-beta.1`, 108 each: the Linux packages, named by architecture,
       for x86_64 and aarch64.
     - `v0.10.0-beta.1`, 127: adds the Windows NSIS installer (`ac3forge-0.10.0-win64.exe`), the
-      Windows ARM64 `.exe` and `.zip`, the `forge-gui` AppImage and the conformance vector bundle.
+      Windows ARM64 `.exe` and `.zip`, the `ac3gui` AppImage and the conformance vector bundle.
       It has no macOS runtime `.zip` beside the `.dmg`.
 
   No release has carried a Crucible package.
-- **PyPI:** [`iclforge`](https://pypi.org/project/iclforge/) 0.9.0b1, uploaded on 2026-08-22, and
+- **PyPI:** [`ac3forge`](https://pypi.org/project/ac3forge/) 0.9.0b1, uploaded on 2026-08-22, and
   0.10.0b1, uploaded on 2026-09-01. Each has fifteen wheels (CPython 3.10 to 3.14 on Windows
   x64, macOS arm64 and Linux x86-64) and no sdist. The Linux aarch64 and Intel macOS rows were
-  added to `wheels.yml` on 2026-09-02, so the next release is the first to carry them.
+  added to `wheels.yml` on 2026-09-02, so the next release is the first to carry them. There is no
+  project named `iclforge` on PyPI.
 - **Homebrew:** the tap
-  [`iainchesworthlabs/homebrew-iclforge`](https://github.com/iainchesworthlabs/homebrew-iclforge)
-  is a public repository. Its `Formula/iclforge.rb` and `Casks/forge-gui.rb` are both at
+  [`iainchesworthlabs/homebrew-ac3forge`](https://github.com/iainchesworthlabs/homebrew-ac3forge)
+  is a public repository. Its `Formula/ac3forge.rb` and `Casks/ac3gui.rb` are both at
   `v0.10.0-beta.1`. The formula was added on 2026-08-18, and the bumps to `v0.8.0-beta.2`,
   `v0.9.0-beta.1` and `v0.10.0-beta.1` are the tap's merged pull requests #1 to #3.
 - **vcpkg:** not in the registry. The port was submitted to `microsoft/vcpkg` as pull request
-  #53470 on 2026-08-18; it is a draft with changes requested and has not been updated since
-  2026-08-19.
+  #53470 on 2026-08-18, under the name `ac3forge`; it is a draft with changes requested and has not
+  been updated since 2026-08-19.
 - **winget:** not in the registry. The only submission is `microsoft/winget-pkgs` #419594, for
-  `0.8.0-beta.1`, opened on 2026-08-18 from the `iainchesworthlabs/winget-pkgs` fork. A reviewer
+  `0.8.0-beta.1` as `iainchesworthlabs.ac3forge`, opened on 2026-08-18 from the
+  `iainchesworthlabs/winget-pkgs` fork. A reviewer
   asked for changes on 2026-09-21, nobody replied, and a bot closed it on 2026-09-29. The
   fork still has its branch. The tree stages `0.8.0-beta.1`, `0.8.0-beta.2`, `0.9.0-beta.1` and
   `0.10.0-beta.1`; the last three have not been submitted. See [winget manifest](#winget-manifest).
@@ -97,7 +106,7 @@ marks the GitHub Release as a prerelease. The suffix also flows into the build: 
 `project()` `VERSION` field can only hold the bare `X.Y.Z` (that's what `PROJECT_VERSION` and
 CPack's package version use), but the full tag - suffix included - is carried separately as
 `PROJECT_VERSION_FULL`. It is the `iclforge::version_full` string, the headline of `forge --version`
-(`ac3forge 0.10.0-beta.1`, with `+N` after it for a build N commits past the tag, so a build from
+(`iclforge 0.10.0-beta.1`, with `+N` after it for a build N commits past the tag, so a build from
 `main` is not mistaken for the release), and the `generator` field of `forge probe ... json=1`.
 
 A checkout that can't see any `v*` tag (no history, or a shallow CI clone - see `_build.yml`'s
@@ -243,15 +252,28 @@ Most of what used to be a manual post-release checklist here is now automated:
 
    **Testing this without cutting a release**: `manifest-bump.yml` is also directly
    `workflow_dispatch`-able (Actions > Manifest Bump > Run workflow), with `dry_run: true` by
-   default. Point it at any already-shipped tag (e.g. the current latest) to exercise the full
-   download/digest/cross-check pipeline and see the manifest diffs it would produce, with nothing
-   written, committed, pushed or opened - this is release-path automation that otherwise cannot
-   be exercised except by shipping a real release.
+   default. Point it at an already-shipped tag to exercise the download/digest/cross-check
+   pipeline and see the manifest diffs it would produce, with nothing written, committed, pushed
+   or opened - this is release-path automation that otherwise cannot be exercised except by
+   shipping a real release. It looks for the release files by their new names (`iclforge-*`), which
+   a tag made before the rename does not carry: a dry run against one covers the source tarball and
+   the vcpkg port, the formula and the Conan recipe, and its log says that the cask and the winget
+   files were skipped.
+
+   **Digests pinned before the rename.** The port, the formula and the Conan recipe pin the digest of
+   a source tarball that GitHub generates, and GitHub names the top directory of that tarball after the
+   repository. Renaming the repository from `ac3forge` to `iclforge` therefore changes the tarball of
+   a tag made before it: the port, the formula and the recipe as staged, and the formula in the live
+   tap, fail their checksum for that tag until a bump replaces the digest. The cask and the winget
+   manifests name release files, whose bytes do not change.
 
    **`HOMEBREW_TAP_TOKEN`** (optional, and set on this repository): a fine-grained GitHub PAT
    scoped to `Contents: Read and write` and `Pull requests: Read and write` on
    `iainchesworthlabs/homebrew-iclforge` only (the first pushes the branch, the second opens the
-   pull request; the built-in `GITHUB_TOKEN` cannot reach another repository). Without it, the
+   pull request; the built-in `GITHUB_TOKEN` cannot reach another repository). The workflow names
+   the tap by that name, so the tap repository has to be renamed from `homebrew-ac3forge` before the
+   first release made after the rename: until then there is nothing at that address to clone. Without
+   the token, the
    tap step is skipped (its `if:` gate simply doesn't fire, with nothing logged) - the in-tree PR
    still opens - and the PR body says so. Add it the same way as
    any other repo secret (Settings > Secrets and variables > Actions); nobody but a human with
@@ -270,7 +292,8 @@ A vcpkg port for `iclforge` is staged in-tree at
 [`packaging/vcpkg-port/iclforge/`](https://github.com/iainchesworthlabs/iclforge/tree/main/packaging/vcpkg-port/iclforge)
 (`vcpkg.json`,
 `portfile.cmake`, `usage`). It is not in the curated `microsoft/vcpkg` registry: it was submitted
-as pull request #53470, which is a draft with changes requested (last updated 2026-08-19) - see
+as pull request #53470 under the name `ac3forge`, which is a draft with changes requested (last
+updated 2026-08-19) - see
 [docs/library/index.md](library/index.md) for how a consumer uses it either way. It installs the
 library only (`iclforge::ac3`, plus `iclforge::matroska`/`iclforge::mp4`/
 `iclforge::mpegts` behind their own `matroska`/`mp4`/`mpegts` features, `iclforge::c` behind
@@ -307,10 +330,11 @@ Android is a real target (see [docs/platforms/android.md](platforms/android.md))
 architectures fail to build (`matroska`'s size comparisons assume a 64-bit `size_t`).
 
 `iclforge::c` is exposed as the port's `capi` feature (`vcpkg install
-ICL Forge[capi]`), off by default like the others above. Its `capiTargets` export
-used to require `forge_static` even when `ICLFORGE_INSTALL_BOTH_LINKAGES=OFF` left that target
-unexported - a real bug independent of vcpkg, fixed in `cmake/InstallLibrary.cmake` by exporting
-`forge_static` alongside `forge_shared` in that branch whenever `ICLFORGE_BUILD_CAPI` is `ON`
+iclforge[capi]`), off by default like the others above. Its `capiTargets` export
+used to require the AC-3 library's static variant even when `ICLFORGE_INSTALL_BOTH_LINKAGES=OFF`
+left that target unexported - a real bug independent of vcpkg, fixed in
+`cmake/InstallLibrary.cmake` by exporting the static variant alongside the shared one in that
+branch whenever `ICLFORGE_BUILD_CAPI` is `ON`
 (#227) - which is what made adding the feature itself a scope decision rather than
 a bug workaround.
 
@@ -325,7 +349,7 @@ feature to `packaging/vcpkg-port/iclforge/vcpkg.json` and one line to `portfile.
 `packaging/conan/conanfile.py` with its `tc.variables` line (the parity check above fails the
 recipes until both have it), and the component to `tools/checks/check_install_consumer.sh`'s
 list - unless the component pulls in a real third-party link dependency
-of its own, the way `ac3adm`/`iclforge::admbridge` do (see
+of its own, the way `iclforge::adm`/`iclforge::admbridge` do (see
 [ADM / BW64 reading](library/adm.md#why-opt-in)): those still install/export (shared-only, to
 stay self-contained without re-exporting the third party), but deliberately have no vcpkg/Conan
 feature of their own for now.
@@ -379,16 +403,18 @@ that scratch copy, and discard it once validated - never commit that substitutio
 ## Publishing to PyPI
 
 The Python bindings (`python/`, see
-[docs/library/python-api.md](library/python-api.md)) are the `iclforge` PyPI package, with wheels
+[docs/library/python-api.md](library/python-api.md)) are the `iclforge` package, with wheels
 for Windows (x64), macOS (arm64 and Intel) and Linux (x86_64 and aarch64) built by
-`.github/workflows/wheels.yml` via `cibuildwheel`, one wheel per CPython from 3.10 to 3.14. That
+`.github/workflows/wheels.yml` via `cibuildwheel`, one wheel per CPython from 3.10 to 3.14. The
+releases up to `v0.10.0-beta.1` published them to PyPI as the project `ac3forge`; a release made
+after the rename publishes the project `iclforge`. That
 workflow's `build` job runs in `ci.yml`'s own `wheels` job, on the `python` lane ([CI lane
 partitions](ci-lanes.md)): after a merge that touches `python/` or `examples/python/`, and in the
 nightly run, and not on pull requests. It always uploads the wheels it builds as a workflow
 artifact.
 
 **Publishing to PyPI is live**: the `pypi` GitHub environment is provisioned and
-[`iclforge`](https://pypi.org/project/iclforge/) is a published package, with two releases,
+[`ac3forge`](https://pypi.org/project/ac3forge/) is a published project, with two releases,
 0.9.0b1 (2026-08-22) and 0.10.0b1 (2026-09-01). Both carry the same fifteen wheels, CPython
 3.10 to 3.14 on Windows x64, macOS arm64 and Linux x86_64, and no sdist: the Linux aarch64 and
 Intel macOS rows of the wheel matrix were added on 2026-09-02, after `v0.10.0-beta.1`.
@@ -399,8 +425,10 @@ API token — there is no `PYPI_API_TOKEN` secret to leak in the first place. **
 generate a long-lived PyPI API token and paste it into a chat with an agent or into a GitHub
 secret** — trusted publishing exists specifically so that never has to happen.
 
-The one-time setup that provisioned it, for reference (done by a maintainer directly on pypi.org
-and on GitHub, and not something a future release needs to repeat):
+The one-time setup, for reference (done by a maintainer directly on pypi.org and on GitHub). It
+provisioned the project `ac3forge`. The project `iclforge` does not exist on PyPI yet, and a trusted
+publisher names its project and its repository, so the first release made after the rename needs
+steps 1 and 2 done again for `iclforge`; step 3 is in place already:
 
 1. On PyPI, either publish the very first `iclforge` release by hand (`python -m build python/`
    then `twine upload`, using a temporary scoped token deleted immediately after) to create the
@@ -409,8 +437,8 @@ and on GitHub, and not something a future release needs to repeat):
    not exist yet — the second path needs no manual upload at all and is the one to prefer.
 2. Either way, register the trusted publisher against this repository: owner
    `iainchesworthlabs`, repository `iclforge`, workflow `wheels.yml`, environment `pypi`.
-3. In the GitHub repo, create an environment named `pypi` (Settings → Environments) — no secrets
-   need adding to it; its existence and name are what PyPI's trusted-publisher registration keys
+3. In the GitHub repo, an environment named `pypi` (Settings → Environments) — it exists, and the
+   rename keeps it — needs no secrets; its existence and name are what PyPI's trusted-publisher registration keys
    against, and `wheels.yml`'s `publish` job declares `environment: pypi` so the job has somewhere
    to request the OIDC token from. Optionally add required reviewers on the environment for a
    manual approval gate before a publish actually runs.
@@ -471,12 +499,15 @@ trusted-published package. Until step 5, a tag push builds and tests `js/` and s
 
 A Homebrew formula for `forge` is staged in-tree at
 [`packaging/homebrew/Formula/iclforge.rb`](https://github.com/iainchesworthlabs/iclforge/blob/main/packaging/homebrew/Formula/iclforge.rb)
-and published to the live personal tap
+and copied to the personal tap
 [`iainchesworthlabs/homebrew-iclforge`](https://github.com/iainchesworthlabs/homebrew-iclforge) - see
 [`packaging/homebrew/README.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/packaging/homebrew/README.md)
-for why a personal tap rather than a `homebrew-core` submission. Unlike the vcpkg port, this
-packages the CLI (`forge`), not the library: `ICLFORGE_BUILD_CLI=ON` with GUI/tests/examples/
-fuzzers off, built from the release source tarball.
+for why a personal tap rather than a `homebrew-core` submission. Until the tap repository has been
+renamed from `homebrew-ac3forge` and a release made after the rename has reached it, the tap holds
+the formula `ac3forge` and the cask `ac3gui`, both at `v0.10.0-beta.1`; that release's pull request
+replaces them with `iclforge` and adds the `tap_migrations.json` that answers for the old names.
+Unlike the vcpkg port, this packages the CLI (`forge`), not the library: `ICLFORGE_BUILD_CLI=ON`
+with GUI/tests/examples/fuzzers off, built from the release source tarball.
 
 The GUI (`forge-gui`) is a separate Homebrew Cask,
 [`packaging/homebrew/Casks/iclforge.rb`](https://github.com/iainchesworthlabs/iclforge/blob/main/packaging/homebrew/Casks/iclforge.rb)
@@ -484,7 +515,10 @@ The GUI (`forge-gui`) is a separate Homebrew Cask,
 already ships in every platform's release archive (`cmake/Packaging.cmake`'s DragNDrop `.dmg` on
 macOS). It's staged the same way the formula is, and pinned to `v0.10.0-beta.1` today (its `version` and
 `sha256`, which `manifest-bump.yml` rewrites for each release; see the cask file's own header
-comment). `v0.8.0-beta.2` was the first tagged release whose macOS build contained `forge-gui` -
+comment). Its `url` names the release file the way a release made after the rename does
+(`iclforge-<version>-Darwin.dmg`), and `v0.10.0-beta.1` carries it as `ac3forge-0.10.0-Darwin.dmg`, so
+the staged cask cannot download the release it names until the first bump after the rename.
+`v0.8.0-beta.2` was the first tagged release whose macOS build contained the GUI, as `ac3gui.app` -
 `macos-llvm` only started building the GUI at all once
 [GUI on macOS](platforms/macos.md#gui-on-macos) landed.
 
@@ -504,7 +538,7 @@ the formula or the cask:
 The same three steps apply to the cask now that it tracks a real release too: bump `version` to
 the new tag and `sha256` to the release's `iclforge-*-Darwin.dmg` (`sha256sum` it, or trust
 CPack's own published `.dmg.sha512` after converting digest algorithms), validate locally, then
-put `packaging/homebrew/Casks/iclforge.rb` into the same tap pull request as `Casks/forge-gui.rb` -
+put `packaging/homebrew/Casks/iclforge.rb` into the same tap pull request, as `Casks/iclforge.rb` -
 both files ship from the same tap.
 
 **Validating the formula locally**, from a macOS machine with Homebrew installed:
@@ -520,8 +554,8 @@ brew uninstall iclforge
 installed:
 
 ```bash
-brew audit --cask ./packaging/homebrew/Casks/forge-gui.rb
-brew install --cask ./packaging/homebrew/Casks/forge-gui.rb
+brew audit --cask ./packaging/homebrew/Casks/iclforge.rb
+brew install --cask ./packaging/homebrew/Casks/iclforge.rb
 brew uninstall --cask iclforge
 ```
 
@@ -535,9 +569,12 @@ A winget manifest for `iclforge` (`forge` and `forge-gui` together) is staged in
 [`packaging/winget/manifests/`](https://github.com/iainchesworthlabs/iclforge/tree/main/packaging/winget/manifests),
 at the exact `manifests/<first-letter>/<publisher>/<package>/<version>/` path a
 `microsoft/winget-pkgs` submission uses, so the version directory can be copied straight into a
-fork of that repo. It is not in the winget registry. The one submission, for `0.8.0-beta.1`
-(`microsoft/winget-pkgs` #419594, opened on 2026-08-18 from the `iainchesworthlabs/winget-pkgs`
-fork), raised a Windows Defender error in its first validation run, which cleared when a
+fork of that repo. The package identifier is `iainchesworthlabs.iclforge` for a release made after the
+rename, and the four versions staged so far, up to `0.10.0-beta.1`, keep `iainchesworthlabs.ac3forge`
+and the directory `ac3forge/` as they were made: a new identifier is a new package upstream, and a
+staged version directory is never rewritten. It is not in the winget registry. The one submission, for
+`0.8.0-beta.1` (`microsoft/winget-pkgs` #419594, opened on 2026-08-18 from the
+`iainchesworthlabs/winget-pkgs` fork), raised a Windows Defender error in its first validation run, which cleared when a
 moderator re-ran the validation on 2026-08-24, and then passed. On 2026-09-21 a reviewer asked
 for changes: the manifest is missing dependencies it should declare, and the review attaches two
 screenshots. Nobody replied, and a bot closed the pull request on 2026-09-29, three days after a
@@ -572,8 +609,9 @@ the release's `win64.zip`; `tools/release/bump_manifests.py` never downloads the
 all), so step 2's nullsoft conversion, step 3's local `winget validate`, and step 4's fork PR
 all still need a human with the `winget` CLI:
 
-1. Copy `packaging/winget/manifests/i/iainchesworthlabs/ac3forge/<prev-version>/` to a new
-   `<new-version>/` directory, updating `PackageVersion` in all three files to match.
+1. Make `packaging/winget/manifests/i/iainchesworthlabs/iclforge/<new-version>/` with the three files
+   (`bump_manifests.py` renders them from a template). A directory made before the rename belongs to
+   `ac3forge` and is not a base to copy: its package identifier is another package's.
 2. Update the installer manifest to `InstallerType: nullsoft`, its `InstallerUrl` to the new
    release's `win64.exe` and `InstallerSha256` to match (`sha256sum` the `.exe` - winget wants
    SHA256, unlike the `SHA512SUMS` `release.yml` publishes for every artifact, see [What gets
@@ -581,7 +619,7 @@ all still need a human with the `winget` CLI:
    `NestedInstallerFiles`.
 3. Validate locally first (see below) before touching a fork.
 4. Copy the new version directory into the `microsoft/winget-pkgs` fork at the matching
-   `manifests/i/iainchesworthlabs/ac3forge/<new-version>/` path and open the submission PR.
+   `manifests/i/iainchesworthlabs/iclforge/<new-version>/` path and open the submission PR.
 
 The binaries inside that `.exe` are unsigned: the project has no code-signing certificate yet.
 The Defender error on the `0.8.0-beta.1` submission cleared on a re-run, so signing is not what
@@ -592,8 +630,10 @@ stopped it was the reviewer's request for dependencies, and none of the staged m
 **Validating the manifest locally**, with the `winget` CLI (ships with Windows 10/11):
 
 ```bash
-winget validate --manifest packaging/winget/manifests/i/iainchesworthlabs/ac3forge/<version>
+winget validate --manifest packaging/winget/manifests/i/iainchesworthlabs/iclforge/<version>
 ```
+
+For a version up to `0.10.0-beta.1` the directory is `ac3forge` in place of `iclforge`.
 
 ## Conan recipe
 
@@ -650,6 +690,10 @@ same scratch-entry treatment (a local `url` pointing at this checkout instead of
 tarball) to validate a CMake option added since the last tag.
 
 ## What gets published
+
+The file names below are the ones a release made after the rename carries (`iclforge-...`, and
+`forge-gui-...` for the AppImage). The releases up to `v0.10.0-beta.1` carry `ac3forge-...` and
+`ac3gui-...`, as [Renamed](renamed.md#what-a-release-carries) lists.
 
 One package per OS **and architecture**, not one per compiler-toolchain leg: `_build.yml`'s matrix
 (the legs in `.github/ci/legs.jsonc`) builds and tests both Windows toolchains (MSVC, clang-cl),
@@ -970,13 +1014,18 @@ Then, in the GitHub repo, go to Settings > Secrets and variables > Actions and a
 ## Verifying a download
 
 ```bash
-# Provenance (keyless, ties the bytes to this exact repo/workflow/commit)
-gh attestation verify ac3forge-0.2.0-win64.zip --repo iainchesworthlabs/iclforge
+# Provenance (keyless, ties the bytes to this exact repo/workflow/commit), for a release made
+# after the rename
+gh attestation verify iclforge-<version>-win64.zip --repo iainchesworthlabs/iclforge
+# The releases up to v0.10.0-beta.1 were attested while the repository was named ac3forge, so
+# they are verified by owner
+gh attestation verify ac3forge-0.2.0-win64.zip --owner iainchesworthlabs
 
-# GPG (ties the bytes to the maintainer's key)
+# GPG (ties the bytes to the maintainer's key). The public key is the release's
+# iclforge-signing-key.asc, or ac3forge-signing-key.asc up to v0.10.0-beta.1
 gpg --import iclforge-signing-key.asc
 gpg --verify SHA512SUMS.asc SHA512SUMS && sha512sum -c SHA512SUMS
-gpg --verify ac3forge-0.2.0-win64.zip.asc ac3forge-0.2.0-win64.zip
+gpg --verify iclforge-<version>-win64.zip.asc iclforge-<version>-win64.zip
 ```
 
 ## Troubleshooting

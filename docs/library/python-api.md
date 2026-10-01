@@ -3,15 +3,17 @@
 A pybind11 module (`python/src/iclforge_ext/bindings.cpp`) bound straight onto
 `iclforge::FrameEncoder`, `iclforge::FrameDecoder`, `iclforge::Eac3Decoder`, `iclforge::eac3::FrameEncoder`,
 `iclforge::eac3::AccessUnitEncoder` and `iclforge::oba::AtmosEncoder`, and, in the `iclforge.ac4` submodule,
-`iclforge::ac4::Decoder` and `iclforge::ac4::Encoder` — pybind11-direct, not layered on a separate C API. Install from
-PyPI:
+`iclforge::ac4::Decoder` and `iclforge::ac4::Encoder` — pybind11-direct, not layered on a separate C API. From the
+first release made after the rename, install from PyPI:
 
 ```bash
 pip install iclforge
 ```
 
-or, from a source checkout of this repository, build against the same CMake tree everything else
-here uses:
+The two pre-releases on PyPI, 0.9.0b1 and 0.10.0b1, are the project `ac3forge` with the module `ac3forge`
+(`pip install ac3forge`); the project `iclforge` has no release until one made after the rename publishes it
+([Renamed](../renamed.md#what-a-release-carries)). Or, from a source checkout of this repository, build
+against the same CMake tree everything else here uses:
 
 ```bash
 pip install ./python
@@ -19,7 +21,8 @@ pip install ./python
 
 A wheel built from a release that predates the AC-4 module has no `iclforge.ac4`: the wheels for
 0.10.0b1 and earlier are of that kind, and a build from a checkout has the module. PyPI carries
-0.10.0b1's wheels for Windows x64, Linux x86_64 and macOS on Apple Silicon, for Python 3.10 to 3.14.
+0.10.0b1's wheels, as the project `ac3forge`, for Windows x64, Linux x86_64 and macOS on Apple Silicon,
+for Python 3.10 to 3.14.
 `wheels.yml` also builds Linux aarch64 and macOS Intel wheels, which no release has carried, and
 PyPI has no source archive, so on those two `pip install ./python` from a checkout is the way in.
 

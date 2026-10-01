@@ -9,6 +9,9 @@ included, are in the `iclforge.ac4` submodule.
 pip install iclforge      # or, from a checkout of the repository: pip install ./python
 ```
 
+The two pre-releases on PyPI, 0.9.0b1 and 0.10.0b1, are the project `ac3forge`, with the module `ac3forge`.
+`iclforge` is the project from the first release made after the rename.
+
 ```python
 import numpy as np
 import iclforge as ac3
@@ -23,9 +26,9 @@ print(decoded.channels[0].shape)  # (1536,)
 ```
 
 `iclforge.ac4` is in a wheel built from a release that has it; the wheels for 0.10.0b1 and earlier
-predate it, and `pip install ./python` from a checkout builds it. PyPI carries 0.10.0b1's wheels for
-Windows x64, Linux x86_64 and macOS on Apple Silicon; on Linux aarch64 and macOS Intel, where no
-release has carried a wheel, install from a checkout.
+predate it, and `pip install ./python` from a checkout builds it. PyPI carries 0.10.0b1's wheels, as the
+project `ac3forge`, for Windows x64, Linux x86_64 and macOS on Apple Silicon; on Linux aarch64 and macOS
+Intel, where no release has carried a wheel, install from a checkout.
 
 See [docs/library/python-api.md](https://iainchesworthlabs.github.io/iclforge/library/python-api/)
 for the full surface (E-AC-3, Atmos object and AC-4 encode/decode included) and
