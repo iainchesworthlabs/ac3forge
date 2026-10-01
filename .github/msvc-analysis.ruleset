@@ -51,7 +51,10 @@
   C6262 (excessive stack usage) stays ON: it is this workflow's workhorse,
   with 25+ real heap-allocation fixes behind it and no clang-tidy
   equivalent - a genuine finding there gets FIXED, not dismissed, so the
-  path-move problem never applies to it.
+  path-move problem never applies to it. The one kind that is dismissed is a
+  constexpr function only the compiler runs: the table builder in
+  src/ac4dec/src/pcm/pow43.hpp reports the 64 KiB table it returns as stack,
+  and no code for it exists at run time.
 
   Consumed by .github/workflows/msvc-analysis.yml. The Include below
   resolves because the msvc-code-analysis-action passes
