@@ -2233,9 +2233,9 @@ compile time, with C++23 `constexpr` and `consteval`, "idiomatic". One pull requ
   compiler's evaluation, an x86-64 host, a Cortex-M3 and an ESP32's soft-float `double` give the same bits (the build
   pins `-ffp-contract=off`).
 - **The tables.** 25/24, 15/16 and 1001/960 are `constexpr` variable templates built by a `consteval` function,
-  evaluated when `dsp/resampler.cpp` is compiled at the `float` scalar and not in a `double` build, which names none. A table keeps phases 0 to up / 2: phase
+  evaluated when `dsp/resampler.cpp` is compiled at the `float` scalar; a `double` build names none and evaluates nothing. A table keeps phases 0 to up / 2: phase
   up - p is phase p read from its last coefficient to its first, since the window and the sinc are even, so 1001/960 is
-  188 KB and not 376 KB; `dot_four_lanes_reversed()` is the four-lane sum of a phase read backwards, bit for bit what
+  188 KB where it was 376 KB; `dot_four_lanes_reversed()` is the four-lane sum of a phase read backwards, bit for bit what
   `dot_four_lanes()` gives on a copy written out. A float filter of any other ratio is designed when it is made, with
   the same functions.
 - **A copy.** The constants are in flash, which on the board is DIO at 80 MHz behind a 128 KB cache, where the PSRAM
