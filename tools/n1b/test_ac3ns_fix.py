@@ -586,14 +586,41 @@ class Records(unittest.TestCase):
             (self.root / "a.cpp").read_text(encoding="utf-8"), "one\nFrameEncoder a;\n"
         )
 
-    def test_a_second_replay_is_refused_because_the_lines_are_no_longer_the_old_ones(self) -> None:
-        self.write("a.cpp", "one\nFrameEncoder a;\n")
+    def test_a_second_replay_changes_nothing_and_says_so(self) -> None:
+        self.write("a.cpp", "one\nFrameEncoder a;\nthree\nFrameEncoder b;\n")
         base = self.commit()
-        self.write("a.cpp", "one\nac3::FrameEncoder a;\n")
+        self.write("a.cpp", "one\nac3::FrameEncoder a;\nthree\nac3::FrameEncoder b;\n")
         hunks = fix.record(self.root, base)
         self.git("checkout", "-q", "--", ".")
         self.assertEqual(fix.replay(self.root, hunks), [])
-        self.assertEqual(len(fix.replay(self.root, hunks)), 1)
+        done = (self.root / "a.cpp").read_bytes()
+        self.assertTrue(fix.has_the_record(self.root, hunks))
+        self.assertEqual(fix.replay(self.root, hunks), [])
+        self.assertEqual((self.root / "a.cpp").read_bytes(), done)
+
+    def test_the_record_is_found_in_a_file_whose_hunks_changed_its_length(self) -> None:
+        self.write("a.cpp", "one\ntwo\nthree\nfour\n")
+        base = self.commit()
+        self.write("a.cpp", "one\nuno\ndos\nthree\nfour\nfive\n")
+        hunks = fix.record(self.root, base)
+        self.assertTrue(fix.has_the_record(self.root, hunks))
+        self.git("checkout", "-q", "--", ".")
+        self.assertFalse(fix.has_the_record(self.root, hunks))
+
+    def test_a_tree_that_has_part_of_the_record_is_a_problem_and_nothing_is_written(self) -> None:
+        self.write("a.cpp", "one\nFrameEncoder a;\n")
+        self.write("b.cpp", "uno\nFrameEncoder b;\n")
+        base = self.commit()
+        self.write("a.cpp", "one\nac3::FrameEncoder a;\n")
+        self.write("b.cpp", "uno\nac3::FrameEncoder b;\n")
+        hunks = fix.record(self.root, base)
+        self.git("checkout", "-q", "--", "b.cpp")
+        problems = fix.replay(self.root, hunks)
+        self.assertEqual(len(problems), 1)
+        self.assertIn("have the record already and the rest not", problems[0])
+        self.assertEqual(
+            (self.root / "b.cpp").read_text(encoding="utf-8"), "uno\nFrameEncoder b;\n"
+        )
 
 
 if __name__ == "__main__":

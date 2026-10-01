@@ -427,17 +427,34 @@ def record(root: Path, base: str) -> list[dict]:
     return out
 
 
+def has_every_hunk(lines: list[str], group: list[dict]) -> bool:
+    """Does the file already hold what the hunks put? Each one is where it would be after the
+    hunks before it were made: its line in the base, moved by what they added or took away."""
+    shift = 0
+    for h in sorted(group, key=lambda x: x["line"]):
+        first = (h["line"] if h.get("after") else h["line"] - 1) + shift
+        if [x.rstrip("\r") for x in lines[first : first + len(h["new"])]] != h["new"]:
+            return False
+        shift += len(h["new"]) - len(h["old"])
+    return True
+
+
 def replay(root: Path, hunks: list[dict], dry_run: bool = False) -> list[str]:
-    """Apply a record; the problems found (nothing is written when there is one)."""
+    """Apply a record; the problems found (nothing is written when there is one). A tree that
+    already has every hunk is a tree the record was applied to: nothing to do, nothing written."""
     by_file: dict[str, list[dict]] = {}
     for h in hunks:
         by_file.setdefault(h["file"], []).append(h)
     problems: list[str] = []
     result: dict[str, bytes] = {}
+    done = 0
     for rel, group in by_file.items():
         raw = (root / rel).read_bytes().decode("utf-8")
         eol = "\r\n" if "\r\n" in raw else "\n"
         lines = raw.split("\n")
+        if has_every_hunk(lines, group):
+            done += 1
+            continue
         for h in sorted(group, key=lambda x: x["line"], reverse=True):
             first = h["line"] if h.get("after") else h["line"] - 1
             have = [x.rstrip("\r") for x in lines[first : first + len(h["old"])]]
@@ -447,6 +464,8 @@ def replay(root: Path, hunks: list[dict], dry_run: bool = False) -> list[str]:
             new = [x + ("\r" if eol == "\r\n" else "") for x in h["new"]]
             lines[first : first + len(h["old"])] = new
         result[rel] = "\n".join(lines).encode("utf-8")
+    if done and (result or problems):
+        problems.append(f"{done} of {len(by_file)} files have the record already and the rest not")
     if not problems and not dry_run:
         for rel, data in result.items():
             (root / rel).write_bytes(data)
@@ -527,12 +546,27 @@ def main_fix(
 
 def main_sites(root: Path, sites: Path, dry_run: bool) -> int:
     hunks = json.loads(sites.read_text(encoding="utf-8"))["hunks"]
+    files = len({h["file"] for h in hunks})
+    if has_the_record(root, hunks):
+        print(f"the tree has the {len(hunks)} hunks in {files} files already: nothing to do")
+        return 0
     problems = replay(root, hunks, dry_run)
     for p in problems:
         print("PROBLEM", p)
     verb = "would apply" if dry_run else "applied"
-    print(f"{verb} {len(hunks)} hunks in {len({h['file'] for h in hunks})} files")
+    print(f"{verb} {len(hunks)} hunks in {files} files")
     return 1 if problems else 0
+
+
+def has_the_record(root: Path, hunks: list[dict]) -> bool:
+    by_file: dict[str, list[dict]] = {}
+    for h in hunks:
+        by_file.setdefault(h["file"], []).append(h)
+    for rel, group in by_file.items():
+        lines = (root / rel).read_bytes().decode("utf-8").split("\n")
+        if not has_every_hunk(lines, group):
+            return False
+    return True
 
 
 def main_record(root: Path, base: str, sites: Path) -> int:
