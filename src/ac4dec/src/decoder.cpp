@@ -2355,7 +2355,10 @@ std::expected<FrameReport, DecodeError> Decoder::Impl::read(
             state = AudioSubstreamState{};
             state.carry(assignment.audio);
         }
-        AudioSubstream parsed;
+        // A parsed audio substream is about 6 kB; read() keeps it on the heap, as it does
+        // for the one below, so that the frame stays under the 16 kB of stack PREfast allows.
+        const auto parsed_storage = std::make_unique<AudioSubstream>();
+        AudioSubstream& parsed = *parsed_storage;
         const ParseResult owner_result =
             detail::parse_audio_substream(owner_reader, assignment.audio, state, parsed, &ext_reader);
         owner_report.bits_read = owner_reader.position();
@@ -2453,7 +2456,8 @@ std::expected<FrameReport, DecodeError> Decoder::Impl::read(
                             objects->group_blocks = group->second.timing->num_obj_info_blocks;
                         }
                     }
-                    AudioSubstream parsed;
+                    const auto parsed_storage = std::make_unique<AudioSubstream>();
+                    AudioSubstream& parsed = *parsed_storage;
                     result = detail::parse_audio_substream(reader, assignment.audio, state, parsed,
                                                            nullptr, objects ? &*objects : nullptr);
                     if (CapturedAudio* const captured = result ? capture->wants(index) : nullptr) {
