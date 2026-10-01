@@ -178,7 +178,7 @@ std::optional<RawResult> measure_ac4_objects(std::span<const std::byte> stream, 
     RawResult result;
     result.codec_label = QStringLiteral("AC-4");
     result.ac4 = true;
-    for (const auto& row : ac3gui::ac4_presentation_rows(scan.frames)) {
+    for (const auto& row : forge_gui::ac4_presentation_rows(scan.frames)) {
         result.presentations.append(QString::fromStdString(row.label));
     }
     iclforge::ac4::Decoder decoder;
@@ -202,7 +202,7 @@ std::optional<RawResult> measure_ac4_objects(std::span<const std::byte> stream, 
             have_first = true;
             result.sample_rate_hz = static_cast<std::uint32_t>(pcm.sample_rate_hz);
             result.presentation = pcm.presentation;
-            result.layout_label = to_qstring(ac3gui::ac4_speaker_names(pcm.speakers));
+            result.layout_label = to_qstring(forge_gui::ac4_speaker_names(pcm.speakers));
             result.has_lfe =
                 std::ranges::find(pcm.speakers, iclforge::ac4::Speaker::kLfe) != pcm.speakers.end();
         }
@@ -276,7 +276,7 @@ InspectOutcome inspect_file(const QString& path) {
 
     // container readers (mkv/mp4/ts): the file itself unchanged if it is not a container this
     // build reads, or the first AC-3/E-AC-3 track demuxed out of one - the
-    // same sniff-and-demux ac3cli's own decode/qc/levels/play/monitor use.
+    // same sniff-and-demux forge's own decode/qc/levels/play/monitor use.
     auto demuxed = iclforge::apps::elementary_stream_from_bytes(file_bytes);
     if (!demuxed.error.empty()) {
         outcome.error =

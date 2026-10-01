@@ -11,7 +11,7 @@ namespace iclforge::crucible::ui {
 // The freedesktop side of the Linux application icon: which .desktop entry
 // a running process belongs to, and what that entry's Icon= is. Qt-free and
 // platform-neutral - std::filesystem and std::string only - so the parser
-// and the match rules compile into ac3tests on every platform, where the
+// and the match rules compile into iclforge-tests on every platform, where the
 // icon theme itself cannot. The Linux AppIconProvider is the one caller
 // (ui/platform/linux/app_icon_provider.cpp).
 //

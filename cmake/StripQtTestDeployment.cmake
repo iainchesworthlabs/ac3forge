@@ -42,7 +42,7 @@
 # the dependencies of the binary it is given and does not read the rest of the
 # directory - checked directly with
 #
-#   windeployqt <build>/bin/ac3gui.exe --dry-run --list source ...
+#   windeployqt <build>/bin/forge-gui.exe --dry-run --list source ...
 #
 # in a bin/ that already held Qt6Test.dll and Qt6QuickTest.dll, which listed
 # neither. So the Qt Quick Test binaries stay where their own CMakeLists put
@@ -92,7 +92,7 @@
 # CMakeLists.txt's variables or target properties, and cannot evaluate a
 # generator expression ($<TARGET_FILE_NAME:...> and friends only work at
 # generate time). So the caller cannot just write
-# ${CMAKE_INSTALL_PREFIX}/ac3gui.app inline here the way
+# ${CMAKE_INSTALL_PREFIX}/forge-gui.app inline here the way
 # qt_generate_deploy_qml_app_script()'s OWN generated script can (it bakes
 # the resolved path in via file(GENERATE), which this file is not). What DOES
 # cross that boundary is a variable set by an install(CODE) call placed
@@ -101,7 +101,7 @@
 # executed top to bottom as one script, so a set() from that install(CODE)
 # is still visible when this file's include() runs a moment later. apps/gui
 # and apps/crucible each do exactly that - install(CODE "set(_ac3_macos_
-# bundle_name \"ac3gui\")") (or "ac3crucible") right before their own
+# bundle_name \"forge-gui\")") (or "crucible") right before their own
 # install(SCRIPT .../StripQtTestDeployment.cmake ...) - with the SAME
 # COMPONENT keyword on both calls, since a component-scoped install (`cmake
 # --install --component runtime`, what the package-macos-universal job's
@@ -109,9 +109,9 @@
 # that component; a mismatched COMPONENT would silently leave the variable
 # unset for exactly the install that matters. The literal target name, not
 # MACOSX_BUNDLE_BUNDLE_NAME, is what is passed: that variable only feeds
-# CFBundleName inside Info.plist: the CI artifact above is ac3gui.app despite
-# ac3crucible's MACOSX_BUNDLE_BUNDLE_NAME being "Crucible", not
-# ac3crucible's own target name. A plain literal, not a generator
+# CFBundleName inside Info.plist: the CI artifact above is forge-gui.app despite
+# crucible's MACOSX_BUNDLE_BUNDLE_NAME being "Crucible", not
+# crucible's own target name. A plain literal, not a generator
 # expression, because the target name has no per-config variation on either
 # target - nothing here needs file(GENERATE).
 #
@@ -212,7 +212,7 @@ endif()
 # add_subdirectory() order - unlike the CONFIGURE step, include() opens no
 # new scope. A full (non-component-scoped) install, or any CPack generator
 # that installs every component in one pass, walks apps/gui's directory and
-# apps/crucible's in that one process: without this unset, ac3gui's bundle
+# apps/crucible's in that one process: without this unset, forge-gui's bundle
 # name would still be sitting in this variable when apps/crucible's own
 # install(CODE) set() has not run yet for whatever reason, or when a third
 # caller is added later and forgets to set it at all. Confirmed with a

@@ -3,8 +3,8 @@ import QtQuick.Controls
 import QtQuick.Dialogs
 import QtQuick.Layouts
 
-import Ac3ForgeHearth
-import Ac3ForgeHearthLanguage
+import Hearth
+import HearthLanguage
 
 // The Settings page (planning/hearth-design.md; issue #853): playback,
 // network (with the pairing records A6's Sendspin server will start filling

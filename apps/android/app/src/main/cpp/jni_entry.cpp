@@ -10,7 +10,7 @@
 // Two smoke-test entry points, checkable from Kotlin/logcat with
 // progressively more of the pipeline exercised, matching
 // docs/platforms/android.md's build-order notes:
-//  - nativeVersionString: proof ac3forge_jni.so actually linked the real
+//  - nativeVersionString: proof iclforge_jni.so actually linked the real
 //    iclforge::ac3 static library rather than an empty stub. No audio
 //    hardware or JNI passthrough bridge involved at all.
 //  - nativeProbePassthroughCapabilities: the real HDMI capability probe
@@ -34,19 +34,19 @@
 #include "iclforge/ac3/version.hpp"
 
 namespace {
-constexpr char kLogTag[] = "ac3forge.shield";
+constexpr char kLogTag[] = "iclforge.shield";
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_ac3forge_shield_NativeBridge_nativeVersionString(JNIEnv* env, jclass /*clazz*/) {
+Java_com_iclforge_shield_NativeBridge_nativeVersionString(JNIEnv* env, jclass /*clazz*/) {
     const std::string version(iclforge::version_full);
-    __android_log_print(ANDROID_LOG_INFO, kLogTag, "iclforge::ac3 %s linked into ac3forge_jni.so",
+    __android_log_print(ANDROID_LOG_INFO, kLogTag, "iclforge::ac3 %s linked into iclforge_jni.so",
                         version.c_str());
     return env->NewStringUTF(version.c_str());
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_ac3forge_shield_NativeBridge_nativeProbePassthroughCapabilities(JNIEnv* env,
+Java_com_iclforge_shield_NativeBridge_nativeProbePassthroughCapabilities(JNIEnv* env,
                                                                           jclass /*clazz*/) {
     const auto& backend = iclforge::audio::audio_backend();
     std::string report = "passthrough backend compiled in: ";

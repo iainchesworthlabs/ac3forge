@@ -2,8 +2,8 @@
 
 // The AC-4 half of the performance suite's inputs: the encoder configurations
 // the AC-4 workloads share, the real-audio fixture cut into AC-4 frames, and
-// the stream the decode workloads read. Shared by ac3perf, ac3bench and
-// ac3membench so a decode number is always read against the configuration
+// the stream the decode workloads read. Shared by iclforge-perf, iclforge-bench and
+// iclforge-membench so a decode number is always read against the configuration
 // whose encode number sits beside it; each binary keeps its own timing and
 // counting, as it does for AC-3.
 

@@ -32,9 +32,9 @@
 #include "fake_devices.hpp"
 #include "fake_services.hpp"
 
-// Qt Quick Test entry point for the AC3Forge Crucible's window: runs every
+// Qt Quick Test entry point for the Crucible's window: runs every
 // tst_*.qml under QUICK_TEST_SOURCE_DIR against the REAL CrucibleController the
-// embedded Ac3ForgeCrucible module registers - the same rule apps/gui/tests
+// embedded Crucible module registers - the same rule apps/gui/tests
 // follows, and for the same reason: a parallel fake API is a second thing
 // the real one can silently disagree with. The controller starts the
 // engine only when a test (or Main.qml) calls start(), so suites that never
@@ -43,7 +43,7 @@
 //
 // The setup object mirrors the GUI harness's SettingsIsolation: real
 // organisation and application names plus a QTemporaryDir settings path,
-// so CrucibleController's QSettings (organisation "ac3forge", application
+// so CrucibleController's QSettings (organisation "iclforge", application
 // "Crucible", the shipped app's own) read and write a store that is empty at
 // start and gone at exit rather than the developer's own. The store is seeded
 // as having seen the first-run explanation, so no suite that instantiates the
@@ -248,7 +248,7 @@ public:
     // QSettings of its own rather than the controller's: what the next
     // launch would read. Invalid when the key is absent.
     Q_INVOKABLE QVariant storedSetting(const QString& key) const {
-        const QSettings store(QSettings::IniFormat, QSettings::UserScope, QStringLiteral("ac3forge"),
+        const QSettings store(QSettings::IniFormat, QSettings::UserScope, QStringLiteral("iclforge"),
                               QStringLiteral("Crucible"));
         return store.value(key);
     }
@@ -345,7 +345,7 @@ private:
     }
 
     [[nodiscard]] CrucibleController* find_controller() const {
-        return engine_->singletonInstance<CrucibleController*>(QStringLiteral("Ac3ForgeCrucible"),
+        return engine_->singletonInstance<CrucibleController*>(QStringLiteral("Crucible"),
                                                                QStringLiteral("CrucibleController"));
     }
 
@@ -365,13 +365,13 @@ class DeskIsolation : public QObject {
 
 public slots:
     void applicationAvailable() {
-        QCoreApplication::setOrganizationName(QStringLiteral("ac3forge"));
+        QCoreApplication::setOrganizationName(QStringLiteral("iclforge"));
         QCoreApplication::setApplicationName(QStringLiteral("Crucible"));
         QQuickStyle::setStyle(QStringLiteral("Basic"));
         scratch_.emplace();
         QSettings::setDefaultFormat(QSettings::IniFormat);
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, scratch_->path());
-        QSettings seed(QSettings::IniFormat, QSettings::UserScope, QStringLiteral("ac3forge"),
+        QSettings seed(QSettings::IniFormat, QSettings::UserScope, QStringLiteral("iclforge"),
                        QStringLiteral("Crucible"));
         seed.setValue(QStringLiteral("firstRun/acknowledgedVersion"), kFirstRunVersion);
         seed.sync();
@@ -380,9 +380,9 @@ public slots:
     // Once per tst_*.qml: the same LanguageManager singleton ui/main.cpp
     // registers, under the same URI, pointed at this app's translations.
     void qmlEngineAvailable(QQmlEngine* engine) {
-        language_manager_.emplace(*qGuiApp, *engine, QStringLiteral("ac3crucible"));
+        language_manager_.emplace(*qGuiApp, *engine, QStringLiteral("crucible"));
         language_manager_->applyInitialLanguage();
-        qmlRegisterSingletonInstance("Ac3ForgeCrucibleLanguage", 1, 0, "LanguageManager", &*language_manager_);
+        qmlRegisterSingletonInstance("CrucibleLanguage", 1, 0, "LanguageManager", &*language_manager_);
         // The same appicon image provider ui/main.cpp registers, so an
         // AppIcon under test reaches the platform's provider (tst_icons.qml)
         // rather than Image.Error for every id. The engine owns it.
@@ -391,7 +391,7 @@ public slots:
         // The scripted machine, under its own URI so nothing the window
         // itself imports can reach it.
         test_services_.emplace(*engine);
-        qmlRegisterSingletonInstance("Ac3ForgeCrucibleTest", 1, 0, "TestServices", &*test_services_);
+        qmlRegisterSingletonInstance("CrucibleTest", 1, 0, "TestServices", &*test_services_);
     }
 
 private:
@@ -400,6 +400,6 @@ private:
     std::optional<TestServices> test_services_;
 };
 
-QUICK_TEST_MAIN_WITH_SETUP(ac3crucible, DeskIsolation)
+QUICK_TEST_MAIN_WITH_SETUP(crucible, DeskIsolation)
 
 #include "qml_test_main.moc"

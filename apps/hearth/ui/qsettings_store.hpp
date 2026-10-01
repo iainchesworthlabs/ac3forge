@@ -31,7 +31,7 @@
 // Used by HearthController (its own settings_), NetworkController (its own
 // settings_, for the server identity and the network settings) and the one
 // pairing store both share (shared_pairing_store.hpp), each over its own
-// QSettings with the same "ac3forge"/"Hearth" identity - the two controllers
+// QSettings with the same "iclforge"/"Hearth" identity - the two controllers
 // are independent the same way their engine-side objects are
 // (network_controller.hpp's own comment).
 

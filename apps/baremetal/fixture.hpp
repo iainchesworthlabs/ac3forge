@@ -18,7 +18,7 @@
 // no floating-point support unless -u _printf_float is linked in, and a probe whose
 // subject is footprint should not drag that in just to report a number.
 
-namespace ac3probe {
+namespace iclforge_probe {
 
 inline constexpr int kFrames = 6;
 
@@ -8699,7 +8699,7 @@ inline constexpr std::array<std::int32_t, 6> kEac3DrcRms{{
 }};
 
 // the AC-3 5.1 stream folded to Lo/Ro in line mode (§7.8.1 + §5.4.2.8): kAc3Stream decoded with
-// `ac3cli decode downmix=loro drcmode=line`, 6 frames. No bitstream of its own.
+// `forge decode downmix=loro drcmode=line`, 6 frames. No bitstream of its own.
 // Per-channel RMS x 1e6, in the decoder's own output order
 // (Table 5.8 acmod 2: L, R) - see LAYOUTS in the generator.
 inline constexpr std::array<std::int32_t, 2> kAc3FoldRms{{
@@ -8707,7 +8707,7 @@ inline constexpr std::array<std::int32_t, 2> kAc3FoldRms{{
 }};
 
 // the E-AC-3 5.1 stream folded to Lo/Ro in line mode (§7.8.1 + §5.4.2.8): kEac3Stream decoded with
-// `ac3cli decode downmix=loro drcmode=line`, 6 frames. No bitstream of its own.
+// `forge decode downmix=loro drcmode=line`, 6 frames. No bitstream of its own.
 // Per-channel RMS x 1e6, in the decoder's own output order
 // (Table 5.8 acmod 2: L, R) - see LAYOUTS in the generator.
 inline constexpr std::array<std::int32_t, 2> kEac3FoldRms{{
@@ -8715,7 +8715,7 @@ inline constexpr std::array<std::int32_t, 2> kEac3FoldRms{{
 }};
 
 // the E-AC-3 7.1.4 stream folded to Lo/Ro in line mode (§7.8.1 + §5.4.2.8): kEac3714Stream decoded with
-// `ac3cli decode downmix=loro drcmode=line`, 6 frames. No bitstream of its own.
+// `forge decode downmix=loro drcmode=line`, 6 frames. No bitstream of its own.
 // Per-channel RMS x 1e6, in the decoder's own output order
 // (Table 5.8 acmod 2: L, R) - see LAYOUTS in the generator.
 inline constexpr std::array<std::int32_t, 2> kEac3714FoldRms{{
@@ -8723,11 +8723,11 @@ inline constexpr std::array<std::int32_t, 2> kEac3714FoldRms{{
 }};
 
 // the dynrng-carrying E-AC-3 5.1 stream in line mode, not folded (§7.7.1 + §5.4.2.8): kEac3DrcStream decoded with
-// `ac3cli decode drcmode=line`, 6 frames. No bitstream of its own.
+// `forge decode drcmode=line`, 6 frames. No bitstream of its own.
 // Per-channel RMS x 1e6, in the decoder's own output order
 // (Table 5.8: L, C, R, Ls, Rs, LFE) - see LAYOUTS in the generator.
 inline constexpr std::array<std::int32_t, 6> kEac3LineRms{{
     55634, 33790, 55620, 5869, 9711, 61223
 }};
 
-}  // namespace ac3probe
+}  // namespace iclforge_probe

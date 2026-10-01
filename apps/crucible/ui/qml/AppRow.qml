@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 
-import Ac3ForgeCrucible
+import Crucible
 
 // One application in the left rail: its icon, name, the tag, the mono
 // detail line, and a level bar. `app` is a live AppEntry; its properties

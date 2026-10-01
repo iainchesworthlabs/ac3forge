@@ -84,10 +84,10 @@ namespace iclforge::crucible::ui {
 
 namespace {
 
-// Off by default. QT_LOGGING_RULES="ac3crucible.icons.debug=true" prints
+// Off by default. QT_LOGGING_RULES="crucible.icons.debug=true" prints
 // the theme the provider seeded and the rung each application resolved on,
 // which is what the Pi record quotes.
-Q_LOGGING_CATEGORY(lcIcons, "ac3crucible.icons", QtWarningMsg)
+Q_LOGGING_CATEGORY(lcIcons, "crucible.icons", QtWarningMsg)
 
 // How long the reader thread waits for the GUI thread's answer (the file
 // header). A GUI thread that has not served an event in this long is

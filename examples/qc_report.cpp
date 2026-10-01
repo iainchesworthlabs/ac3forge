@@ -2,7 +2,7 @@
 // the real BS.1770-4/EBU Tech 3342 meter, and check the result against a
 // named delivery-spec gate from iclforge::meta::qc.hpp.
 //
-// ac3cli qc is the same idea over a real file on disk; this shows the
+// forge qc is the same idea over a real file on disk; this shows the
 // library API underneath it end to end. The stream here is deliberately
 // encoded with a dialnorm that does NOT match the audio's real level - the
 // exact authoring mistake this command exists to catch - so the report below
@@ -59,7 +59,7 @@ int main() {
     auto encoder = std::make_unique<iclforge::FrameEncoder>(iclforge::EncoderConfig{
         .bitrate_kbps = 448, .dialnorm = kEmbeddedDialnorm, .acmod = kAcmod, .lfe = kLfe});
     iclforge::FrameDecoder decoder;
-    // Same meter ac3cli qc itself uses: BS.1770 Table 3 channel weighting,
+    // Same meter forge qc itself uses: BS.1770 Table 3 channel weighting,
     // built from the STREAM's own acmod/lfe (never assumed).
     iclforge::meta::LoudnessMeter meter{iclforge::SampleRate::k48000, kAcmod, kLfe};
 

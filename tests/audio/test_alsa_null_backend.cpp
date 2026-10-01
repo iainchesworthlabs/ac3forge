@@ -41,7 +41,7 @@ using namespace std::chrono_literals;
 
 namespace {
 
-namespace alsa_null = ac3test::alsa_null;
+namespace alsa_null = iclforge_test::alsa_null;
 
 constexpr std::size_t kReplayFrames = 4096;
 
@@ -414,7 +414,7 @@ TEST_CASE("alsa monitor: a device that under-runs is recovered, keeps playing an
     CHECK(sink.running());
     // And every frame submitted is rendered: the period whose write met the
     // under-run is written again once recovered, not dropped uncounted, so a
-    // caller draining the queue (ac3cli monitor waits for exactly this)
+    // caller draining the queue (forge monitor waits for exactly this)
     // finishes. Before, one period in five went missing from the count and
     // the drain waited for ever.
     CHECK(eventually([&] {

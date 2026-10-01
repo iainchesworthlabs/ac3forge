@@ -4,7 +4,7 @@
 #include <span>
 #include <string_view>
 
-// Everything ac3cli prints ABOUT itself: the usage listing, per-command help,
+// Everything forge prints ABOUT itself: the usage listing, per-command help,
 // the exit-code table, the generated man page and the generated shell
 // completions.
 //
@@ -20,10 +20,10 @@
 // print_usage() was ~130 lines of prose emitted in full on any argument error,
 // which buried the one line the operator needed. Each paragraph now belongs to
 // a topic (the bit constants below), every command row declares the topics its
-// own arguments and options actually reach, and `ac3cli help <command>` /
-// `ac3cli <command> --help` print that row plus exactly those paragraphs. The
+// own arguments and options actually reach, and `forge help <command>` /
+// `forge <command> --help` print that row plus exactly those paragraphs. The
 // no-argument listing still prints everything, because there it IS the manual.
-namespace ac3cli {
+namespace forge_cli {
 
 // Which grammar sections a command's help needs. A bitmask rather than an
 // enum class: the natural expression of a command's topics is `kLayout |
@@ -97,20 +97,20 @@ struct CommandInfo {
 };
 
 // The whole manual: every command row, then every topic paragraph. What
-// `ac3cli` with no arguments and `ac3cli help` print.
+// `forge` with no arguments and `forge help` print.
 void print_usage(std::span<const CommandInfo> commands);
 
 // Just this command: its row, the paragraphs its own topics name, and the
-// common options every command takes. What `ac3cli help <command>` and
-// `ac3cli <command> --help` print.
+// common options every command takes. What `forge help <command>` and
+// `forge <command> --help` print.
 void print_command_help(const CommandInfo& command);
 
 // The one-line-per-command index, with no topic paragraphs at all - what an
 // argument error prints instead of the old full block, alongside a pointer to
-// `ac3cli help <command>`.
+// `forge help <command>`.
 void print_command_index(std::span<const CommandInfo> commands);
 
-// The documented exit-code scheme (exit_codes.hpp), as a table. `ac3cli help
+// The documented exit-code scheme (exit_codes.hpp), as a table. `forge help
 // exit-codes` prints this; so does the man page's own EXIT STATUS section.
 void print_exit_codes();
 
@@ -124,17 +124,17 @@ void print_meta_usage();
 
 // A groff man page (section 1) on stdout, generated from `commands`. Written
 // to a file at build time by apps/cli/CMakeLists.txt and installed as
-// ac3cli.1; `ac3cli man` is also perfectly usable on its own through a pipe
+// forge.1; `forge man` is also perfectly usable on its own through a pipe
 // into `man -l -`.
 void print_man_page(std::span<const CommandInfo> commands);
 
 // A completion script for `shell` on stdout: bash, zsh, fish or powershell.
-// Returns an ac3cli exit code - kExitUsage for a shell name it does not know.
+// Returns a forge exit code - kExitUsage for a shell name it does not know.
 [[nodiscard]] int print_completions(std::string_view shell,
                                     std::span<const CommandInfo> commands);
 
 // The shells print_completions knows, in the order the packaging installs
-// them. Also what `ac3cli completions` prints when asked for something else.
+// them. Also what `forge completions` prints when asked for something else.
 inline constexpr std::string_view kCompletionShells = "bash | zsh | fish | powershell";
 
-}  // namespace ac3cli
+}  // namespace forge_cli

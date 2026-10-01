@@ -21,7 +21,7 @@
 #include "iclforge/ac4dec/decoder.hpp"
 #include "iclforge/ac4enc/encoder.hpp"
 
-// The steps ac3cli's `atmos-encode codec=ac4` and ac3gui's AC-4 objects share
+// The steps forge's `atmos-encode codec=ac4` and forge-gui's AC-4 objects share
 // (apps/common/ac4_objects_core.hpp): which channels are which objects, where a
 // pinned channel sits, the audio each object carries, and the writer call.
 // tests/cli/test_cli_atmos_encode_ac4.cpp holds the command to these, and the

@@ -102,8 +102,8 @@ TEST_CASE("network view: a standard player carries only codecs, no data types", 
 
 TEST_CASE("network view: a test sink is named by its device info, not a role", "[hearth][network-view]") {
     SinkFacts facts;
-    facts.id = "ac3hearth-testsink-1";
-    facts.name = "ac3hearth-testsink-1";
+    facts.id = "hearth-testsink-1";
+    facts.name = "hearth-testsink-1";
     facts.kind = SinkKind::kTestSink;
     facts.pair_state = PairState::kPaired;
 

@@ -24,7 +24,7 @@
 // reports describe differently. test_cli_containers.cpp and
 // test_cli_stream_tools.cpp hold the round trips; this file holds the edges.
 //
-// Every input here is made by ac3cli itself (sine/eac3-sine/eac3-silence),
+// Every input here is made by forge itself (sine/eac3-sine/eac3-silence),
 // one second long, so the only fixtures are the committed AC-4 ones.
 //
 // The stream tools answer every failure - an unreadable input and an
@@ -55,7 +55,7 @@ fs::path scratch_dir() {
 
 int run_cli(const std::string& args, const fs::path& log) {
     const std::string command =
-        "\"" + std::string(AC3CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
+        "\"" + std::string(ICLFORGE_CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
     return iclforge::test::platform::run_shell(command);
 }
 
@@ -77,7 +77,7 @@ std::vector<std::byte> read_bytes(const fs::path& path) {
 
 std::string quoted(const fs::path& path) { return "\"" + path.string() + "\""; }
 
-// Makes `path` with one ac3cli generator run, once per test process.
+// Makes `path` with one forge generator run, once per test process.
 fs::path generated(const fs::path& path, std::string_view generator_args) {
     if (!fs::exists(path)) {
         const auto log = fs::path{path}.replace_extension(".gen.log");
@@ -390,7 +390,7 @@ TEST_CASE("metadata refuses an empty edit and dialnorm2=auto, and rewrites 1+1's
                  "error: nothing to change - give at least one of dialnorm=, dialnorm2=, compr=, "
                  "compr2=, bsmod=, dsurmod="},
                 {"metadata " + quoted(in.stereo) + " " + quoted(out_path) + " dialnorm2=auto", 1,
-                 "error: dialnorm2=auto needs a measurement - use 'ac3cli normalize'"},
+                 "error: dialnorm2=auto needs a measurement - use 'forge normalize'"},
                 // compr2 has no bits to rewrite in a stream that never sent it.
                 {"metadata " + quoted(in.dual_mono) + " " + quoted(out_path) + " compr2=-2", 1,
                  "error: " + in.dual_mono.string() +

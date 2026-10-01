@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 
-import Ac3Forge
+import ForgeGui
 
 // A label, a rule filling the remaining width, and an optional right-aligned
 // caption - Card's own title row (main-play.png's "02 NOW PLAYING ————"),

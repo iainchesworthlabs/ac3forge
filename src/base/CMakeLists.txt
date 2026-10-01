@@ -39,7 +39,7 @@ else()
     set(ICLFORGE_CPU_PROBE_DIR "builtin")
 endif()
 
-# tests/CMakeLists.txt compiles cpu_features.cpp a SECOND time, directly into ac3tests, against these
+# tests/CMakeLists.txt compiles cpu_features.cpp a SECOND time, directly into iclforge-tests, against these
 # directories - exposed unconditionally, since has_avx2() correctly answering "false" on a generic or
 # AVX2-disabled build is as worth testing as it answering "true".
 set(ICLFORGE_CPU_FEATURES_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include" PARENT_SCOPE)

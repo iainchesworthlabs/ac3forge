@@ -28,7 +28,7 @@
 # leg - a separate decision with its own runner-time cost, not something to
 # smuggle in behind a threshold table. apps/gui's interactive surfaces are
 # covered by its own Qt Quick tests, and its Qt-free pieces are exercised by
-# ac3tests on every leg even though no row below gates them: RecordingSink
+# iclforge-tests on every leg even though no row below gates them: RecordingSink
 # (since moved to apps/common) and, from 2026-09-06,
 # apps/gui/gui_diagnostics.cpp, whose whole reason for being Qt-free is that
 # the no-secrets rule it holds is checked on legs that build no window.
@@ -43,9 +43,9 @@
 #
 # src/sendspin and apps/hearth (Hearth, planning/hearth-reference-player.md) ARE gated here,
 # unlike apps/crucible above: config-linux-gcc-coverage is the one coverage preset that turns
-# ICLFORGE_BUILD_HEARTH on (CMakePresets.json), and both iclforge::sendspin and ac3hearth_engine link
+# ICLFORGE_BUILD_HEARTH on (CMakePresets.json), and both iclforge::sendspin and hearth_engine link
 # iclforge::coverage themselves for exactly the reason apps/cli's own link does - see their
-# CMakeLists.txt. apps/hearth/testsink joins the apps/hearth row (its sources link into ac3tests
+# CMakeLists.txt. apps/hearth/testsink joins the apps/hearth row (its sources link into iclforge-tests
 # too); apps/hearth/testserver does not, since nothing on this leg ever runs that executable, and
 # apps/hearth/ui is Qt - same reason apps/gui is out of scope above, no Qt kit on this leg.
 #
@@ -145,7 +145,7 @@ fi
 # passthrough instantiations only run against a card. src/sendspin and
 # apps/hearth now have a real measurement behind their floors.
 #
-# apps/crucible/engine is the platform-free engine core ac3tests compiles in;
+# apps/crucible/engine is the platform-free engine core iclforge-tests compiles in;
 # the rest of apps/crucible keeps its own floors in coverage_crucible.ps1.
 components="
 src/ac3             90 82

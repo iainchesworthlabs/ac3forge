@@ -66,7 +66,7 @@ namespace {
 // registers one ctest entry per test case, so two cases in this file are two
 // processes that ctest -j may run at once, and a directory they shared would
 // be removed under whichever of them started second. This process's own PID
-// is folded in too, on top of `name`: two separate ac3tests processes running
+// is folded in too, on top of `name`: two separate iclforge-tests processes running
 // the identical case (a concurrent re-run, or two sessions sharing a build
 // tree) would otherwise still share one directory, since `name` alone repeats
 // run to run.

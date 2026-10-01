@@ -1,7 +1,7 @@
 import QtQuick
 import QtTest
 
-import Ac3Forge
+import ForgeGui
 
 // The AC-4 decode pages over a committed stream of eight presentations
 // (tests/golden/ac4dec/presentations/encoder-hybrid.ac4: presentation 0 is

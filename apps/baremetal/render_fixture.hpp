@@ -11,8 +11,8 @@
 //
 // Hand-maintained, unlike fixture.hpp, and for the same reason
 // encode_fixture.hpp is: nothing outside the probe produces the reference.
-// gen_baremetal_fixture.py measures levels off a WAV ac3cli decode writes, and
-// no ac3cli path writes a rendered layout to a WAV - `qc objects=714` renders
+// gen_baremetal_fixture.py measures levels off a WAV forge decode writes, and
+// no forge path writes a rendered layout to a WAV - `qc objects=714` renders
 // the same way but meters loudness, and keeps no samples. So these are the
 // host shape's own numbers, and the row is a REGRESSION reference: it says
 // the target places the objects exactly as the host does, not that either
@@ -25,7 +25,7 @@
 //
 //     cmake --preset config-linux-gcc-minimal
 //     cmake --build --preset build-linux-gcc-minimal
-//     ./build/config-linux-gcc-minimal/bin/ac3probe
+//     ./build/config-linux-gcc-minimal/bin/iclforge-probe
 //
 // The sums are float (see render_eac3), and every target this profile runs on
 // rounds float the same way with contraction off, so host and target agree to
@@ -35,11 +35,11 @@
 // Rrs, Vhl, Vhr, Lts, Rts - the eleven pan_targets keeps - then the bed's LFE
 // passed through. Scaled by 1e6, as fixture.hpp's levels are.
 
-namespace ac3probe {
+namespace iclforge_probe {
 
 inline constexpr std::array<std::int32_t, 12> kEac3AtmosRenderRms{{
     0, 0, 7867, 0, 104, 20201,
     20201, 82431, 97537, 102185, 58776, 0,
 }};
 
-}  // namespace ac3probe
+}  // namespace iclforge_probe

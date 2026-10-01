@@ -7,8 +7,8 @@
 #include <QTranslator>
 #include <QVariantList>
 
-// Owns ac3gui's QTranslators (Qt's own bundled strings plus this app's own
-// ac3gui_<code>.qm catalog), the persisted language preference, and
+// Owns forge-gui's QTranslators (Qt's own bundled strings plus this app's own
+// forge_gui_<code>.qm catalog), the persisted language preference, and
 // everything a language switch touches: installed translators, the
 // application's layout direction (LTR/RTL) and QQmlEngine::retranslate().
 // Modelled directly on CountdownSolver's own language_manager.{hpp,cpp}
@@ -28,14 +28,14 @@ class LanguageManager : public QObject {
 
 public:
     // `app` and `engine` must outlive this LanguageManager.
-    // `translation_basename` names the .qm files under :/i18n/ ("ac3gui" for
-    // the GUI; the AC3Forge Crucible passes its own), so a second Qt app in
+    // `translation_basename` names the .qm files under :/i18n/ ("forge_gui" for
+    // the GUI; the Crucible passes its own), so a second Qt app in
     // this repository reuses this class rather than copying it.
     explicit LanguageManager(QGuiApplication& app, QQmlEngine& engine,
-                             QString translation_basename = QStringLiteral("ac3gui"),
+                             QString translation_basename = QStringLiteral("forge_gui"),
                              QObject* parent = nullptr);
 
-    // Installs the translators for the initial language - an AC3GUI_LOCALE
+    // Installs the translators for the initial language - an ICLFORGE_GUI_LOCALE
     // environment override first (the pseudo-locale QA fixture and the
     // deterministic test suites use this - see docs/forge/gui/localisation.md),
     // then the persisted preference, then the system locale, then "en" - and
@@ -58,7 +58,7 @@ public:
     // application's layout direction, and retranslates the running QML.
     // Returns false (no change made) if `code` isn't one of
     // availableLanguages()'s codes - the pseudo-locale included, since it is
-    // reached only through AC3GUI_LOCALE, never through this entry point.
+    // reached only through ICLFORGE_GUI_LOCALE, never through this entry point.
     Q_INVOKABLE bool setLanguage(const QString& code);
     // Forgets a saved override and follows the system locale again.
     Q_INVOKABLE void useSystemLanguage();

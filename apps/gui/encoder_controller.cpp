@@ -77,12 +77,12 @@ struct Ac4Outcome {
     int lag_samples = 0;
 };
 
-// `ac3cli ac4-encode`'s steps for one input and one substream
+// `forge ac4-encode`'s steps for one input and one substream
 // (apps/cli/commands/ac4_encode.cpp): the configuration checked with loudness
 // values in place, then the programme measured for dialnorm=auto and
 // loudness=, the encode, and the sync frames or MP4 file written to `path`.
 // `planes` are the WAV file's channels as read.
-Ac4Outcome encode_ac4_file(const QString& path, const ac3gui::Ac4EncodeSettings& settings,
+Ac4Outcome encode_ac4_file(const QString& path, const forge_gui::Ac4EncodeSettings& settings,
                            const std::vector<std::vector<float>>& planes, std::uint32_t sample_rate,
                            int bitrate_kbps, bool mp4) {
     Ac4Outcome out;
@@ -90,9 +90,9 @@ Ac4Outcome encode_ac4_file(const QString& path, const ac3gui::Ac4EncodeSettings&
         planes.size(), iclforge::ac4::AdditionalPair::kNone, false, false);
     const auto wav_index = iclforge::apps::ac4_wav_index(speakers);
     iclforge::ac4::EncoderConfig config =
-        ac3gui::ac4_encoder_config(settings, static_cast<int>(speakers.size()),
+        forge_gui::ac4_encoder_config(settings, static_cast<int>(speakers.size()),
                                    static_cast<int>(sample_rate), bitrate_kbps);
-    const auto practice = ac3gui::ac4_loudness_practice(settings);
+    const auto practice = forge_gui::ac4_loudness_practice(settings);
     iclforge::ac4::EncoderConfig sized = config;
     if (practice) {
         iclforge::ac4::FurtherLoudness loudness;
@@ -169,7 +169,7 @@ Ac4Outcome encode_ac4_file(const QString& path, const ac3gui::Ac4EncodeSettings&
     return out;
 }
 
-// `ac3cli atmos-encode ... codec=ac4`'s steps for the objects of one or more
+// `forge atmos-encode ... codec=ac4`'s steps for the objects of one or more
 // sources (apps/cli/commands/atmos.cpp): the scene the command reads written
 // beside the output, then the objects' audio and metadata through E9's writer
 // (iclforge::apps::encode_ac4_scene) and the sync frames or MP4 file written to
@@ -425,7 +425,7 @@ struct Mp4Scan {
 // built from a real iclforge::io::ScannedStream - bsid/bsmod/the Atmos marker are
 // bitstream syntax this controller does not otherwise track. So MP4 and
 // fMP4 both re-scan the frames they are about to write, the same way
-// ac3cli's own run_mp4/run_fmp4 (apps/cli/main.cpp) re-scan an already-
+// forge's own run_mp4/run_fmp4 (apps/cli/main.cpp) re-scan an already-
 // encoded file before wrapping it. Returns the QString writeOutput() already
 // uses for its error contract on failure.
 std::expected<Mp4Scan, QString> scan_for_mp4(const std::vector<std::vector<std::byte>>& frames) {
@@ -547,7 +547,7 @@ QString bed_channel_names(iclforge::Acmod acmod) {
 // including why this extends past iclforge::spatial::kSpeakerAzimuthDeg's plain
 // five-position bed) now that a decode-side controller needs the identical
 // ring geometry an authoring-side one already had.
-using ac3gui::location_azimuth_deg;
+using forge_gui::location_azimuth_deg;
 
 // Where a bed-pinned object sits in the room so that pan_room() lands its
 // energy on exactly that speaker. pan_room reads azimuth as
@@ -652,14 +652,14 @@ LivePassthroughOpen open_live_passthrough(const iclforge::audio::RenderDeviceInf
 // The two soundfield rings: everything overhead goes on the ceiling plan,
 // everything else - however far back or wide - stays on the ear-level one.
 // Shared with StreamPlayerController - see channel_geometry.hpp.
-using ac3gui::is_ceiling_location;
+using forge_gui::is_ceiling_location;
 
 // Interleaves `channels` (one vector per decoded channel, AC-3/E-AC-3 coded
 // order) into WAV/Windows speaker order for playback, reading order[i] as
 // which channels[] entry belongs at interleaved position i - the same
 // permutation plan::wav_order/iclforge::io::wav_channel_order already produce for
 // exactly this AC-3-order-vs-playback-order reconciliation (mirrors
-// ac3cli's run_live, which monitors a live session the same way).
+// forge's run_live, which monitors a live session the same way).
 std::vector<float> interleave_reordered(std::span<const std::vector<float>> channels,
                                         std::span<const std::size_t> order) {
     const auto frame_count = channels.empty() ? std::size_t{0} : channels.front().size();
@@ -745,7 +745,7 @@ struct EncoderController::LiveOutputWriters {
 };
 
 EncoderController::EncoderController(QObject* parent)
-    : QObject(parent), log_(ac3gui::process_diagnostics()) {
+    : QObject(parent), log_(forge_gui::process_diagnostics()) {
     // Every encodeFinished emission (there are several call sites, one per
     // early-exit failure plus the two workers' own completions) settles
     // whichever run startRun() most recently opened, without each site
@@ -762,7 +762,7 @@ EncoderController::EncoderController(QObject* parent)
             noteError(message);
         }
     });
-    log_.note("ac3gui: controller created");
+    log_.note("forge-gui: controller created");
     // The trailing edge of notifyObjectsChangedSoon()'s coalescing window.
     object_notify_timer_.setSingleShot(true);
     object_notify_timer_.setInterval(16);
@@ -807,7 +807,7 @@ QStringList EncoderController::codecNames() const {
 namespace {
 
 template <std::size_t N>
-QStringList choice_labels(const std::array<ac3gui::Ac4Choice, N>& choices,
+QStringList choice_labels(const std::array<forge_gui::Ac4Choice, N>& choices,
                           const QString& unset = QString()) {
     QStringList out;
     if (!unset.isEmpty()) {
@@ -822,40 +822,41 @@ QStringList choice_labels(const std::array<ac3gui::Ac4Choice, N>& choices,
 }  // namespace
 
 QStringList EncoderController::ac4FrameRateNames() const {
-    return choice_labels(ac3gui::kAc4FrameRates);
+    return choice_labels(forge_gui::kAc4FrameRates);
 }
 
 QStringList EncoderController::ac4RateModeNames() const {
-    return choice_labels(ac3gui::kAc4RateModes);
+    return choice_labels(forge_gui::kAc4RateModes);
 }
 
 QStringList EncoderController::ac4CodecModeNames() const {
-    return choice_labels(ac3gui::kAc4CodecModes);
+    return choice_labels(forge_gui::kAc4CodecModes);
 }
 
 QStringList EncoderController::ac4LoudnessNames() const {
-    return choice_labels(ac3gui::kAc4LoudnessPractices, QStringLiteral("Off"));
+    return choice_labels(forge_gui::kAc4LoudnessPractices, QStringLiteral("Off"));
 }
 
 QStringList EncoderController::ac4DrcNames() const {
-    return choice_labels(ac3gui::kAc4DrcProfiles, QStringLiteral("Off"));
+    return choice_labels(forge_gui::kAc4DrcProfiles, QStringLiteral("Off"));
 }
 
 QStringList EncoderController::ac4CentreNames() const {
-    return choice_labels(ac3gui::kAc4CentreLevels, QStringLiteral("Stream default (-3 dB)"));
+    return choice_labels(forge_gui::kAc4CentreLevels, QStringLiteral("Stream default (-3 dB)"));
 }
 
 QStringList EncoderController::ac4SurroundNames() const {
-    return choice_labels(ac3gui::kAc4SurroundLevels, QStringLiteral("Stream default (-3 dB)"));
+    return choice_labels(forge_gui::kAc4SurroundLevels, QStringLiteral("Stream default (-3 dB)"));
 }
 
 QStringList EncoderController::ac4PreferredDownmixNames() const {
-    return choice_labels(ac3gui::kAc4PreferredDownmixes, QStringLiteral("Stream default (Lo/Ro)"));
+    return choice_labels(forge_gui::kAc4PreferredDownmixes,
+                         QStringLiteral("Stream default (Lo/Ro)"));
 }
 
 QStringList EncoderController::ac4DialogueMaxGainNames() const {
     QStringList out;
-    for (const int db : ac3gui::kAc4DialogueMaxGains) {
+    for (const int db : forge_gui::kAc4DialogueMaxGains) {
         out.append(QStringLiteral("%1 dB").arg(db));
     }
     return out;
@@ -866,15 +867,15 @@ bool EncoderController::ac4DownmixAvailable() const {
 }
 
 QStringList EncoderController::ac4ObjectCodingNames() const {
-    return choice_labels(ac3gui::kAc4ObjectCodings);
+    return choice_labels(forge_gui::kAc4ObjectCodings);
 }
 
 QString EncoderController::ac4Tokens() const {
     QStringList tokens;
     const bool mp4 = container_index_ == kContainerMp4;
     // Object mode echoes atmos-encode's tokens: the coding, a dialnorm off 31 and the CRC.
-    const auto listed =
-        ac4Objects() ? ac3gui::ac4_object_cli_tokens(ac4_, mp4) : ac3gui::ac4_cli_tokens(ac4_, mp4);
+    const auto listed = ac4Objects() ? forge_gui::ac4_object_cli_tokens(ac4_, mp4)
+                                     : forge_gui::ac4_cli_tokens(ac4_, mp4);
     for (const auto& token : listed) {
         tokens.append(QString::fromStdString(token));
     }
@@ -882,7 +883,8 @@ QString EncoderController::ac4Tokens() const {
 }
 
 void EncoderController::setAc4ObjectCodingIndex(int index) {
-    if (busy_ || index < 0 || static_cast<std::size_t>(index) >= ac3gui::kAc4ObjectCodings.size() ||
+    if (busy_ || index < 0 ||
+        static_cast<std::size_t>(index) >= forge_gui::kAc4ObjectCodings.size() ||
         static_cast<std::size_t>(index) == ac4_.object_coding) {
         return;
     }
@@ -911,7 +913,7 @@ void EncoderController::setAc4Choice(std::optional<std::size_t>& choice, int ind
 }
 
 void EncoderController::setAc4FrameRateIndex(int index) {
-    if (busy_ || index < 0 || static_cast<std::size_t>(index) >= ac3gui::kAc4FrameRates.size() ||
+    if (busy_ || index < 0 || static_cast<std::size_t>(index) >= forge_gui::kAc4FrameRates.size() ||
         static_cast<std::size_t>(index) == ac4_.frame_rate) {
         return;
     }
@@ -920,7 +922,7 @@ void EncoderController::setAc4FrameRateIndex(int index) {
 }
 
 void EncoderController::setAc4RateModeIndex(int index) {
-    if (busy_ || index < 0 || static_cast<std::size_t>(index) >= ac3gui::kAc4RateModes.size() ||
+    if (busy_ || index < 0 || static_cast<std::size_t>(index) >= forge_gui::kAc4RateModes.size() ||
         static_cast<std::size_t>(index) == ac4_.rate_mode) {
         return;
     }
@@ -929,7 +931,7 @@ void EncoderController::setAc4RateModeIndex(int index) {
 }
 
 void EncoderController::setAc4CodecModeIndex(int index) {
-    if (busy_ || index < 0 || static_cast<std::size_t>(index) >= ac3gui::kAc4CodecModes.size() ||
+    if (busy_ || index < 0 || static_cast<std::size_t>(index) >= forge_gui::kAc4CodecModes.size() ||
         static_cast<std::size_t>(index) == ac4_.codec_mode) {
         return;
     }
@@ -956,23 +958,23 @@ void EncoderController::setAc4MeasureDialnorm(bool on) {
 }
 
 void EncoderController::setAc4LoudnessIndex(int index) {
-    setAc4Choice(ac4_.loudness, index, ac3gui::kAc4LoudnessPractices.size());
+    setAc4Choice(ac4_.loudness, index, forge_gui::kAc4LoudnessPractices.size());
 }
 
 void EncoderController::setAc4DrcIndex(int index) {
-    setAc4Choice(ac4_.drc, index, ac3gui::kAc4DrcProfiles.size());
+    setAc4Choice(ac4_.drc, index, forge_gui::kAc4DrcProfiles.size());
 }
 
 void EncoderController::setAc4CentreIndex(int index) {
-    setAc4Choice(ac4_.centre_level, index, ac3gui::kAc4CentreLevels.size());
+    setAc4Choice(ac4_.centre_level, index, forge_gui::kAc4CentreLevels.size());
 }
 
 void EncoderController::setAc4SurroundIndex(int index) {
-    setAc4Choice(ac4_.surround_level, index, ac3gui::kAc4SurroundLevels.size());
+    setAc4Choice(ac4_.surround_level, index, forge_gui::kAc4SurroundLevels.size());
 }
 
 void EncoderController::setAc4PreferredDownmixIndex(int index) {
-    setAc4Choice(ac4_.preferred_downmix, index, ac3gui::kAc4PreferredDownmixes.size());
+    setAc4Choice(ac4_.preferred_downmix, index, forge_gui::kAc4PreferredDownmixes.size());
 }
 
 void EncoderController::setAc4DialogueLeft(bool on) {
@@ -1009,7 +1011,7 @@ void EncoderController::setAc4DialogueMid(bool on) {
 
 void EncoderController::setAc4DialogueMaxGainIndex(int index) {
     if (busy_ || index < 0 ||
-        static_cast<std::size_t>(index) >= ac3gui::kAc4DialogueMaxGains.size() ||
+        static_cast<std::size_t>(index) >= forge_gui::kAc4DialogueMaxGains.size() ||
         static_cast<std::size_t>(index) == ac4_.dialogue_max_gain) {
         return;
     }
@@ -1068,7 +1070,7 @@ QString EncoderController::ac4Refusal() const {
     const std::size_t channels = source_->wav.channels.size();
     if (!extra_sources_.empty() || has_explicit_assignment_) {
         return QStringLiteral(
-            "AC-4 encodes one source in its own layout, as ac3cli ac4-encode takes a WAV file; "
+            "AC-4 encodes one source in its own layout, as forge ac4-encode takes a WAV file; "
             "remove the other sources and the assignment.");
     }
     if (source_offset_seconds_ > 0.0) {
@@ -1094,7 +1096,7 @@ QString EncoderController::ac4Refusal() const {
             .arg(to_qstring(
                 iclforge::apps::ac4_layout_name(channels, iclforge::ac4::AdditionalPair::kNone)));
     }
-    if (const auto refused = ac3gui::ac4_settings_refusal(
+    if (const auto refused = forge_gui::ac4_settings_refusal(
             ac4_, channels, static_cast<int>(source_->wav.sample_rate))) {
         return QStringLiteral("ac4-encode refuses this: %1.").arg(QString::fromStdString(*refused));
     }
@@ -1179,21 +1181,22 @@ QString EncoderController::ac4ObjectsRefusal() const {
             "AC-4 is written as a raw stream or an MP4 file; pick one of those "
             "containers.");
     }
-    // ac3cli's src= takes sources at one rate; this page resamples a later one to the first's,
+    // forge's src= takes sources at one rate; this page resamples a later one to the first's,
     // which no command line reproduces.
     if (std::ranges::any_of(extra_source_original_rates_,
                             [](const auto& rate) { return rate.has_value(); })) {
         return QStringLiteral(
-            "AC-4 objects take every source at one sample rate, as ac3cli's src= "
+            "AC-4 objects take every source at one sample rate, as forge's src= "
             "does; a source was resampled to the first's here. Load the sources "
             "at one rate.");
     }
-    if (const auto refused = ac3gui::ac4_object_settings_refusal(ac4_)) {
-        return QStringLiteral("ac3cli refuses this: %1.").arg(QString::fromStdString(*refused));
+    if (const auto refused = forge_gui::ac4_object_settings_refusal(ac4_)) {
+        return QStringLiteral("forge refuses this: %1.").arg(QString::fromStdString(*refused));
     }
     const auto stream_objects =
         iclforge::apps::ac4_object_slots(ac4ObjectAssignment(), sourceShapes());
-    const auto params = ac3gui::ac4_objects_params(ac4_, source_->wav.sample_rate, bitrate_kbps_);
+    const auto params =
+        forge_gui::ac4_objects_params(ac4_, source_->wav.sample_rate, bitrate_kbps_);
     if (const auto refused = iclforge::apps::ac4_objects_refusal(stream_objects, params)) {
         return QString::fromStdString(*refused) + QLatin1Char('.');
     }
@@ -1225,7 +1228,8 @@ QString EncoderController::ac4ObjectsDeepRefusal(
         }
     }
     // The writer's own refusals for this many objects at this rate.
-    const auto params = ac3gui::ac4_objects_params(ac4_, source_->wav.sample_rate, bitrate_kbps_);
+    const auto params =
+        forge_gui::ac4_objects_params(ac4_, source_->wav.sample_rate, bitrate_kbps_);
     std::vector<bool> lfe(stream_objects.size());
     for (std::size_t i = 0; i < stream_objects.size(); ++i) {
         lfe[i] = stream_objects[i].kind == iclforge::apps::Ac4ObjectSlot::Kind::kLfe;
@@ -1467,7 +1471,7 @@ int EncoderController::channelBudgetUsed() const {
 }
 
 QString EncoderController::channelLocationsText() const {
-    // "1+1" is a named layout, the same token ac3cli's own [layout]
+    // "1+1" is a named layout, the same token forge's own [layout]
     // argument takes for it (see resolve_layout()) - not a Table E2.5
     // location list, so format_channels()'s comma-separated form has
     // nothing to format here.
@@ -2879,7 +2883,7 @@ bool EncoderController::exportObjectPaths(const QUrl& url) const {
         return scene && writeTextFile(url, iclforge::oba::to_keyframe_text(*scene));
     }
     // The grammar itself lives in iclforge::oba now (scene.hpp), so this writes
-    // through the same function ac3cli's own reader is paired with rather
+    // through the same function forge's own reader is paired with rather
     // than through a second, hand-rolled copy of the column layout that could
     // drift from it. The span overload is the one that keeps a gap - a
     // bed-pinned channel's flat index - out of the file, exactly as before.
@@ -2896,7 +2900,7 @@ bool EncoderController::exportObjectScene(const QUrl& url) const {
     }
     // The same objects as an iclforge::oba::ObjectScene in JSON: named, with
     // per-segment interpolation and an orientation the keyframe columns have
-    // nowhere to put. ac3cli's atmos-path and atmos-encode read this form too,
+    // nowhere to put. forge's atmos-path and atmos-encode read this form too,
     // so a scene saved here reloads there without going through the lossy
     // column format.
     //
@@ -3195,7 +3199,7 @@ plan::Plan EncoderController::currentPlan() const {
         // 1+1 names a layout, not a location mask - custom_locations has no
         // way to express "two independent programmes" (see isDualMono()'s
         // own comment), so this is the one bed that goes through
-        // plan.layout instead, the same as ac3cli's own resolve_layout()
+        // plan.layout instead, the same as forge's own resolve_layout()
         // does for a named "1+1" argument.
         p.layout = plan::LayoutId::kDualMono;
     } else {
@@ -3489,7 +3493,7 @@ std::optional<plan::Routing> EncoderController::routingForSources(const plan::Ch
         if (!extra_sources_.empty()) {
             // Automatic panning only ever meant something for one source;
             // several with no explicit assignment is refused the same way
-            // ac3cli's src=/map= refuses it (see main.cpp's
+            // forge's src=/map= refuses it (see main.cpp's
             // routing_for_sources) rather than inventing an automatic
             // multi-file blend nothing else here defines.
             return std::nullopt;
@@ -3994,7 +3998,7 @@ void EncoderController::setMetering(bool metering) {
 
 // ---------------------------------------------------------------------------
 // Metering. Every figure the meters draw — including where a level sits on
-// the bar — comes from iclforge::analysis, so the GUI and ac3cli cannot disagree
+// the bar — comes from iclforge::analysis, so the GUI and forge cannot disagree
 // about the same audio.
 // ---------------------------------------------------------------------------
 
@@ -4930,7 +4934,7 @@ void EncoderController::startLiveSession(int captureDeviceIndex, bool monitor,
         return;
     }
     if (codec_ == plan::Codec::kAc4) {
-        setStatus(QStringLiteral("A live session encodes AC-3 or E-AC-3, as ac3cli live does; "
+        setStatus(QStringLiteral("A live session encodes AC-3 or E-AC-3, as forge live does; "
                                  "pick one of those codecs."));
         emit encodeRefused(status_);
         return;
@@ -5181,7 +5185,7 @@ void EncoderController::startLiveSession(int captureDeviceIndex, bool monitor,
     // live_object_snapshot_ are final for this session and before the
     // worker launches - a bind failure refuses the WHOLE session rather
     // than silently falling back to manual placement, matching
-    // 'ac3cli live positions=osc:<port>''s own "an input's absence changes
+    // 'forge live positions=osc:<port>''s own "an input's absence changes
     // what lands in the file/room" reasoning. Everything opened above
     // (capture, capture2, the monitor sink) is torn down on this path the
     // same way it would be if this were one refusal earlier.
@@ -5341,7 +5345,7 @@ void EncoderController::runLiveSession(iclforge::audio::DeviceInfo device,
     // a container track states is what the stream RENDERS - the speakers a
     // player ends up driving - not how many channels were spent coding them.
     // That is what iclforge::io::scan reports for a finished stream (see
-    // ScannedStream::channels' own comment), and so what ac3cli's `mkv`/`ts`
+    // ScannedStream::channels' own comment), and so what forge's `mkv`/`ts`
     // declare when they wrap one after the fact: a live take written here
     // and the same bytes wrapped by the command line afterwards must not
     // describe the same audio differently. This is deliberately NOT the
@@ -5685,7 +5689,7 @@ void EncoderController::runLiveSession(iclforge::audio::DeviceInfo device,
             // period's worth of wall-clock time to deliver into), resampled
             // to the master's clock. See docs/forge/gui/live-session.md for the
             // servo/resampler design; ClockDriftEstimator/DriftResampler are
-            // the shared library pieces ac3cli's own `live capture2=` uses.
+            // the shared library pieces forge's own `live capture2=` uses.
             if (has_device2) {
                 const std::size_t capacity_frames = slave_scratch.size() / channels2;
                 if (slave_scratch_valid_frames < capacity_frames) {
@@ -5765,7 +5769,7 @@ void EncoderController::runLiveSession(iclforge::audio::DeviceInfo device,
                     // LivePositionSource has received since the last frame,
                     // then sample at this frame's own end time - the same
                     // drain-then-sample order and the same instant
-                    // 'ac3cli live positions=osc:<port>' uses, so a packet
+                    // 'forge live positions=osc:<port>' uses, so a packet
                     // that arrived during this frame's capture read is in
                     // force for this same frame either way.
                     const double t =
@@ -6817,7 +6821,7 @@ void EncoderController::addSourceFile(const QUrl& url) {
         // survives only when the PRIMARY's own rate has no legal AC-3
         // target at all (to_sample_rate_for_file) - resampling TO an
         // illegal rate would just move the problem, not solve it, the same
-        // edge case ac3cli's own load_sources() would still refuse too.
+        // edge case forge's own load_sources() would still refuse too.
         if (!to_sample_rate_for_file(source_->wav.sample_rate, codec_)) {
             setStatus(QStringLiteral("%1 is %2 Hz, but the loaded source's %3 Hz is not a rate "
                                      "AC-3 can encode at all — load a source at a legal rate "
@@ -7079,7 +7083,7 @@ QString EncoderController::writeOutput(const QString& path,
         // at a clean stop, and iclforge::io::WavStreamWriter (the GUI's other WAV
         // writer, used for the live safety take) is hardcoded to 32-bit
         // float - it has no PCM16 mode to reuse here, so this goes straight
-        // to write_wav_pcm16_raw the same way ac3cli's own `spdif` command
+        // to write_wav_pcm16_raw the same way forge's own `spdif` command
         // does, rather than inventing an incremental PCM16 writer nothing
         // else in the codebase needs yet.
         const bool eac3 = atmos_enabled_ || codec_ == plan::Codec::kEac3;
@@ -7093,7 +7097,7 @@ QString EncoderController::writeOutput(const QString& path,
             return QStringLiteral("Could not wrap the stream into IEC 61937 bursts.");
         }
         // The carrier runs at 4x the content rate for E-AC-3 - see
-        // ac3cli's own run_spdif (main.cpp) for the citation.
+        // forge's own run_spdif (main.cpp) for the citation.
         const auto carrier_rate = eac3 ? sample_rate * 4 : sample_rate;
         const auto written =
             iclforge::io::write_wav_pcm16_raw(path.toStdString(), *payload, carrier_rate, 2);
@@ -7103,7 +7107,7 @@ QString EncoderController::writeOutput(const QString& path,
         // Same shape as the Matroska branch above: iclforge::mpegts::AudioTrack needs
         // no codec-config box (DVB's AC3_descriptor/Enhanced_AC3_descriptor
         // is built entirely from track.codec), so no bitstream scan is
-        // needed here, matching ac3cli's own run_ts (main.cpp).
+        // needed here, matching forge's own run_ts (main.cpp).
         const bool eac3 = atmos_enabled_ || codec_ == plan::Codec::kEac3;
         const iclforge::mpegts::AudioTrack track{.codec = eac3 ? iclforge::mpegts::AudioCodec::kEac3
                                                                : iclforge::mpegts::AudioCodec::kAc3,
@@ -7143,7 +7147,7 @@ QString EncoderController::writeOutput(const QString& path,
         // Writes a FOLDER of files (init segment, one media segment per
         // fragment, an HLS media+master playlist pair, a DASH MPD) rather
         // than one file - `path` names the folder, the same way it names a
-        // file for every other container. Mirrors ac3cli's own run_fmp4
+        // file for every other container. Mirrors forge's own run_fmp4
         // (main.cpp) exactly, including its default 48-frame fragment
         // length (no GUI control for it yet).
         const auto built = scan_for_mp4(frames);
@@ -7152,7 +7156,7 @@ QString EncoderController::writeOutput(const QString& path,
         }
         // ETSI TS 103 420 §E.5's 'ceao' compatibility brand for an
         // object-audio track, which DASH-IF IOP Part 8 v5.0.0 §5.3.3 asks
-        // for - the same construction ac3cli's own run_fmp4 makes from the
+        // for - the same construction forge's own run_fmp4 makes from the
         // same scanned complexity index.
         const auto fragmented = iclforge::mp4::fragment(
             built->track, frames,
@@ -7197,7 +7201,7 @@ QString EncoderController::writeOutput(const QString& path,
         // The DASH side: TS 103 420 §D.2's JOC extension type and
         // complexity index (DASH-IF IOP Part 8 §5.3.2), plus the
         // AudioChannelConfiguration @value TS 102 366 clause I.1.2.1
-        // defines - again the same pair ac3cli's run_fmp4 writes.
+        // defines - again the same pair forge's run_fmp4 writes.
         const iclforge::mp4::DashOptions dash_options{
             .joc_complexity_index = built->oba_complexity_index,
             .dolby_channel_configuration = built->dolby_channel_configuration};
@@ -7689,7 +7693,7 @@ void EncoderController::encodeChannels(const QString& path,
 
 void EncoderController::encodeAc4(const QString& path, std::vector<std::vector<float>> planes,
                                   std::uint32_t sample_rate) {
-    const ac3gui::Ac4EncodeSettings settings = ac4_;
+    const forge_gui::Ac4EncodeSettings settings = ac4_;
     const bool mp4 = container_index_ == kContainerMp4;
     const int kbps = bitrate_kbps_;
     const QString layout = to_qstring(
@@ -7745,7 +7749,7 @@ void EncoderController::encodeAc4Objects(const QString& path) {
     }
     std::vector<std::vector<float>> flat = iclforge::apps::ac4_flat_planes(views);
     const iclforge::apps::Ac4ObjectsParams params =
-        ac3gui::ac4_objects_params(ac4_, sample_rate, bitrate_kbps_);
+        forge_gui::ac4_objects_params(ac4_, sample_rate, bitrate_kbps_);
     const bool mp4 = container_index_ == kContainerMp4;
     const bool crc = ac4_.crc;
     const int kbps = bitrate_kbps_;
@@ -7834,7 +7838,7 @@ void EncoderController::encodeObjects(const QString& path,
               // Every object is panned into the SAME five channels, so their
               // contributions add there. At unity apiece a six-channel source
               // put the bed's centre 7 dB over full scale; the inverse-root
-              // law is what ac3cli's 'atmos' uses, and it keeps the sum near
+              // law is what forge's 'atmos' uses, and it keeps the sum near
               // unity for sources that are not identical.
               .gain = 0.7 / std::sqrt(static_cast<double>(std::max<std::size_t>(ndynamic, 1))),
               // The LFE is one channel, and sending every object at full
@@ -7937,7 +7941,7 @@ void EncoderController::encodeObjects(const QString& path,
                 views[ch] = block[ch];
             }
             // The placement is the object's position at the END of the
-            // frame - same convention ac3cli's 'atmos' uses, because that is
+            // frame - same convention forge's 'atmos' uses, because that is
             // where OAMD's ramp and the JOC matrix both finish. Re-evaluated
             // every frame - see tests/ac3/oba/test_atmos_motion.cpp; this must stay
             // inside the loop, not be hoisted above it.
@@ -8038,8 +8042,8 @@ void EncoderController::encodeObjects(const QString& path,
 // shows, so the report and the window cannot disagree about what is loaded.
 // ---------------------------------------------------------------------------
 
-ac3gui::Secrets EncoderController::diagnosticsSecrets() const {
-    ac3gui::Secrets out;
+forge_gui::Secrets EncoderController::diagnosticsSecrets() const {
+    forge_gui::Secrets out;
     auto add = [&out](const QString& value) {
         if (!value.isEmpty()) {
             out.strings.push_back(value.toStdString());
@@ -8063,8 +8067,8 @@ ac3gui::Secrets EncoderController::diagnosticsSecrets() const {
     return out;
 }
 
-ac3gui::ReportFacts EncoderController::buildReportFacts() const {
-    ac3gui::ReportFacts facts;
+forge_gui::ReportFacts EncoderController::buildReportFacts() const {
+    forge_gui::ReportFacts facts;
     facts.written_at = QDateTime::currentDateTime().toString(Qt::ISODateWithMs).toStdString();
     const auto started_ms =
         std::chrono::duration_cast<std::chrono::milliseconds>(log_.started_at().time_since_epoch())
@@ -8099,7 +8103,7 @@ ac3gui::ReportFacts EncoderController::buildReportFacts() const {
     // decides how a source is named.
     for (const QVariant& entry : sourceModel()) {
         const QVariantMap row = entry.toMap();
-        ac3gui::SourceFacts source;
+        forge_gui::SourceFacts source;
         source.name = row.value(QStringLiteral("label")).toString().toStdString();
         source.channels = row.value(QStringLiteral("channels")).toInt();
         source.rate_hz = static_cast<std::uint32_t>(row.value(QStringLiteral("rate")).toUInt());
@@ -8138,9 +8142,9 @@ ac3gui::ReportFacts EncoderController::buildReportFacts() const {
 
     // A fixed list, read from the same store Main.qml's Settings element
     // writes to. A default-constructed QSettings reads whatever organisation
-    // and application names the process set: main.cpp sets "ac3forge" for
-    // both, so an interactive run lands in the person's own store, and
-    // apps/gui/tests/qml_test_main.cpp sets "ac3forge-tests"/"ac3gui_qmltests"
+    // and application names the process set: main.cpp sets "iclforge" and
+    // "forge-gui", so an interactive run lands in the person's own store, and
+    // apps/gui/tests/qml_test_main.cpp sets "iclforge-tests"/"forge_gui_qmltests"
     // with QSettings::setPath pointed at a QTemporaryDir, so the Qt Quick
     // suite reads a store on disk that evaporates with the process - which is
     // what lets tst_diagnostics.qml assert on a value that harness itself
@@ -8188,10 +8192,10 @@ ac3gui::ReportFacts EncoderController::buildReportFacts() const {
     store.endGroup();
 
     // Named fields only: a run row also carries its output path and the
-    // ac3cli line it was started with, and neither is read here.
+    // forge line it was started with, and neither is read here.
     for (const QVariant& entry : runs_) {
         const QVariantMap row = entry.toMap();
-        ac3gui::RunFacts run;
+        forge_gui::RunFacts run;
         run.id = row.value(QStringLiteral("id")).toInt();
         run.status = row.value(QStringLiteral("status")).toString().toStdString();
         run.filename = row.value(QStringLiteral("filename")).toString().toStdString();
@@ -8209,7 +8213,7 @@ ac3gui::ReportFacts EncoderController::buildReportFacts() const {
 
 QString EncoderController::diagnosticsReport() const {
     return QString::fromStdString(
-        ac3gui::render_report(buildReportFacts(), log_, diagnosticsSecrets()));
+        forge_gui::render_report(buildReportFacts(), log_, diagnosticsSecrets()));
 }
 
 QString EncoderController::suggestedDiagnosticsFile() const {
@@ -8217,7 +8221,7 @@ QString EncoderController::suggestedDiagnosticsFile() const {
     if (folder.isEmpty()) {
         folder = QStandardPaths::writableLocation(QStandardPaths::HomeLocation);
     }
-    const QString name = QStringLiteral("ac3gui-diagnostics-") +
+    const QString name = QStringLiteral("forge-gui-diagnostics-") +
                          QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss")) +
                          QStringLiteral(".txt");
     return QUrl::fromLocalFile(QDir(folder).filePath(name)).toString();

@@ -32,7 +32,7 @@
 #   --image       the directory holding the Sendspin image's qemu_flash.bin
 #                 and qemu_efuse.bin
 #   --wifi-image  the same for the WiFi image
-#   --server      ac3hearth-testserver
+#   --server      hearth-testserver
 #   --out         where the consoles, the report and the test sink's WAV go
 #                 (default ./improv-qemu-run)
 #

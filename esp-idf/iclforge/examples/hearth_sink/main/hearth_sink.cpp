@@ -79,11 +79,11 @@
 // that carries no apps/. Built with ICLFORGE_STAGE_TIMERS, each play ends with a
 // play.stage[<zone>] line per decoder stage; built without, the library enters
 // no zones and the report prints nothing.
-namespace ac3probe {
+namespace iclforge_probe {
 std::uint64_t now_us() { return static_cast<std::uint64_t>(esp_timer_get_time()); }
 [[gnu::weak]] void reset_stages() {}
 [[gnu::weak]] void report_stages(const char* /*codec*/, int /*frames*/) {}
-}  // namespace ac3probe
+}  // namespace iclforge_probe
 
 namespace {
 
@@ -421,7 +421,7 @@ bool begin_play(Session& session, const std::function<void()>& on_source_open = 
 
     g_sink.reset();
     session = Session{};
-    ac3probe::reset_stages();
+    iclforge_probe::reset_stages();
 
     config.stereo_fold = kStereoFold;
     config.objects = kObjects;
@@ -552,7 +552,7 @@ void report_end(const Session& session, const iclforge::PlayerStats& stats) {
 #endif
     // Where the play's frames went, stage by stage, when the library was built
     // with ICLFORGE_STAGE_TIMERS; nothing otherwise.
-    ac3probe::report_stages("play", static_cast<int>(stats.frames_played));
+    iclforge_probe::report_stages("play", static_cast<int>(stats.frames_played));
     std::printf("result=%s\n", (stats.frames_played > 0 && !stats.failed) ? "pass" : "fail");
 }
 

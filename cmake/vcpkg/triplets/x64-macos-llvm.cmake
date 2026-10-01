@@ -5,7 +5,7 @@
 # macos-15-intel hosted runner is genuine native Intel hardware (not Rosetta),
 # so this triplet builds a real, not cross-compiled, x86_64 half for
 # .github/workflows/_build.yml's package-macos-universal job to lipo-merge
-# with the arm64 half into one universal ac3cli/ac3gui bundle.
+# with the arm64 half into one universal forge/forge-gui bundle.
 #
 # Linkage policy: dynamic runtime, static dependency libraries - see
 # x64-windows-msvc.cmake for the reasoning, which is the same here.

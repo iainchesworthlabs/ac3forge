@@ -5,7 +5,7 @@
 
 #include <cstdio>
 
-namespace ac3probe {
+namespace iclforge_probe {
 
 bool network_start() {
     std::printf("network=none\n");
@@ -14,4 +14,4 @@ bool network_start() {
 
 void network_report() {}
 
-}  // namespace ac3probe
+}  // namespace iclforge_probe

@@ -2,8 +2,8 @@ import QtQuick
 import QtTest
 import Qt.labs.platform as Platform
 
-import Ac3ForgeCrucible
-import Ac3ForgeCrucibleTest
+import Crucible
+import CrucibleTest
 
 // The window's own chrome, clicked: the header's page switch, the status
 // pill, the "?" button and the About and Licences dialogs behind it, the

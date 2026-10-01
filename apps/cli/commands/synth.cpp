@@ -25,7 +25,7 @@
 #include "iclforge/ac3/encoder/silent_frame.hpp"
 #include "iclforge/render/spatial.hpp"
 
-namespace ac3cli::commands {
+namespace forge_cli::commands {
 
 namespace plan = iclforge::plan;
 
@@ -346,4 +346,4 @@ int run_eac3_silence(std::string_view out_path, std::uint32_t seconds, std::uint
     return kExitOk;
 }
 
-}  // namespace ac3cli::commands
+}  // namespace forge_cli::commands

@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-import Ac3ForgeHearth
+import Hearth
 
 // The Network page's left column (planning/hearth-design.md, "Network"): every
 // Sendspin player this computer has found, plus the groups it has made from

@@ -272,7 +272,7 @@ std::optional<RawResult> measure_eac3(std::span<const std::byte> stream, QString
     return result;
 }
 
-// AC-4: mirrors ac3cli's measure_qc_ac4 (apps/cli/commands/analysis.cpp) at
+// AC-4: mirrors forge's measure_qc_ac4 (apps/cli/commands/analysis.cpp) at
 // layout=bed - the presentation `presentation` chooses (the decoder's own
 // choice where unset), decoded as the stream codes it (no output level, so no
 // DRC, dialogue enhancement or downmix), metered over its 1/0, 2/0, 3/0 or 3/2
@@ -292,7 +292,7 @@ std::optional<RawResult> measure_ac4(std::span<const std::byte> stream,
     result.codec_label = QStringLiteral("AC-4");
     result.unit_label = QStringLiteral("frame(s)");
     result.ac4 = true;
-    for (const auto& row : ac3gui::ac4_presentation_rows(scan.frames)) {
+    for (const auto& row : forge_gui::ac4_presentation_rows(scan.frames)) {
         result.presentations.append(QString::fromStdString(row.label));
     }
     std::optional<iclforge::meta::LoudnessMeter> meter;
@@ -384,7 +384,7 @@ MeasureOutcome measure_file(const QString& path, std::optional<std::size_t> pres
 
     // container readers (mkv/mp4/ts): the file itself unchanged if it is not a container this
     // build reads, or the first AC-3/E-AC-3 track demuxed out of one - the
-    // same sniff-and-demux ac3cli's own decode/qc/levels/play/monitor use.
+    // same sniff-and-demux forge's own decode/qc/levels/play/monitor use.
     auto demuxed = iclforge::apps::elementary_stream_from_bytes(file_bytes);
     if (!demuxed.error.empty()) {
         outcome.error = QStringLiteral("%1 is a %2").arg(path, to_qstring(demuxed.error));
@@ -560,7 +560,7 @@ void QcController::measureFile(const QUrl& url) {
         return;
     }
     // A new file starts at the decoder's own choice of presentation, as a
-    // plain `ac3cli qc` does.
+    // plain `forge qc` does.
     if (path != file_path_ && presentation_index_ != -1) {
         presentation_index_ = -1;
         emit presentationChanged();

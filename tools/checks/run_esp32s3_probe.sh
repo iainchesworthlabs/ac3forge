@@ -226,7 +226,7 @@ else
 fi
 
 echo
-echo "== running ac3probe on qemu-system-xtensa (esp32s3) =="
+echo "== running iclforge-probe on qemu-system-xtensa (esp32s3) =="
 # Unlike the arm-none-eabi leg, there is no semihosting exit: an ESP-IDF
 # application returns from app_main into a FreeRTOS task that is then deleted,
 # and the system goes on idling forever. So QEMU has to be ended from outside,

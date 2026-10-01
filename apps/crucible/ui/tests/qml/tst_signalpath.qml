@@ -1,8 +1,8 @@
 import QtQuick
 import QtTest
 
-import Ac3ForgeCrucible
-import Ac3ForgeCrucibleTest
+import Crucible
+import CrucibleTest
 
 // The Signal path page, driven from its own controls over a scripted machine
 // (ui/tests/qml_test_main.cpp): an HDMI receiver, a stereo default and the

@@ -1,9 +1,9 @@
-"""Check the gains of ac3cli's AC-4 output processing on DEE's and the encoder's streams against
+"""Check the gains of forge's AC-4 output processing on DEE's and the encoder's streams against
 Part 1's formulas and Part 2's channel renderer.
 
 For each leg the decoder turns into PCM, at every frame rate, this decodes the stream as coded and
 again with an output option, and holds the second decode to the first through the formula the option
-applies, with the stream's own values read from `ac3cli decode ... syntax-trace=` (planning/ac4.md,
+applies, with the stream's own values read from `forge decode ... syntax-trace=` (planning/ac4.md,
 phase D6):
 
   level    output-level=-31, -24 and -17 with drcmode=off: every channel is the coded output times
@@ -48,26 +48,26 @@ test_ac4dec_de.cpp; this script reads the gains from the stream, as those tests 
 The committed legs (tests/golden/external-baseline/) are checked by default. --gold DIR checks
 phase G0's local gold set in DIR (DIR/streams/<leg>/dee.ac4, DIR/gold-manifest.json), which never
 runs in CI, and with --g1 the G1 legs G1_LEGS names besides. --encoder checks streams
-`ac3cli ac4-encode` writes from tones here, a leg for each metadata option the output processing
+`forge ac4-encode` writes from tones here, a leg for each metadata option the output processing
 reads (ENCODER_LEGS), at several frame rates (planning/ac4.md, phase E5), and 5.1.4 in each of the
 encoder's immersive codec modes, the experimental ASPX_AJCC among them, with each height downmix,
 whose renders are held to Part 2's channel renderer with the custom downmix data the stream sends
 (phase E8).
 
 --engine RENDER decodes through Hearth's engine instead (planning/ac4.md, phase I2): RENDER is
-ac3hearth-render (apps/hearth/render), which plays a stream through the player, session and stream
-decoder the window uses, and each of ac3cli's options above becomes the Decoder page's setting for
+hearth-render (apps/hearth/render), which plays a stream through the player, session and stream
+decoder the window uses, and each of forge's options above becomes the Decoder page's setting for
 it (engine_settings()). The coded output is the engine's too, on a layout of the stream's own
-channels in ac3cli's order; the stream's values still come from ac3cli's syntax trace, and the
+channels in forge's order; the stream's values still come from forge's syntax trace, and the
 formulas and tolerances are the same.
 
 Usage:
-    python tools/checks/gain_ac4_decode.py --cli build/config-linux-llvm/bin/ac3cli
-    python tools/checks/gain_ac4_decode.py --cli ac3cli.exe --gold D:/ac3bld/ac4-gold
-    python tools/checks/gain_ac4_decode.py --cli ac3cli.exe --gold D:/ac3bld/ac4-gold --g1
-    python tools/checks/gain_ac4_decode.py --cli build/config-linux-llvm/bin/ac3cli --encoder
-    python tools/checks/gain_ac4_decode.py --cli build/config-linux-llvm/bin/ac3cli \
-        --engine build/config-linux-llvm/bin/ac3hearth-render
+    python tools/checks/gain_ac4_decode.py --cli build/config-linux-llvm/bin/forge
+    python tools/checks/gain_ac4_decode.py --cli forge.exe --gold D:/ac3bld/ac4-gold
+    python tools/checks/gain_ac4_decode.py --cli forge.exe --gold D:/ac3bld/ac4-gold --g1
+    python tools/checks/gain_ac4_decode.py --cli build/config-linux-llvm/bin/forge --encoder
+    python tools/checks/gain_ac4_decode.py --cli build/config-linux-llvm/bin/forge \
+        --engine build/config-linux-llvm/bin/hearth-render
 """
 
 import argparse
@@ -107,7 +107,7 @@ CDMX_FIELDS = ("out_ch_config", "b_top_front_to_front", "b_top_front_to_side",
                "b_top_back_to_front", "b_top_back_to_side", "b_top_to_front", "b_top_to_side",
                "gain_b_code", "gain_t1_code", "gain_t2a_code", "gain_t2b_code", "gain_t2c_code",
                "gain_t2d_code", "gain_t2e_code", "gain_t2f_code")
-# The coded order of a 5.1 leg's output, and ac3cli's WAV order, which is the same.
+# The coded order of a 5.1 leg's output, and forge's WAV order, which is the same.
 L, R, C, LFE, LS, RS = range(6)
 DE_GAINS = (3.0, 6.0, 12.0)
 DE_TOLERANCE_DB = 0.01
@@ -151,7 +151,7 @@ TONES_HZ = (440.0, 620.0, 800.0, 90.0, 1030.0, 1270.0)
 # A 5.1.4 leg's top channels' tones, Tfl Tfr Tbl Tbr.
 TOP_TONES_HZ = (1490.0, 1730.0, 1970.0, 2210.0)
 ENCODER_SECONDS = 4
-# --engine: the layout of a stream's own channels, in the order ac3cli decode writes them. The
+# --engine: the layout of a stream's own channels, in the order forge decode writes them. The
 # heights take the locations Hearth's engine places them at (apps/hearth/engine/stream_decoder.cpp):
 # Tfl and Tfr at Vhl and Vhr, Tbl and Tbr at Lts and Rts, and an immersive layout's Lb and Rb at
 # Lrs and Rrs. Eight channels are left out, being 7.1 or 5.1.2 by the count alone.
@@ -247,7 +247,7 @@ def stereo_matrix(values, target):
 # Part 2 5.10.2.2's generalized rendering matrix: its channels by index.
 GENERAL = ("L", "R", "C", "Ls", "Rs", "Lb", "Rb", "Tfl", "Tfr", "Tbl", "Tbr", "LFE", "Tsl", "Tsr")
 # The immersive element's layouts by speakers= name: the configuration each is (Table 34's names)
-# and its channels in ac3cli's WAV order (apps/common/ac4_channels.hpp).
+# and its channels in forge's WAV order (apps/common/ac4_channels.hpp).
 IMMERSIVE_LAYOUTS = {
     "7.1.4": ("7.X.4", ("L", "R", "C", "LFE", "Lb", "Rb", "Ls", "Rs", "Tfl", "Tfr", "Tbl", "Tbr")),
     "7.1.2": ("7.X.2", ("L", "R", "C", "LFE", "Lb", "Rb", "Ls", "Rs", "Tsl", "Tsr")),
@@ -337,7 +337,7 @@ def configuration(name):
 
 
 def layout_names(config, lfe):
-    """A configuration's channels in ac3cli's WAV order, without the LFE where there is none."""
+    """A configuration's channels in forge's WAV order, without the LFE where there is none."""
     names = next(n for c, n in IMMERSIVE_LAYOUTS.values() if c == config)
     return tuple(n for n in names if lfe or n != "LFE")
 
@@ -409,7 +409,7 @@ def core_matrix(output, backs, tops, gains, lfe):
 
 
 def render_checks(source, backs, tops, lfe, values, cdmx, core):
-    """(options, matrix from the as-coded output) for each render ac3cli decode is held to, in
+    """(options, matrix from the as-coded output) for each render forge decode is held to, in
     full or core decoding: None for a matrix the as-coded output cannot predict."""
     bs = BS_CH_CONFIG.get(source, -1)
     gains = {c: render_gains(cdmx, OUT_CH_CONFIG.get(c, -1), bs) for c in OUT_CH_CONFIG}
@@ -550,7 +550,7 @@ def write_wav_f32(path, samples, rate):
 
 
 def legs_encoder(cli, work):
-    """ENCODER_LEGS encoded from tones by `ac3cli ac4-encode`: (name, stream, dialogue, layout),
+    """ENCODER_LEGS encoded from tones by `forge ac4-encode`: (name, stream, dialogue, layout),
     the layout "5.1.4" for a leg of ten channels, which the render check takes, and None for the
     others."""
     rate = 48000
@@ -570,7 +570,7 @@ def legs_encoder(cli, work):
         command = [str(cli), "ac4-encode", str(wav), str(stream), str(kbps), *options, "quiet"]
         result = subprocess.run(command, capture_output=True, text=True, check=False)
         if result.returncode != 0:
-            raise SystemExit(f"{name}: ac3cli ac4-encode failed ({result.returncode}):\n"
+            raise SystemExit(f"{name}: forge ac4-encode failed ({result.returncode}):\n"
                              f"{result.stdout}{result.stderr}")
         legs.append((name, stream, dialogue, "5.1.4" if channels == 10 else None))
     return legs
@@ -580,14 +580,14 @@ def decode(cli, stream, out_wav, *options):
     command = [str(cli), "decode", str(stream), str(out_wav), *options]
     result = subprocess.run(command, capture_output=True, text=True, check=False)
     if result.returncode != 0:
-        raise SystemExit(f"{stream}: ac3cli decode {' '.join(options)} failed "
+        raise SystemExit(f"{stream}: forge decode {' '.join(options)} failed "
                          f"({result.returncode}):\n{result.stdout}{result.stderr}")
     samples, _ = read_wav(out_wav)
     return samples
 
 
 def engine_settings(options, layout):
-    """ac3cli decode's `options` as ac3hearth-render's settings, the Decoder page's AC-4 controls
+    """forge decode's `options` as hearth-render's settings, the Decoder page's AC-4 controls
     (apps/hearth/engine/decoder_settings.hpp), on `layout` unless an option folds it."""
     settings = []
     for option in options:
@@ -609,16 +609,16 @@ def engine_settings(options, layout):
             # A one-speaker layout, which folds to L + R of the stream's preferred downmix.
             layout = "1.0"
         else:
-            raise SystemExit(f"--engine: ac3cli's {option} has no setting here")
+            raise SystemExit(f"--engine: forge's {option} has no setting here")
     return [f"layout={layout}", *settings]
 
 
 def render(engine, stream, out_wav, layout, *options):
-    """decode()'s output through Hearth's engine: ac3hearth-render with engine_settings()."""
+    """decode()'s output through Hearth's engine: hearth-render with engine_settings()."""
     command = [str(engine), str(stream), str(out_wav), *engine_settings(options, layout)]
     result = subprocess.run(command, capture_output=True, text=True, check=False)
     if result.returncode != 0:
-        raise SystemExit(f"{stream}: ac3hearth-render {' '.join(command[3:])} failed "
+        raise SystemExit(f"{stream}: hearth-render {' '.join(command[3:])} failed "
                          f"({result.returncode}):\n{result.stdout}{result.stderr}")
     samples, _ = read_wav(out_wav)
     return samples
@@ -668,14 +668,14 @@ def check_renders(cli, name, stream, layout, values, cdmx, skip, end, work, code
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--cli", required=True, type=Path, help="the ac3cli to decode with")
+    parser.add_argument("--cli", required=True, type=Path, help="the forge to decode with")
     parser.add_argument("--gold", type=Path, help="check G0's local gold set in this directory")
     parser.add_argument("--g1", action="store_true",
                         help="with --gold, check the G1 legs G1_LEGS names as well")
     parser.add_argument("--encoder", action="store_true",
                         help="check streams ac4-encode writes here (ENCODER_LEGS)")
     parser.add_argument("--engine", type=Path,
-                        help="decode through Hearth's engine with this ac3hearth-render")
+                        help="decode through Hearth's engine with this hearth-render")
     parser.add_argument("--work", type=Path, help="scratch directory (default: a temporary one)")
     parser.add_argument("--only", nargs="+", metavar="LEG", help="check only these legs")
     args = parser.parse_args()

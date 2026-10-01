@@ -6,7 +6,7 @@
 // friends) and IOKit's IODisplayEDID reaches a connected display's own EDID,
 // but neither is documented to expose the CEA-861 Short Audio Descriptor
 // block for an HDMI AUDIO endpoint specifically - and an audio-only optical
-// output has no display EDID to read in the first place. 'ac3cli play' falls
+// output has no display EDID to read in the first place. 'forge play' falls
 // back to enumerate_render_devices()'s device-property read here - see
 // docs/platforms/macos.md.
 

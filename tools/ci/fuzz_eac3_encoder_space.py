@@ -70,7 +70,7 @@ hard as something external still can:
 
 Which class a case lands in, and why, is measured against FFmpeg 8.0 rather
 than assumed - see ORACLE_GAPS and --check-oracles. Every class still runs the
-in-repo `ac3cli decode` round trip; the class only decides what ELSE runs.
+in-repo `forge decode` round trip; the class only decides what ELSE runs.
 
 The weaker guarantee in the `header` class is stated plainly because it is
 real: a misreading of the spec shared by this project's encoder AND its
@@ -90,7 +90,7 @@ seed only decides which case seeds get drawn; it is printed at the start of
 every run, failure or not.
 
 Usage (repo root, after building):
-  python tools/ci/fuzz_eac3_encoder_space.py --cli build/dev/bin/ac3cli.exe --cases 200
+  python tools/ci/fuzz_eac3_encoder_space.py --cli build/dev/bin/forge.exe --cases 200
   python tools/ci/fuzz_eac3_encoder_space.py --seconds 120       # bounded, for CI
   python tools/ci/fuzz_eac3_encoder_space.py --check-envelope    # re-measure the tables below
   python tools/ci/fuzz_eac3_encoder_space.py --check-oracles     # re-measure what FFmpeg reads
@@ -931,7 +931,7 @@ def run_case(cli, ffmpeg, ffprobe, case, workdir, artifacts):
         decode = _run([cli, "decode", str(out), str(decoded)])
         if decode.returncode != 0:
             result = Result(case, "fail",
-                            f"ac3cli decode exited {decode.returncode}\n"
+                            f"forge decode exited {decode.returncode}\n"
                             f"{decode.stderr.strip()}", "decode", oracle=oracle, gaps=gaps)
             save_artifacts(artifacts, case, result, tmp)
             return result
@@ -1013,7 +1013,7 @@ def describe(case):
 
 def repro(case):
     return (f"regenerate:  python tools/ci/fuzz_eac3_encoder_space.py --replay {case.seed}\n"
-            f"the encode:  ac3cli {' '.join(case.cli_args('in.wav', 'out.ec3'))}")
+            f"the encode:  forge {' '.join(case.cli_args('in.wav', 'out.ec3'))}")
 
 
 # --- the acceptance envelope this generator draws from ----------------------
@@ -1239,8 +1239,8 @@ def check_oracles(cli, ffmpeg, ffprobe):
 def main():
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--cli", default=os.environ.get("AC3CLI", "build/dev/bin/ac3cli.exe"),
-                        help="path to ac3cli (or set AC3CLI)")
+    parser.add_argument("--cli", default=os.environ.get("ICLFORGE_CLI", "build/dev/bin/forge.exe"),
+                        help="path to forge (or set ICLFORGE_CLI)")
     parser.add_argument("--ffmpeg", default="ffmpeg", help="path to ffmpeg")
     parser.add_argument("--ffprobe", default="ffprobe", help="path to ffprobe")
     parser.add_argument("--no-ffmpeg", action="store_true",
@@ -1269,7 +1269,7 @@ def main():
 
     cli = args.cli if Path(args.cli).is_absolute() else str((REPO / args.cli).resolve())
     if not Path(cli).exists():
-        raise SystemExit(f"ac3cli not found at {cli} - build first, or pass --cli")
+        raise SystemExit(f"forge not found at {cli} - build first, or pass --cli")
 
     if args.check_envelope:
         print("acceptance envelope - the rate floors and the frmsiz ceiling this generator "
@@ -1404,7 +1404,7 @@ def main():
     # encoder has regressed into refusing it, and every case above would have
     # been "clean" without a single stream being checked. Misprobed and
     # no-oracle cases count as checked: their streams were encoded, decoded by
-    # ac3cli, and held against ffprobe's own syncframe walk.
+    # forge, and held against ffprobe's own syncframe walk.
     checked = counts["ok"] + counts["misprobed"] + counts["no-oracle"]
     if total >= 20 and checked < total * 0.5:
         print(f"\nonly {checked} of {total} configurations encoded at all - too few to call "

@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Effects
 
-import Ac3ForgeCrucible
+import Crucible
 
 // An application's icon: the platform's own picture for it, through the
 // appicon image provider (the shell's icon for its executable on Windows,

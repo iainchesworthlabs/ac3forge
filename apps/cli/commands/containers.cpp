@@ -39,7 +39,7 @@
 #include "../platform/stdio_binary.hpp"
 #include "../support.hpp"
 
-namespace ac3cli::commands {
+namespace forge_cli::commands {
 
 namespace {
 
@@ -117,7 +117,7 @@ bool write_text_to_path(const std::filesystem::path& path, std::string_view text
     fmt::println(stderr,
                 "error: {} is an AC-3 core with E-AC-3 extension substreams (A/52 §E2.3.1.2); "
                 "{} has no codec-config box that can describe that arrangement. "
-                "`ac3cli decode` reads the stream itself.",
+                "`forge decode` reads the stream itself.",
                 in_path, container);
     return true;
 }
@@ -218,7 +218,7 @@ void describe_alternatives(iclforge::ac4::Toc& toc,
 int run_mkv(std::string_view in_path, std::string_view out_path) {
     // read_elementary_stream (container readers (mkv/mp4/ts)) also accepts an MP4 or MPEG-TS
     // input here, not just a raw .ac3/.ec3 - which is what makes this
-    // container-to-container remux (`ac3cli mkv broken.mp4 fixed.mkv`) rather
+    // container-to-container remux (`forge mkv broken.mp4 fixed.mkv`) rather
     // than only ever an encode target. Nothing below has to know the
     // difference: everything this container declares comes from iclforge::io::
     // scan(raw) a few lines down, never from whatever the SOURCE container
@@ -241,7 +241,7 @@ int run_mkv(std::string_view in_path, std::string_view out_path) {
     if (is_ac4_stream(raw)) {
         fmt::println(stderr,
                      "error: {} is AC-4, for which Matroska registers no CodecID (its codec "
-                     "specification has A_AC3 and A_EAC3); 'ac3cli mp4', 'fmp4' and 'ts' carry "
+                     "specification has A_AC3 and A_EAC3); 'forge mp4', 'fmp4' and 'ts' carry "
                      "AC-4",
                      in_path);
         return kExitUsage;
@@ -304,7 +304,7 @@ int run_mkv(std::string_view in_path, std::string_view out_path) {
 int run_mp4(std::string_view in_path, std::string_view out_path) {
     // read_elementary_stream (container readers (mkv/mp4/ts)) also accepts a Matroska or
     // MPEG-TS input here, so this doubles as container-to-container remux
-    // (`ac3cli mp4 broken.mkv fixed.mp4`). That is what makes it the
+    // (`forge mp4 broken.mkv fixed.mp4`). That is what makes it the
     // dec3-repair case the Atmos dec3-repair remux case: codec_config below is
     // built by iclforge::io::build_codec_config_box(*scanned), which reads the
     // real bitstream iclforge::io::scan just walked - never whatever dec3 (or
@@ -1003,8 +1003,8 @@ int run_ts(std::string_view in_path, std::string_view out_path, std::string_view
 // --- container input (container readers (mkv/mp4/ts)) -------------------------------------
 //
 // ContainerKind/sniff_container used to live here alone; both are now
-// apps/common/container_input.hpp's, promoted so ac3cli's own
-// read_elementary_stream (support.cpp) and ac3gui's QC/Inspect pickers can
+// apps/common/container_input.hpp's, promoted so forge's own
+// read_elementary_stream (support.cpp) and forge-gui's QC/Inspect pickers can
 // each sniff a file the same way this command does - see that header's own
 // comment for why apps/common rather than support.hpp itself or iclforge::ac3.
 
@@ -1128,7 +1128,7 @@ int run_demux(std::string_view in_path, std::string_view out_path) {
         // can re-sync on, so each is re-wrapped in Annex G.3.1's
         // ac4_syncframe on the way out - the same re-framing
         // apps/common/container_input.cpp applies for the decode/qc path,
-        // and byte-for-byte what 'ac3cli ts' produces for the same input.
+        // and byte-for-byte what 'forge ts' produces for the same input.
         // A/52 tracks pass through untouched, exactly as before.
         const auto on_mp4_sample = [&reader, &on_frame](std::span<const std::byte> sample) {
             if (reader.track().codec_id != iclforge::mp4::kCodecAc4) {
@@ -1234,4 +1234,4 @@ int run_remux(std::string_view in_path, std::string_view out_path, std::string_v
     return kExitUsage;
 }
 
-}  // namespace ac3cli::commands
+}  // namespace forge_cli::commands

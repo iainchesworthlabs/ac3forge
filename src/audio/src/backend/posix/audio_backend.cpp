@@ -13,7 +13,7 @@
 // the other end of an optical or HDMI cable), and shared-mode monitor
 // playback needs the same ALSA/PipeWire integration capture does.
 //
-// 'ac3cli spdif' is the substitute and needs no backend anywhere: it wraps
+// 'forge spdif' is the substitute and needs no backend anywhere: it wraps
 // frames into the same IEC 61937 bursts and writes them as a PCM16 WAV, which
 // any player will push through a passthrough-capable output bit-exactly.
 //

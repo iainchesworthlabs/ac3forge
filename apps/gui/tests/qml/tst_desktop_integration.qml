@@ -1,13 +1,13 @@
 import QtQuick
 import QtTest
 
-import Ac3Forge
+import ForgeGui
 
-// GUI AppStream packaging - the rail's own DropArea and `ac3gui <file...>`'s launch-time
+// GUI AppStream packaging - the rail's own DropArea and `forge-gui <file...>`'s launch-time
 // argv handling (main.cpp) both funnel through Main.qml's own
 // window.openDroppedFile(url), so this suite exercises that single dispatch
 // point directly rather than trying to simulate an OS-level drag-and-drop or
-// spawn a second ac3gui process - the same "call the window function
+// spawn a second forge-gui process - the same "call the window function
 // directly" shape tst_stream_player.qml's own run-chip "More…" menu test
 // uses, and for the identical reason: a DropArea's onDropped handler is a
 // thin wrapper around this call, not where the interesting behaviour lives.

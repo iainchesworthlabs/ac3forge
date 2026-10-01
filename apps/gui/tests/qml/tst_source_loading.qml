@@ -1,7 +1,7 @@
 import QtQuick
 import QtTest
 
-import Ac3Forge
+import ForgeGui
 
 TestCase {
     id: testCase

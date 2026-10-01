@@ -433,7 +433,7 @@ TEST_CASE("all eight independent substreams work, and a ninth is refused",
     REQUIRE_FALSE(refused.has_value());
     CHECK(refused.error() == iclforge::FrameError::kInvalidSubstream);
 
-    // AccessUnitEncoder's own constructor cannot fail (see ac3cli's
+    // AccessUnitEncoder's own constructor cannot fail (see forge's
     // eac3_config_accepted, which exists for exactly this reason) - a
     // rejected config leaves it holding no substreams, which is how a
     // caller finds out before attempting a frame.
@@ -530,7 +530,7 @@ TEST_CASE("selecting a programme decodes an AC-3 stream whatever crc1 happens to
     //
     // FFmpeg's FATE fixture the_great_wall_7.1.eac3 (a §E2.3.1.2 legacy core
     // plus an Annex E dependent) is the stream that surfaced this: its first
-    // access unit is one of the reserved-aliasing ones, so `ac3cli decode`
+    // access unit is one of the reserved-aliasing ones, so `forge decode`
     // failed on it outright while `probe`, which does not take this path,
     // read the whole file. A plain AC-3 stream reproduces it without needing
     // the dependent - the lead frame is all the selection step looks at.

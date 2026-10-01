@@ -4,7 +4,7 @@
 
 #include "../support.hpp"
 
-// `ac3cli probe` (legacy item IO1): what an elementary stream declares about
+// `forge probe` (legacy item IO1): what an elementary stream declares about
 // itself, as a human-readable table or as the JSON document docs/forge/cli/
 // commands.md documents as a stable contract.
 //
@@ -15,8 +15,8 @@
 // ac3/io/probe.hpp), which is a different job with a different cost, and it
 // is the only command here whose output is meant to be consumed by another
 // program.
-namespace ac3cli::commands {
+namespace forge_cli::commands {
 
 int run_probe(std::string_view in_path, const Options& meta);
 
-} // namespace ac3cli::commands
+} // namespace forge_cli::commands

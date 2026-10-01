@@ -3,8 +3,8 @@ import QtQuick.Controls
 import QtQuick.Dialogs
 import QtQuick.Layouts
 
-import Ac3ForgeCrucible
-import Ac3ForgeCrucibleLanguage
+import Crucible
+import CrucibleLanguage
 
 // Settings, in the order they matter on a new machine: the virtual output
 // device (what makes the whole thing silent to the rest of Windows), the

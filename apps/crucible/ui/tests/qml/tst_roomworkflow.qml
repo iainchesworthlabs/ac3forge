@@ -1,8 +1,8 @@
 import QtQuick
 import QtTest
 
-import Ac3ForgeCrucible
-import Ac3ForgeCrucibleTest
+import Crucible
+import CrucibleTest
 
 // The Room, driven the way a person drives it: over a scripted machine (the
 // fake session monitor, devices, default device and full-screen seam the

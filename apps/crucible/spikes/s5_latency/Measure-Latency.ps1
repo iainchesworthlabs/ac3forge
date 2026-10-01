@@ -1,10 +1,10 @@
 # Runs spike S5 over the four configurations the plan page's latency table
 # wants: normal and low-latency frames, each with the codec in the loop and
-# bypassed. For each, starts the demo's runner (ac3crucible-run) on the given
+# bypassed. For each, starts the demo's runner (crucible-run) on the given
 # null sink, waits for it to settle, runs s5_latency against its pid, and
 # collects the RESULT line.
 #
-#   .\Measure-Latency.ps1 -Runner <path\ac3crucible-run.exe> -Spike <path\s5_latency.exe> [-NullSink FxSound] [-Seconds 20]
+#   .\Measure-Latency.ps1 -Runner <path\crucible-run.exe> -Spike <path\s5_latency.exe> [-NullSink FxSound] [-Seconds 20]
 #
 # The runner must end up in a PCM mode (stereo or PCM surround) on a real
 # endpoint for the tap on it to hear anything: on the workstation that is

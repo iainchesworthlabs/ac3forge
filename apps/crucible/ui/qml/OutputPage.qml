@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-import Ac3ForgeCrucible
+import Crucible
 
 // The signal path: the three stations sound passes through, side by side,
 // then each stage's detail: the pin (what you hear it as), every endpoint

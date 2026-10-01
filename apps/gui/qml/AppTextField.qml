@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Controls as QQC
 
-import Ac3Forge
+import ForgeGui
 
 // A text field drawn to the design system (components.png, "FIELDS AND
 // LISTS"): 30 px tall, a neutral100 fill, a 1 px divider border, and an

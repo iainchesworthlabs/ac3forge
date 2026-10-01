@@ -1,4 +1,4 @@
-// ac3cli decode's AC-4 options (planning/ac4.md, phase D8), each run against
+// forge decode's AC-4 options (planning/ac4.md, phase D8), each run against
 // the real binary on committed streams: every DRC decoder mode at an output
 // level, the presentation by position, associated service and level, the
 // associated mix, every downmix with and without the LFE, a 7.X stream folded
@@ -43,7 +43,7 @@ fs::path scratch_dir() {
 
 int run_cli(const std::string& args, const fs::path& log) {
     const std::string command =
-        "\"" + std::string(AC3CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
+        "\"" + std::string(ICLFORGE_CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
     return iclforge::test::platform::run_shell(command);
 }
 

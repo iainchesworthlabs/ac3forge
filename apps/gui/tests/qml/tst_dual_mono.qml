@@ -1,7 +1,7 @@
 import QtQuick
 import QtTest
 
-import Ac3Forge
+import ForgeGui
 
 // Selecting 1+1 as the bed - the "dual mono is a bed, not a layout" surface.
 // bedChoices()[0] is always the dual-mono entry (see kBeds' own comment).

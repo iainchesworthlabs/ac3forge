@@ -9,7 +9,7 @@
 // apps/cli/CMakeLists.txt) - see ../atmos_adm.hpp's own top comment for why this file, rather than
 // a preprocessor conditional inside main.cpp, is the mechanism.
 
-namespace ac3cli {
+namespace forge_cli {
 
 const iclforge::audio::Capability& adm_capability() {
     static constexpr iclforge::audio::Capability kAvailable{.available = true, .reason = {}};
@@ -44,4 +44,4 @@ std::expected<AdmAtmosSource, std::string> load_adm_atmos_source(std::string_vie
     return out;
 }
 
-}  // namespace ac3cli
+}  // namespace forge_cli

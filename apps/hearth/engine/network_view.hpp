@@ -42,7 +42,7 @@ enum class SinkKind : std::uint8_t {
     kHearthSink,
     // `player@v1` only: takes stereo PCM, FLAC or Opus decoded here.
     kStandardPlayer,
-    // ac3hearth-testsink, on this computer or another (DeviceInfo::product_name
+    // hearth-testsink, on this computer or another (DeviceInfo::product_name
     // says so - there is no role of its own).
     kTestSink,
 };

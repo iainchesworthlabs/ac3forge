@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-import Ac3Forge
+import ForgeGui
 
 // The first-run screen: what the window shows until a source has ever been
 // chosen. Everything else follows from the source — the layouts on offer,
@@ -125,7 +125,7 @@ RowLayout {
                     { n: "02", title: qsTr("The stream is built on the right"),
                       body: qsTr("Format, coding tools, metadata and objects, in four panels rather than one 1,950 px column.") },
                     { n: "03", title: qsTr("Encoding is a run, not a moment"),
-                      body: qsTr("Every encode lands in a run list with its settings, its result and the exact ac3cli line that reproduces it.") },
+                      body: qsTr("Every encode lands in a run list with its settings, its result and the exact forge line that reproduces it.") },
                 ]
                 delegate: ColumnLayout {
                     required property var modelData

@@ -4,7 +4,7 @@ import QtQuick.Dialogs
 import QtQuick.Layouts
 import QtQuick.Window
 
-import Ac3Forge
+import ForgeGui
 
 // Guided — the handoff's five steps (1 Audio · 2 Speakers · 3 Quality ·
 // 4 Movement · 5 Where it goes), one question per step, constraints applied

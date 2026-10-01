@@ -35,7 +35,7 @@ What one case does:
      delta bit allocation decisions the configuration space alone cannot
      reach.
   3. Encode it.
-  4. Decode the result with BOTH this project's own decoder (`ac3cli decode`)
+  4. Decode the result with BOTH this project's own decoder (`forge decode`)
      and FFmpeg's strict decode - the same invocation and the same reasoning
      as run_ffmpeg_check() in tools/ci/run_codec_matrix.sh, -xerror included,
      because -err_detect alone leaves ffmpeg's exit code at 0 after a logged
@@ -56,7 +56,7 @@ failure is reproducible from the one number printed with it - see --replay.
 The master seed only decides which case seeds get drawn; it is printed at the
 start of every run, failure or not.
 
-Scope: AC-3 (`ac3cli encode`) only. The bug that motivated this is AC-3-only
+Scope: AC-3 (`forge encode`) only. The bug that motivated this is AC-3-only
 (E-AC-3 computes its delta bit allocation once per frame and its decoder
 clears at block 0, so its state cannot go stale between blocks), and AC-3's
 configuration space is the one whose acceptance envelope this file pins
@@ -68,7 +68,7 @@ ORACLE is a different shape, since FFmpeg does not read E-AC-3 whole. The two
 share this file's PCM generator, which that one imports, and nothing else.
 
 Usage (repo root, after building):
-  python tools/ci/fuzz_encoder_space.py --cli build/dev/bin/ac3cli.exe --cases 200
+  python tools/ci/fuzz_encoder_space.py --cli build/dev/bin/forge.exe --cases 200
   python tools/ci/fuzz_encoder_space.py --seconds 120            # bounded, for CI
   python tools/ci/fuzz_encoder_space.py --check-envelope         # re-measure the table below
   python tools/ci/fuzz_encoder_space.py --replay 12345678901234  # one exact case
@@ -755,7 +755,7 @@ def run_case(cli, ffmpeg, case, workdir, artifacts):
         decode = _run([cli, "decode", str(out), str(decoded)])
         if decode.returncode != 0:
             result = Result(case, "fail",
-                            f"ac3cli decode exited {decode.returncode}\n"
+                            f"forge decode exited {decode.returncode}\n"
                             f"{decode.stderr.strip()}", "decode")
             save_artifacts(artifacts, case, result, tmp)
             return result
@@ -812,7 +812,7 @@ def describe(case):
 
 def repro(case):
     return (f"regenerate:  python tools/ci/fuzz_encoder_space.py --replay {case.seed}\n"
-            f"the encode:  ac3cli encode in.wav out.ac3 {case.bitrate} {case.layout} "
+            f"the encode:  forge encode in.wav out.ac3 {case.bitrate} {case.layout} "
             f"{' '.join(case.options)}")
 
 
@@ -891,8 +891,8 @@ def check_envelope(cli):
 def main():
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--cli", default=os.environ.get("AC3CLI", "build/dev/bin/ac3cli.exe"),
-                        help="path to ac3cli (or set AC3CLI)")
+    parser.add_argument("--cli", default=os.environ.get("ICLFORGE_CLI", "build/dev/bin/forge.exe"),
+                        help="path to forge (or set ICLFORGE_CLI)")
     parser.add_argument("--ffmpeg", default="ffmpeg", help="path to ffmpeg")
     parser.add_argument("--no-ffmpeg", action="store_true",
                         help="skip the independent oracle - the in-repo decoder only")
@@ -917,7 +917,7 @@ def main():
 
     cli = args.cli if Path(args.cli).is_absolute() else str((REPO / args.cli).resolve())
     if not Path(cli).exists():
-        raise SystemExit(f"ac3cli not found at {cli} - build first, or pass --cli")
+        raise SystemExit(f"forge not found at {cli} - build first, or pass --cli")
 
     if args.check_envelope:
         print("acceptance envelope - the minimum legal rate each layout's encoder accepts")
@@ -1027,7 +1027,7 @@ def main():
     # would mean the generator has drifted out of the accepted space, or the
     # encoder has regressed into refusing it, and every case above would have
     # been "clean" without a single stream being checked. Misprobed cases
-    # count as checked: their streams were encoded, decoded by ac3cli, and
+    # count as checked: their streams were encoded, decoded by forge, and
     # decoded by ffmpeg under `-f ac3` with every error check on.
     checked = counts["ok"] + counts["misprobed"]
     if total >= 20 and checked < total * 0.5:

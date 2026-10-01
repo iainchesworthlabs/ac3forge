@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-import Ac3ForgeHearth
+import Hearth
 
 // The right-hand "ONLY ON THE SINK" panel (network-sink-speakers.png):
 // identity the sink itself owns - name, slot width, network and firmware -

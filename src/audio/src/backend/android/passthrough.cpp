@@ -693,12 +693,12 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
 // (apps/android/app/src/main/cpp/), because capturing the JavaVM is
 // iclforge::audio's own concern (jni_env() above needs it) and a
 // process may load exactly one JNI_OnLoad per shared object - this is the
-// only translation unit in ac3forge_jni.so that needs it.
+// only translation unit in iclforge_jni.so that needs it.
 
 extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* /*reserved*/) {
     iclforge::audio::g_vm = vm;
     __android_log_print(ANDROID_LOG_INFO, iclforge::audio::kLogTag,
-                        "JNI_OnLoad: ac3forge_jni loaded, JavaVM captured");
+                        "JNI_OnLoad: iclforge_jni loaded, JavaVM captured");
     return JNI_VERSION_1_6;
 }
 
@@ -706,7 +706,7 @@ extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* /*reserved*/) {
 // System.loadLibrary, before any PassthroughSink::start(). Safe to call
 // again (e.g. on Activity recreation) - drops the previous GlobalRef first.
 extern "C" JNIEXPORT void JNICALL
-Java_com_ac3forge_shield_NativeBridge_registerPassthroughBridge(JNIEnv* env, jclass /*clazz*/,
+Java_com_iclforge_shield_NativeBridge_registerPassthroughBridge(JNIEnv* env, jclass /*clazz*/,
                                                                  jobject bridge) {
     std::lock_guard lock(iclforge::audio::g_bridge_mutex);
 

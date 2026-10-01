@@ -31,11 +31,11 @@ served content and the samples are excerpts of copyrighted films, which is the
 other half of why they are not vendored here.
 
 Usage:
-    AC3CLI=build/config-linux-llvm/bin/ac3cli python3 tools/checks/verify_fate_interop.py
+    ICLFORGE_CLI=build/config-linux-llvm/bin/forge python3 tools/checks/verify_fate_interop.py
 
     --cache-dir DIR   where to keep downloads (default: $FATE_CACHE_DIR, else a
                       temporary directory removed on exit)
-    --cli PATH        ac3cli, overriding $AC3CLI
+    --cli PATH        forge, overriding $ICLFORGE_CLI
     --list            print the pinned corpus and exit, downloading nothing
 
 Exits non-zero on the first sample that fails.
@@ -182,7 +182,7 @@ SAMPLES = [
 # expecting it to work:
 #
 #   ac3/diatonis_invisible_order_anfos_ac3-small.wav, ac3/mp3ac325-4864-small.ts
-#     AC-3 inside a WAV and inside an MPEG-TS. `ac3cli decode` takes
+#     AC-3 inside a WAV and inside an MPEG-TS. `forge decode` takes
 #     elementary streams; demuxing is not what this harness is testing.
 
 
@@ -242,7 +242,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__,
                                       formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--cache-dir", type=Path, default=None)
-    parser.add_argument("--cli", default=os.environ.get("AC3CLI", ""))
+    parser.add_argument("--cli", default=os.environ.get("ICLFORGE_CLI", ""))
     parser.add_argument("--list", action="store_true",
                          help="Print the pinned corpus and exit, downloading nothing.")
     args = parser.parse_args()
@@ -253,7 +253,7 @@ def main() -> int:
         return 0
 
     if not args.cli or not Path(args.cli).exists():
-        raise SystemExit("::error::set AC3CLI (or --cli) to a built ac3cli")
+        raise SystemExit("::error::set ICLFORGE_CLI (or --cli) to a built forge")
     # Absolute, like tools/ci/run_codec_matrix.sh resolves its own argument and
     # for the same reason: callers pass a path relative to the repository root,
     # and every decode below runs with a scratch directory in play.
@@ -292,10 +292,10 @@ def main() -> int:
             decode = subprocess.run([cli, "decode", str(source), str(our_wav)],
                                      capture_output=True, text=True, check=False)
             if decode.returncode != 0:
-                failures.append(f"{name}: ac3cli decode failed: {decode.stderr.strip()}")
-                print(f"    ::error::ac3cli decode failed: {decode.stderr.strip()}")
+                failures.append(f"{name}: forge decode failed: {decode.stderr.strip()}")
+                print(f"    ::error::forge decode failed: {decode.stderr.strip()}")
                 continue
-            print("    ac3cli decode: ok")
+            print("    forge decode: ok")
 
             if not sample.get("compare", True):
                 print("    diff: skipped for this sample - see its own note in SAMPLES")

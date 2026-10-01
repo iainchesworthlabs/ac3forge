@@ -88,7 +88,7 @@ class HearthController : public QObject {
     Q_PROPERTY(QString noteText READ noteText NOTIFY stateChanged)
     Q_PROPERTY(QString errorText READ errorText NOTIFY stateChanged)
     // Whether FirstRunDialog.qml has been dismissed once already. Persisted
-    // through QSettings under organisation "ac3forge", application "Hearth"
+    // through QSettings under organisation "iclforge", application "Hearth"
     // (set in main.cpp) - this window's only settings storage so far. The
     // queue/decoder/speaker settings apps/hearth/engine/settings_model.hpp
     // describes are a separate, later piece (the Settings page proper), not

@@ -688,7 +688,7 @@ SinkFacts NetworkSinks::facts_locked(const std::string& instance, const Entry& e
                 facts.codecs.emplace_back(ss::messages::codec_name(format.codec));
             }
         }
-        // ac3hearth-testsink names itself in DeviceInfo::product_name;
+        // hearth-testsink names itself in DeviceInfo::product_name;
         // nothing else in client/hello says "this is a test double" more
         // directly than that, so this is a heuristic, not a protocol fact.
         if (contains_ci(client.name, "testsink")) {

@@ -17,7 +17,7 @@
 // IOProc's two timestamps, AAudio from the gap between the frames written and
 // the presentation position. Getting them is all that is platform-specific;
 // what follows from them is not, and lives here - so a fake device's clock in
-// ac3tests drives the same code the real backends do rather than a
+// iclforge-tests drives the same code the real backends do rather than a
 // reimplementation of it.
 //
 // The device thread calls report(); a caller asking where playback has got to

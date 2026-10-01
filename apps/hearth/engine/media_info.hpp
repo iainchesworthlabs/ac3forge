@@ -27,7 +27,7 @@
 //   configuration box, an edit list and what it trims.
 // - For AC-3 and E-AC-3: the programmes and associated services io::scan
 //   finds, and the channel map; the whole-stream report io::probe makes, as
-//   ac3cli probe makes it (rates, extent, metadata ranges, EMDF payloads,
+//   forge probe makes it (rates, extent, metadata ranges, EMDF payloads,
 //   objects, authenticity tags, CRCs, coding tools); and what the lead
 //   programme's first access unit says in its bitstream information, with the
 //   fold levels that follows from it.
@@ -47,7 +47,7 @@
 //
 //   {
 //     "schema": "iclforge.hearth.media/1",
-//     "generator": the ac3forge version,
+//     "generator": the iclforge version,
 //     "file": the item's path,
 //     "codec": "ac3", "eac3", "ac3+eac3" (an AC-3 core with E-AC-3
 //              dependents), "ac4", or null when nothing could be read,
@@ -73,7 +73,7 @@
 //     "bitstream": null, or {info, alternate_bsi, cmixlev, surmixlev,
 //                  mixing, fold_levels} - see write_bitstream() for each,
 //     "probe": null, or {schema: "iclforge.probe/1", stream}: the stream
-//              object ac3cli probe json=1 writes (docs/forge/cli/commands.md),
+//              object forge probe json=1 writes (docs/forge/cli/commands.md),
 //              the AC-4 one for an AC-4 item
 //   }
 //

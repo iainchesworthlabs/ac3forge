@@ -1,4 +1,4 @@
-"""Unit tests for check_cli_docs_package.py, the ac3cli man page/completions gate.
+"""Unit tests for check_cli_docs_package.py, the forge man page/completions gate.
 
 stdlib `unittest`, not pytest, for the reason test_write_measurement_badges.py
 gives: this runs in ci.yml's script-lint job, which installs nothing beyond its
@@ -12,7 +12,7 @@ apps/cli/CMakeLists.txt tested CMAKE_CROSSCOMPILING (see the script header).
 The second is the top-level-directory normalisation, which is where the
 equivalent Crucible gate had a real bug: a correct archive was reported as
 entirely missing. Both archive shapes are built here, with and without a
-wrapping directory, and macOS's root-level ac3gui.app is included because it
+wrapping directory, and macOS's root-level forge-gui.app is included because it
 is the case that makes a per-name strip give the wrong answer.
 
 Run: python3 -m unittest discover -s tools/ci -p 'test_*.py'
@@ -35,8 +35,8 @@ import check_cli_docs_package as gate
 # What a runtime package holds besides the five files under test: the binary,
 # the licence, and - on macOS - the GUI bundle at the archive root, which is
 # the entry that does not start at an install directory.
-OTHER_FILES = ("bin/ac3cli", "share/doc/iclforge/LICENSE.txt")
-MACOS_BUNDLE = "ac3gui.app/Contents/MacOS/ac3gui"
+OTHER_FILES = ("bin/forge", "share/doc/iclforge/LICENSE.txt")
+MACOS_BUNDLE = "forge-gui.app/Contents/MacOS/forge-gui"
 
 
 def entries(omit=(), extra=()):
@@ -112,15 +112,15 @@ class MissingFilesTest(unittest.TestCase):
         # The man page alone passing is the regression this would otherwise
         # miss: four of five is still a broken package.
         with tempfile.TemporaryDirectory() as directory:
-            omitted = "share/zsh/site-functions/_ac3cli"
+            omitted = "share/zsh/site-functions/_forge"
             code, out = run(make_tar(directory, entries(omit=[omitted])))
             self.assertEqual(code, 1)
             self.assertIn(f"missing {omitted}", out)
-            self.assertNotIn("missing share/man/man1/ac3cli.1", out)
+            self.assertNotIn("missing share/man/man1/forge.1", out)
 
     def test_missing_man_page_fails_on_every_shape(self):
         with tempfile.TemporaryDirectory() as directory:
-            omitted = ["share/man/man1/ac3cli.1"]
+            omitted = ["share/man/man1/forge.1"]
             for path in (
                 make_tar(directory, entries(omit=omitted)),
                 make_zip(directory, entries(omit=omitted, extra=[MACOS_BUNDLE])),
@@ -128,7 +128,7 @@ class MissingFilesTest(unittest.TestCase):
             ):
                 code, out = run(path)
                 self.assertEqual(code, 1, out)
-                self.assertIn("missing share/man/man1/ac3cli.1", out)
+                self.assertIn("missing share/man/man1/forge.1", out)
 
 
 class TopLevelDirectoryTest(unittest.TestCase):
@@ -146,13 +146,13 @@ class TopLevelDirectoryTest(unittest.TestCase):
         # The normalisation must not turn "wrapped" into "everything found".
         with tempfile.TemporaryDirectory() as directory:
             code, out = run(
-                make_tar(directory, entries(omit=["share/man/man1/ac3cli.1"]), prefix="iclforge/")
+                make_tar(directory, entries(omit=["share/man/man1/forge.1"]), prefix="iclforge/")
             )
             self.assertEqual(code, 1)
-            self.assertIn("missing share/man/man1/ac3cli.1", out)
+            self.assertIn("missing share/man/man1/forge.1", out)
 
     def test_root_level_app_bundle_does_not_trigger_a_strip(self):
-        # macOS's ac3gui.app sits beside bin/ and share/, so it does not start
+        # macOS's forge-gui.app sits beside bin/ and share/, so it does not start
         # at an install directory. Stripping per name would rewrite the whole
         # archive off its prefix; the archive-wide decision leaves it alone.
         with tempfile.TemporaryDirectory() as directory:

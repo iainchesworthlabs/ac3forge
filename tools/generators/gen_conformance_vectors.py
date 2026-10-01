@@ -32,7 +32,7 @@ a bundle built the same way.
 Usage (repo root, after a build):
 
     python tools/generators/gen_conformance_vectors.py \
-        --cli build/config-linux-gcc/bin/ac3cli \
+        --cli build/config-linux-gcc/bin/forge \
         --out dist/conformance-vectors
 
     python tools/generators/gen_conformance_vectors.py --cli <path> \
@@ -40,7 +40,7 @@ Usage (repo root, after a build):
 
 Signing: --sign asks for the Atmos signed-object vector, which needs a key
 this project does not ship. Supply one through ICLFORGE_SIGNING_KEY /
-ICLFORGE_SIGNING_KEY_FILE (the same environment ac3cli itself reads) or
+ICLFORGE_SIGNING_KEY_FILE (the same environment forge itself reads) or
 --signing-key <path>. Without a key the signed vector is omitted and the
 manifest records why; nothing here ever invents or forges one.
 """
@@ -191,7 +191,7 @@ class Vector:
     ident: str
     codec: str  # "AC-3" | "E-AC-3" | CODEC_EAC3_ATMOS
     exercises: str
-    args: list[str]  # ac3cli argv after the output path is substituted
+    args: list[str]  # forge argv after the output path is substituted
     source: str | None  # key into SOURCES, or None for a synthesis command
     suffix: str
     sample_rate: int = 48000
@@ -684,7 +684,7 @@ LEVEL_ROW = re.compile(r"^\s{2}(\S+)\s+(-?\d+\.\d+|-inf)\s+(-?\d+\.\d+|-inf)\s")
 
 
 def parse_levels(text: str) -> list[dict]:
-    """Per-channel peak/RMS out of `ac3cli levels`.
+    """Per-channel peak/RMS out of `forge levels`.
 
     This is the one part of a decode that IS comparable across
     implementations: peak and RMS in dBFS survive any correct decoder's own
@@ -733,7 +733,7 @@ def run_cli(cli: Path, args: list[str], cwd: Path, env: dict | None = None) -> s
     )
     if result.returncode != 0:
         raise CliError(
-            f"ac3cli {' '.join(args)} failed ({result.returncode})\n"
+            f"forge {' '.join(args)} failed ({result.returncode})\n"
             f"--- stdout ---\n{result.stdout}\n--- stderr ---\n{result.stderr}"
         )
     return result.stdout + result.stderr
@@ -843,7 +843,7 @@ def generate(
                 "tools": vector.tools,
                 "source": SOURCES[vector.source]["path"] if vector.source else None,
                 "extra_inputs": vector.extra_inputs,
-                "command": ["ac3cli", *[a.replace(str(out_dir) + os.sep, "").replace("\\", "/")
+                "command": ["forge", *[a.replace(str(out_dir) + os.sep, "").replace("\\", "/")
                                         for a in args]],
                 "bytes": target.stat().st_size,
                 "sha256": sha256_file(target),
@@ -977,7 +977,7 @@ git clone https://github.com/iainchesworthlabs/ac3forge && cd ac3forge
 git checkout {manifest["version"]}
 cmake --preset config-linux-gcc && cmake --build --preset build-linux-gcc
 python tools/generators/gen_conformance_vectors.py \\
-    --cli build/config-linux-gcc/bin/ac3cli --out dist/vectors
+    --cli build/config-linux-gcc/bin/forge --out dist/vectors
 ```
 
 {manifest["hash_scope"]}
@@ -1054,12 +1054,12 @@ def strip_volatile(manifest: dict) -> dict:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--cli", required=True, type=Path, help="path to a built ac3cli")
+    parser.add_argument("--cli", required=True, type=Path, help="path to a built forge")
     parser.add_argument("--out", required=True, type=Path, help="bundle directory to create")
     parser.add_argument(
         "--version",
         default="",
-        help="version stamped into the manifest; defaults to what ac3cli --version reports",
+        help="version stamped into the manifest; defaults to what forge --version reports",
     )
     parser.add_argument("--archive", action="store_true", help="also write <out>.tar.gz")
     parser.add_argument(
@@ -1076,7 +1076,7 @@ def main() -> int:
     args = parser.parse_args()
 
     if not args.cli.is_file():
-        print(f"error: no such ac3cli: {args.cli}", file=sys.stderr)
+        print(f"error: no such forge: {args.cli}", file=sys.stderr)
         return 1
     # Every run_cli call below sets cwd to the bundle directory, so anything
     # relative would resolve differently (or not at all) once it does: --cli

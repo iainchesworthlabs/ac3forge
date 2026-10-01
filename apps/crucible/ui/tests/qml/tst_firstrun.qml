@@ -2,8 +2,8 @@ import QtQuick
 import QtQuick.Controls
 import QtTest
 
-import Ac3ForgeCrucible
-import Ac3ForgeCrucibleTest
+import Crucible
+import CrucibleTest
 
 // The first-run explanation: it opens once over a fresh settings store and
 // not again, says what it says in the platform seams' words, offers Send

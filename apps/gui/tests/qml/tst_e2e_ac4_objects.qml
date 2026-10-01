@@ -1,12 +1,12 @@
 import QtQuick
 import QtTest
 
-import Ac3Forge
+import ForgeGui
 
 // AC-4 objects from the page, end to end (planning/ac4.md, I5b's exit criteria). The
 // Objects tab and the AC-4 tab author objects, the Encode button writes them, and the
 // command line the run recorded - the one the command bar echoed - is run through this
-// build's ac3cli in a folder holding copies of what it names: the sources, and the scene
+// build's forge in a folder holding copies of what it names: the sources, and the scene
 // file an AC-4 object encode writes beside its output. The two streams must be the same
 // bytes, for a raw stream and an MP4 file, with A-JOC and direct coding, one source and
 // several with an assignment, a trim, a fold, a speaker, an LFE and an offset. The page's
@@ -18,7 +18,7 @@ import Ac3Forge
 // so the scene is the one the master states - and decodes with its objects, positions within
 // 0.06 in each axis and gains within 2 dB.
 //
-// The pickers are the only seam, as in tst_e2e_encode.qml; running ac3cli is the second,
+// The pickers are the only seam, as in tst_e2e_encode.qml; running forge is the second,
 // through qml_test_main.cpp's cliRunner.
 TestCase {
     id: testCase
@@ -163,11 +163,11 @@ TestCase {
         return win;
     }
 
-    // The recorded line, run through ac3cli in a folder holding the files it names, and what
+    // The recorded line, run through forge in a folder holding the files it names, and what
     // it wrote compared with what the page wrote.
     function runEchoedLineAndCompare(line, outName, pageUrl, sources) {
         if (!cliRunner.available()) {
-            skip("this build has no ac3cli to run the echoed line through");
+            skip("this build has no forge to run the echoed line through");
         }
         verify(cliRunner.prepare(cliFolderUrl, sources[0]));
         for (let i = 1; i < sources.length; ++i) {
@@ -200,7 +200,7 @@ TestCase {
             { time: 0.0, x: 0.2, y: 0.3, z: 0.0, gain: 0.5 },
             { time: 0.4, x: 0.8, y: 0.7, z: 0.5, gain: 0.5 }]);
 
-        const echoed = "ac3cli atmos-encode roundtrip-stereo.wav out.ac4 256 2 "
+        const echoed = "forge atmos-encode roundtrip-stereo.wav out.ac4 256 2 "
                        + "roundtrip-stereo-paths.json codec=ac4";
         compare(win.cliLine, echoed);
         pressEncodeAndSaveTo(win, rawOutUrl);
@@ -255,7 +255,7 @@ TestCase {
         compare(EncoderController.ac4ObjectsRefusal, "");
 
         const line = win.cliLine;
-        verify(line.indexOf("ac3cli atmos-encode roundtrip-stereo.wav out.mp4 320 0 "
+        verify(line.indexOf("forge atmos-encode roundtrip-stereo.wav out.mp4 320 0 "
                             + "roundtrip-stereo-paths.json src=roundtrip-51.wav map=") === 0, line);
         verify(line.indexOf(EncoderController.mapToken) > 0, line);
         verify(line.endsWith(" offset=1:0.02 codec=ac4 coding=direct dialnorm=27"), line);

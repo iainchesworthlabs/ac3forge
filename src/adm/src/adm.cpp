@@ -55,13 +55,13 @@ namespace {
 // exactly that (reinterpret_cast<std::uintptr_t>(&in)), which looked unique enough in a single
 // process but is not - Windows does not vary a given call frame's stack address between separate
 // launches of the same binary much, if at all, so two of this project's own ctest entries
-// (each ac3tests.exe test case is its own process, and ctest -j runs many of them concurrently)
-// landed on the exact same temp filename and raced on it, one process's write clobbering the
-// other's read mid-parse. Caught via a real, intermittent ctest failure under -j8 that a single
-// direct run of the same test could not reproduce - the actual symptom (not a hypothesis) that
-// justified this fix. A high-resolution clock reading XORed with a random_device draw and a
-// monotonic in-process counter is unique both across concurrent processes and across repeated
-// calls within one process, without needing a platform-specific PID call.
+// (each iclforge-tests.exe test case is its own process, and ctest -j runs many of them
+// concurrently) landed on the exact same temp filename and raced on it, one process's write
+// clobbering the other's read mid-parse. Caught via a real, intermittent ctest failure under -j8
+// that a single direct run of the same test could not reproduce - the actual symptom (not a
+// hypothesis) that justified this fix. A high-resolution clock reading XORed with a random_device
+// draw and a monotonic in-process counter is unique both across concurrent processes and across
+// repeated calls within one process, without needing a platform-specific PID call.
 std::filesystem::path make_temp_path() {
     static std::atomic<std::uint64_t> counter{0};
     std::random_device rd;

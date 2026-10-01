@@ -74,7 +74,7 @@ class Requests(unittest.TestCase):
         # in a device_info answer is LF, which a console that sends CR before
         # every LF corrupts.
         self.assertEqual(len(improv.NEW_NAME), 10)
-        answer = result(3, "AC3Forge Hearth sink", "1", "ESP32-S3", improv.NEW_NAME)
+        answer = result(3, "Hearth sink", "1", "ESP32-S3", improv.NEW_NAME)
         self.assertIn(b"\n", answer)
 
     def test_refuses_what_a_packet_cannot_carry(self):
@@ -99,9 +99,9 @@ class Decode(unittest.TestCase):
             improv.decode(RESULT_URL),
             improv.Answer("rpc_result", "wifi_settings", ("http://10.0.2.15/",)),
         )
-        info = improv.decode(result(3, "AC3Forge Hearth sink", "0.10.0", "ESP32-S3", "hearth-1"))
+        info = improv.decode(result(3, "Hearth sink", "0.10.0", "ESP32-S3", "hearth-1"))
         self.assertEqual(info.value, "device_info")
-        self.assertEqual(info.strings, ("AC3Forge Hearth sink", "0.10.0", "ESP32-S3", "hearth-1"))
+        self.assertEqual(info.strings, ("Hearth sink", "0.10.0", "ESP32-S3", "hearth-1"))
         self.assertEqual(improv.decode(result(4)), improv.Answer("rpc_result", "scan"))
 
     def test_an_unknown_value_is_named_by_its_number(self):
@@ -421,7 +421,7 @@ def late_board(
             qemu.send(ERROR_NONE + STATE_PROVISIONED + result(2, "http://10.0.2.15/"))
         elif command == improv.GET_DEVICE_INFO:
             name = control.name if control is not None else "hearth-000000"
-            send(ERROR_NONE + result(3, "AC3Forge Hearth sink", "1", "ESP32-S3", name))
+            send(ERROR_NONE + result(3, "Hearth sink", "1", "ESP32-S3", name))
         elif command == improv.WIFI_SETTINGS:
             # What the check sends, with the 13-byte SSID whose length byte is
             # CR. A console that converted it would not get this far: the
@@ -455,7 +455,7 @@ def unprovisioned_board(qemu: FakeQemu, name: str = "hearth-000000") -> None:
         if command == improv.GET_CURRENT_STATE:
             qemu.send(ERROR_NONE + STATE_READY)
         elif command == improv.GET_DEVICE_INFO:
-            qemu.send(ERROR_NONE + result(3, "AC3Forge Hearth sink", "0.10.0", "ESP32-S3", name))
+            qemu.send(ERROR_NONE + result(3, "Hearth sink", "0.10.0", "ESP32-S3", name))
 
 
 class Scenarios(unittest.TestCase):
@@ -518,7 +518,7 @@ class Scenarios(unittest.TestCase):
         )
         self.assertEqual(status, 0, out)
         self.assertEqual(control.name, improv.NEW_NAME)
-        self.assertIn(f"device_info: AC3Forge Hearth sink, 1, ESP32-S3, {improv.NEW_NAME}", out)
+        self.assertIn(f"device_info: Hearth sink, 1, ESP32-S3, {improv.NEW_NAME}", out)
 
     def test_late_network_fails_when_the_console_rewrites_the_answer(self):
         # The bug this covers: with ESP-IDF's default line endings the board
@@ -580,7 +580,7 @@ class Scenarios(unittest.TestCase):
         status, out = self.run_scenario("unprovisioned", unprovisioned_board)
         self.assertEqual(status, 0, out)
         self.assertEqual(self.commands, ["cont"])
-        self.assertIn("device_info: AC3Forge Hearth sink, 0.10.0, ESP32-S3, hearth-000000", out)
+        self.assertIn("device_info: Hearth sink, 0.10.0, ESP32-S3, hearth-000000", out)
 
     def test_unprovisioned_fails_at_a_boot_loop(self):
         def board(qemu):

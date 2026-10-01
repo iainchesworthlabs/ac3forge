@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Controls as QQC
 
-import Ac3Forge
+import ForgeGui
 
 // A slider drawn to the design system (components.png, "SLIDERS · REST AND
 // FOCUSED"): a 4 px rail, the travelled part in accent, and a thin upright

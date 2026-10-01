@@ -2,11 +2,11 @@ Qt {{QT_VERSION}}
 ------------------
 
 This disk image includes the Qt {{QT_VERSION}} frameworks, plugins and
-QML modules that ac3gui loads, inside the application bundle:
-ac3gui.app/Contents/Frameworks, PlugIns and Resources/qml. Which files
+QML modules that forge-gui loads, inside the application bundle:
+forge-gui.app/Contents/Frameworks, PlugIns and Resources/qml. Which files
 those are is decided by Qt's own deployment tool rather than by a list
 kept here - it reads the built binary and scans the QML it imports - so
-the contents follow the application. What ac3gui links directly is Qt
+the contents follow the application. What forge-gui links directly is Qt
 Core, Gui, Qml, Quick, Quick Controls 2 and Concurrent; what its window
 imports is QtQuick, QtQuick.Controls (with every built-in style, since
 the style is chosen at runtime from C++ and no scan can see which),
@@ -24,7 +24,7 @@ the deployment places are under the BSD 3-clause licence.
 The Qt frameworks are linked dynamically. You may replace them with a
 modified Qt 6 that is binary-compatible with this version and the
 application will load it: they are loaded by name from
-ac3gui.app/Contents/Frameworks, and codesigning an unsigned local build
+forge-gui.app/Contents/Frameworks, and codesigning an unsigned local build
 is not required to do so.
 
 The complete corresponding source of this exact Qt version is published

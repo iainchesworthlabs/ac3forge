@@ -1,4 +1,4 @@
-# Phase 0 spikes for the Windows AC3Forge Crucible (docs/platforms/windows-demo.md).
+# Phase 0 spikes for the Windows Crucible (docs/platforms/windows-demo.md).
 #
 # Standalone on purpose: these are throwaway experiments that answer one question
 # each and are never linked into the library or the app. Configure with the repo's

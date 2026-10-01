@@ -99,7 +99,7 @@ private:
 // backend goes looking for on purpose: enumeration probes every digital output
 // by trying to open it, so a machine with four HDMI outputs and one display
 // attached would print three alarming-looking "Unknown PCM" complaints every
-// time somebody ran 'ac3cli outputs'. A library has no business writing to a
+// time somebody ran 'forge outputs'. A library has no business writing to a
 // caller's stderr about something it expected and handled.
 //
 // Deliberately NOT applied to the open in PassthroughSink::start(): that one

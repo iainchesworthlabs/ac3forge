@@ -7,7 +7,7 @@
 // sink's own raw EDID-carried CEA-861 Short Audio Descriptors to user-mode
 // code - the audio driver consumes them internally to decide what to offer
 // and does not re-expose the source data itself through any documented
-// public API this project found. 'ac3cli play' falls back to
+// public API this project found. 'forge play' falls back to
 // enumerate_render_devices()'s live probe here - see docs/platforms/windows.md.
 
 namespace iclforge::audio {

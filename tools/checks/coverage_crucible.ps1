@@ -1,4 +1,4 @@
-# Line and branch coverage for AC3Forge Crucible (apps/crucible), the
+# Line and branch coverage for Crucible (apps/crucible), the
 # Windows counterpart of coverage_report.sh: runs the "crucible" (Catch2)
 # and "crucible-ui" (Qt Quick Test) ctest labels of a config-windows-llvm-coverage
 # build under LLVM_PROFILE_FILE, merges the profiles, and prints llvm-cov's
@@ -100,7 +100,7 @@ if ($LASTEXITCODE -ne 0) { throw "llvm-profdata merge failed ($LASTEXITCODE)" }
 # `$binaries[1..($binaries.Count - 1)]` reads as a REVERSED range when the
 # count is one - 1..0 - and hands back element 0, passing the positional
 # binary to llvm-cov a second time as an -object.
-$binaries = @(@('bin\ac3tests.exe', 'bin\ac3crucible_qmltests.exe', 'bin\ac3crucible.exe') |
+$binaries = @(@('bin\iclforge-tests.exe', 'bin\crucible_qmltests.exe', 'bin\crucible.exe') |
     ForEach-Object { Join-Path $BuildDir $_ } | Where-Object { Test-Path $_ })
 if (-not $binaries) { throw "no instrumented binaries under $BuildDir\bin" }
 $objects = @()

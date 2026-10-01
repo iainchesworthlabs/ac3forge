@@ -1,7 +1,7 @@
 import QtQuick
 import QtTest
 
-import Ac3Forge
+import ForgeGui
 
 // Object mode end to end from the Objects tab: the switch turns the loaded
 // channels into objects, the timeline's own buttons author and remove keys,

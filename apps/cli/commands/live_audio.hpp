@@ -12,7 +12,7 @@
 // one-shot record/play/devices/outputs, deliberately kept separate since run_live alone is
 // ~800 lines and both commands share the "runs until done, not until one file is written"
 // shape rather than audio_io's "single operation, then exit" one.
-namespace ac3cli::commands {
+namespace forge_cli::commands {
 
 // Decode a file back to PCM and play it on an ordinary (shared-mode, not
 // bitstreamed) output - a sanity-check/preview path, and the offline half of
@@ -22,9 +22,9 @@ namespace ac3cli::commands {
 // not played or exported here: Eac3Decoder reads TS 103 420's object layer
 // (DecodedSubstream::object_metadata/object_audio), but this path only plays
 // the 5.1 bed - exactly what a legacy decoder hears, which is the thing most
-// worth confirming actually sounds right. 'ac3cli decode' with objects_dir
+// worth confirming actually sounds right. 'forge decode' with objects_dir
 // is where the reconstructed object audio itself comes out.
-int run_monitor(std::string_view in_path, int device_index, const ac3cli::Options& meta);
+int run_monitor(std::string_view in_path, int device_index, const forge_cli::Options& meta);
 
 // Decode an E-AC-3 stream's object layer and hand it to the OS's own spatial
 // object renderer (Windows' ISpatialAudioObjectRenderStream, Windows spatial object renderer):
@@ -35,7 +35,7 @@ int run_monitor(std::string_view in_path, int device_index, const ac3cli::Option
 // all - see iclforge::audio::SpatialObjectSink's own header comment. Refuses
 // cleanly, naming which Settings toggle would fix it, when the chosen
 // endpoint has no spatial sound format enabled.
-int run_spatial(std::string_view in_path, int device_index, const ac3cli::Options& meta);
+int run_spatial(std::string_view in_path, int device_index, const forge_cli::Options& meta);
 
 // Live capture -> live encode -> optionally live monitor and/or live IEC
 // 61937 passthrough, running continuously and also writing the encoded
@@ -52,6 +52,6 @@ int run_spatial(std::string_view in_path, int device_index, const ac3cli::Option
 // on changes WHERE objects go, never the shape of this loop.
 int run_live(std::string_view out_path, int capture_device, std::uint32_t seconds,
             std::uint32_t bitrate, int monitor_device, int passthrough_device,
-            std::string_view mode, const ac3cli::Options& meta);
+            std::string_view mode, const forge_cli::Options& meta);
 
-}  // namespace ac3cli::commands
+}  // namespace forge_cli::commands

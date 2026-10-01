@@ -124,8 +124,8 @@ jobs:
       - name: Configure
         run: cmake --preset config-linux-llvm
 
-      - name: Build ac3cli
-        run: cmake --build --preset build-linux-llvm --target ac3cli -- -k 0
+      - name: Build forge
+        run: cmake --build --preset build-linux-llvm --target forge -- -k 0
 
       # Eight samples fetched from a volunteer-run archive, on a job that now
       # runs per pull request rather than nightly. Caching them keeps that from
@@ -164,6 +164,6 @@ jobs:
       # into a commit or an artifact by accident.
       - name: Decode the pinned FATE corpus and hold it against FFmpeg
         env:
-          AC3CLI: build/config-linux-llvm/bin/ac3cli
+          ICLFORGE_CLI: build/config-linux-llvm/bin/forge
           FATE_CACHE_DIR: ${{ runner.temp }}/fate-samples
         run: python3 tools/checks/verify_fate_interop.py

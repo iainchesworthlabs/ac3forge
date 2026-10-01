@@ -58,7 +58,7 @@ async function loadModule() {
 // The §7.8 Lo/Ro fold the decoder produced, ready to play. The matrix, the
 // levels and the normalisation are all the library's (ac3::OutputStage) -
 // this page has no downmix of its own, which is the point: what a visitor
-// hears here is what 'ac3cli decode channels=2' writes.
+// hears here is what 'forge decode channels=2' writes.
 //
 // No soft clip: §7.8.1 normalises the coefficients so that the sum feeding
 // any one output never exceeds 1, which means the fold cannot be louder than

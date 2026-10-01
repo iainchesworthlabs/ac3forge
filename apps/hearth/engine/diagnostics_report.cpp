@@ -62,7 +62,7 @@ std::string render_report(const ReportFacts& facts, const EngineStatus& engine,
         out += '\n';
     };
 
-    line("AC3Forge Hearth diagnostics");
+    line("Hearth diagnostics");
     row("written", facts.written_at);
     row("log started", facts.log_started_at);
 

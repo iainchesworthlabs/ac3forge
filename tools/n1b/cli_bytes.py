@@ -1,6 +1,7 @@
-"""The CLI corpus: a fixed list of ac3cli commands over the golden inputs, every output hashed.
+"""The CLI corpus: a fixed list of commands of the CLI over the golden inputs, every output hashed.
+The CLI is `forge` (`ac3cli` until stage N1A of the re-layout); the corpus does not name it.
 
-    cli_bytes.py --cli <ac3cli.exe> --repo <worktree> --work <scratch dir> --out <result.json>
+    cli_bytes.py --cli <forge.exe> --repo <worktree> --work <scratch dir> --out <result.json>
     cli_bytes.py --compare a.json b.json
 
 Each command names its output files; the result records the exit code, the size and SHA-256 of every

@@ -208,7 +208,7 @@ add_dependencies(iclforge_ac3_objects iclforge_version)
 target_include_directories(iclforge_ac3_objects PUBLIC
     "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/generated>")
 
-# tests/CMakeLists.txt compiles src/internal/avx2/avx2_probe.cpp a SECOND time, directly into ac3tests
+# tests/CMakeLists.txt compiles src/internal/avx2/avx2_probe.cpp a SECOND time, directly into iclforge-tests
 # (the same white-box arrangement src/signing/src has there).
 # The one target in the whole build that ever sees an AVX2 compiler flag: an AVX2 flag applied to the
 # codec's other files would compile them for a feature the deployment machine might not have, which

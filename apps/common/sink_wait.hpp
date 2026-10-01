@@ -11,11 +11,11 @@
 // away (PassthroughSink::running(), MonitorSink::running()). A loop that
 // retries on a refusal has to tell the two apart, and so does one waiting for
 // the queue to play out, since a stopped sink's counts never move again.
-// ac3cli's play, monitor, identify and live all wait both ways.
+// forge's play, monitor, identify and live all wait both ways.
 //
 // Templates over the sink, since PassthroughSink, MonitorSink and PcmOutput
-// share the shape but no base class. Compiled straight into ac3cli and
-// ac3tests, as stream_playback.hpp beside it is, so a test can hold both
+// share the shape but no base class. Compiled straight into forge and
+// iclforge-tests, as stream_playback.hpp beside it is, so a test can hold both
 // helpers against a sink that stops on cue: no command reaches its wait
 // without a render device, and no device can be pulled on a CI runner.
 

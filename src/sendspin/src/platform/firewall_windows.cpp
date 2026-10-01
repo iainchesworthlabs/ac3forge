@@ -162,7 +162,7 @@ class Bstr {
 
 [[nodiscard]] std::wstring_view protocol_word(Protocol protocol) { return protocol == Protocol::kTcp ? L"TCP" : L"UDP"; }
 
-// Distinguishes ac3hearth's rule from ac3hearth-testsink's: both link iclforge::sendspin and may
+// Distinguishes hearth's rule from hearth-testsink's: both link iclforge::sendspin and may
 // ask for "the same" named rule (mdns.cpp's is literally identical text from both), but a rule is
 // only useful if it is scoped to the executable that is actually going to hold the socket open,
 // and INetFwRules::Item() looks a rule up by name alone. Folding the executable's own name in

@@ -123,7 +123,7 @@ TEST_CASE("load_signing_key reads a key file", "[signing][key]") {
     // ICLFORGE_TEST_SCRATCH_DIR rather than fs::temp_directory_path(), for the
     // reason tests/cli/test_cli.cpp's own scratch_dir explains - the key
     // filenames below are fixed, so a machine-global directory is one two
-    // concurrently running ac3tests binaries would collide in. The leaf also
+    // concurrently running iclforge-tests binaries would collide in. The leaf also
     // carries this process's own PID, since ICLFORGE_TEST_SCRATCH_DIR's
     // build-tree rooting alone does not separate two such binaries pointed at
     // the same build tree.

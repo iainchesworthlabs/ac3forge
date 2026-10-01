@@ -504,7 +504,7 @@ void Sink::accept(std::unique_ptr<sendspin::transport::Connection> transport) {
     sendspin::PlayerConfig config;
     config.identity = store_->identity();
     config.name = options_.name;
-    config.device_info = {.product_name = "ac3hearth-testsink", .manufacturer = "AC3Forge", .software_version = {}, .mac_address = {}};
+    config.device_info = {.product_name = "hearth-testsink", .manufacturer = "ICL Forge", .software_version = {}, .mac_address = {}};
     config.supported_roles = {"player@v1"};
     std::vector<m::AudioFormat> formats;
     for (const m::Codec codec : options_.codecs) {

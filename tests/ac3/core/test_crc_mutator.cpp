@@ -71,7 +71,7 @@ TEST_CASE("restamp_syncframe_crcs makes a corrupted AC-3 frame pass the CRC chec
     REQUIRE_FALSE(rejected.has_value());
     CHECK(rejected.error() == iclforge::DecodeError::kBadCrc);
 
-    ac3fuzz::restamp_syncframe_crcs(frame);
+    iclforge_fuzz::restamp_syncframe_crcs(frame);
 
     // Same corrupted payload, only the two CRC words rewritten - so whatever
     // the decoder makes of the frame now, it is no longer refusing it at the
@@ -100,7 +100,7 @@ TEST_CASE("restamp_syncframe_crcs makes a corrupted E-AC-3 frame pass the CRC ch
     REQUIRE_FALSE(rejected.has_value());
     CHECK(rejected.error() == iclforge::DecodeError::kBadCrc);
 
-    ac3fuzz::restamp_syncframe_crcs(frame);
+    iclforge_fuzz::restamp_syncframe_crcs(frame);
 
     iclforge::Eac3Decoder after;
     const auto result = after.decode_access_unit(frame);
@@ -115,7 +115,7 @@ TEST_CASE("restamp_syncframe_crcs leaves bytes that are not a syncframe alone", 
     // not have CRC words stamped into arbitrary offsets of whatever follows.
     std::vector<std::byte> junk(64, std::byte{0xAB});
     const std::vector<std::byte> before = junk;
-    ac3fuzz::restamp_syncframe_crcs(junk);
+    iclforge_fuzz::restamp_syncframe_crcs(junk);
     CHECK(junk == before);
 
     // ... and a frame whose declared size runs past the buffer is left alone
@@ -123,6 +123,6 @@ TEST_CASE("restamp_syncframe_crcs leaves bytes that are not a syncframe alone", 
     std::vector<std::byte> truncated{std::byte{0x0B}, std::byte{0x77}, std::byte{0x00},
                                      std::byte{0x20}, std::byte{0x00}, std::byte{0x58}};
     const std::vector<std::byte> truncated_before = truncated;
-    ac3fuzz::restamp_syncframe_crcs(truncated);
+    iclforge_fuzz::restamp_syncframe_crcs(truncated);
     CHECK(truncated == truncated_before);
 }

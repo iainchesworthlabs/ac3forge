@@ -1,8 +1,8 @@
 import QtQuick
 import QtTest
 
-import Ac3ForgeCrucible
-import Ac3ForgeCrucibleTest
+import Crucible
+import CrucibleTest
 
 // The Settings page's two file dialogs - the signing key's Browse… and Save
 // diagnostics… - pressed from the page. Both are Qt Quick Dialogs'

@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 
-import Ac3Forge
+import ForgeGui
 
 // The family's flat bordered button, as the design system draws it
 // (docs/hearth/design/screenshots/components.png, "BUTTONS · REST, PRIMARY,

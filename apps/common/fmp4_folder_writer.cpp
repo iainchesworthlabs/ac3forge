@@ -73,7 +73,7 @@ std::string Fmp4FolderWriter::start(std::span<const std::byte> first_frame) {
     // One access unit carries everything the track needs: kind, sample rate,
     // rendered channel count, the dac3/dec3 payload, the channel map and the
     // TS 103 420 object marker. Exactly the re-scan
-    // EncoderController::writeOutput and ac3cli's own fmp4 already do before
+    // EncoderController::writeOutput and forge's own fmp4 already do before
     // wrapping frames they just encoded - done here on the first frame
     // instead, because a live session has no finished stream to scan.
     const auto scanned = iclforge::io::scan(first_frame);
@@ -88,7 +88,7 @@ std::string Fmp4FolderWriter::start(std::span<const std::byte> first_frame) {
         .samples_per_frame = iclforge::kSamplesPerFrame,
         .codec_config = iclforge::io::build_codec_config_box(*scanned)};
     // The Atmos/JOC signalling, identical to what
-    // EncoderController::writeOutput's own fMP4 branch and ac3cli's fmp4
+    // EncoderController::writeOutput's own fMP4 branch and forge's fmp4
     // build: CHANNELS="<N>/JOC" for HLS (mp4/hls.hpp), TS 103 420 §D.2's two
     // SupplementalProperty descriptors and TS 102 366 clause I.1.2.1's
     // AudioChannelConfiguration for DASH (mp4/dash.hpp), and §E.5's 'ceao'

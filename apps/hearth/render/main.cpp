@@ -1,4 +1,4 @@
-// ac3hearth-render: plays one item through Hearth's engine into a WAV file
+// hearth-render: plays one item through Hearth's engine into a WAV file
 // (planning/ac4.md, phase I2: "the gain scripts through the engine").
 //
 // The item goes through what the window plays it with - a Player with a
@@ -7,7 +7,7 @@
 // once and keeps every sample, and the WAV holds what that sink was given.
 // The settings are DecoderSettings' fields (decoder_settings.hpp), so
 // tools/checks/gain_ac4_decode.py --engine holds what the engine puts out to
-// ETSI TS 103 190-1's formulas as it holds ac3cli decode's.
+// ETSI TS 103 190-1's formulas as it holds forge decode's.
 //
 // Never installed or packaged.
 
@@ -47,7 +47,7 @@ using iclforge::hearth::OpenOutputFormat;
 using iclforge::hearth::OutputMode;
 using iclforge::hearth::PcmSink;
 
-constexpr std::string_view kUsage = R"(usage: ac3hearth-render INPUT OUTPUT.wav [setting=value]...
+constexpr std::string_view kUsage = R"(usage: hearth-render INPUT OUTPUT.wav [setting=value]...
 
 Plays INPUT, an .ac3, .ec3 or .ac4 elementary stream, through Hearth's engine:
 the player, session and stream decoder the window plays an item with. What
@@ -56,7 +56,7 @@ of the layout in the layout's order.
 
   layout=TEXT                 the speaker layout, as the Speakers page takes it
                               (2.0, 5.1, L,R,C,LFE,Ls,Rs ...); by default the
-                              item's own channels in the order ac3cli decode
+                              item's own channels in the order forge decode
                               writes them: 1.0, 2.0, L,R,C,Ls,Rs or
                               L,R,C,LFE,Ls,Rs
   downmix=loro|ltrt           the fold a two-speaker layout takes (loro)
@@ -283,7 +283,7 @@ bool apply(std::string_view key, std::string_view value, DecoderSettings& settin
     return false;
 }
 
-// The item's own channels in the order ac3cli decode writes them.
+// The item's own channels in the order forge decode writes them.
 std::optional<std::string> own_layout(std::uint16_t channels) {
     switch (channels) {
         case 1:
@@ -367,7 +367,7 @@ int main(int argc, char** argv) {
         const std::size_t equals = args[i].find('=');
         if (equals == std::string_view::npos ||
             !apply(args[i].substr(0, equals), args[i].substr(equals + 1), settings, layout_text)) {
-            std::cerr << "ac3hearth-render: \"" << args[i] << "\" is not a setting it takes\n\n"
+            std::cerr << "hearth-render: \"" << args[i] << "\" is not a setting it takes\n\n"
                       << kUsage;
             return 2;
         }
@@ -377,12 +377,12 @@ int main(int argc, char** argv) {
         auto session = iclforge::hearth::Session::open(input, loader, std::nullopt,
                                                   iclforge::hearth::presentation_choice(settings));
         if (!session) {
-            std::cerr << "ac3hearth-render: " << session.error() << "\n";
+            std::cerr << "hearth-render: " << session.error() << "\n";
             return 1;
         }
         layout_text = own_layout(session->facts().channels);
         if (!layout_text) {
-            std::cerr << "ac3hearth-render: the item has " << session->facts().channels
+            std::cerr << "hearth-render: the item has " << session->facts().channels
                       << " channels; name a layout= for them\n";
             return 2;
         }
@@ -390,7 +390,7 @@ int main(int argc, char** argv) {
     const std::optional<iclforge::render::OutputLayout> layout =
         iclforge::render::OutputLayout::parse(*layout_text);
     if (!layout) {
-        std::cerr << "ac3hearth-render: \"" << *layout_text << "\" is not a speaker layout\n";
+        std::cerr << "hearth-render: \"" << *layout_text << "\" is not a speaker layout\n";
         return 2;
     }
 
@@ -403,32 +403,32 @@ int main(int argc, char** argv) {
     for (std::uint64_t pumps = 0; player.active(); ++pumps) {
         const iclforge::hearth::PumpReport report = player.pump();
         if (!report.note.empty() && report.note != last_note) {
-            std::cerr << "ac3hearth-render: " << report.note << "\n";
+            std::cerr << "hearth-render: " << report.note << "\n";
             last_note = report.note;
         }
         // Every pump moves a block while an item plays; this many and more
         // means the player has stopped moving.
         if (pumps > (std::uint64_t{1} << 26U)) {
-            std::cerr << "ac3hearth-render: the player never finished\n";
+            std::cerr << "hearth-render: the player never finished\n";
             return 1;
         }
     }
     if (!player.last_error().empty()) {
-        std::cerr << "ac3hearth-render: " << player.last_error() << "\n";
+        std::cerr << "hearth-render: " << player.last_error() << "\n";
         status = 1;
     }
     if (player.history().size() != 1) {
-        std::cerr << "ac3hearth-render: the item did not play\n";
+        std::cerr << "hearth-render: the item did not play\n";
         return 1;
     }
     const iclforge::hearth::PlayedItem& played = player.history().front();
     if (played.frames != played.expected_frames) {
-        std::cerr << "ac3hearth-render: " << played.frames << " frames put out, "
+        std::cerr << "hearth-render: " << played.frames << " frames put out, "
                   << played.expected_frames << " coded\n";
         status = 1;
     }
     if (!write_wav(output, log->slots, log->sample_rate)) {
-        std::cerr << "ac3hearth-render: could not write " << output << "\n";
+        std::cerr << "hearth-render: could not write " << output << "\n";
         return 1;
     }
     std::cout << output << ": " << played.frames << " frames, " << log->slots.size()

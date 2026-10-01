@@ -193,8 +193,8 @@ extern "C" void app_main() {
     }
 
     const std::span<const std::byte> stream{
-        reinterpret_cast<const std::byte*>(ac3probe::kAc3Stream.data()),
-        ac3probe::kAc3Stream.size()};
+        reinterpret_cast<const std::byte*>(iclforge_probe::kAc3Stream.data()),
+        iclforge_probe::kAc3Stream.size()};
     const auto frames = iclforge::split_frames(stream);
     if (!frames) {
         std::printf("error: the fixture did not split into frames (%d)\n",

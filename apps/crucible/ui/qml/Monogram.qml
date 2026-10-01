@@ -1,6 +1,6 @@
 import QtQuick
 
-import Ac3ForgeCrucible
+import Crucible
 
 // The application's icon stand-in: the first letters of its name in a
 // square. AppIcon shows it until the platform's own icon has loaded, and

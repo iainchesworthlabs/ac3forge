@@ -133,7 +133,7 @@ class QrTestCase(unittest.TestCase):
         self.addCleanup(stack.close)
         self.addCleanup(self._tmp.cleanup)
         stack.enter_context(mock.patch.object(qr, "BUILD", self.build))
-        stack.enter_context(mock.patch.object(qr, "CLI", Path("ac3cli")))
+        stack.enter_context(mock.patch.object(qr, "CLI", Path("forge")))
         stack.enter_context(mock.patch.object(qr, "np", NpShim))
         stack.enter_context(contextlib.redirect_stdout(self.out))
         self.stack = stack
@@ -574,7 +574,7 @@ class ScoringPlumbing(QrTestCase):
     def test_own_decoder_paths(self):
         self.assertEqual(qr.decode_scores_ours("o", "c.ec3", self.wav, perceptual=True),
                          (20.0, 3.0, -1.0, 4.1))
-        self.assertEqual(self.fake.commands[-1], ["ac3cli", "decode", "c.ec3", self.wav])
+        self.assertEqual(self.fake.commands[-1], ["forge", "decode", "c.ec3", self.wav])
         self.assertEqual(qr.decode_scores_ours_fixed("o", "c.ec3", self.wav),
                          (20.0, 3.0, -1.0, None))
         self.assertEqual(qr.score_fixed("o", "d")[0], 20.0)

@@ -17,7 +17,7 @@
 //
 // httplib stays out of this header, the same boundary sink_firmware.hpp
 // already keeps, so a caller needs nothing more than this file -
-// ac3sendspin_httplib is linked PRIVATE on ac3hearth_engine.
+// ac3sendspin_httplib is linked PRIVATE on hearth_engine.
 
 namespace iclforge::hearth {
 

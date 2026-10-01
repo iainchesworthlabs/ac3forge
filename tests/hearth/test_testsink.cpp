@@ -33,7 +33,7 @@
 #include "iclforge/sendspin/websocket.hpp"
 #include "sink.hpp"
 
-// ac3hearth-testsink in process, over a loopback WebSocket with mDNS off: a server session pairs
+// hearth-testsink in process, over a loopback WebSocket with mDNS off: a server session pairs
 // with it by the pairing token the sink prints, plays a stream in PCM, FLAC or Opus, and finds in
 // the sink's WAV file exactly what a local decode of the same units gives, with a play time
 // logged for every unit; then a sink restarted on the same state directory is reached under the

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Crucible
+GenericName=Spatial audio mixer
+Comment=Capture each application separately and place it as an object in a live Dolby Atmos scene
+Exec=crucible
+Icon=crucible
+Terminal=false
+Categories=AudioVideo;Audio;Mixer;
+Keywords=atmos;surround;spatial;audio;eac3;dolby;
+StartupNotify=true

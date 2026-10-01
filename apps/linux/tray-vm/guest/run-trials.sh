@@ -1,5 +1,5 @@
 #!/bin/bash
-# Launches a built ac3crucible N times in the guest's own desktop session and
+# Launches a built crucible N times in the guest's own desktop session and
 # counts how many survived, which is the only measurement that means anything
 # for a fault that appears on nine or ten launches out of ten.
 #
@@ -51,8 +51,8 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 [[ -n "$builddir" ]] || { echo "--build <dir> is required" >&2; exit 2; }
-binary=$(cat "$builddir/.binary" 2>/dev/null || find "$builddir" -name ac3crucible -type f -perm -u+x | head -1)
-[[ -x "$binary" ]] || { echo "no ac3crucible under $builddir" >&2; exit 1; }
+binary=$(cat "$builddir/.binary" 2>/dev/null || find "$builddir" -name crucible -type f -perm -u+x | head -1)
+[[ -x "$binary" ]] || { echo "no crucible under $builddir" >&2; exit 1; }
 
 # --- the precondition -------------------------------------------------------
 host=$(busctl --user list --no-pager --no-legend 2>/dev/null | grep -i statusnotifier || true)
@@ -111,7 +111,7 @@ for i in $(seq 1 "$runs"); do
         if [[ "$rc" -gt 128 ]] 2>/dev/null; then verdict="$verdict (SIG$(kill -l $((rc - 128)) 2>/dev/null))"; fi
     fi
     echo "run $i: $verdict  ($log)"
-    pkill -x ac3crucible 2>/dev/null
+    pkill -x crucible 2>/dev/null
     sleep 1
 done
 
@@ -119,5 +119,5 @@ echo
 echo "=== $survived of $runs survived, $died died ==="
 if [[ "$died" -gt 0 ]]; then
     echo "cores:"
-    coredumpctl list --no-pager ac3crucible 2>/dev/null | tail -5 || echo "  (systemd-coredump has none)"
+    coredumpctl list --no-pager crucible 2>/dev/null | tail -5 || echo "  (systemd-coredump has none)"
 fi

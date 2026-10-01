@@ -11,9 +11,9 @@
 #include "ac4_objects_core.hpp"
 #include "iclforge/ac4enc/encoder.hpp"
 
-// The AC-4 page's choices, Qt-free so that ac3tests can hold them to the two
+// The AC-4 page's choices, Qt-free so that iclforge-tests can hold them to the two
 // things they must agree on: the iclforge::ac4::EncoderConfig the page encodes with and
-// the `ac3cli ac4-encode` tokens it echoes, each spelled as ac3cli's parser
+// the `forge ac4-encode` tokens it echoes, each spelled as forge's parser
 // reads it (apps/cli/support.cpp). A choice at the command's own default
 // echoes nothing, so a plain encode's command line stays plain.
 //
@@ -25,10 +25,10 @@
 // as `ac4-encode` takes a WAV file; in object mode, the objects of its
 // sources as `atmos-encode ... codec=ac4` takes them (the last section).
 
-namespace ac3gui {
+namespace forge_gui {
 
 struct Ac4Choice {
-    std::string_view token;  // what follows the key= in ac3cli's grammar
+    std::string_view token;  // what follows the key= in forge's grammar
     std::string_view label;  // what the page shows
 };
 
@@ -130,7 +130,7 @@ struct Ac4EncodeSettings {
 [[nodiscard]] bool ac4_downmix_named(const Ac4EncodeSettings& settings);
 [[nodiscard]] bool ac4_dialogue_named(const Ac4EncodeSettings& settings);
 
-// The trailing tokens of `ac3cli ac4-encode <in> <out> <kbps>` for these
+// The trailing tokens of `forge ac4-encode <in> <out> <kbps>` for these
 // settings, the output an MP4 file where `mp4`.
 [[nodiscard]] std::vector<std::string> ac4_cli_tokens(const Ac4EncodeSettings& settings, bool mp4);
 
@@ -156,7 +156,7 @@ struct Ac4EncodeSettings {
 
 // --- Object mode ---------------------------------------------------------------
 //
-// Objects under the AC-4 codec are written by `ac3cli atmos-encode ... codec=ac4`
+// Objects under the AC-4 codec are written by `forge atmos-encode ... codec=ac4`
 // (apps/common/ac4_objects_core.hpp), which takes fewer options than the channels'
 // ac4-encode: an object stream is written at frame_rate_index 13 in a constant
 // rate, and the loudness values, DRC, the stereo downmix and dialogue enhancement
@@ -169,7 +169,7 @@ struct Ac4EncodeSettings {
 // a whole number from 1 to 31, nothing where it is measured, fractional or 0.
 [[nodiscard]] std::optional<int> ac4_object_dialnorm(const Ac4EncodeSettings& settings);
 
-// The trailing tokens of `ac3cli atmos-encode <in> <out> <kbps> ... codec=ac4`
+// The trailing tokens of `forge atmos-encode <in> <out> <kbps> ... codec=ac4`
 // for these settings, without the codec=ac4 itself: coding=direct, a dialnorm
 // off 31, and crc=off on a raw stream. Empty at every default.
 [[nodiscard]] std::vector<std::string> ac4_object_cli_tokens(const Ac4EncodeSettings& settings,
@@ -186,4 +186,4 @@ struct Ac4EncodeSettings {
                                                              std::uint32_t sample_rate_hz,
                                                              int bitrate_kbps);
 
-}  // namespace ac3gui
+}  // namespace forge_gui

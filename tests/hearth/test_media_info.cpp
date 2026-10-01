@@ -223,7 +223,7 @@ TEST_CASE("media info: an AC-3 stream's bitstream information and probe", "[hear
     // places.
     CHECK(bits["fold_levels"]["loro_centre_db"].as_double() == Catch::Approx(-4.5).margin(0.05));
     CHECK(bits["fold_levels"]["lfe_db"].as_double() == Catch::Approx(10.0));
-    // The probe object is the one ac3cli probe json=1 writes.
+    // The probe object is the one forge probe json=1 writes.
     const auto probe = root["probe"];
     CHECK(probe["schema"].equals("iclforge.probe/1"));
     CHECK(probe["stream"]["codec"].equals("ac3"));
@@ -536,7 +536,7 @@ TEST_CASE("media info: an AC-4 stream's table of contents", "[hearth][media-info
     CHECK(root["probe"]["stream"]["codec"].equals("ac4"));
     CHECK(root["probe"]["stream"]["ac4"]["bitstream_version"].as_int() == 2);
     CHECK(root["probe"]["stream"]["ac4"]["n_presentations"].as_int() == 1);
-    // The decoder's reading, as ac3cli probe writes it: the presentation and
+    // The decoder's reading, as forge probe writes it: the presentation and
     // the metadata its frames send.
     CHECK(info.ac4->presentations.size() == 1);
     CHECK(root["probe"]["stream"]["ac4"]["presentations_v1"].size() == 1);

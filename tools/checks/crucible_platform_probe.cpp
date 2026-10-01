@@ -22,7 +22,7 @@
 //       -Isrc/signing/include -Ibuild-pw/src/signing/generated
 //       -Iapps/crucible/engine $(pkg-config --cflags libpipewire-0.3)
 //       -DICLFORGE_AC3_STATIC_DEFINE -DICLFORGE_SIGNING_STATIC_DEFINE
-//       build-pw/apps/crucible/libac3crucible_engine.a
+//       build-pw/apps/crucible/libcrucible_engine.a
 //       build-pw/src/audio/libac3audio.a build-pw/src/forge/libiclforge_ac3_static.a
 //       build-pw/src/signing/libac3signing_static.a
 //       $(pkg-config --libs libpipewire-0.3) $(pkg-config --libs xcb) -lpthread

@@ -15,7 +15,7 @@
 // lives in the distributed library instead - see that header's own comment
 // for why the split falls where it does.
 //
-// The seam both front ends share: `ac3cli live mode=atmos positions=osc:
+// The seam both front ends share: `forge live mode=atmos positions=osc:
 // <port>` (apps/cli/commands/live_audio.cpp) and the GUI's live room
 // (apps/gui/encoder_controller.cpp) each construct one of these and call
 // drain_into() once per encode frame, exactly the way the GUI's live room

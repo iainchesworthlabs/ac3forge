@@ -44,7 +44,7 @@
 #include "iclforge/ac4dec/decoder.hpp"
 #include "stream_playback.hpp"
 
-namespace ac3cli::commands {
+namespace forge_cli::commands {
 
 using iclforge::apps::ac4_bed_acmod;
 using iclforge::apps::ac4_meter_rank;
@@ -97,7 +97,7 @@ std::vector<float> delay_pcm(std::span<const float> pcm, std::size_t delay_sampl
 // every other decode applies would be wrong for them. Dual mono is never
 // folded (OutputStage refuses it - 1+1 is two programmes, not a soundfield),
 // so it keeps the coded path whatever the target says.
-bool folding(const ac3cli::Options& meta, iclforge::Acmod acmod) {
+bool folding(const forge_cli::Options& meta, iclforge::Acmod acmod) {
     return meta.output.target != iclforge::DownmixTarget::kAsCoded &&
            acmod != iclforge::Acmod::kDualMono;
 }
@@ -117,7 +117,7 @@ std::string_view fold_name(iclforge::DownmixTarget target) {
 // The two named modes OVERRIDE those switches inside the decoder
 // (resolve_operating_mode), so a report reading only meta.drc_scale would say
 // "not applied" about a line-mode decode that applied every word in full.
-std::string dynrng_note(const ac3cli::Options& meta) {
+std::string dynrng_note(const forge_cli::Options& meta) {
     switch (meta.output.mode) {
         case iclforge::OperatingMode::kLine:
             return ", applied in full (drcmode=line)";
@@ -130,7 +130,7 @@ std::string dynrng_note(const ac3cli::Options& meta) {
                                  : ", not applied";
 }
 
-std::string compr_note(const ac3cli::Options& meta) {
+std::string compr_note(const forge_cli::Options& meta) {
     switch (meta.output.mode) {
         case iclforge::OperatingMode::kRf:
             // RF mode's 11 dB go with each word (iclforge::meta::kRfModeGainDb), which is
@@ -146,7 +146,7 @@ std::string compr_note(const ac3cli::Options& meta) {
 }
 
 // §5.4.2.8. Both named modes normalise, and so does apply_dialnorm on its own.
-std::string dialnorm_note(const ac3cli::Options& meta, int dialnorm) {
+std::string dialnorm_note(const forge_cli::Options& meta, int dialnorm) {
     if (!meta.output.apply_dialnorm && meta.output.mode == iclforge::OperatingMode::kCustom) {
         return {};
     }
@@ -200,7 +200,7 @@ int report_decoded_objects(FILE* status,
 // indentation, which this command's report has no dialnorm line to anchor to.
 void print_drc_summary(FILE* status, double dynrng_min_db, double dynrng_max_db,
                        double compr_min_db, double compr_max_db, std::size_t compr_frames,
-                       const ac3cli::Options& meta) {
+                       const forge_cli::Options& meta) {
     status_println(status, "  dynrng {:+.2f} .. {:+.2f} dB{}", dynrng_min_db, dynrng_max_db,
                    dynrng_note(meta));
     if (compr_frames > 0) {
@@ -392,7 +392,7 @@ std::string ac4_decoding(iclforge::ac4::DecodingMode decoding) {
 }
 
 // AC-4 objects into an ADM BWF master (planning/ac4.md, I5), reusing decode_adm.hpp's writer
-// (ac3cli::write_adm_atmos_master) rather than a second one: iclforge::ac4::Speaker and
+// (forge_cli::write_adm_atmos_master) rather than a second one: iclforge::ac4::Speaker and
 // iclforge::oba::BedLabel name the same seventeen loudspeaker positions in the same order (both TS
 // 103 190-2 Annex F.3 and this project's own bed labels descend from the same room layout), so a
 // bed object's speaker carries over by position.
@@ -471,7 +471,7 @@ iclforge::oba::DynamicObject to_oba_dynamic_object(const iclforge::ac4::ObjectPr
 // with (apps/common/ac4_object_render.hpp); the object options, which write
 // E-AC-3's objects out, are reported rather than applied.
 int run_decode_ac4(std::span<const std::byte> stream, std::string_view in_path, std::string_view out_path,
-                   const ac3cli::Options& meta, std::string_view objects_dir, std::string_view adm_out) {
+                   const forge_cli::Options& meta, std::string_view objects_dir, std::string_view adm_out) {
     const auto status = status_stream(out_path);
     if (meta.output.mode != iclforge::OperatingMode::kCustom) {
         fmt::println(
@@ -488,8 +488,8 @@ int run_decode_ac4(std::span<const std::byte> stream, std::string_view in_path, 
             meta.ac4_drc_mode);
         return kExitUsage;
     }
-    if (!adm_out.empty() && !ac3cli::adm_capability().available) {
-        fmt::println(stderr, "error: {}", ac3cli::adm_capability().reason);
+    if (!adm_out.empty() && !forge_cli::adm_capability().available) {
+        fmt::println(stderr, "error: {}", forge_cli::adm_capability().reason);
         return kExitInput;
     }
     // Options AC-3's and E-AC-3's decode reads: said, not silently dropped.
@@ -552,7 +552,7 @@ int run_decode_ac4(std::span<const std::byte> stream, std::string_view in_path, 
     // update in memory (an ADM master's own <axml> chunk needs every object's final duration known
     // first) and writes it once, at the end, through decode_adm.hpp's writer.
     std::vector<PlanarWavSink> object_sinks;
-    ac3cli::AdmMasterInput adm_input;
+    forge_cli::AdmMasterInput adm_input;
     bool adm_input_ready = false;
     std::uint64_t adm_samples_emitted = 0;
     const auto append_ac4_objects = [&](const iclforge::ac4::DecodedFrame& pcm) -> bool {
@@ -734,7 +734,7 @@ int run_decode_ac4(std::span<const std::byte> stream, std::string_view in_path, 
             fmt::println(stderr, "warning: {} given but {} carries no object audio", adm_out,
                          in_path);
         } else {
-            const auto written_adm = ac3cli::write_adm_atmos_master(adm_out, adm_input);
+            const auto written_adm = forge_cli::write_adm_atmos_master(adm_out, adm_input);
             if (!written_adm.has_value()) {
                 fmt::println(stderr, "error: {}", written_adm.error());
                 return kExitOutput;
@@ -783,9 +783,9 @@ int run_decode_ac4(std::span<const std::byte> stream, std::string_view in_path, 
 }
 
 int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path,
-                     const ac3cli::Options& meta, std::string_view objects_dir, std::string_view adm_out) {
-    if (!adm_out.empty() && !ac3cli::adm_capability().available) {
-        fmt::println(stderr, "error: {}", ac3cli::adm_capability().reason);
+                     const forge_cli::Options& meta, std::string_view objects_dir, std::string_view adm_out) {
+    if (!adm_out.empty() && !forge_cli::adm_capability().available) {
+        fmt::println(stderr, "error: {}", forge_cli::adm_capability().reason);
         return kExitInput;
     }
     // §E2.3.1.2: one programme is decoded, never a fold of several. A stream
@@ -932,7 +932,7 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
     // channel below rather than here per unit - this lambda has no reason to know the decoder's own
     // joc_domain.
     const bool have_adm_output = !adm_out.empty();
-    ac3cli::AdmMasterInput adm_input;
+    forge_cli::AdmMasterInput adm_input;
     bool adm_input_ready = false;
     bool adm_bed_warned = false;
     std::uint64_t adm_samples_emitted = 0;
@@ -1182,7 +1182,7 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
                     delay_pcm(lfe, static_cast<std::size_t>(
                                        iclforge::oba::joc::reconstruction_delay(meta.joc_domain)));
             }
-            const auto written_adm = ac3cli::write_adm_atmos_master(adm_out, adm_input);
+            const auto written_adm = forge_cli::write_adm_atmos_master(adm_out, adm_input);
             if (!written_adm.has_value()) {
                 fmt::println(stderr, "error: {}", written_adm.error());
                 return kExitOutput;
@@ -1248,7 +1248,7 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
 }  // namespace
 
 int run_decode(std::string_view in_path, std::string_view out_path,
-               const ac3cli::Options& requested, std::string_view objects_dir,
+               const forge_cli::Options& requested, std::string_view objects_dir,
                std::string_view adm_out) {
     const auto stream = read_elementary_stream(in_path);
     if (stream.empty()) {
@@ -1490,4 +1490,4 @@ int run_decode(std::string_view in_path, std::string_view out_path,
     return 0;
 }
 
-}  // namespace ac3cli::commands
+}  // namespace forge_cli::commands

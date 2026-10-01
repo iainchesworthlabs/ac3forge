@@ -195,7 +195,7 @@ std::string render_report(const ReportFacts& facts, const EngineStatus& engine, 
         out += '\n';
     };
 
-    line("AC3Forge Crucible diagnostics");
+    line("Crucible diagnostics");
     row("written", facts.written_at);
     row("log started", facts.log_started_at);
 

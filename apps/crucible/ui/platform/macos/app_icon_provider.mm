@@ -110,11 +110,11 @@ namespace iclforge::crucible::ui {
 
 namespace {
 
-// Off by default. QT_LOGGING_RULES="ac3crucible.icons.debug=true" prints the
+// Off by default. QT_LOGGING_RULES="crucible.icons.debug=true" prints the
 // rung each application resolved on, which is what a first Mac run should
 // quote. The same category name the Linux provider uses, so one rule turns on
 // whichever platform is in front of you.
-Q_LOGGING_CATEGORY(lcIcons, "ac3crucible.icons", QtWarningMsg)
+Q_LOGGING_CATEGORY(lcIcons, "crucible.icons", QtWarningMsg)
 
 // How long the reader thread waits for the GUI thread's answer. A GUI thread
 // that has not served an event in this long is shutting down or stuck, and a

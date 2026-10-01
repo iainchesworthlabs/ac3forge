@@ -5,7 +5,7 @@
 #include "iclforge/ac3/core/eac3_tables.hpp"
 #include "ac4_channels.hpp"
 
-namespace ac3gui {
+namespace forge_gui {
 
 std::string ac4_speaker_names(std::span<const iclforge::ac4::Speaker> speakers) {
     std::string out;
@@ -55,4 +55,4 @@ std::vector<Ac4PresentationRow> ac4_presentation_rows(
     return {};
 }
 
-}  // namespace ac3gui
+}  // namespace forge_gui

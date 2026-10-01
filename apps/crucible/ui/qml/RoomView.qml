@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 
-import Ac3ForgeCrucible
+import Crucible
 
 // One of the two room views. `elevation` false: the plan (x across, y
 // down, front at the top). `elevation` true: the side view (y across, z

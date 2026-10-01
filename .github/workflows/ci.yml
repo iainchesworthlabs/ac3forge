@@ -81,7 +81,7 @@
 # (perceptual SNR) from the start; neither was ever wired into any CI leg
 # until now. tools/checks/verify_gold_reference.sh
 # encodes a fixed checked-in 5.1 WAV (tests/golden/audio/reference_51.wav),
-# strict-decodes it with FFmpeg, decodes it with ac3cli's own decoder, and
+# strict-decodes it with FFmpeg, decodes it with forge's own decoder, and
 # asserts they agree via tools/checks/compare_wav.py's delay-compensated SNR (>=
 # 30 dB gate). Runs on every leg except linux-llvm-asan-ubsan (diagnostic-
 # only, same reasoning as its `packageable` exclusion). Real numbers from the
@@ -126,7 +126,7 @@
 # sides of the split, differing only by CPU architecture. See cross-platform reproducibility notes below for the fuller note; the underlying mechanism itself is still
 # open.
 #
-# Qt Quick Test harness: apps/gui/tests/ adds ac3gui_qml_tests_*, one real
+# Qt Quick Test harness: apps/gui/tests/ adds forge_gui_qml_tests_*, one real
 # ctest entry per tst_*.qml suite (label "gui") that Quick-Test-drives the
 # actual EncoderController singleton and Main.qml shell, registered only
 # when ICLFORGE_BUILD_GUI is ON - so it rides the existing GUI axis rather
@@ -592,12 +592,12 @@ jobs:
   # Persists this run's encoder throughput numbers (docs/performance-trend.md)
   # so they outlive the CI log that produced them - the trend-tracking half of
   # the performance suite, alongside tests/performance/test_performance.cpp's
-  # ac3perf (a hard, absolute real-time gate that runs on every push/PR as
+  # iclforge-perf (a hard, absolute real-time gate that runs on every push/PR as
   # part of build-and-test's own ctest, not here). This job answers a softer
   # question on top of that gate: is throughput drifting slower over time even
-  # while ac3perf keeps passing. It records two granularities per run:
-  # ac3bench's whole-frame ms/frame (gating at the +100% tier, below) and
-  # ac3kernelbench's per-kernel ns/call (never gating - see
+  # while iclforge-perf keeps passing. It records two granularities per run:
+  # iclforge-bench's whole-frame ms/frame (gating at the +100% tier, below) and
+  # iclforge-kernelbench's per-kernel ns/call (never gating - see
   # tools/ci/append_kernel_history.py for why), so a whole-frame drift can be
   # attributed to the kernel that caused it without re-running a profiler.
   #
@@ -655,7 +655,7 @@ jobs:
           done
 
       # persist-credentials: false - this checkout is only ever read from
-      # (ac3bench's build, `git show` on this commit); the "Prepare
+      # (iclforge-bench's build, `git show` on this commit); the "Prepare
       # quality-history checkout" step below pushes through its own
       # explicitly-scoped remote instead.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -672,8 +672,8 @@ jobs:
       - name: Configure
         run: cmake --preset config-linux-gcc
 
-      - name: Build ac3bench, ac3kernelbench and ac3membench
-        run: cmake --build --preset build-linux-gcc --target ac3bench ac3kernelbench ac3membench -- -k 0
+      - name: Build iclforge-bench, iclforge-kernelbench and iclforge-membench
+        run: cmake --build --preset build-linux-gcc --target iclforge-bench iclforge-kernelbench iclforge-membench -- -k 0
 
       # Three repetitions, not one. append_performance_history.py reduces them
       # to a single record per workload by taking the FASTEST run and recording
@@ -684,17 +684,17 @@ jobs:
       # which is min-of-3 interleaved. The trailing-mean regression tiers were
       # being fed the noisier of the two numbers.
       #
-      # Cheap: ac3bench is 200 frames per workload and takes seconds, against a
+      # Cheap: iclforge-bench is 200 frames per workload and takes seconds, against a
       # job that has already paid for a container, a GCC install, a vcpkg setup
       # and a full build.
-      - name: Run ac3bench (repeated)
+      - name: Run iclforge-bench (repeated)
         env:
           BENCH_RUNS: "3"
         run: |
           set -euo pipefail
           mkdir -p results/performance-linux-gcc
           for i in $(seq 1 "$BENCH_RUNS"); do
-            build/config-linux-gcc/bin/ac3bench \
+            build/config-linux-gcc/bin/iclforge-bench \
               --json-out "results/performance-linux-gcc/bench$i.json"
           done
 
@@ -709,24 +709,24 @@ jobs:
           LEG_DIR: results/performance-linux-gcc
         run: bash .github/scripts/capture-bench-environment.sh
 
-      # A separate results tree from ac3bench's on purpose:
+      # A separate results tree from iclforge-bench's on purpose:
       # append_performance_history.py globs every *.json under its legs and
-      # requires ac3bench's schema, so the two producers' outputs must never
+      # requires iclforge-bench's schema, so the two producers' outputs must never
       # share a directory - see append_kernel_history.py's load_leg_results.
-      - name: Run ac3kernelbench
+      - name: Run iclforge-kernelbench
         run: |
           set -euo pipefail
           mkdir -p kernel-results/kernels-linux-gcc
-          build/config-linux-gcc/bin/ac3kernelbench --json-out kernel-results/kernels-linux-gcc/kernels.json
+          build/config-linux-gcc/bin/iclforge-kernelbench --json-out kernel-results/kernels-linux-gcc/kernels.json
 
       # Third results tree, same reasoning as the kernel one above: each
       # append script globs every *.json under its legs and requires its own
       # producer's schema.
-      - name: Run ac3membench
+      - name: Run iclforge-membench
         run: |
           set -euo pipefail
           mkdir -p memory-results/memory-linux-gcc
-          build/config-linux-gcc/bin/ac3membench --json-out memory-results/memory-linux-gcc/membench.json
+          build/config-linux-gcc/bin/iclforge-membench --json-out memory-results/memory-linux-gcc/membench.json
 
       # The arm64 leg's measurements, produced by the job below on hardware this
       # one cannot execute. Unpacked as a SIBLING of this job's own
@@ -812,7 +812,7 @@ jobs:
 
       # Gates like the whole-frame series (its own hard_regression output,
       # keyed off by its own fail step below), unlike the never-gating
-      # kernel series - ac3membench's counts are near-deterministic for a
+      # kernel series - iclforge-membench's counts are near-deterministic for a
       # fixed workload, so its hard tier carries none of the runner-noise
       # risk that keeps the kernel series advisory.
       - name: Append memory-trend history
@@ -918,7 +918,7 @@ jobs:
           echo "::error::A workload's heap churn at least doubled against its trailing average (or it leaked past the absolute threshold) - see the job log above and docs/performance-trend.md's memory tables for the recorded numbers."
           exit 1
 
-  # A SECOND ac3bench series, on arm64 (PR-time performance comparison).
+  # A SECOND iclforge-bench series, on arm64 (PR-time performance comparison).
   #
   # ms/frame was measured on exactly one platform - x86-64, GCC, one hosted
   # image - so the trend could only ever answer "did this get slower on that
@@ -990,19 +990,19 @@ jobs:
       - name: Configure
         run: cmake --preset config-linux-gcc-arm64
 
-      # ac3bench only. The x86 job also runs ac3kernelbench and ac3membench;
+      # iclforge-bench only. The x86 job also runs iclforge-kernelbench and iclforge-membench;
       # neither is added here yet, because a kernel series and a heap series
       # each want their own thresholds calibrated against this platform and
       # that is a separate exercise from establishing the whole-frame one.
-      - name: Build ac3bench
-        run: cmake --build --preset build-linux-gcc-arm64 --target ac3bench -- -k 0
+      - name: Build iclforge-bench
+        run: cmake --build --preset build-linux-gcc-arm64 --target iclforge-bench -- -k 0
 
-      - name: Run ac3bench (repeated)
+      - name: Run iclforge-bench (repeated)
         run: |
           set -euo pipefail
           mkdir -p "$LEG_DIR"
           for i in $(seq 1 "$BENCH_RUNS"); do
-            build/config-linux-gcc-arm64/bin/ac3bench --json-out "$LEG_DIR/bench$i.json"
+            build/config-linux-gcc-arm64/bin/iclforge-bench --json-out "$LEG_DIR/bench$i.json"
           done
 
       - name: Capture the measurement environment

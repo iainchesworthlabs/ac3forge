@@ -10,7 +10,7 @@
 // httplib::Client against a real bound server, the same reason
 // test_sink_firmware_board.cpp is compiled on its own with cpp-httplib
 // configured as src/sendspin configures it (tests/CMakeLists.txt's own
-// comment on ac3tests_sink_firmware_board says why).
+// comment on iclforge_tests_sink_firmware_board says why).
 
 using iclforge::hearth::DiagnosticsHttpServer;
 

@@ -1,6 +1,6 @@
 import QtQuick
 
-import Ac3Forge
+import ForgeGui
 
 // A small horizontal group of mutually exclusive text options - the
 // ".seg"/".seg-opt" pattern the handoff uses throughout (Basic/Advanced,

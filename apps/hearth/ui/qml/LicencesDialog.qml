@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-import Ac3ForgeHearth
+import Hearth
 
 // The third-party notices this build carries, as the text of the NOTICES.txt
 // the package installs: HearthController.licenceNotices reads the copy

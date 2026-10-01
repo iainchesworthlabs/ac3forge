@@ -16,13 +16,13 @@
 // PassthroughSink's playback position, pause and flush against a real
 // receiver (src/audio/src/backend/*/passthrough.cpp).
 //
-// Hidden: the tag starts with a dot, so `ac3tests` does not run this. It
+// Hidden: the tag starts with a dot, so `iclforge-tests` does not run this. It
 // needs an output that takes AC-3 over IEC 61937 - an HDMI or S/PDIF link to
 // a receiver - and bitstreams about two seconds of AC-3 silence to the first
 // one the enumeration says will take it. The portable arithmetic behind the
 // position is checked without hardware in test_playback_counter.cpp.
 //
-// Run it deliberately:  ac3tests "[passthrough-live]"
+// Run it deliberately:  iclforge-tests "[passthrough-live]"
 //   Windows: WASAPI exclusive mode. Linux: ALSA or PipeWire, whichever the
 //   build selected. macOS: Core Audio. Android: AAudio. The receiver's display
 //   shows Dolby Digital while it runs; after the pause it may take a moment to
@@ -159,7 +159,7 @@ TEST_CASE("passthrough live: the position follows the receiver's link, and pause
 // for one: run it deliberately, with a receiver bitstreaming, and follow the
 // two prompts.
 //
-//   ac3tests "[passthrough-unplug]"
+//   iclforge-tests "[passthrough-unplug]"
 //
 // First, within 30 seconds, pull the HDMI or S/PDIF cable, or switch the
 // receiver off or to another input (whichever makes the machine lose the

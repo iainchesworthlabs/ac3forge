@@ -24,7 +24,7 @@
 // RecordingSink::Container::kFmp4) and the GUI's own live session
 // (EncoderController's LiveOutputWriters). fMP4 is the one container all
 // three reach for the same code here rather than each growing its own copy -
-// which a fourth, near-identical copy in ac3cli (apps/cli/support.hpp's
+// which a fourth, near-identical copy in forge (apps/cli/support.hpp's
 // Fmp4SessionWriter) used to be, before moving this class to apps/common
 // gave it the same shared home RecordingSink already has.
 //
@@ -36,7 +36,7 @@ class Fmp4FolderWriter {
     // A track its caller describes, for a codec this class does not scan:
     // AC-4, whose sample entry, time scale, brands and manifest values come
     // from its table of contents (ETSI TS 103 190-2 Annexes E, G and H), which
-    // ac3cli reads. Only the iclforge::mp4:: types are needed to carry them here.
+    // forge reads. Only the iclforge::mp4:: types are needed to carry them here.
     struct Track {
         iclforge::mp4::AudioTrack audio{};
         std::vector<std::string> brands{};
@@ -54,7 +54,7 @@ class Fmp4FolderWriter {
     // playlist and DASH MPD list - a rolling live window
     // (iclforge::mp4::FragmentOptions::playlist_window_segments). 0, the default,
     // lists every segment, which is what every existing caller except
-    // ac3cli's own `fmp4-window=` token wants.
+    // forge's own `fmp4-window=` token wants.
     //
     // `described`: the track, where the caller describes it; the first frame
     // is then not scanned.

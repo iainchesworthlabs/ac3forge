@@ -1,7 +1,7 @@
 import QtQuick
 import QtTest
 
-import Ac3Forge
+import ForgeGui
 
 // The palette machinery: selectable palettes with hand-tuned light AND dark
 // ramps (dark used to be a mechanical HSL inversion of light, which is why

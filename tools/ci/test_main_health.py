@@ -85,7 +85,7 @@ class Flakes(unittest.TestCase):
                 "File has unexpected size (817310 != 817362).",
             ),
             "launchpad-503": (
-                "Linux AppImage (ac3gui)",
+                "Linux AppImage (forge-gui)",
                 "lazr.restfulclient.errors.ServerError: HTTP Error 503: Service Unavailable",
             ),
             "android-sdk-zip": ("Android (Shield)", "Error on ZipFile unknown archive."),

@@ -17,7 +17,7 @@
 #include "iclforge/ac3/core/tables.hpp"
 #include "iclforge/ac3/decoder/decoder.hpp"
 
-// ac3cli's 'atmos-adm' command (ADM BWF reader phase 3 of 3 - 's "ADM BWF reader
+// forge's 'atmos-adm' command (ADM BWF reader phase 3 of 3 - 's "ADM BWF reader
 // feeding the JOC encoder" entry; apps/cli/main.cpp's run_atmos_adm). Real, subprocess-level
 // integration tests: the same "run the actual built binary, inspect what it wrote" shape
 // tests/cli/test_cli.cpp's own atmos-encode test uses, and for the same reason - main.cpp compiles
@@ -26,23 +26,23 @@
 // comment).
 //
 // A separate file rather than folded into test_cli.cpp: this file's own tests only make sense
-// when ICLFORGE_BUILD_ADM turned on iclforge::adm/iclforge::admbridge AND ac3cli was actually built
+// when ICLFORGE_BUILD_ADM turned on iclforge::adm/iclforge::admbridge AND forge was actually built
 // (so its own binary has the 'atmos-adm' command at all) - a narrower, two-part condition
-// test_cli.cpp's single TARGET-ac3cli gate does not express. See tests/CMakeLists.txt's own
+// test_cli.cpp's single TARGET-forge gate does not express. See tests/CMakeLists.txt's own
 // gating comment for exactly how both conditions are checked before this file is even compiled.
 //
-// AC3CLI_EXE is supplied the same way as test_cli.cpp's own (see tests/CMakeLists.txt); run_cli
-// below is a trimmed copy of test_cli.cpp's own helper of the same name (same reasoning for the
-// double-quote wrapping on Windows - see that file's own comment on std::system() and cmd.exe's
+// ICLFORGE_CLI_EXE is supplied the same way as test_cli.cpp's own (see tests/CMakeLists.txt);
+// run_cli below is a trimmed copy of test_cli.cpp's own helper of the same name (same reasoning for
+// the double-quote wrapping on Windows - see that file's own comment on std::system() and cmd.exe's
 // quoting), and the byte-level BW64/ADM fixture helpers are a copy of
-// tests/admbridge/test_adm_bridge.cpp's own flagship-test fixture (same bed L/R + SR-then-centre moving
-// object, same known-good ring positions and hold/jump timing) - duplicated per this project's
-// own established per-file test-helper convention (see that file's own comment on this) rather
-// than shared, and deliberately kept byte-identical to that fixture rather than inventing a new
-// one: this file's own job is checking that the real ac3cli binary wires
-// parse_bw64 -> admbridge::build -> AtmosEncoder together correctly end to end, not re-proving
-// admbridge's own BS.2076-2 §10.3 state machine or coordinate conversion, which
-// tests/admbridge/test_adm_bridge.cpp already does directly against the library API.
+// tests/admbridge/test_adm_bridge.cpp's own flagship-test fixture (same bed L/R + SR-then-centre
+// moving object, same known-good ring positions and hold/jump timing) - duplicated per this
+// project's own established per-file test-helper convention (see that file's own comment on this)
+// rather than shared, and deliberately kept byte-identical to that fixture rather than inventing a
+// new one: this file's own job is checking that the real forge binary wires parse_bw64 ->
+// admbridge::build -> AtmosEncoder together correctly end to end, not re-proving admbridge's own
+// BS.2076-2 §10.3 state machine or coordinate conversion, which tests/admbridge/test_adm_bridge.cpp
+// already does directly against the library API.
 
 namespace fs = std::filesystem;
 
@@ -58,12 +58,12 @@ fs::path scratch_dir() {
     return dir;
 }
 
-// Runs `ac3cli <args>` with both streams redirected to `log`. The platform
+// Runs `forge <args>` with both streams redirected to `log`. The platform
 // differences - cmd.exe's quoting and std::system()'s two return-value
 // shapes - live in tests/platform/process.hpp's run_shell, not here.
 int run_cli(const std::string& args, const fs::path& log) {
     const std::string command =
-        "\"" + std::string(AC3CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
+        "\"" + std::string(ICLFORGE_CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
     return iclforge::test::platform::run_shell(command);
 }
 
@@ -294,7 +294,7 @@ double channel_energy(std::span<const float> samples) {
 
 }  // namespace
 
-TEST_CASE("ac3cli atmos-adm parses, bridges and encodes a real ADM BWF master end to end",
+TEST_CASE("forge atmos-adm parses, bridges and encodes a real ADM BWF master end to end",
          "[cli][atmos-adm]") {
     const auto dir = scratch_dir();
     const auto fixture_path = dir / "atmos_adm_fixture.wav";
@@ -370,7 +370,7 @@ TEST_CASE("ac3cli atmos-adm parses, bridges and encodes a real ADM BWF master en
     }
 }
 
-TEST_CASE("ac3cli atmos-adm reports a clear diagnosis for a file with no ADM programme",
+TEST_CASE("forge atmos-adm reports a clear diagnosis for a file with no ADM programme",
          "[cli][atmos-adm]") {
     const auto dir = scratch_dir();
     // Same container, empty <axml> chunk: parse_bw64 succeeds (a document with no ADM metadata
@@ -409,7 +409,7 @@ TEST_CASE("ac3cli atmos-adm reports a clear diagnosis for a file with no ADM pro
     CHECK_FALSE(fs::exists(out_path));
 }
 
-TEST_CASE("ac3cli atmos-adm reports a clear diagnosis for a file that is not a valid BW64/RIFF",
+TEST_CASE("forge atmos-adm reports a clear diagnosis for a file that is not a valid BW64/RIFF",
          "[cli][atmos-adm]") {
     const auto dir = scratch_dir();
     const auto bad_path = dir / "atmos_adm_not_riff.wav";

@@ -31,7 +31,7 @@
 #include "iclforge/ac3/verify/eac3_selfcheck.hpp"
 #include "../multi_source.hpp"
 
-namespace ac3cli::commands {
+namespace forge_cli::commands {
 
 namespace plan = iclforge::plan;
 
@@ -1474,4 +1474,4 @@ int run_encode(std::string_view in_path, std::string_view out_path, std::uint32_
     return kExitOk;
 }
 
-}  // namespace ac3cli::commands
+}  // namespace forge_cli::commands

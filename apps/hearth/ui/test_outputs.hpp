@@ -18,7 +18,7 @@
 // actually play - position advancing, meters moving, the output picker
 // moving playback to another endpoint - hands the controller a fake device
 // with a clock of its own, the way tests/hearth/test_engine.cpp's
-// ClockedDevice stands in for one under ac3tests.
+// ClockedDevice stands in for one under iclforge-tests.
 //
 // Kept out of hearth_controller.hpp (which forward-declares it) for the
 // reason that header gives for every iclforge::hearth type: pcm_sink.hpp reaches

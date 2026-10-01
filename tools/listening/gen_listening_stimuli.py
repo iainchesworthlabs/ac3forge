@@ -19,7 +19,7 @@ tests/golden/external-baseline/manifest.json so the two never drift apart:
 and, per leg, these conditions:
 
   reference    the source WAV itself, presented as the hidden reference
-  iclforge     this build's encode (ac3cli, run here)
+  iclforge     this build's encode (forge, run here)
   ffmpeg       the committed tests/golden/external-baseline/<leg>/ffmpeg.*
   dee          the committed .../dee.* - only where the manifest carries a
                real score for it. DEE's own two 5.1 legs are marked
@@ -32,7 +32,7 @@ and, per leg, these conditions:
 
 EVERY stimulus is decoded by FFmpeg, including this project's own encode.
 That is deliberate and it is the opposite of what the trend legs do (which
-score iclforge through ac3cli's own decoder). A listening test compares
+score iclforge through forge's own decoder). A listening test compares
 ENCODERS; if each encoder's output went through its own decoder, the panel
 would be scoring encoder-and-decoder pairs and no result could be attributed
 to either. One decoder for everything makes the decoder a constant. FFmpeg
@@ -47,7 +47,7 @@ an artifact of THAT decoder reading THAT stream, not of the encoder's
 quality, and a results table that does not say so invites the wrong
 conclusion.
 
-Neither FFmpeg's nor DEE's ENCODER is ever invoked here - only ac3cli's, and
+Neither FFmpeg's nor DEE's ENCODER is ever invoked here - only forge's, and
 FFmpeg's decoder. The external side comes from the committed bitstreams, the
 same boundary docs/landscape.md documents for the numbers.
 
@@ -65,12 +65,12 @@ worth running:
 Both write the same blind-labelled WAVs; only the trials key and the
 response template differ.
 
-Usage (repo root, after building ac3cli):
+Usage (repo root, after building forge):
 
     python tools/listening/gen_listening_stimuli.py --out listening-session
     python tools/listening/gen_listening_stimuli.py --out session-abx --method abx
 
-Set AC3CLI to override the ac3cli binary, same as quality_race.py. Needs
+Set ICLFORGE_CLI to override the forge binary, same as quality_race.py. Needs
 numpy and an `ffmpeg` binary; the scoring script that reads the results back
 needs neither.
 """
@@ -207,7 +207,7 @@ def ffmpeg_decode(coded, wav, channels=None):
 
 
 def encode_ours(source_wav, coded, codec, kbps):
-    """Encode with ac3cli, at the same settings gen_external_baseline.py used
+    """Encode with forge, at the same settings gen_external_baseline.py used
     for the external tools on this leg - AC-3's tools are unconditionally
     automatic, and E-AC-3 gets `auto` (the set this encoder picks from the
     per-channel rate), which is the configuration comparable to another
@@ -218,7 +218,7 @@ def encode_ours(source_wav, coded, codec, kbps):
         cmd = [CLI, "eac3-encode", str(source_wav), str(coded), str(kbps), "auto"]
     result = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if result.returncode != 0:
-        raise SystemExit(f"ac3cli failed:\n{result.stderr}")
+        raise SystemExit(f"forge failed:\n{result.stderr}")
 
 
 def trim_to_common(reference, decoded):

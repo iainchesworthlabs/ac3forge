@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-import Ac3ForgeHearth
+import Hearth
 
 // The group editor (planning/hearth-design.md, "Network - editing a group",
 // network-group.png): a group's own name, its members with per-member

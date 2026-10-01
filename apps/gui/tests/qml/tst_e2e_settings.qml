@@ -1,7 +1,7 @@
 import QtQuick
 import QtTest
 
-import Ac3Forge
+import ForgeGui
 
 // The settings a person reaches from the header and the Expert tabs, each
 // followed through to what it actually changes: the container combo to the
@@ -169,7 +169,7 @@ TestCase {
         compare(EncoderController.outputSuffix(), "mkv");
         tryCompare(findByName(win.contentItem, "encodeButton"), "text", "Encode to .mkv");
         // The command bar owns up to the two-step CLI equivalent.
-        verify(win.cliLine.indexOf("&& ac3cli mkv") > 0, win.cliLine);
+        verify(win.cliLine.indexOf("&& forge mkv") > 0, win.cliLine);
 
         const run = encodeTo(win, mkvOutUrl);
         verify(run.path.endsWith(".mkv"), run.path);

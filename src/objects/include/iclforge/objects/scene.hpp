@@ -19,7 +19,7 @@
 // AtmosEncoder::encode_frame takes one ObjectPlacement per object per frame
 // and nothing more, so every caller that wanted a SCENE - objects with names,
 // a bed assignment, automation, a file it can be saved to and reloaded from -
-// built its own. ac3cli's atmos-path grew a keyframe-file grammar; the GUI's
+// built its own. forge's atmos-path grew a keyframe-file grammar; the GUI's
 // timeline grew a parallel one it exports in that grammar; the
 // station-broadcast example hard-codes a cue table in C++; a live position
 // source (live OSC object positions) would have grown a third. This is the one description
@@ -139,7 +139,7 @@ enum class SceneErrorKind : std::uint8_t {
     kBadField,
     // An object with no automation points at all. A scene has to say where
     // its objects are; a caller that wants a default has to choose it, since
-    // the library has no way to know what that caller's default is (ac3cli's
+    // the library has no way to know what that caller's default is (forge's
     // and the GUI's differ).
     kEmptyObject,
     // Two automation points on one object share an instant, so which of them
@@ -274,7 +274,7 @@ class ICLFORGE_OBJECTS_EXPORT SceneCursor {
 // and the orientation, which only the JSON form can carry.
 //
 // Two callers already disagree about what an index the file skipped should be
-// (ac3cli's atmos-path parks it at room centre under its inverse-root gain law,
+// (forge's atmos-path parks it at room centre under its inverse-root gain law,
 // its atmos-encode keeps that channel's existing fanned-out static placement)
 // and a third will have its own answer, so the decision has to be theirs. Fill
 // the gaps, then ObjectScene::create.
@@ -309,7 +309,7 @@ struct SceneContents {
 [[nodiscard]] ICLFORGE_OBJECTS_EXPORT std::expected<SceneContents, SceneError> read_scene_json(
     std::string_view text);
 
-// The keyframe grammar ac3cli's atmos-path and atmos-encode have always read,
+// The keyframe grammar forge's atmos-path and atmos-encode have always read,
 // and the GUI's timeline has always exported: whitespace-separated columns
 //
 //     object_index time_s x y z gain lfe_send
@@ -320,7 +320,7 @@ struct SceneContents {
 //
 // It returns raw objects rather than a scene because the format is INDEXED and
 // SPARSE: a file may mention objects 0 and 2 and say nothing about 1, and what
-// object 1 should then be is the caller's policy, not the library's (ac3cli's
+// object 1 should then be is the caller's policy, not the library's (forge's
 // atmos-path and its atmos-encode already disagree about it). Objects come back
 // indexed by object_index, unnamed, with gaps present as empty automation;
 // fill those, then ObjectScene::create.

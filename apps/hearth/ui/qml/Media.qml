@@ -3,7 +3,7 @@ import QtQuick.Controls
 import QtQuick.Dialogs
 import QtQuick.Layouts
 
-import Ac3ForgeHearth
+import Hearth
 
 // The Media information page (planning/hearth-reference-player.md, Media
 // information; docs/hearth/design/screenshots/media-ac3.png, media-eac3-

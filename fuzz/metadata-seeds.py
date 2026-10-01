@@ -7,7 +7,7 @@ Two subcommands, both driven from fuzz/generate-seeds.sh:
       Pulls the real EMDF containers, and the OAMD and JOC payloads inside
       them, out of Atmos streams generate-seeds.sh has just encoded, and
       writes them to fuzz_emdf_parse/, fuzz_oamd_parse/ and fuzz_joc_parse/.
-      These bytes are not reachable any other way: nothing in ac3cli dumps a
+      These bytes are not reachable any other way: nothing in forge dumps a
       raw payload, and the container does not sit at a byte boundary inside
       the frame that carries it (put_skip_field writes it 8 bits at a time
       from wherever the preceding audio happened to end), so it has to be
@@ -15,7 +15,7 @@ Two subcommands, both driven from fuzz/generate-seeds.sh:
       does and repacked from that offset.
 
   adm <out-dir>
-      Synthesises BW64/RF64 fixtures for fuzz_adm_parse. Nothing ac3cli
+      Synthesises BW64/RF64 fixtures for fuzz_adm_parse. Nothing forge
       produces is an ADM file, so unlike every other seed corpus here this
       one cannot come from the encoder - these mirror the fixtures
       tests/adm/test_adm.cpp builds in memory (BS.2088-1 chunk layout,
@@ -25,8 +25,8 @@ Two subcommands, both driven from fuzz/generate-seeds.sh:
   ac4-carrier <out-dir> <stream.ac4>
       Packs the first four frames of a 48 kHz, frame_rate_index 13 AC-4
       stream into IEC 61937-14 AC-4 data-bursts and writes them to
-      fuzz_iec61937_unwrap/ as a PCM16 stereo WAV, the shape 'ac3cli spdif'
-      gives AC-3 and E-AC-3 carriers. ac3cli does not pack AC-4 yet
+      fuzz_iec61937_unwrap/ as a PCM16 stereo WAV, the shape 'forge spdif'
+      gives AC-3 and E-AC-3 carriers. forge does not pack AC-4 yet
       (planning/ac4.md, I1), so this does, the way
       ac3::iec61937::Ac4BurstPacker does at that rate: 2 048 IEC 60958
       frames a burst, Pc 0x0D18, Pd the frame's length in bits.

@@ -18,10 +18,10 @@
 // against a fake device that opens at any rate, which is how a machine whose
 // output would not take an item's own rate went unnoticed.
 //
-// Hidden: the tag starts with a dot, so `ac3tests` does not run this - it needs
+// Hidden: the tag starts with a dot, so `iclforge-tests` does not run this - it needs
 // a sound card. It plays silence, so a run on somebody's desk makes no sound.
 //
-// Run it deliberately:  ac3tests "[hearth-device]"
+// Run it deliberately:  iclforge-tests "[hearth-device]"
 
 TEST_CASE("device sink live: the default output opens at an item's own rate and plays",
           "[.][hearth-device]") {

@@ -4,7 +4,7 @@ Produces two checked-in files that together define one fixed Atmos scene:
 
   tests/golden/audio/reference_objects.wav    5 mono essences, one per object,
                                               as the channels of a 48 kHz PCM16
-                                              WAV (`ac3cli atmos-encode` makes
+                                              WAV (`forge atmos-encode` makes
                                               each source channel an object)
   tests/golden/audio/reference_objects.paths  where each of those objects sits
                                               in the room, in atmos-path's own

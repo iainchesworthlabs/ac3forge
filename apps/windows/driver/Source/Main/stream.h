@@ -76,7 +76,7 @@ private:
     ACX_STREAM_STATE            m_State = AcxStreamStateStop;
     KSPIN_LOCK                  m_Lock = 0;
     LARGE_INTEGER               m_QpcFrequency = {};
-    ac3nullsink::PositionClock  m_Clock = {};
+    iclforge_nullsink::PositionClock  m_Clock = {};
 
     PVOID                       m_Packets[kMaxPackets] = {};
     ULONG                       m_PacketCount = 0;

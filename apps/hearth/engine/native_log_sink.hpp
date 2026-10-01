@@ -12,7 +12,7 @@
 // so this isn't inventing one.
 //
 // Call once, for the process's whole life - apps/hearth/ui/main.cpp does,
-// not HearthController's constructor, so ac3tests and the Qt Quick test
+// not HearthController's constructor, so iclforge-tests and the Qt Quick test
 // binary never register it and never interact with their own repeated
 // construct/destroy cycles (DiagnosticLog::add_observer() has no remove).
 

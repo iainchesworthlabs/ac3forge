@@ -1,5 +1,5 @@
 // Performance-trend data producer: the OTHER half of the performance suite,
-// alongside test_performance.cpp's hard real-time gate (ac3perf). That gate
+// alongside test_performance.cpp's hard real-time gate (iclforge-perf). That gate
 // answers "did the codec stay faster than real time" (pass/fail); this
 // answers "how much faster, and is that number drifting" - a trend signal,
 // not a threshold, the same relationship docs/quality-trend.md's gold-
@@ -562,7 +562,7 @@ int main(int argc, char** argv) {
                                  ac4_five_one, perf::ac4_bench::five_one_config(), kFrames)));
     }
     if (results.empty()) {
-        std::fprintf(stderr, "ac3bench: --only matched no workload\n");
+        std::fprintf(stderr, "iclforge-bench: --only matched no workload\n");
         return 1;
     }
 

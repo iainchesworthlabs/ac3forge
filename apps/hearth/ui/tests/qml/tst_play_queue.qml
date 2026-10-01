@@ -1,7 +1,7 @@
 import QtQuick
 import QtTest
 
-import Ac3ForgeHearth
+import Hearth
 
 // PlayPage.qml's queue interactions (issue #886): HearthController is a
 // QML_SINGLETON shared by every test_* function in this file's one process,

@@ -49,7 +49,7 @@ constexpr std::array<std::string_view, 5> kIsobmffLeadingTypes{"ftyp", "styp", "
 // it must be recognised positively BEFORE the packet grid below: PCM of a
 // steady tone repeats bytes at a fixed period, and a 1 kHz sine at 48 kHz
 // (48 samples a cycle) put five 0x47 bytes exactly 192 apart in a float WAV
-// `ac3cli decode` wrote, which the grid alone read as an M2TS capture.
+// `forge decode` wrote, which the grid alone read as an M2TS capture.
 [[nodiscard]] bool has_riff_wave_magic(std::span<const std::byte> head) {
     if (head.size() < 12) {
         return false;

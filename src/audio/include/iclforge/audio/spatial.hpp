@@ -54,7 +54,7 @@ enum class SpatialError : std::uint8_t {
 
 [[nodiscard]] std::string_view describe(SpatialError error);
 
-// One render endpoint's spatial capability, for 'ac3cli outputs' to print
+// One render endpoint's spatial capability, for 'forge outputs' to print
 // alongside the passthrough columns it already has (RenderDeviceInfo in
 // passthrough.hpp) - probed independently rather than folded into that
 // struct, so the two capabilities' device *indices* never have to agree,

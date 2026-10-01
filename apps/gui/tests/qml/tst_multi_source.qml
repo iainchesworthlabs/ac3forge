@@ -1,7 +1,7 @@
 import QtQuick
 import QtTest
 
-import Ac3Forge
+import ForgeGui
 
 // addSourceFile/setAssignment/sourceModel/assignmentRows/unassignedWarnings -
 // the surface a real Assign table would drive. Two loaded WAVs mapped onto

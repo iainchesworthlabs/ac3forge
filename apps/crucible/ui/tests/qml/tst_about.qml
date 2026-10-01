@@ -1,7 +1,7 @@
 import QtQuick
 import QtTest
 
-import Ac3ForgeCrucible
+import Crucible
 
 // The notices the About box's Licences view shows are the NOTICES.txt this
 // build installs, embedded at build time, so what they say has to agree
@@ -30,7 +30,7 @@ TestCase {
         // The whole file, not the fallback sentence the controller returns
         // when a binary skipped the :/notices resource.
         verify(notices.length > 2000, "the embedded notices are the whole file; got " + notices.length + " characters: " + notices.substring(0, 120));
-        verify(notices.indexOf("AC3Forge Crucible") === 0, notices.substring(0, 80));
+        verify(notices.indexOf("Crucible") === 0, notices.substring(0, 80));
         // Both platforms compile {fmt} in and embed the OFL faces.
         verify(notices.indexOf("{fmt}") >= 0, "the {fmt} section is missing");
         verify(notices.indexOf("SIL OPEN FONT LICENSE") >= 0, "the OFL text is missing");

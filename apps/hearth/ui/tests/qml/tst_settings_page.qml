@@ -1,9 +1,9 @@
 import QtQuick
 import QtTest
 
-import Ac3ForgeHearth
-import Ac3ForgeHearthLanguage
-import Ac3ForgeHearthTest
+import Hearth
+import HearthLanguage
+import HearthTest
 
 import "HearthTestHelpers.js" as H
 

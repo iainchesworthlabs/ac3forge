@@ -40,7 +40,7 @@ jobs:
   # The gap this closes: persist-performance-trend (in ci.yml) only runs on pushes to
   # main, so the relative "is this slower than it was" question is not
   # asked until after a PR has merged. The absolute question IS asked on every
-  # PR - tests/performance/test_performance.cpp's ac3perf, in every
+  # PR - tests/performance/test_performance.cpp's iclforge-perf, in every
   # build-and-test leg - but its real-time budget carries enough headroom that
   # a change could double ms/frame and still pass it comfortably. A PR that
   # halved the encoder's speed would therefore go green everywhere and only
@@ -75,7 +75,7 @@ jobs:
   # Runner budget. This is a new job rather than an addition to an existing
   # leg, and it builds twice, so it is kept as narrow as it can be and still
   # answer the question:
-  #   - `--target ac3bench ac3kernelbench` only. Not the library's tests, not
+  #   - `--target iclforge-bench iclforge-kernelbench` only. Not the library's tests, not
   #     the CLI, not the GUI - the same two binaries persist-performance-trend
   #     builds, and nothing else.
   #   - One container, one GCC install, one vcpkg setup, two builds inside
@@ -87,7 +87,7 @@ jobs:
   #   - PERF_RUNS repetitions per side. Three is the smallest number that
   #     gives compare_performance.py a spread to report alongside each delta,
   #     which is what lets a reader tell a real 25% move from a noisy one;
-  #     ac3bench is 200 frames per workload and takes seconds, so the
+  #     iclforge-bench is 200 frames per workload and takes seconds, so the
   #     repetitions are a rounding error next to the two builds.
   performance-compare:
     name: Performance vs base
@@ -157,7 +157,7 @@ jobs:
         run: |
           set -euo pipefail
           cmake --preset config-linux-gcc
-          cmake --build --preset build-linux-gcc --target ac3bench ac3kernelbench -- -k 0
+          cmake --build --preset build-linux-gcc --target iclforge-bench iclforge-kernelbench -- -k 0
 
       # A worktree rather than `git checkout <sha>`: it leaves this checkout
       # (and its build tree, and tools/ci/compare_performance.py, which the
@@ -174,7 +174,7 @@ jobs:
           git worktree add --detach ../base-perf "$BASE_SHA"
           pushd ../base-perf >/dev/null
           cmake --preset config-linux-gcc
-          cmake --build --preset build-linux-gcc --target ac3bench ac3kernelbench -- -k 0
+          cmake --build --preset build-linux-gcc --target iclforge-bench iclforge-kernelbench -- -k 0
           popd >/dev/null
 
       # BOTH builds finish before EITHER is timed, and the two are then
@@ -206,8 +206,8 @@ jobs:
             if [ $((i % 2)) -eq 1 ]; then order="head base"; else order="base head"; fi
             for side in $order; do
               if [ "$side" = head ]; then bin="$head_bin"; else bin="$base_bin"; fi
-              "$bin/ac3bench" --json-out "perf-results/$side/bench$i.json"
-              "$bin/ac3kernelbench" --json-out "perf-results/$side/kernels$i.json"
+              "$bin/iclforge-bench" --json-out "perf-results/$side/bench$i.json"
+              "$bin/iclforge-kernelbench" --json-out "perf-results/$side/kernels$i.json"
             done
           done
 
@@ -272,10 +272,10 @@ jobs:
   # resource over.
   #
   # The gap this closes: persist-performance-trend is the ONLY job that builds
-  # or runs ac3membench, and it is gated to pushes on main. So the relative
+  # or runs iclforge-membench, and it is gated to pushes on main. So the relative
   # "does this allocate more than it did" question was not asked until after a
   # PR had merged - and unlike throughput, there is no absolute per-PR gate
-  # underneath it at all. tests/performance/test_performance.cpp's ac3perf
+  # underneath it at all. tests/performance/test_performance.cpp's iclforge-perf
   # keeps a real-time budget on every PR; nothing anywhere kept an allocation
   # budget.
   #
@@ -293,7 +293,7 @@ jobs:
   # WHY MEMORY MAKES AN EASIER PRE-MERGE GATE THAN SPEED. performance-compare
   # needs PERF_RUNS repetitions per side, an interleaved run order and a
   # minimum-of-N reduction, all of it to see past a shared runner's timing
-  # noise. ac3membench's counts carry no such noise: for a fixed workload and a
+  # noise. iclforge-membench's counts carry no such noise: for a fixed workload and a
   # fixed binary they are the same every run. One run per side is the whole
   # measurement, which makes this job cheaper than the speed comparison at the
   # same two builds, and leaves its hard tier with no noise argument to answer.
@@ -305,7 +305,7 @@ jobs:
   # hard verdict travels as an output to the one-step memory-gate job below.
   #
   # Runner budget. Kept as narrow as it can be and still answer the question:
-  #   - `--target ac3membench` only. Not the tests, not the CLI, not the other
+  #   - `--target iclforge-membench` only. Not the tests, not the CLI, not the other
   #     two benchmarks.
   #   - One container, one GCC install, one vcpkg setup, two builds inside
   #     them. The second configure reuses the first's vcpkg binary cache, so it
@@ -376,12 +376,12 @@ jobs:
           echo "short=$(git rev-parse --short "$merge_base")" >> "$GITHUB_OUTPUT"
           echo "Base: $merge_base"
 
-      - name: Build ac3membench at this entry's head
+      - name: Build iclforge-membench at this entry's head
         shell: bash
         run: |
           set -euo pipefail
           cmake --preset config-linux-gcc
-          cmake --build --preset build-linux-gcc --target ac3membench -- -k 0
+          cmake --build --preset build-linux-gcc --target iclforge-membench -- -k 0
 
       # A worktree rather than `git checkout <sha>`: it leaves this checkout
       # (and its build tree, and tools/ci/compare_memory.py, which the base
@@ -391,10 +391,10 @@ jobs:
       # directories with no cache to invalidate between them.
       #
       # A base that cannot build the target is reported rather than fatal. A
-      # base predating ac3membench has no such target to build, and that is a
+      # base predating iclforge-membench has no such target to build, and that is a
       # comparison with nothing to say, not a broken job - compare_memory.py
       # sees one empty side and prints its skip warning.
-      - name: Build ac3membench at the base
+      - name: Build iclforge-membench at the base
         shell: bash
         env:
           BASE_SHA: ${{ steps.base.outputs.sha }}
@@ -403,8 +403,8 @@ jobs:
           git worktree add --detach ../base-mem "$BASE_SHA"
           pushd ../base-mem >/dev/null
           cmake --preset config-linux-gcc
-          if ! cmake --build --preset build-linux-gcc --target ac3membench -- -k 0; then
-            echo "::warning title=Memory comparison baseline unavailable::the base does not build ac3membench; the comparison will report a skip."
+          if ! cmake --build --preset build-linux-gcc --target iclforge-membench -- -k 0; then
+            echo "::warning title=Memory comparison baseline unavailable::the base does not build iclforge-membench; the comparison will report a skip."
           fi
           popd >/dev/null
 
@@ -416,14 +416,14 @@ jobs:
       # append_memory_history.py's - the two gates share that reader, so the
       # workload names in this entry's table read identically to the ones on
       # docs/performance-trend.md's memory tables.
-      - name: Run ac3membench on both sides
+      - name: Run iclforge-membench on both sides
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p mem-results/head/memory-linux-gcc mem-results/base/memory-linux-gcc
-          build/config-linux-gcc/bin/ac3membench \
+          build/config-linux-gcc/bin/iclforge-membench \
             --json-out mem-results/head/memory-linux-gcc/membench.json
-          base_bin=../base-mem/build/config-linux-gcc/bin/ac3membench
+          base_bin=../base-mem/build/config-linux-gcc/bin/iclforge-membench
           if [ -x "$base_bin" ]; then
             "$base_bin" --json-out mem-results/base/memory-linux-gcc/membench.json
           fi

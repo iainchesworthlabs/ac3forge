@@ -2,15 +2,15 @@
 render the deltas as a GitHub job summary.
 
 Fills the hole between the two performance checks this repository already has.
-tests/performance/test_performance.cpp's ac3perf is an ABSOLUTE real-time gate
+tests/performance/test_performance.cpp's iclforge-perf is an ABSOLUTE real-time gate
 and runs on every PR, but its budget carries enough headroom that a change
 could double ms/frame and still pass. tools/ci/append_performance_history.py is
 RELATIVE and would catch that, but it only ever runs on pushes to main
 (see .github/workflows/ci.yml's persist-performance-trend job) - so today a PR
 that halves the encoder's speed is discovered after it has already merged.
 
-This script is the relative check moved to PR time. It reads ac3bench and
-ac3kernelbench JSON from two directories - one built at the merge base, one at
+This script is the relative check moved to PR time. It reads iclforge-bench and
+iclforge-kernelbench JSON from two directories - one built at the merge base, one at
 the PR head, on the same runner in the same job - and prints a markdown table
 of per-workload and per-kernel deltas.
 
@@ -202,10 +202,10 @@ def main() -> int:
     head_kern, _ = load_runs(args.head_dir, "kernels*.json", "kernels", "ns_per_call")
 
     if not base_bench or not head_bench:
-        # Not a failure: a PR whose merge base predates ac3bench, or a runner
+        # Not a failure: a PR whose merge base predates iclforge-bench, or a runner
         # that could not build one side, should say so rather than fail a job
         # this script deliberately never fails.
-        print("::warning title=Performance comparison skipped::no ac3bench results on one "
+        print("::warning title=Performance comparison skipped::no iclforge-bench results on one "
               f"side (base={len(base_bench)} workloads from {base_n} run(s), "
               f"head={len(head_bench)} from {head_n}).")
         # Explicitly false, not merely absent: a skipped comparison has to read
@@ -225,8 +225,8 @@ def main() -> int:
 
     annotations = []
     for base_runs, head_runs, unit, label in (
-            (base_bench, head_bench, "ms/frame", "Whole-frame encode (ac3bench)"),
-            (base_kern, head_kern, "ns/call", "Per-kernel (ac3kernelbench)")):
+            (base_bench, head_bench, "ms/frame", "Whole-frame encode (iclforge-bench)"),
+            (base_kern, head_kern, "ns/call", "Per-kernel (iclforge-kernelbench)")):
         if not base_runs and not head_runs:
             continue
         table, notes = compare(base_runs, head_runs, unit, label)

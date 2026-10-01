@@ -1,7 +1,7 @@
 import QtQuick
 import QtTest
 
-import Ac3Forge
+import ForgeGui
 
 // GUI QC verification's own QC surface: QcController (a decode-and-measure pass over
 // an ALREADY-ENCODED file, deliberately separate from EncoderController - see

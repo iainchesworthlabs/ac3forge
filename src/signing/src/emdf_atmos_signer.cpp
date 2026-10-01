@@ -123,7 +123,7 @@ bool has_authenticity_tag(std::span<const std::byte> frame) {
     // Deliberately key-free: where the tag LIVES is fixed by the container's
     // own protection-length codes, and only whether it matches needs a key.
     // So an inspection tool can answer "is this stream signed at all" - the
-    // question `ac3cli probe` asks - without holding anything secret, which
+    // question `forge probe` asks - without holding anything secret, which
     // is the whole point of keeping the key out of this tool (see
     // docs/concepts/object-signing.md).
     // walk_frame screens the frame's shape itself and reports no container

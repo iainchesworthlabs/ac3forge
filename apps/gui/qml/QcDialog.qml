@@ -3,7 +3,7 @@ import QtQuick.Controls
 import QtQuick.Dialogs
 import QtQuick.Layouts
 
-import Ac3Forge
+import ForgeGui
 
 // "QC a stream" — GUI QC verification. Opening an already-encoded .ac3/.ec3 and
 // checking it against its own embedded metadata is a fundamentally
@@ -78,7 +78,7 @@ Dialog {
         Text {
             Layout.fillWidth: true
             wrapMode: Text.WordWrap
-            text: qsTr("Decodes an already-encoded file and measures it the same way “ac3cli qc” does — the stream's own claims, checked against what is actually in it, not the source that made it.")
+            text: qsTr("Decodes an already-encoded file and measures it the same way “forge qc” does — the stream's own claims, checked against what is actually in it, not the source that made it.")
             font.pixelSize: Theme.fontSmall
             color: Theme.neutral700
         }
@@ -121,7 +121,7 @@ Dialog {
                 font.letterSpacing: 1.2
                 color: Theme.textMuted
             }
-            // Mirrors ac3cli qc's own preset=<name>|all: "All" reports every
+            // Mirrors forge qc's own preset=<name>|all: "All" reports every
             // gate's pass/fail with no single band to draw on the meters
             // below; picking one preset both narrows the verdict list to it
             // AND feeds its target/tolerance/ceiling into the meters as the
@@ -149,7 +149,7 @@ Dialog {
             }
         }
 
-        // AC-4: which presentation is measured, as `ac3cli qc presentation=<n>`
+        // AC-4: which presentation is measured, as `forge qc presentation=<n>`
         // chooses it; the first entry is qc's default, the one the decoder
         // takes with no preference.
         RowLayout {

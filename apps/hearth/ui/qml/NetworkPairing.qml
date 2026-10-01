@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-import Ac3ForgeHearth
+import Hearth
 
 // The pairing view (planning/hearth-design.md, "Network - discovery and
 // pairing"): a sink not paired with this computer. Pairing is asked for with

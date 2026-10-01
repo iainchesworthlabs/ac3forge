@@ -23,12 +23,12 @@
 // file under QUICK_TEST_SOURCE_DIR (set in CMakeLists.txt), exercising the
 // real EncoderController the qmldir already embedded into this binary
 // resolves - see CMakeLists.txt for why that is a second embedding of the
-// module rather than a shared library with ac3gui.
+// module rather than a shared library with forge-gui.
 
 // The seam the byte-equality suites need and QML does not have: running the
-// command line a page echoes through the ac3cli this build made, in a folder
+// command line a page echoes through the forge this build made, in a folder
 // of the test's choosing, and comparing what it wrote with what the page
-// wrote. AC3GUI_TEST_AC3CLI is the build's own ac3cli, or empty where the
+// wrote. ICLFORGE_GUI_TEST_CLI is the build's own forge, or empty where the
 // build has none (apps/gui/tests/CMakeLists.txt); then available() is false
 // and a suite skips.
 class CliRunner : public QObject {
@@ -39,12 +39,12 @@ public:
         return !program().isEmpty() && QFile::exists(program());
     }
 
-    // Runs `line` ("ac3cli <command> <args>", quoted as the command bar quotes
+    // Runs `line` ("forge <command> <args>", quoted as the command bar quotes
     // a path with a space) with `folder` as the working directory; the exit
     // code, or -1 where it did not start or finish within two minutes.
     [[nodiscard]] Q_INVOKABLE int run(const QString& line, const QUrl& folder) {
         QStringList args = QProcess::splitCommand(line);
-        if (!available() || args.isEmpty() || args.front() != QStringLiteral("ac3cli")) {
+        if (!available() || args.isEmpty() || args.front() != QStringLiteral("forge")) {
             return -1;
         }
         args.removeFirst();
@@ -98,7 +98,7 @@ public:
     }
 
 private:
-    [[nodiscard]] static QString program() { return QStringLiteral(AC3GUI_TEST_AC3CLI); }
+    [[nodiscard]] static QString program() { return QStringLiteral(ICLFORGE_GUI_TEST_CLI); }
 };
 
 // The setup object exists for one reason: Main.qml's QML Settings must be
@@ -118,8 +118,8 @@ class SettingsIsolation : public QObject {
 
 public slots:
     void applicationAvailable() {
-        QCoreApplication::setOrganizationName(QStringLiteral("ac3forge-tests"));
-        QCoreApplication::setApplicationName(QStringLiteral("ac3gui_qmltests"));
+        QCoreApplication::setOrganizationName(QStringLiteral("iclforge-tests"));
+        QCoreApplication::setApplicationName(QStringLiteral("forge_gui_qmltests"));
 
         // main.cpp forces Fusion before its engine loads any QML - see that
         // file's own comment: it renders identically on every platform,
@@ -142,7 +142,7 @@ public slots:
         // Main.qml:1584, the exact line the "current style does not support
         // customization" QWARN below names), which only works under a
         // non-native style - Fusion, same as the shipped app - so this
-        // binary had been exercising a style ac3gui never actually ships
+        // binary had been exercising a style forge-gui never actually ships
         // with.
         QQuickStyle::setStyle(QStringLiteral("Fusion"));
 
@@ -163,7 +163,7 @@ public slots:
     // rather than a developer's real settings. Registers the exact
     // "languageManager" context property main.cpp installs for the real
     // app, so every suite can drive Preferences' language picker and
-    // AC3GUI_LOCALE-forced suites (tst_localisation_pipeline.qml) see the
+    // ICLFORGE_GUI_LOCALE-forced suites (tst_localisation_pipeline.qml) see the
     // same object the shipped app does.
     void qmlEngineAvailable(QQmlEngine* engine) {
         // Constructed lazily rather than as a plain member: LanguageManager
@@ -189,6 +189,6 @@ private:
     CliRunner cli_runner_;
 };
 
-QUICK_TEST_MAIN_WITH_SETUP(ac3gui, SettingsIsolation)
+QUICK_TEST_MAIN_WITH_SETUP(forge-gui, SettingsIsolation)
 
 #include "qml_test_main.moc"

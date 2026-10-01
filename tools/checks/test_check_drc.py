@@ -6,7 +6,7 @@ applies the metadata with one that does not and fails when they agree. These
 tests hold down exactly those decisions - each check must FAIL on the dead or
 wrong-metadata reading it exists to catch and pass on the healthy one.
 
-Neither ac3cli nor ffmpeg is run, and numpy - which the script uses for its
+Neither forge nor ffmpeg is run, and numpy - which the script uses for its
 signal measurements, but which the CI step's system Python does not have - is
 not needed: the measurement helpers (read_wav_f32 / rms_db / peak_db /
 tone_db / write_programme) are replaced by fakes that return scripted levels
@@ -129,7 +129,7 @@ class Dynrng(unittest.TestCase):
     def run_check(self, rms):
         rig = Rig(rms=rms)
         with tempfile.TemporaryDirectory() as tmp, rig.installed() as failures:
-            check_drc.check_dynrng("ac3cli", Path(tmp))
+            check_drc.check_dynrng("forge", Path(tmp))
         return failures, rig
 
     def test_working_drc_passes(self):
@@ -154,7 +154,7 @@ class Compr(unittest.TestCase):
     def run_check(self, h0, h1):
         rig = Rig(peak={"hot_h0": h0, "hot_h1": h1})
         with tempfile.TemporaryDirectory() as tmp, rig.installed() as failures:
-            check_drc.check_compr("ac3cli", Path(tmp))
+            check_drc.check_compr("forge", Path(tmp))
         return failures
 
     def test_ceiling_held_with_little_headroom_passes(self):
@@ -182,7 +182,7 @@ class Downmix(unittest.TestCase):
     def run_check(self, tone):
         rig = Rig(tone=tone)
         with tempfile.TemporaryDirectory() as tmp, rig.installed() as failures:
-            check_drc.check_downmix("ac3cli", Path(tmp))
+            check_drc.check_downmix("forge", Path(tmp))
         return failures, rig
 
     def test_table_levels_pass(self):
@@ -202,7 +202,7 @@ class Dialnorm(unittest.TestCase):
     def run_check(self, **rig_args):
         rig = Rig(**rig_args)
         with tempfile.TemporaryDirectory() as tmp, rig.installed() as failures:
-            check_drc.check_dialnorm("ac3cli", Path(tmp))
+            check_drc.check_dialnorm("forge", Path(tmp))
         return failures, rig
 
     def test_calibrated_and_carried(self):
@@ -224,7 +224,7 @@ class Eac3(unittest.TestCase):
     def run_check(self, **rig_args):
         rig = Rig(**rig_args)
         with tempfile.TemporaryDirectory() as tmp, rig.installed() as failures:
-            check_drc.check_eac3("ac3cli", Path(tmp))
+            check_drc.check_eac3("forge", Path(tmp))
         return failures, rig
 
     def test_applied_dynrng_and_clean_layouts(self):
@@ -311,7 +311,7 @@ class Main(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.tmp = Path(self._tmp.name)
-        self.cli = self.tmp / "ac3cli"
+        self.cli = self.tmp / "forge"
         self.cli.write_text("")
 
     def tearDown(self):
@@ -364,7 +364,7 @@ class Main(unittest.TestCase):
         self.assertIn("ffmpeg not on PATH", str(code))
         self.cli.unlink()
         code, *_ = self.run_main()
-        self.assertIn("ac3cli not found", str(code))
+        self.assertIn("forge not found", str(code))
 
 
 if __name__ == "__main__":

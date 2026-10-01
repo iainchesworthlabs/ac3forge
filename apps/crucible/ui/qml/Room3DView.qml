@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick3D
 
-import Ac3ForgeCrucible
+import Crucible
 
 // The room in three dimensions: the listener at the centre, the reference
 // speakers (5.1, 7.1 or 7.1.4, chosen in Settings; automatically 5.1 while

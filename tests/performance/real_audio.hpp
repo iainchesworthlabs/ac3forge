@@ -8,7 +8,7 @@
 // in. kernel_bench.cpp had the rule right from the start ("every kernel is
 // fed REAL audio ... this project's own validation rule - silence and frame
 // 0 give false passes on correctness checks - applies just as much to timing
-// here"), while ac3bench and ac3perf ran a 440 Hz sine on every channel.
+// here"), while iclforge-bench and iclforge-perf ran a 440 Hz sine on every channel.
 //
 // A single stationary tone is not a cheaper version of programme material,
 // it is a different workload: its spectrum is one bin wide, so the SNR
@@ -20,7 +20,7 @@
 // same reference_51.wav the gold-reference and kernel numbers already use
 // puts all of them back in the measurement.
 //
-// Header-only and shared by ac3bench, ac3perf and ac3kernelbench so the
+// Header-only and shared by iclforge-bench, iclforge-perf and iclforge-kernelbench so the
 // three cannot drift again: one loader, one fixture, one set of rules about
 // what a missing or too-short file means (exit, never fall back to
 // synthetic audio - a bench that silently substitutes a tone is worse than
@@ -40,7 +40,7 @@
 
 // Set by CMake to the repo root, so the fixtures resolve regardless of the
 // working directory a bench binary is launched from. Every target that
-// includes this header defines it - ac3perf, ac3bench and ac3kernelbench, see
+// includes this header defines it - iclforge-perf, iclforge-bench and iclforge-kernelbench, see
 // tests/performance/CMakeLists.txt - and there is deliberately no fallback:
 // the "." this used to default to resolved the fixtures against whatever
 // directory the binary happened to be launched from, so a target that forgot

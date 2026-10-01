@@ -23,7 +23,7 @@
 #include "iclforge/ac3/encoder/encoder.hpp"
 #include "iclforge/objects/oamd.hpp"
 
-// The device-facing half of ac3cli: devices/outputs/record/live/monitor.
+// The device-facing half of forge: devices/outputs/record/live/monitor.
 //
 // These commands are the only place in this repository where the audio
 // backend, the lock-free SPSC ring, the silence watchdog and the clock-drift
@@ -66,7 +66,7 @@ fs::path scratch_dir() {
 // differences live in tests/platform/process.hpp's run_shell, not here.
 // `redirects` follows the arguments on the command line.
 int run_cli_redirected(const std::string& args, const std::string& redirects) {
-    const std::string command = "\"" + std::string(AC3CLI_EXE) + "\" " + args + redirects;
+    const std::string command = "\"" + std::string(ICLFORGE_CLI_EXE) + "\" " + args + redirects;
     return iclforge::test::platform::run_shell(command);
 }
 
@@ -176,7 +176,7 @@ void check_spoke_either_way(int rc, const std::string& output) {
         CHECK(output.find("error") != std::string::npos);
     }
     // Under the ThreadSanitizer leg this binary is instrumented too, and a
-    // race inside ac3cli would end the SUBPROCESS - which every check above
+    // race inside forge would end the SUBPROCESS - which every check above
     // would otherwise read as an ordinary "no device here" refusal. TSan's
     // report never says "error", so the check above already fails on one by
     // accident; this says so on purpose, and names the reason in the output.
@@ -240,7 +240,7 @@ TEST_CASE("outputs enumerates or explains itself, and points at the spdif substi
     // that offers a portable alternative rather than just saying no; when it
     // is the branch that ran, the offer has to actually be there.
     if (out.find("is unavailable on this platform") != std::string::npos) {
-        CHECK(out.find("ac3cli spdif") != std::string::npos);
+        CHECK(out.find("forge spdif") != std::string::npos);
     }
 }
 
@@ -637,7 +637,7 @@ TEST_CASE("play refuses a stream too short to hold a syncframe, before any devic
     // already handles - accept either refusal rather than assuming this
     // build always has the capability.
     if (out.find("is unavailable on this platform") != std::string::npos) {
-        CHECK(out.find("ac3cli spdif") != std::string::npos);
+        CHECK(out.find("forge spdif") != std::string::npos);
     } else {
         CHECK(out.find("too short to hold a syncframe") != std::string::npos);
     }
@@ -665,7 +665,7 @@ TEST_CASE("play refuses a stream that claims E-AC-3/AC-3 but does not split into
         // branches are accepted: a no-passthrough-capability build refuses
         // at main.cpp's gate before run_play's own split check ever runs.
         if (out.find("is unavailable on this platform") != std::string::npos) {
-            CHECK(out.find("ac3cli spdif") != std::string::npos);
+            CHECK(out.find("forge spdif") != std::string::npos);
         } else {
             CHECK(out.find("is not a valid E-AC-3 stream") != std::string::npos);
         }
@@ -684,7 +684,7 @@ TEST_CASE("play refuses a stream that claims E-AC-3/AC-3 but does not split into
         INFO(out);
         CHECK(rc != 0);
         if (out.find("is unavailable on this platform") != std::string::npos) {
-            CHECK(out.find("ac3cli spdif") != std::string::npos);
+            CHECK(out.find("forge spdif") != std::string::npos);
         } else {
             CHECK(out.find("is not a valid AC-3 stream") != std::string::npos);
         }

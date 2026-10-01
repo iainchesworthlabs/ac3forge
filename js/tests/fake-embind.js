@@ -4,7 +4,7 @@
 // holds no codec: each push() returns the next scripted result, and the PCM
 // views it hands out are whatever the script put there. What the tests check
 // is the wrapper's own logic - result mapping, concatenation, gap filling,
-// flush handling, lifetime - not decoding, which ac3tests covers in C++.
+// flush handling, lifetime - not decoding, which iclforge-tests covers in C++.
 //
 // Not a *.test.js file, so `node --test` does not run it on its own.
 

@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# ac3hearth - the desktop reference player's window
+# hearth - the desktop reference player's window
 # (planning/hearth-reference-player.md, A5). Qt is a PREBUILT dependency
 # discovered by cmake/FindQt6.cmake, never vcpkg (qt-integration-convention),
 # the same as apps/gui and apps/crucible. QUIET, and a warning rather than a
@@ -27,7 +27,7 @@
 # .github/workflows/_ci-linux.yml's "Install Qt6 (Linux GUI)" step comment
 # for the full qt6-l10n-tools/qt6-tools-dev split), left Qt6_FOUND false for
 # no reason a syntax-only build cares about, which silently dropped the
-# entire ac3hearth target - and every apps/hearth/ui/*.cpp compile_commands.json
+# entire hearth target - and every apps/hearth/ui/*.cpp compile_commands.json
 # entry along with it - behind the message(WARNING) below, with nothing
 # louder to catch it.
 #
@@ -49,16 +49,16 @@ find_package(Qt6 6.8 QUIET COMPONENTS Core Gui Qml Quick QuickControls2 Linguist
 # hasn't add_subdirectory()'d this directory yet" (not defined at all) - the
 # same PARENT_SCOPE-across-add_subdirectory() reason apps/gui/CMakeLists.txt
 # exports ICLFORGE_GUI_QT_VERSION for apps/notices/notices.cmake.
-set(AC3HEARTH_UI_QT_FOUND "${Qt6_FOUND}" PARENT_SCOPE)
+set(ICLFORGE_HEARTH_UI_QT_FOUND "${Qt6_FOUND}" PARENT_SCOPE)
 
 if(NOT Qt6_FOUND)
-    message(WARNING "Qt6 not found: ac3hearth is skipped; the engine and its tests still build.")
+    message(WARNING "Qt6 not found: hearth is skipped; the engine and its tests still build.")
 else()
     # The version, for that same Qt section. Empty here while
-    # AC3HEARTH_UI_QT_FOUND reads true would mean this export broke loose
+    # ICLFORGE_HEARTH_UI_QT_FOUND reads true would mean this export broke loose
     # from the find_package it is meant to travel with - notices.cmake
     # treats that as a configure error rather than a blank notice.
-    set(AC3HEARTH_UI_QT_VERSION "${Qt6_VERSION}" PARENT_SCOPE)
+    set(ICLFORGE_HEARTH_UI_QT_VERSION "${Qt6_VERSION}" PARENT_SCOPE)
 
     qt_standard_project_setup(REQUIRES 6.8)
 
@@ -68,10 +68,10 @@ else()
     # why this is a shared function rather than each app running its own copy
     # of the loop). Edit apps/gui/qml/*.qml and every app that copies it follows.
     include(SharedFamilyQml)
-    set(AC3HEARTH_SHARED_DIR "${CMAKE_CURRENT_SOURCE_DIR}/qml/shared")
-    iclforge_stage_shared_qml(Ac3ForgeHearth "${AC3HEARTH_SHARED_DIR}" AC3HEARTH_SHARED_OUT)
+    set(ICLFORGE_HEARTH_SHARED_DIR "${CMAKE_CURRENT_SOURCE_DIR}/qml/shared")
+    iclforge_stage_shared_qml(Hearth "${ICLFORGE_HEARTH_SHARED_DIR}" ICLFORGE_HEARTH_SHARED_OUT)
 
-    qt_add_executable(ac3hearth
+    qt_add_executable(hearth
         main.cpp
         hearth_controller.cpp
         hearth_controller.hpp
@@ -86,17 +86,21 @@ else()
         # repository reuses it.
         "${PROJECT_SOURCE_DIR}/apps/gui/language_manager.cpp"
         "${PROJECT_SOURCE_DIR}/apps/gui/language_manager.hpp"
+        # What a person saved under the program's old names, copied once at start-up;
+        # shared by the three programs the same way.
+        "${PROJECT_SOURCE_DIR}/apps/gui/settings_migration.cpp"
+        "${PROJECT_SOURCE_DIR}/apps/gui/settings_migration.hpp"
         "${PROJECT_SOURCE_DIR}/apps/common/container_input.cpp"
         "${PROJECT_SOURCE_DIR}/apps/common/container_input.hpp")
-    target_include_directories(ac3hearth PRIVATE
+    target_include_directories(hearth PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}"
         "${PROJECT_SOURCE_DIR}/apps/gui"
         "${CMAKE_CURRENT_SOURCE_DIR}/../engine"
         "${PROJECT_SOURCE_DIR}/apps/common")
-    target_link_libraries(ac3hearth PRIVATE
-        ac3hearth_engine
+    target_link_libraries(hearth PRIVATE
+        hearth_engine
         # container_input.cpp's own container readers - apps/gui/CMakeLists.txt's
-        # ac3gui target links the same three for the same reason: the media
+        # forge-gui target links the same three for the same reason: the media
         # information this application's loader hands to describe_media() needs
         # a container's own facts (container_input.hpp, "whose functions the
         # engine does not compile" - apps/hearth/engine/session.hpp's comment).
@@ -105,7 +109,7 @@ else()
         iclforge::mpegts
         Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2)
 
-    set(AC3HEARTH_QML_FILES
+    set(ICLFORGE_HEARTH_QML_FILES
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/Main.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/OutputPicker.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/PlayPage.qml"
@@ -134,17 +138,17 @@ else()
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/AboutDialog.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/LicencesDialog.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/FirstRunDialog.qml"
-        ${AC3HEARTH_SHARED_OUT})
-    foreach(qml_file IN LISTS AC3HEARTH_QML_FILES)
+        ${ICLFORGE_HEARTH_SHARED_OUT})
+    foreach(qml_file IN LISTS ICLFORGE_HEARTH_QML_FILES)
         get_filename_component(qml_name "${qml_file}" NAME)
         set_source_files_properties("${qml_file}" PROPERTIES QT_RESOURCE_ALIAS "${qml_name}")
     endforeach()
-    set_source_files_properties("${AC3HEARTH_SHARED_DIR}/Theme.qml" PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+    set_source_files_properties("${ICLFORGE_HEARTH_SHARED_DIR}/Theme.qml" PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
-    qt_add_qml_module(ac3hearth
-        URI Ac3ForgeHearth
+    qt_add_qml_module(hearth
+        URI Hearth
         VERSION 1.0
-        QML_FILES ${AC3HEARTH_QML_FILES})
+        QML_FILES ${ICLFORGE_HEARTH_QML_FILES})
 
     # The family's own faces and application icon, reused rather than
     # duplicated - apps/crucible/CMakeLists.txt does the same for the same
@@ -160,7 +164,7 @@ else()
     # skip_next e044, create_new_folder e2cc, add e145, volume_up e050) via
     # fontTools - 2 KB rather than the upstream file's 8.46 MB. Only Hearth
     # ships this today, so it is not in apps/gui's own font resource list.
-    qt_add_resources(ac3hearth "ac3hearth_fonts"
+    qt_add_resources(hearth "hearth_fonts"
         PREFIX "/fonts"
         BASE "${CMAKE_SOURCE_DIR}/apps/gui/fonts"
         FILES
@@ -175,34 +179,34 @@ else()
             # same pair for the same reason.
             "${CMAKE_SOURCE_DIR}/apps/gui/fonts/NotoSansArabic.ttf"
             "${CMAKE_SOURCE_DIR}/apps/gui/fonts/NotoSansHebrew.ttf")
-    qt_add_resources(ac3hearth "ac3hearth_icons"
+    qt_add_resources(hearth "hearth_icons"
         PREFIX "/icons"
         BASE "${CMAKE_SOURCE_DIR}/apps/gui/icons"
         FILES
-            "${CMAKE_SOURCE_DIR}/apps/gui/icons/ac3forge-32.png"
-            "${CMAKE_SOURCE_DIR}/apps/gui/icons/ac3forge-256.png")
+            "${CMAKE_SOURCE_DIR}/apps/gui/icons/iclforge-32.png"
+            "${CMAKE_SOURCE_DIR}/apps/gui/icons/iclforge-256.png")
     # The package's own NOTICES.txt, so the Licences dialog (About > Licences)
     # shows exactly what this build ships - the same qt_add_resources call
-    # apps/crucible/CMakeLists.txt makes for ac3crucible_notices. A
+    # apps/crucible/CMakeLists.txt makes for crucible_notices. A
     # placeholder file exists here already (../CMakeLists.txt writes it
-    # before add_subdirectory(ui), right where AC3HEARTH_NOTICES_FILE is
+    # before add_subdirectory(ui), right where ICLFORGE_HEARTH_NOTICES_FILE is
     # set); notices/notices.cmake overwrites it with the real content once
     # this file's own Qt detection above has run, still well before ninja's
     # rcc step reads it at build time.
-    get_filename_component(AC3HEARTH_NOTICES_OUT_DIR "${AC3HEARTH_NOTICES_FILE}" DIRECTORY)
-    qt_add_resources(ac3hearth "ac3hearth_notices"
+    get_filename_component(ICLFORGE_HEARTH_NOTICES_OUT_DIR "${ICLFORGE_HEARTH_NOTICES_FILE}" DIRECTORY)
+    qt_add_resources(hearth "hearth_notices"
         PREFIX "/notices"
-        BASE "${AC3HEARTH_NOTICES_OUT_DIR}"
-        FILES "${AC3HEARTH_NOTICES_FILE}")
+        BASE "${ICLFORGE_HEARTH_NOTICES_OUT_DIR}"
+        FILES "${ICLFORGE_HEARTH_NOTICES_FILE}")
 
     # ---------------------------------------------------------------------
-    # Localisation. The same six languages ac3gui and Crucible ship, through
+    # Localisation. The same six languages forge-gui and Crucible ship, through
     # the same LanguageManager (compiled into this target above), which loads
-    # :/i18n/ac3hearth_<code>.qm at runtime.
+    # :/i18n/hearth_<code>.qm at runtime.
     #
     # The catalogues are generated, not hand-written: run
-    # `cmake --build <dir> --target ac3hearth_lupdate` to re-extract every
-    # qsTr() in AC3HEARTH_QML_FILES, and every tr() in this target's C++,
+    # `cmake --build <dir> --target hearth_lupdate` to re-extract every
+    # qsTr() in ICLFORGE_HEARTH_QML_FILES, and every tr() in this target's C++,
     # into them after changing a string.
     # -no-obsolete for the reason apps/gui and Crucible both give: an entry
     # whose source string is gone is kept as translation memory otherwise,
@@ -221,59 +225,59 @@ else()
     # holding these to the same bar would fail from the first commit.
     #
     # CI does check that they match the sources: the windows-msvc leg
-    # reruns ac3hearth_lupdate and fails if the result differs from what is
+    # reruns hearth_lupdate and fails if the result differs from what is
     # committed in anything but <location> lines
     # (.github/workflows/_ci-windows.yml, "Check the Hearth translations are
     # up to date"). So moving a string within its file needs no
     # regeneration, and adding, removing or rewording one does.
-    set(AC3HEARTH_TS_FILES
-        "${CMAKE_CURRENT_SOURCE_DIR}/translations/ac3hearth_fr.ts"
-        "${CMAKE_CURRENT_SOURCE_DIR}/translations/ac3hearth_de.ts"
-        "${CMAKE_CURRENT_SOURCE_DIR}/translations/ac3hearth_es.ts"
-        "${CMAKE_CURRENT_SOURCE_DIR}/translations/ac3hearth_ar.ts"
-        "${CMAKE_CURRENT_SOURCE_DIR}/translations/ac3hearth_he.ts"
-        "${CMAKE_CURRENT_SOURCE_DIR}/translations/ac3hearth_yi.ts")
-    qt_add_translations(ac3hearth
+    set(ICLFORGE_HEARTH_TS_FILES
+        "${CMAKE_CURRENT_SOURCE_DIR}/translations/hearth_fr.ts"
+        "${CMAKE_CURRENT_SOURCE_DIR}/translations/hearth_de.ts"
+        "${CMAKE_CURRENT_SOURCE_DIR}/translations/hearth_es.ts"
+        "${CMAKE_CURRENT_SOURCE_DIR}/translations/hearth_ar.ts"
+        "${CMAKE_CURRENT_SOURCE_DIR}/translations/hearth_he.ts"
+        "${CMAKE_CURRENT_SOURCE_DIR}/translations/hearth_yi.ts")
+    qt_add_translations(hearth
         IMMEDIATE_CALL
-        SOURCE_TARGETS ac3hearth
-        TS_FILES ${AC3HEARTH_TS_FILES}
+        SOURCE_TARGETS hearth
+        TS_FILES ${ICLFORGE_HEARTH_TS_FILES}
         LUPDATE_OPTIONS -no-obsolete
-        LUPDATE_TARGET ac3hearth_lupdate
-        LRELEASE_TARGET ac3hearth_lrelease)
+        LUPDATE_TARGET hearth_lupdate
+        LRELEASE_TARGET hearth_lrelease)
 
-    set_target_properties(ac3hearth PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+    set_target_properties(hearth PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
     if(WIN32)
         enable_language(RC)
-        set(AC3_GUI_ICON_ICO "${CMAKE_SOURCE_DIR}/apps/gui/icons/ac3forge.ico")
-        file(TO_CMAKE_PATH "${AC3_GUI_ICON_ICO}" AC3_GUI_ICON_ICO)
-        configure_file("${CMAKE_SOURCE_DIR}/apps/gui/icons/ac3gui.rc.in" "${CMAKE_CURRENT_BINARY_DIR}/ac3hearth.rc" @ONLY)
-        target_sources(ac3hearth PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/ac3hearth.rc")
-        set_target_properties(ac3hearth PROPERTIES WIN32_EXECUTABLE ON)
+        set(ICLFORGE_GUI_ICON_ICO "${CMAKE_SOURCE_DIR}/apps/gui/icons/iclforge.ico")
+        file(TO_CMAKE_PATH "${ICLFORGE_GUI_ICON_ICO}" ICLFORGE_GUI_ICON_ICO)
+        configure_file("${CMAKE_SOURCE_DIR}/apps/gui/icons/forge-gui.rc.in" "${CMAKE_CURRENT_BINARY_DIR}/hearth.rc" @ONLY)
+        target_sources(hearth PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/hearth.rc")
+        set_target_properties(hearth PROPERTIES WIN32_EXECUTABLE ON)
     elseif(APPLE)
-        set(AC3HEARTH_ICON_ICNS "${CMAKE_SOURCE_DIR}/apps/gui/icons/ac3forge.icns")
-        set_source_files_properties("${AC3HEARTH_ICON_ICNS}" PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
-        target_sources(ac3hearth PRIVATE "${AC3HEARTH_ICON_ICNS}")
-        set_target_properties(ac3hearth PROPERTIES MACOSX_BUNDLE ON)
+        set(ICLFORGE_HEARTH_ICON_ICNS "${CMAKE_SOURCE_DIR}/apps/gui/icons/iclforge.icns")
+        set_source_files_properties("${ICLFORGE_HEARTH_ICON_ICNS}" PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+        target_sources(hearth PRIVATE "${ICLFORGE_HEARTH_ICON_ICNS}")
+        set_target_properties(hearth PROPERTIES MACOSX_BUNDLE ON)
 
         # A custom Info.plist (Info.plist.in, beside this file), the same
         # reason and shape as apps/gui/CMakeLists.txt's own APPLE branch:
-        # ac3hearth now owns .ac3/.ec3's CFBundleDocumentTypes/
+        # hearth now owns .ac3/.ec3's CFBundleDocumentTypes/
         # UTExportedTypeDeclarations (Hearth phase A7), which the default
         # template CMake would otherwise generate carries neither. These are
         # plain CMake variables, not target properties, because that is what
         # CMake's own bundle-generation logic substitutes into Info.plist.in's
         # ${VAR} tokens.
-        set(MACOSX_BUNDLE_EXECUTABLE_NAME "ac3hearth")
+        set(MACOSX_BUNDLE_EXECUTABLE_NAME "hearth")
         set(MACOSX_BUNDLE_BUNDLE_NAME "Hearth")
         set(MACOSX_BUNDLE_INFO_STRING
             "Play AC-3, E-AC-3 and AC-4 streams on speakers, a receiver or a Sendspin network")
-        set(MACOSX_BUNDLE_ICON_FILE "ac3forge.icns")
-        set(MACOSX_BUNDLE_GUI_IDENTIFIER "com.iainchesworthlabs.ac3hearth")
+        set(MACOSX_BUNDLE_ICON_FILE "iclforge.icns")
+        set(MACOSX_BUNDLE_GUI_IDENTIFIER "com.iainchesworthlabs.hearth")
         set(MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}")
         set(MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}")
         set(MACOSX_BUNDLE_LONG_VERSION_STRING "${PROJECT_VERSION_FULL}")
         set(MACOSX_BUNDLE_COPYRIGHT "Copyright (c) Iain Chesworth")
-        set_target_properties(ac3hearth PROPERTIES
+        set_target_properties(hearth PROPERTIES
             MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/Info.plist.in")
     endif()
 
@@ -282,48 +286,48 @@ else()
     # apps/crucible/CMakeLists.txt's own comment on why a Linux build needs
     # nothing copied.
     if(WIN32)
-        get_filename_component(AC3HEARTH_QT_BIN_DIR "${Qt6_DIR}/../../../bin" ABSOLUTE)
-        find_program(AC3HEARTH_WINDEPLOYQT NAMES windeployqt6 windeployqt HINTS "${AC3HEARTH_QT_BIN_DIR}")
-        if(AC3HEARTH_WINDEPLOYQT)
-            add_custom_command(TARGET ac3hearth POST_BUILD
-                COMMAND "${AC3HEARTH_WINDEPLOYQT}"
+        get_filename_component(ICLFORGE_HEARTH_QT_BIN_DIR "${Qt6_DIR}/../../../bin" ABSOLUTE)
+        find_program(ICLFORGE_HEARTH_WINDEPLOYQT NAMES windeployqt6 windeployqt HINTS "${ICLFORGE_HEARTH_QT_BIN_DIR}")
+        if(ICLFORGE_HEARTH_WINDEPLOYQT)
+            add_custom_command(TARGET hearth POST_BUILD
+                COMMAND "${ICLFORGE_HEARTH_WINDEPLOYQT}"
                     --qmldir "${CMAKE_CURRENT_SOURCE_DIR}/qml"
-                    --qmldir "${AC3HEARTH_SHARED_DIR}"
+                    --qmldir "${ICLFORGE_HEARTH_SHARED_DIR}"
                     --compiler-runtime
-                    "$<TARGET_FILE:ac3hearth>"
-                COMMENT "Deploying Qt runtime dependencies for ac3hearth")
+                    "$<TARGET_FILE:hearth>"
+                COMMENT "Deploying Qt runtime dependencies for hearth")
         else()
-            message(WARNING "windeployqt not found next to Qt6; ac3hearth.exe will not run standalone from the build tree.")
+            message(WARNING "windeployqt not found next to Qt6; hearth.exe will not run standalone from the build tree.")
         endif()
     endif()
 
     # Four windeployqt passes already share bin/ before this target joins them
-    # (apps/crucible/CMakeLists.txt's own comment: ac3gui's, ac3gui_qmltests's,
-    # ac3crucible's, ac3crucible_qmltests's, chained one after another because
+    # (apps/crucible/CMakeLists.txt's own comment: forge-gui's, forge_gui_qmltests's,
+    # crucible's, crucible_qmltests's, chained one after another because
     # two of them copying the same Qt file into bin/ at once fails with
     # "Cannot create a file when that file already exists" on a real "build
-    # everything" run). ac3hearth's single pass joins the end of that chain -
+    # everything" run). hearth's single pass joins the end of that chain -
     # add_dependencies is transitive for ordering, so chaining after the
     # deepest target that exists is enough; nothing needs re-checking against
-    # every earlier link. ac3hearth_qmltests (issue #886, tests/CMakeLists.txt's
-    # own add_dependencies(ac3hearth_qmltests ac3hearth), included below) now
-    # extends that same chain one more link the same way ac3crucible_qmltests
-    # chains after ac3crucible, rather than starting a second one.
-    if(WIN32 AND AC3HEARTH_WINDEPLOYQT)
-        if(TARGET ac3crucible_qmltests)
-            add_dependencies(ac3hearth ac3crucible_qmltests)
-        elseif(TARGET ac3crucible)
-            add_dependencies(ac3hearth ac3crucible)
-        elseif(TARGET ac3gui_qmltests)
-            add_dependencies(ac3hearth ac3gui_qmltests)
-        elseif(TARGET ac3gui)
-            add_dependencies(ac3hearth ac3gui)
+    # every earlier link. hearth_qmltests (issue #886, tests/CMakeLists.txt's
+    # own add_dependencies(hearth_qmltests hearth), included below) now
+    # extends that same chain one more link the same way crucible_qmltests
+    # chains after crucible, rather than starting a second one.
+    if(WIN32 AND ICLFORGE_HEARTH_WINDEPLOYQT)
+        if(TARGET crucible_qmltests)
+            add_dependencies(hearth crucible_qmltests)
+        elseif(TARGET crucible)
+            add_dependencies(hearth crucible)
+        elseif(TARGET forge_gui_qmltests)
+            add_dependencies(hearth forge_gui_qmltests)
+        elseif(TARGET forge-gui)
+            add_dependencies(hearth forge-gui)
         endif()
     endif()
 
-    # ac3hearth's own Qt Quick Test suite (issue #886, A5's exit): tests/CMakeLists.txt,
-    # include()d rather than add_subdirectory()'d so it sees AC3HEARTH_QML_FILES and
-    # AC3HEARTH_SHARED_DIR as this scope set them, and so its own qt_add_executable()/
+    # hearth's own Qt Quick Test suite (issue #886, A5's exit): tests/CMakeLists.txt,
+    # include()d rather than add_subdirectory()'d so it sees ICLFORGE_HEARTH_QML_FILES and
+    # ICLFORGE_HEARTH_SHARED_DIR as this scope set them, and so its own qt_add_executable()/
     # qt_add_qml_module() pair runs in THIS directory's scope rather than a nested one -
     # apps/gui/CMakeLists.txt's own comment on its identical include() explains why that
     # distinction is load-bearing for AUTOMOC's metatypes JSON handoff to qmltyperegistrar.
@@ -338,7 +342,7 @@ else()
     # to and for the same reason its own comment gives: the guard above
     # names them rather than dropping a platform with no arm here.
     # ---------------------------------------------------------------------
-    install(TARGETS ac3hearth
+    install(TARGETS hearth
         RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT hearth
         BUNDLE DESTINATION "." COMPONENT hearth)
 
@@ -348,25 +352,25 @@ else()
     # against, so the package ships none.
     if(WIN32 OR APPLE)
         qt_generate_deploy_qml_app_script(
-            TARGET ac3hearth
-            OUTPUT_SCRIPT AC3HEARTH_DEPLOY_SCRIPT
+            TARGET hearth
+            OUTPUT_SCRIPT ICLFORGE_HEARTH_DEPLOY_SCRIPT
             NO_UNSUPPORTED_PLATFORM_ERROR)
-        install(SCRIPT "${AC3HEARTH_DEPLOY_SCRIPT}" COMPONENT hearth)
+        install(SCRIPT "${ICLFORGE_HEARTH_DEPLOY_SCRIPT}" COMPONENT hearth)
         # Immediately after it, and only after it: that script deploys Qt's
         # test module into the package, because Qt scans this whole
         # directory for QML imports and tests/qml/tst_*.qml all `import
-        # QtTest` - now that ac3hearth_qmltests exists (the include() above),
-        # ac3hearth is no longer the exception apps/crucible/CMakeLists.txt's
+        # QtTest` - now that hearth_qmltests exists (the include() above),
+        # hearth is no longer the exception apps/crucible/CMakeLists.txt's
         # own comment on this exact measurement described. Nothing a user
         # runs loads qml/QtTest, Qt6Test.dll, Qt6QuickTest.dll or (macOS)
-        # Contents/PlugIns/libquicktestplugin.dylib - only ac3hearth_qmltests
+        # Contents/PlugIns/libquicktestplugin.dylib - only hearth_qmltests
         # does, and that binary is never installed. cmake/StripQtTestDeployment.cmake
         # carries the whole measurement; that script needs this bundle's name
         # set in the same install pass it runs in - hence install(CODE) with
         # the SAME COMPONENT immediately before it, only on APPLE since the
         # Windows shape needs no such variable.
         if(APPLE)
-            install(CODE "set(_ac3_macos_bundle_name \"ac3hearth\")" COMPONENT hearth)
+            install(CODE "set(_ac3_macos_bundle_name \"hearth\")" COMPONENT hearth)
         endif()
         install(SCRIPT "${CMAKE_SOURCE_DIR}/cmake/StripQtTestDeployment.cmake"
             COMPONENT hearth)
@@ -376,11 +380,11 @@ else()
         # The notices and the licence at the archive root, beside bin/ - the
         # same layout apps/crucible/CMakeLists.txt uses and for the same
         # reason (a package-shape check follows in this phase).
-        install(FILES "${AC3HEARTH_NOTICES_FILE}" DESTINATION "." COMPONENT hearth)
+        install(FILES "${ICLFORGE_HEARTH_NOTICES_FILE}" DESTINATION "." COMPONENT hearth)
         install(FILES "${CMAKE_SOURCE_DIR}/LICENSE" DESTINATION "." RENAME "LICENSE.txt" COMPONENT hearth)
     elseif(APPLE)
         # The notices and the licence at the archive root, beside
-        # ac3hearth.app - apps/crucible/CMakeLists.txt's own comment on why
+        # hearth.app - apps/crucible/CMakeLists.txt's own comment on why
         # this is safe to share a destination with apps/notices/notices.cmake's
         # runtime-component pair and with Crucible's own pair applies here
         # too: add_subdirectory(apps/hearth) runs before
@@ -388,7 +392,7 @@ else()
         # in the one place these could collide (the monolithic macOS .dmg),
         # and none of the three ships as that .dmg's actual product - each is
         # its own standalone archive.
-        install(FILES "${AC3HEARTH_NOTICES_FILE}" DESTINATION "." COMPONENT hearth)
+        install(FILES "${ICLFORGE_HEARTH_NOTICES_FILE}" DESTINATION "." COMPONENT hearth)
         install(FILES "${CMAKE_SOURCE_DIR}/LICENSE" DESTINATION "." RENAME "LICENSE.txt" COMPONENT hearth)
     elseif(LINUX)
         # What a freedesktop menu needs: the launcher, the AppStream record a
@@ -396,36 +400,36 @@ else()
         # sizes the window itself embeds - the same layout apps/gui installs
         # under `runtime` and apps/crucible/CMakeLists.txt installs under
         # `crucible`, this is `hearth` because the application is its own
-        # package (cmake/Packaging.cmake). No ac3hearth-mime.xml: the
+        # package (cmake/Packaging.cmake). No hearth-mime.xml: the
         # audio/ac3 and audio/eac3 shared-mime-info types are already
-        # declared by apps/gui/packaging/linux/ac3gui-mime.xml, which every
+        # declared by apps/gui/packaging/linux/forge-gui-mime.xml, which every
         # Linux build installs unconditionally
         # (apps/notices/notices.cmake's runtime component) - a second
         # <mime-type> declaring the same glob would conflict rather than add
         # anything, so this component only CLAIMS the types (.desktop's
         # MimeType=, this metainfo.xml's <provides><mediatype>), which is
         # this package's own thing to state.
-        install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/packaging/linux/ac3hearth.desktop"
+        install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/packaging/linux/hearth.desktop"
             DESTINATION "${CMAKE_INSTALL_DATADIR}/applications" COMPONENT hearth)
-        install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/packaging/linux/ac3hearth.metainfo.xml"
+        install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/packaging/linux/hearth.metainfo.xml"
             DESTINATION "${CMAKE_INSTALL_DATADIR}/metainfo" COMPONENT hearth)
-        install(FILES "${CMAKE_SOURCE_DIR}/apps/gui/icons/ac3forge-256.png"
+        install(FILES "${CMAKE_SOURCE_DIR}/apps/gui/icons/iclforge-256.png"
             DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/256x256/apps"
-            RENAME "ac3hearth.png" COMPONENT hearth)
-        install(FILES "${CMAKE_SOURCE_DIR}/apps/gui/icons/ac3forge-32.png"
+            RENAME "hearth.png" COMPONENT hearth)
+        install(FILES "${CMAKE_SOURCE_DIR}/apps/gui/icons/iclforge-32.png"
             DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/32x32/apps"
-            RENAME "ac3hearth.png" COMPONENT hearth)
+            RENAME "hearth.png" COMPONENT hearth)
         # The notices and the licence under share/doc/<package>/, where a
         # .deb keeps them - apps/crucible/CMakeLists.txt's own comment on
         # the "copyright" duplicate applies here identically: it is the name
         # dpkg and lintian look for, which CPack's DEB generator never writes.
-        install(FILES "${AC3HEARTH_NOTICES_FILE}"
-            DESTINATION "${CMAKE_INSTALL_DATADIR}/doc/ac3forge-hearth" COMPONENT hearth)
+        install(FILES "${ICLFORGE_HEARTH_NOTICES_FILE}"
+            DESTINATION "${CMAKE_INSTALL_DATADIR}/doc/iclforge-hearth" COMPONENT hearth)
         install(FILES "${CMAKE_SOURCE_DIR}/LICENSE"
-            DESTINATION "${CMAKE_INSTALL_DATADIR}/doc/ac3forge-hearth"
+            DESTINATION "${CMAKE_INSTALL_DATADIR}/doc/iclforge-hearth"
             RENAME "LICENSE.txt" COMPONENT hearth)
-        install(FILES "${AC3HEARTH_NOTICES_FILE}"
-            DESTINATION "${CMAKE_INSTALL_DATADIR}/doc/ac3forge-hearth"
+        install(FILES "${ICLFORGE_HEARTH_NOTICES_FILE}"
+            DESTINATION "${CMAKE_INSTALL_DATADIR}/doc/iclforge-hearth"
             RENAME "copyright" COMPONENT hearth)
     endif()
 endif()

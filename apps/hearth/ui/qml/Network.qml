@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-import Ac3ForgeHearth
+import Hearth
 
 // The Network tab (planning/hearth-reference-player.md, A6): discovery,
 // connection and pairing. The list on the left (NetworkSinkList.qml) is
@@ -273,7 +273,7 @@ Item {
                 // value-type lookup on QVariant itself: the generated C++ passes
                 // QMetaType::fromName("QVariant").metaObject() - null, QVariant
                 // has no meta-object - to AOTCompiledContext::
-                // initGetValueLookup(), which dereferences it, and ac3hearth
+                // initGetValueLookup(), which dereferences it, and hearth
                 // segfaulted on start (Network.qml is built with Main.qml's
                 // StackLayout). A read straight off the singleton's QVariantMap
                 // property is compiled as an ordinary lookup.

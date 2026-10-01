@@ -1,8 +1,8 @@
 """Delay-compensated SNR between two WAVs - stdlib only, no numpy.
 
 Used by tools/checks/verify_gold_reference.sh as the L4-lite half of the gold-
-reference gate: FFmpeg's decode of ac3cli's own encoder output is the
-independent reference, ac3cli's own decode of the same file is what is being
+reference gate: FFmpeg's decode of forge's own encoder output is the
+independent reference, forge's own decode of the same file is what is being
 checked, and this asserts they agree to within a threshold rather than just
 "neither one crashed."
 
@@ -50,7 +50,7 @@ import sys
 from pathlib import Path
 
 # Not the stdlib `wave` module: it hard-rejects WAVE_FORMAT_IEEE_FLOAT
-# (format tag 3, "unknown format: 3") with no opt-out, and ac3cli's own
+# (format tag 3, "unknown format: 3") with no opt-out, and forge's own
 # decode writes exactly that (see write_wav_f32 in src/ac3/src/io/wav.cpp) -
 # confirmed locally, this is not a hypothetical. A small manual RIFF/WAVE
 # walk (mirroring that same C++ reader) handles PCM16 and float32 uniformly,

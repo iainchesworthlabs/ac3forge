@@ -5,7 +5,7 @@
 #include "iclforge/ac3/decoder/decoder.hpp"
 #include "crc_mutator.hpp"
 
-// Mirrors ac3cli's own 'decode' path (apps/cli/main.cpp: run_decode): split the
+// Mirrors forge's own 'decode' path (apps/cli/main.cpp: run_decode): split the
 // raw stream into syncframes, then decode each one with a single FrameDecoder
 // so overlap-add state carries across frames exactly as it does for a real
 // caller. A malformed differential exponent chain walking the reconstruction
@@ -30,5 +30,5 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
 // deliberately left unrepaired.
 extern "C" std::size_t LLVMFuzzerCustomMutator(std::uint8_t* data, std::size_t size,
                                                std::size_t max_size, unsigned int seed) {
-    return ac3fuzz::crc_repairing_mutate(data, size, max_size, seed);
+    return iclforge_fuzz::crc_repairing_mutate(data, size, max_size, seed);
 }

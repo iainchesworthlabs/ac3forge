@@ -1,6 +1,6 @@
 # ---------------------------------------------------------------------------
 # The Shield app's native build: a THIN wrapper, not a second copy of
-# ac3forge's build graph. It exists to do exactly two things:
+# iclforge's build graph. It exists to do exactly two things:
 #
 #  1. Pull in the real repo root's CMakeLists.txt via add_subdirectory(), so
 #     iclforge::ac3 and iclforge::audio (including this app's own
@@ -8,7 +8,7 @@
 #     source-of-truth target definitions the desktop CLI/GUI use - a change
 #     to the core lib is picked up here automatically, nothing to keep in
 #     sync by hand.
-#  2. Build this app's own small ac3forge_jni shared library - the one
+#  2. Build this app's own small iclforge_jni shared library - the one
 #     artifact AGP's externalNativeBuild actually loads into the app - which
 #     links those two libraries plus this app's own native sources.
 #
@@ -18,7 +18,7 @@
 # add_subdirectory() below actually configures.
 # ---------------------------------------------------------------------------
 cmake_minimum_required(VERSION 3.28...4.3)
-project(ac3forge_shield_jni LANGUAGES CXX)
+project(iclforge_shield_jni LANGUAGES CXX)
 
 # CMake 3.28+ defaults CXX_SCAN_FOR_MODULES to ON for every C++20+ target
 # built with Ninja (AGP's external-native-build generator) when the compiler
@@ -47,7 +47,7 @@ set(ICLFORGE_BUILD_FUZZERS OFF CACHE BOOL "" FORCE)
 # Same gap python/pyproject.toml and rust/iclforge-sys/build.rs had for the same reason.
 set(ICLFORGE_BUILD_HEARTH OFF CACHE BOOL "" FORCE)
 
-# ac3forge_jni's own target_link_libraries below is iclforge::ac3/iclforge::audio/iclforge::signing only
+# iclforge_jni's own target_link_libraries below is iclforge::ac3/iclforge::audio/iclforge::signing only
 # (see the comment above the MATROSKA/MP4/MPEGTS block just below) - this app never links
 # iclforge::c, so there is no reason to compile src/capi at all here. Off explicitly rather
 # than relying on the root CMakeLists.txt's default ON: leaving it on would silently compile
@@ -64,7 +64,7 @@ set(ICLFORGE_BUILD_CAPI OFF CACHE BOOL "" FORCE)
 # this build to that ON default.
 
 # The Shield app links none of the three standalone container writers either
-# (ac3forge_jni's own target_link_libraries below is iclforge::ac3/iclforge::audio/
+# (iclforge_jni's own target_link_libraries below is iclforge::ac3/iclforge::audio/
 # iclforge::signing only - it streams live objects out AAudio passthrough, it
 # never muxes a file) - CLI/GUI/TESTS/EXAMPLES being OFF above is exactly the
 # condition the root CMakeLists.txt's own FATAL_ERROR guards require before
@@ -89,13 +89,13 @@ set(ICLFORGE_BUILD_MPEGTS OFF CACHE BOOL "" FORCE)
 # mirroring the relative path the way it does for an in-tree subdirectory.
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../../../.." iclforge_build)
 
-add_library(ac3forge_jni SHARED
+add_library(iclforge_jni SHARED
     jni_entry.cpp
     live_cursor.cpp
     file_replay.cpp
     shield_signing_hook.cpp)
 
-target_compile_features(ac3forge_jni PRIVATE cxx_std_23)
+target_compile_features(iclforge_jni PRIVATE cxx_std_23)
 
 # log: android/log.h, used by jni_entry.cpp and by
 # src/audio/src/backend/android/passthrough.cpp (linked in transitively via
@@ -109,4 +109,4 @@ target_compile_features(ac3forge_jni PRIVATE cxx_std_23)
 # has no embedded secret to keep out of the tree; whether it actually signs
 # depends on the runtime key asset, not on a build variant. See
 # shield_signing_hook.hpp.
-target_link_libraries(ac3forge_jni PRIVATE iclforge::ac3 iclforge::audio iclforge::signing log android)
+target_link_libraries(iclforge_jni PRIVATE iclforge::ac3 iclforge::audio iclforge::signing log android)

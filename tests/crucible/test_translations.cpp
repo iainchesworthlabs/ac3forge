@@ -14,8 +14,8 @@
 #include <vector>
 
 // The six Crucible translation catalogues (apps/crucible/translations/
-// ac3crucible_<code>.ts), read as files rather than through Qt: these cases
-// ride the plain ac3tests binary, so they run on a developer's own ctest and
+// crucible_<code>.ts), read as files rather than through Qt: these cases
+// ride the plain iclforge-tests binary, so they run on a developer's own ctest and
 // on every CI leg, including the ones that build no Qt at all. What they
 // check is what a reader of the catalogue cannot see at a glance and what a
 // hand edit or a machine pass gets wrong: a dropped placeholder, a brand name
@@ -41,7 +41,7 @@ constexpr std::array<std::string_view, 6> kLanguages{"ar", "de", "es", "fr", "he
 // compound with hyphens ("Dolby-Atmos-Szene"), which is that language's own
 // orthography, so the check accepts the hyphenated form too.
 constexpr std::array<std::string_view, 10> kBrandTerms{
-    "AC3Forge", "Crucible", "Dolby Atmos", "E-AC-3", "AC-3",
+    "ICL Forge", "Crucible", "Dolby Atmos", "E-AC-3", "AC-3",
     "JOC", "PCM", "HDMI", "PipeWire", "WirePlumber"};
 
 // The catalogues are regenerated centrally once the source changes of this
@@ -52,7 +52,7 @@ constexpr std::array<std::string_view, 10> kBrandTerms{
 // string this pass reworded, so the two cases below stand written and idle.
 //
 // Turned on 2026-09-06, the day the catalogues were refilled: the six
-// Crucible files carry 385 messages each and the six ac3gui files 795, none
+// Crucible files carry 385 messages each and the six forge-gui files 795, none
 // of them unfinished and none vanished. From here an entry left unfinished,
 // or a dead entry left behind, fails the build.
 //
@@ -74,7 +74,7 @@ struct Message {
 };
 
 [[nodiscard]] fs::path catalogue_path(std::string_view code) {
-    return fs::path{ICLFORGE_CRUCIBLE_TS_DIR} / ("ac3crucible_" + std::string{code} + ".ts");
+    return fs::path{ICLFORGE_CRUCIBLE_TS_DIR} / ("crucible_" + std::string{code} + ".ts");
 }
 
 [[nodiscard]] std::string read_catalogue(std::string_view code) {
@@ -272,7 +272,8 @@ TEST_CASE("gui translation catalogues carry no unfinished or dead entry",
                                                                    "he", "xx", "yi"};
     std::vector<std::string> offenders;
     for (const std::string_view code : kGuiLanguages) {
-        const auto path = fs::path{ICLFORGE_GUI_TS_DIR} / ("ac3gui_" + std::string{code} + ".ts");
+        const auto path =
+            fs::path{ICLFORGE_GUI_TS_DIR} / ("forge_gui_" + std::string{code} + ".ts");
         std::ifstream in(path, std::ios::binary);
         INFO("catalogue " << path.string());
         REQUIRE(in.is_open());

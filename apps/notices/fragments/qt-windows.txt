@@ -2,11 +2,11 @@ Qt {{QT_VERSION}}
 ------------------
 
 This package includes the Qt {{QT_VERSION}} libraries, plugins and QML
-modules that ac3gui.exe loads: bin/Qt6*.dll beside the executable, and
+modules that forge-gui.exe loads: bin/Qt6*.dll beside the executable, and
 the plugins/ and qml/ directories bin/qt.conf points at. Which files
 those are is decided by Qt's own deployment tool rather than by a list
 kept here - it reads the built binary and scans the QML it imports - so
-the contents follow the application. What ac3gui links directly is Qt
+the contents follow the application. What forge-gui links directly is Qt
 Core, Gui, Qml, Quick, Quick Controls 2 and Concurrent; what its window
 imports is QtQuick, QtQuick.Controls (with every built-in style, since
 the style is chosen at runtime from C++ and no scan can see which),

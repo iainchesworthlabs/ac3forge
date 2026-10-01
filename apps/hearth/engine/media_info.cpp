@@ -749,7 +749,7 @@ MediaInfo describe_media(const std::string& path, const LoadedItem& loaded) {
     info.associated_services = scanned->associated_substreams;
     info.channel_map = scanned->channel_map;
 
-    // As ac3cli probe walks a stream, over the same units the player plays:
+    // As forge probe walks a stream, over the same units the player plays:
     // the lead programme's.
     io::ProbeOptions options;
     // Needed for info.objects below: without detail/on_access_unit, a

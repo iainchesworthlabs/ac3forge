@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 
-import Ac3ForgeHearth
+import Hearth
 
 // The right-hand "THIS SINK" panel (planning/hearth-design.md's
 // network-pairing artboard): what NetworkController knows about the selected

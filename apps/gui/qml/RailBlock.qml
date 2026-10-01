@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 
-import Ac3Forge
+import ForgeGui
 
 // One numbered block of the left rail — the handoff's "01 INPUT" pattern: a
 // mono ordinal in accent, an uppercase label, and a 2px rule filling the

@@ -24,10 +24,10 @@ import numpy as np
 
 REPO = Path(__file__).resolve().parent.parent.parent
 BUILD = REPO / "build"
-# AC3CLI overrides the binary - see tools/ci/quality_race.py's CLI constant for
+# ICLFORGE_CLI overrides the binary - see tools/ci/quality_race.py's CLI constant for
 # why the default below (a "dev" preset that does not exist, an .exe on a
 # platform that may not have one) is not a usable default everywhere.
-CLI = Path(os.environ.get("AC3CLI", str(BUILD / "dev" / "bin" / "ac3cli.exe")))
+CLI = Path(os.environ.get("ICLFORGE_CLI", str(BUILD / "dev" / "bin" / "forge.exe")))
 RATE = 48000
 SECONDS = 4
 LOW_HZ = 700.0

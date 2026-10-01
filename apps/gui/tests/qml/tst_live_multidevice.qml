@@ -1,7 +1,7 @@
 import QtQuick
 import QtTest
 
-import Ac3Forge
+import ForgeGui
 
 // Bundle B2's two-device capture (item 10) and parallel downmix receiver leg
 // (item 16). Like tst_live_session.qml, a REAL live session needs real

@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-import Ac3ForgeHearth
+import Hearth
 
 // The selected Hearth sink's own speaker layout, routing and levels
 // (network-sink-speakers.png) - Speakers.qml's own controls, read from and

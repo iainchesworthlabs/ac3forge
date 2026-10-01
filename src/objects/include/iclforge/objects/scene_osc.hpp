@@ -44,7 +44,7 @@ namespace iclforge::oba {
 // a WHOLE ObjectPlacement (scene.cpp), so routing a position-only message
 // through a default-constructed ObjectPlacement would silently reset gain to
 // 1.0 and drop lfe_send/size/snap/zone - destroying whatever gain law the
-// caller (ac3cli's, the GUI's) computes per frame. apply() below is how a
+// caller (forge's, the GUI's) computes per frame. apply() below is how a
 // caller turns this into a real placement without that trap.
 struct SceneOscUpdate {
     std::size_t object = 0;

@@ -2,11 +2,11 @@
 
 #include "ac4_objects_core.hpp"
 
-namespace ac3gui {
+namespace forge_gui {
 
 std::optional<double> location_azimuth_deg(iclforge::eac3::chanmap::Location location) {
     // The one table the soundfield ring and the AC-4 pins read, in apps/common so that
-    // ac3cli's atmos-encode reads it too.
+    // forge's atmos-encode reads it too.
     return iclforge::apps::location_azimuth_deg(location);
 }
 
@@ -66,4 +66,4 @@ std::vector<iclforge::eac3::chanmap::Location> ac3_bed_locations(iclforge::Acmod
     return out;
 }
 
-}  // namespace ac3gui
+}  // namespace forge_gui

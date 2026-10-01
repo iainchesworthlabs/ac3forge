@@ -40,7 +40,7 @@
 #include "ac4_channels.hpp"
 #include "iclforge/ac4dec/decoder.hpp"
 
-namespace ac3cli::commands {
+namespace forge_cli::commands {
 
 using iclforge::apps::ac4_bed_acmod;
 using iclforge::apps::ac4_location;
@@ -1011,7 +1011,7 @@ int run_levels_eac3(std::span<const std::byte> stream, std::string_view in_path,
     // §E2.3.1.2: levels are per programme. Two independent substreams are two
     // separate pieces of audio, so one set of per-channel figures across both
     // would describe neither.
-    const auto programme = ac3cli::choose_programme(*ids, want_programme);
+    const auto programme = forge_cli::choose_programme(*ids, want_programme);
     if (!programme.has_value()) {
         return 1;
     }
@@ -1022,7 +1022,7 @@ int run_levels_eac3(std::span<const std::byte> stream, std::string_view in_path,
     }
     if (ids->size() > 1) {
         fmt::println("{}: programme {} of {} ({})", in_path, *programme, ids->size(),
-                     ac3cli::format_programme_ids(*ids));
+                     forge_cli::format_programme_ids(*ids));
     }
     iclforge::Eac3Decoder decoder{{.programme = programme}};
     std::vector<iclforge::analysis::ChannelSummary> totals;
@@ -1246,13 +1246,13 @@ int run_qc(std::string_view in_path, const Options& meta) {
             fmt::println(stderr, "error: {} is not a valid E-AC-3 stream", in_path);
             return kExitInput;
         }
-        const auto programme = ac3cli::choose_programme(*ids, want_programme);
+        const auto programme = forge_cli::choose_programme(*ids, want_programme);
         if (!programme.has_value()) {
             return 1;
         }
         if (ids->size() > 1) {
             fmt::println("qc: programme {} of {} ({})", *programme, ids->size(),
-                         ac3cli::format_programme_ids(*ids));
+                         forge_cli::format_programme_ids(*ids));
         }
         result = rendered_layout ? measure_qc_eac3_rendered(stream, *programme)
                                  : measure_qc_eac3_bed(stream, *programme);
@@ -1798,7 +1798,7 @@ std::optional<CarrierChunk> seek_riff_data(std::istream& in, std::uint64_t file_
 int run_unspdif(std::string_view in_path, std::string_view out_path, bool keep_partial) {
     // "-" reads the carrier from stdin, so a capture tool can be piped
     // straight in - which on a machine with a real S/PDIF input is the
-    // natural shape of this ("arecord ... | ac3cli unspdif - out.ec3"). The
+    // natural shape of this ("arecord ... | forge unspdif - out.ec3"). The
     // RIFF walk below needs to seek and stdin does not, but it does not need
     // to run at all: BurstReader resyncs on Pa/Pb, and a WAV header cannot
     // contain a preamble followed by a syncframe, so the header simply gets
@@ -1936,4 +1936,4 @@ int run_unspdif(std::string_view in_path, std::string_view out_path, bool keep_p
     return kExitOk;
 }
 
-}  // namespace ac3cli::commands
+}  // namespace forge_cli::commands

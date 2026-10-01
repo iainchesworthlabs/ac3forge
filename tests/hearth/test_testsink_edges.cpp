@@ -28,7 +28,7 @@
 #include "iclforge/sendspin/websocket.hpp"
 #include "sink.hpp"
 
-// ac3hearth-testsink's edges, beside test_testsink.cpp's end-to-end case: what Sink::start
+// hearth-testsink's edges, beside test_testsink.cpp's end-to-end case: what Sink::start
 // refuses, and what a server session dialled straight at the sink over loopback (mDNS off) sees
 // the sink do and log for each thing it is sent - a group name, volume and mute, a stream and a
 // burst stream cleared, an extension-role command, a second server displacing the first, and

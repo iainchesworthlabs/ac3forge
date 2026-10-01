@@ -14,7 +14,7 @@
 // plan; this is the first commands/ group, the four physically-contiguous container commands
 // (spdif is elsewhere in main.cpp and will be grouped with its own file-position neighbors in a
 // later step, not here).
-namespace ac3cli::commands {
+namespace forge_cli::commands {
 
 int run_mkv(std::string_view in_path, std::string_view out_path);
 
@@ -66,4 +66,4 @@ int run_demux(std::string_view in_path, std::string_view out_path);
 int run_remux(std::string_view in_path, std::string_view out_path, std::string_view profile,
               const Options& meta);
 
-}  // namespace ac3cli::commands
+}  // namespace forge_cli::commands

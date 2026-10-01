@@ -40,8 +40,8 @@ endif()
 # NSIS: the Windows installer keeps carrying exactly what it carries today.
 # CPACK_NSIS_COMPONENT_INSTALL is off (see Packaging.cmake), which makes that
 # generator monolithic - it installs every component in CPACK_COMPONENTS_ALL
-# into one installer - so the AC3Forge Crucible would otherwise land inside
-# the ac3cli/ac3gui installer the moment ICLFORGE_BUILD_CRUCIBLE is on for a
+# into one installer - so the Crucible would otherwise land inside
+# the forge/forge-gui installer the moment ICLFORGE_BUILD_CRUCIBLE is on for a
 # packaging build. It ships as its own archive instead while its driver is
 # test-signed; the intended end state is the opposite (the installer
 # installs the Crucible and its signed driver, and removes them on

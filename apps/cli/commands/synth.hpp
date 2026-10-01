@@ -14,23 +14,23 @@
 // and orbit/eac3-silence) - grouped by what they actually are instead, the same kind of call
 // (deliberately overriding pure file-adjacency) commands/live_audio.hpp's split from
 // commands/audio_io.hpp already made for a different reason.
-namespace ac3cli::commands {
+namespace forge_cli::commands {
 
 int run_silence(std::string_view out_path, std::uint32_t seconds, std::uint32_t bitrate);
 
 int run_sine(std::string_view out_path, std::uint32_t seconds, std::uint32_t bitrate,
             std::uint32_t freq_hz, std::uint32_t amplitude_pct, std::string_view layout,
-            bool couple_flag, const ac3cli::Options& meta);
+            bool couple_flag, const forge_cli::Options& meta);
 
 // The same tone generator as run_sine, but through the E-AC-3 container.
 int run_eac3_sine(std::string_view out_path, std::uint32_t seconds, std::uint32_t bitrate,
                   std::uint32_t freq_hz, std::uint32_t amplitude_pct, std::string_view layout,
-                  const ac3cli::Options& meta);
+                  const forge_cli::Options& meta);
 
 int run_orbit(std::string_view out_path, std::uint32_t seconds, std::uint32_t bitrate,
-             std::uint32_t orbit_seconds, const ac3cli::Options& meta);
+             std::uint32_t orbit_seconds, const forge_cli::Options& meta);
 
 int run_eac3_silence(std::string_view out_path, std::uint32_t seconds, std::uint32_t bitrate,
-                     std::string_view layout, const ac3cli::Options& meta);
+                     std::string_view layout, const forge_cli::Options& meta);
 
-}  // namespace ac3cli::commands
+}  // namespace forge_cli::commands

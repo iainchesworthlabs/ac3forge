@@ -8,7 +8,7 @@
 
 #include "json_sink.hpp"
 
-// A streaming JSON writer, for `ac3cli probe`'s machine-readable form.
+// A streaming JSON writer, for `forge probe`'s machine-readable form.
 //
 // Deliberately not a document model. probe's whole posture is that a stream of
 // any length costs the same to inspect (see ac3/io/probe.hpp), and a writer
@@ -26,7 +26,7 @@
 // writers of the document's stream summary (apps/common/probe_json.hpp), take
 // it as the JsonSink it is, which Hearth's media information writes to as well.
 
-namespace ac3cli {
+namespace forge_cli {
 
 class JsonWriter final : public iclforge::apps::JsonSink {
    public:
@@ -76,4 +76,4 @@ class JsonWriter final : public iclforge::apps::JsonSink {
     bool after_key_ = false;
 };
 
-}  // namespace ac3cli
+}  // namespace forge_cli

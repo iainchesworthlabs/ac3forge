@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 
-import Ac3Forge
+import ForgeGui
 
 // Two square plan views side by side: the loudspeaker ring seen from above
 // (ear level) and, since a flat ring cannot show a ceiling layer, a second

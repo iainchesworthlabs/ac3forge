@@ -144,6 +144,38 @@ class Records(unittest.TestCase):
             baseline.parse_kinds("headers,nonsense")
 
 
+class CliExecutable(unittest.TestCase):
+    """The CLI is `forge` since N1A; a tree built before it has `ac3cli`, and a stage records the
+    tree it starts from with the same script."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.build = Path(self._tmp.name)
+        (self.build / "bin").mkdir()
+        self.addCleanup(self._tmp.cleanup)
+
+    def make(self, *names: str) -> None:
+        for name in names:
+            (self.build / "bin" / name).write_bytes(b"")
+
+    def test_the_new_name_is_found(self) -> None:
+        self.make("forge.exe", "iclforge-tests.exe")
+        self.assertEqual(baseline.executable(self.build, *baseline.CLI_NAMES).name, "forge.exe")
+
+    def test_a_tree_built_before_the_rename_is_still_recorded(self) -> None:
+        self.make("ac3cli.exe", "ac3tests.exe")
+        self.assertEqual(baseline.executable(self.build, *baseline.CLI_NAMES).name, "ac3cli.exe")
+
+    def test_the_new_name_wins_when_both_are_there(self) -> None:
+        self.make("ac3cli", "forge")
+        self.assertEqual(baseline.executable(self.build, *baseline.CLI_NAMES).name, "forge")
+
+    def test_a_tree_with_neither_says_what_it_looked_for(self) -> None:
+        with self.assertRaises(SystemExit) as caught:
+            baseline.executable(self.build, *baseline.CLI_NAMES)
+        self.assertIn("forge or ac3cli", str(caught.exception))
+
+
 class Exports(unittest.TestCase):
     def compare(
         self, old: dict, new: dict, mapping: str, kinds: set[str], copies: bool = False

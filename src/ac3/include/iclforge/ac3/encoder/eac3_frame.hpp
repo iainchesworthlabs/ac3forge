@@ -389,7 +389,7 @@ struct FrameConfig {
     // eac3::ecpl_channel_spectrum, reconstructing the spectrum the decoder
     // will hold: encoding is the only reason an encoder runs an inverse at
     // all, so this one field is the encoder's fast-transform switch in both
-    // directions, and ac3cli's mode=reference (which clears it) keeps a
+    // directions, and forge's mode=reference (which clears it) keeps a
     // reference-mode encode direct end to end.
     bool fast_mdct = true;
 
@@ -658,7 +658,7 @@ struct ProgrammeConfig {
 // §E2.3.1.2: eight independent substreams, I0-I7, no more. Exported (rather
 // than staying local to eac3_frame.cpp, where access_unit_configs() enforces
 // it) so a caller sizing anything against "how many programmes can this
-// format hold" - ac3cli's programmeN= surface among them - has one source of
+// format hold" - forge's programmeN= surface among them - has one source of
 // truth instead of a second, hand-copied 8.
 inline constexpr std::size_t kMaxProgrammes = 8;
 

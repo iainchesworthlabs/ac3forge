@@ -6,8 +6,8 @@
 # native formats are layered on top when the packaging tool for that format is
 # actually available, so `cpack` degrades gracefully instead of failing
 # outright. Which targets end up in a package is decided entirely by which
-# install() rules ran - ac3cli's runs unconditionally (ICLFORGE_BUILD_CLI
-# defaults ON), ac3gui's only when ICLFORGE_BUILD_GUI is ON - so no extra
+# install() rules ran - forge's runs unconditionally (ICLFORGE_BUILD_CLI
+# defaults ON), forge-gui's only when ICLFORGE_BUILD_GUI is ON - so no extra
 # gating is needed here for that.
 #
 # CMakePresets.json's packagePresets deliberately carry no "generators"
@@ -51,19 +51,19 @@ if(WIN32)
         list(APPEND CPACK_GENERATOR "NSIS")
         set(CPACK_NSIS_PACKAGE_NAME "${CPACK_PACKAGE_NAME}")
         set(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
-        # Same source ac3gui's own .rc uses (apps/gui/CMakeLists.txt) - the
+        # Same source forge-gui's own .rc uses (apps/gui/CMakeLists.txt) - the
         # installer/uninstaller windows and shortcut both otherwise default
         # to NSIS's own generic icon. NSIS wants a Windows .ico specifically
         # for both variables, which generate_icons.py already produces.
-        set(CPACK_NSIS_MUI_ICON "${PROJECT_SOURCE_DIR}/apps/gui/icons/ac3forge.ico")
-        set(CPACK_NSIS_MUI_UNIICON "${PROJECT_SOURCE_DIR}/apps/gui/icons/ac3forge.ico")
+        set(CPACK_NSIS_MUI_ICON "${PROJECT_SOURCE_DIR}/apps/gui/icons/iclforge.ico")
+        set(CPACK_NSIS_MUI_UNIICON "${PROJECT_SOURCE_DIR}/apps/gui/icons/iclforge.ico")
 
-        # Start Menu entries. Until this, the installer laid ac3cli.exe and
-        # ac3gui.exe down under $INSTDIR\bin and created nothing anywhere a
+        # Start Menu entries. Until this, the installer laid forge.exe and
+        # forge-gui.exe down under $INSTDIR\bin and created nothing anywhere a
         # user looks - the Start Menu folder CPack always makes held nothing
         # but the Uninstall shortcut, so an installed copy was reachable only
         # by browsing to the folder it went into. The Linux .deb has had a
-        # menu entry (apps/gui/packaging/linux/ac3gui.desktop);
+        # menu entry (apps/gui/packaging/linux/forge-gui.desktop);
         # Windows had never been given the same thing.
         #
         # CPACK_PACKAGE_EXECUTABLES is the shape CPack's NSIS generator wants:
@@ -78,16 +78,16 @@ if(WIN32)
         # applications' install(TARGETS ... RUNTIME DESTINATION) use, so the
         # default is correct here rather than merely untouched.
         #
-        # The label is "ac3gui" and not a product name because that is what
+        # The label is "forge-gui" and not a product name because that is what
         # the Linux launcher's Name= already says: the two menus name the same
         # application and should not disagree, and choosing a new published
         # name for it is not this file's decision to take
         # (planning/recasting.md).
         #
-        # ac3gui alone in that list, because it is the only windowed
+        # forge-gui alone in that list, because it is the only windowed
         # application the installer carries (the Crucible is kept out of this
         # installer entirely - cmake/CPackProjectConfig.cmake says why). A
-        # .lnk straight to ac3cli.exe would open a console, print the usage
+        # .lnk straight to forge.exe would open a console, print the usage
         # text and close it again before anyone could read a line of it, so
         # the console tool gets the entry it can actually use instead: a
         # command prompt that already has $INSTDIR\bin on PATH. That has no
@@ -117,44 +117,44 @@ if(WIN32)
         # Deliberately not CPACK_CREATE_DESKTOP_LINKS: the defect is that the
         # applications are not findable, and a desktop icon nobody asked for
         # is a different decision from a Start Menu entry.
-        if(TARGET ac3gui)
-            set(CPACK_PACKAGE_EXECUTABLES "ac3gui" "ac3gui")
+        if(TARGET forge-gui)
+            set(CPACK_PACKAGE_EXECUTABLES "forge-gui" "forge-gui")
         endif()
-        # Hearth phase A7: a Start Menu entry beside ac3gui's own, appended
+        # Hearth phase A7: a Start Menu entry beside forge-gui's own, appended
         # rather than replacing it - CPACK_PACKAGE_EXECUTABLES is a flat
         # name/label pair list, so a second application adds a second pair
         # rather than overwriting the first.
-        if(TARGET ac3hearth)
-            list(APPEND CPACK_PACKAGE_EXECUTABLES "ac3hearth" "ac3hearth")
+        if(TARGET hearth)
+            list(APPEND CPACK_PACKAGE_EXECUTABLES "hearth" "hearth")
         endif()
-        if(TARGET ac3cli)
+        if(TARGET forge)
             set(CPACK_NSIS_CREATE_ICONS_EXTRA [[
             SetOutPath "$INSTDIR\bin"
-            CreateShortCut "$SMPROGRAMS\$STARTMENU_FOLDER\ac3cli command prompt.lnk" "$SYSDIR\cmd.exe" '/K "set PATH=$INSTDIR\bin;%PATH%"' "$INSTDIR\bin\ac3cli.exe" 0
+            CreateShortCut "$SMPROGRAMS\$STARTMENU_FOLDER\forge command prompt.lnk" "$SYSDIR\cmd.exe" '/K "set PATH=$INSTDIR\bin;%PATH%"' "$INSTDIR\bin\forge.exe" 0
             SetOutPath "$INSTDIR"
             ]])
             set(CPACK_NSIS_DELETE_ICONS_EXTRA [[
-            Delete "$SMPROGRAMS\$MUI_TEMP\ac3cli command prompt.lnk"
+            Delete "$SMPROGRAMS\$MUI_TEMP\forge command prompt.lnk"
             ]])
         endif()
 
-        # .ac3/.ec3 open in ac3hearth, the reference player (Hearth phase A7 -
-        # this used to point at ac3gui; planning/hearth-reference-player.md's
+        # .ac3/.ec3 open in hearth, the reference player (Hearth phase A7 -
+        # this used to point at forge-gui; planning/hearth-reference-player.md's
         # A7 asked which application is the default handler, decided with
-        # the user as switching it here). ac3gui falls back to being the
-        # opener only in a build that has no ac3hearth at all, so a
+        # the user as switching it here). forge-gui falls back to being the
+        # opener only in a build that has no hearth at all, so a
         # GUI-only package still associates something rather than leaving
         # Explorer with no entry.
         #
         # The gesture itself - the app's own DropArea and
-        # `ac3hearth <file>` launch handling already understanding a file
-        # once it reaches the process - is unchanged from ac3gui's own
+        # `hearth <file>` launch handling already understanding a file
+        # once it reaches the process - is unchanged from forge-gui's own
         # original comment; this is only what gets it there from Explorer.
         # One ProgID for both extensions - they are the same stream format
         # (bsid decides AC-3 vs E-AC-3) - so a single "open in" entry is the
         # honest description rather than two identical ones. $INSTDIR\bin
         # matches CMAKE_INSTALL_BINDIR, where apps/hearth/ui/CMakeLists.txt's
-        # own install(TARGETS ac3hearth RUNTIME DESTINATION ...) puts it.
+        # own install(TARGETS hearth RUNTIME DESTINATION ...) puts it.
         # SHChangeNotify is what makes Explorer pick the new association up
         # without a logoff/logon - without it the icon/"Open with" entry
         # only appears after one. Bracket arguments (CMake's raw-string
@@ -172,30 +172,30 @@ if(WIN32)
         # thing that differs between the two would mean a quoted string
         # instead, right back into the trap this comment already warns
         # against.
-        if(TARGET ac3hearth)
+        if(TARGET hearth)
             set(CPACK_NSIS_EXTRA_INSTALL_COMMANDS [[
-            WriteRegStr HKCR ".ac3" "" "AC3Forge.Stream"
-            WriteRegStr HKCR ".ec3" "" "AC3Forge.Stream"
-            WriteRegStr HKCR "AC3Forge.Stream" "" "AC-3 / E-AC-3 Stream"
-            WriteRegStr HKCR "AC3Forge.Stream\DefaultIcon" "" "$INSTDIR\bin\ac3hearth.exe,0"
-            WriteRegStr HKCR "AC3Forge.Stream\shell\open\command" "" '"$INSTDIR\bin\ac3hearth.exe" "%1"'
+            WriteRegStr HKCR ".ac3" "" "IclForge.Stream"
+            WriteRegStr HKCR ".ec3" "" "IclForge.Stream"
+            WriteRegStr HKCR "IclForge.Stream" "" "AC-3 / E-AC-3 Stream"
+            WriteRegStr HKCR "IclForge.Stream\DefaultIcon" "" "$INSTDIR\bin\hearth.exe,0"
+            WriteRegStr HKCR "IclForge.Stream\shell\open\command" "" '"$INSTDIR\bin\hearth.exe" "%1"'
             System::Call 'Shell32::SHChangeNotify(i 0x8000000, i 0, i 0, i 0)'
         ]])
-        elseif(TARGET ac3gui)
+        elseif(TARGET forge-gui)
             set(CPACK_NSIS_EXTRA_INSTALL_COMMANDS [[
-            WriteRegStr HKCR ".ac3" "" "AC3Forge.Stream"
-            WriteRegStr HKCR ".ec3" "" "AC3Forge.Stream"
-            WriteRegStr HKCR "AC3Forge.Stream" "" "AC-3 / E-AC-3 Stream"
-            WriteRegStr HKCR "AC3Forge.Stream\DefaultIcon" "" "$INSTDIR\bin\ac3gui.exe,0"
-            WriteRegStr HKCR "AC3Forge.Stream\shell\open\command" "" '"$INSTDIR\bin\ac3gui.exe" "%1"'
+            WriteRegStr HKCR ".ac3" "" "IclForge.Stream"
+            WriteRegStr HKCR ".ec3" "" "IclForge.Stream"
+            WriteRegStr HKCR "IclForge.Stream" "" "AC-3 / E-AC-3 Stream"
+            WriteRegStr HKCR "IclForge.Stream\DefaultIcon" "" "$INSTDIR\bin\forge-gui.exe,0"
+            WriteRegStr HKCR "IclForge.Stream\shell\open\command" "" '"$INSTDIR\bin\forge-gui.exe" "%1"'
             System::Call 'Shell32::SHChangeNotify(i 0x8000000, i 0, i 0, i 0)'
         ]])
         endif()
-        if(TARGET ac3hearth OR TARGET ac3gui)
+        if(TARGET hearth OR TARGET forge-gui)
             set(CPACK_NSIS_EXTRA_UNINSTALL_COMMANDS [[
             DeleteRegKey HKCR ".ac3"
             DeleteRegKey HKCR ".ec3"
-            DeleteRegKey HKCR "AC3Forge.Stream"
+            DeleteRegKey HKCR "IclForge.Stream"
             System::Call 'Shell32::SHChangeNotify(i 0x8000000, i 0, i 0, i 0)'
         ]])
         endif()
@@ -226,7 +226,7 @@ elseif(UNIX)
         set(CPACK_DEBIAN_PACKAGE_SECTION "sound")
         set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
 
-        # The QML modules ac3gui needs, declared by hand, because nothing
+        # The QML modules forge-gui needs, declared by hand, because nothing
         # automatic can find them. Two separate gaps, and only the first is
         # the one usually talked about:
         #
@@ -249,13 +249,13 @@ elseif(UNIX)
         #   without them installs cleanly and then dies at the first import
         #   - which is what the released .deb has been doing.
         #
-        # The list is ac3gui's own imports, read off apps/gui/qml/*.qml, not
+        # The list is forge-gui's own imports, read off apps/gui/qml/*.qml, not
         # copied from the Crucible pass in .github/workflows/_build.yml: the
-        # two windows import different things. ac3gui imports QtQuick,
+        # two windows import different things. forge-gui imports QtQuick,
         # QtQuick.Controls, QtQuick.Dialogs, QtQuick.Layouts, QtQuick.Window
         # and QtCore (Main.qml's Settings). Crucible additionally imports
         # QtQuick.Effects, Qt.labs.platform and QtQuick3D and none of those
-        # belong here; ac3crucible is its own component with its own Depends
+        # belong here; crucible is its own component with its own Depends
         # further down. Four entries are named that no .qml file imports:
         #   qml6-module-qtquick-templates       what QtQuick.Controls is
         #                                       implemented on top of
@@ -277,7 +277,7 @@ elseif(UNIX)
         # Only when the GUI is in the package. A CLI-only .deb
         # (ICLFORGE_BUILD_GUI=OFF, still the default on every Linux preset in
         # CMakePresets.json) links no Qt at all, and pulling the whole QML
-        # runtime onto a machine that asked for ac3cli would be a regression.
+        # runtime onto a machine that asked for forge would be a regression.
         # The Qt libraries themselves stay with shlibdeps, which resolves
         # them from an apt kit; a private kit needs them added here too, and
         # the first gap above is the reason why.
@@ -305,7 +305,7 @@ elseif(UNIX)
 
         # Component-aware packaging, OFF by default for the DEB generator -
         # without this, CPack ignores CPACK_COMPONENTS_ALL/GROUP entirely and
-        # bundles every install()'d file (ac3cli AND the full library SDK)
+        # bundles every install()'d file (forge AND the full library SDK)
         # into one monolithic .deb, confirmed empirically against a real
         # `dpkg-deb -c` of this project's own pre-split output. Turning it on
         # is what makes runtime/library/libruntime become three independent
@@ -319,19 +319,19 @@ elseif(UNIX)
         # Package-name overrides: without these, CPack derives
         # <name>-<component> for every component once component install is
         # on (e.g. "iclforge-runtime"), which both renames today's existing
-        # ac3cli package and ignores Debian's own libFOO/libFOO-dev naming
+        # forge package and ignores Debian's own libFOO/libFOO-dev naming
         # convention for the library halves.
         set(CPACK_DEBIAN_RUNTIME_PACKAGE_NAME "iclforge")
         set(CPACK_DEBIAN_LIBRUNTIME_PACKAGE_NAME "libiclforge0")
         set(CPACK_DEBIAN_LIBRARY_PACKAGE_NAME "libiclforge-dev")
-        # AC3Forge Crucible (Crucible cross-platform promotion): its own package, since it is its
+        # Crucible (Crucible cross-platform promotion): its own package, since it is its
         # own download everywhere else. shlibdeps resolves libpipewire-0.3 and
         # the Qt runtime from the binary; what it cannot see is that the
         # application needs the PipeWire *daemon* and a session manager
         # running, which is a Depends on the service packages, not a library.
         # No ALSA dependency, on purpose: apps/crucible/CMakeLists.txt refuses
         # to build against the ALSA backend at all.
-        set(CPACK_DEBIAN_CRUCIBLE_PACKAGE_NAME "ac3forge-crucible")
+        set(CPACK_DEBIAN_CRUCIBLE_PACKAGE_NAME "iclforge-crucible")
         # Named for what it is, the same reasoning as the archive override
         # further down: without this the file is
         # iclforge-<version>-<system>-crucible.deb, the base name with the
@@ -352,7 +352,7 @@ elseif(UNIX)
         # line that starts with a space comes out with two, which Debian
         # displays as preformatted text.
         set(CPACK_DEBIAN_CRUCIBLE_DESCRIPTION
-            "AC3Forge Crucible captures each application separately and places it as an
+            "Crucible captures each application separately and places it as an
 object in a live Dolby Atmos scene. Drag an application to a place in the
 room and the result streams to a receiver as E-AC-3 JOC, or as Dolby
 Digital, multichannel PCM or stereo, following the hardware. It needs a
@@ -374,19 +374,19 @@ a PipeWire node Crucible creates while it runs.")
         # CPACK_SYSTEM_NAME's identical trap, documented below.
         set(CPACK_DEBIAN_LIBRARY_PACKAGE_DEPENDS "libiclforge0 (= ${PROJECT_VERSION})")
 
-        # ac3hearth, the desktop reference player (Hearth phase A7): its own
-        # package, since like AC3Forge Crucible it is its own download
+        # hearth, the desktop reference player (Hearth phase A7): its own
+        # package, since like Crucible it is its own download
         # everywhere else - and unlike Crucible, this one ships DEB, RPM and
         # TGZ in CI (planning/hearth-reference-player.md's own A7 text),
         # with no local-only caveat, because there is no test-signed driver
         # or PipeWire dependency holding it back the way Crucible's own
         # comment further down explains for that component's RPM.
-        if(TARGET ac3hearth)
-            set(CPACK_DEBIAN_HEARTH_PACKAGE_NAME "ac3forge-hearth")
+        if(TARGET hearth)
+            set(CPACK_DEBIAN_HEARTH_PACKAGE_NAME "iclforge-hearth")
             set(CPACK_DEBIAN_HEARTH_FILE_NAME DEB-DEFAULT)
             set(CPACK_DEBIAN_HEARTH_PACKAGE_SECTION "sound")
             set(CPACK_DEBIAN_HEARTH_DESCRIPTION
-                "AC3Forge Hearth is the desktop player. It plays AC-3, E-AC-3 (with Dolby
+                "Hearth is the desktop player. It plays AC-3, E-AC-3 (with Dolby
 Atmos objects) and AC-4, decodes to a chosen speaker layout with each
 format's decoder settings, and plays to a local device or to a group of
 Sendspin network sinks. AC-3 and E-AC-3 streams can also be sent to a
@@ -398,11 +398,11 @@ AC-3 and E-AC-3 only.")
             # same reasoning as CPACK_DEBIAN_RUNTIME_PACKAGE_DEPENDS's own
             # comment above: a QML import is invisible to a library-level
             # scan in every case, distro kit or not, so this states what the
-            # window needs rather than inheriting it from ac3gui's own list,
+            # window needs rather than inheriting it from forge-gui's own list,
             # which imports a different set (QtQuick.Window and QtCore among
             # them - this window imports neither yet). Two entries named
             # that no .qml file imports directly, for the same reason
-            # ac3gui's own four are: qml6-module-qtquick-templates is what
+            # forge-gui's own four are: qml6-module-qtquick-templates is what
             # QtQuick.Controls is implemented on top of, and
             # qml6-module-qt-labs-folderlistmodel is QtQuick.Dialogs'
             # non-native FileDialog fallback, which is what runs where no
@@ -441,7 +441,7 @@ AC-3 and E-AC-3 only.")
         # this generator targets do not split the QML modules out: Fedora and
         # RHEL ship QtQuick, Quick Controls, Dialogs, Layouts and the QtCore
         # QML module inside qt6-qtdeclarative, the same package that owns the
-        # libQt6Qml.so.6/libQt6Quick.so.6 that ac3gui links - so
+        # libQt6Qml.so.6/libQt6Quick.so.6 that forge-gui links - so
         # CPACK_RPM_PACKAGE_AUTOREQPROV's soname scan already pulls every one
         # of them in, and Debian's per-module qml6-module-* split is what
         # makes the .deb need a list by hand. Reasoned from the two
@@ -481,20 +481,20 @@ AC-3 and E-AC-3 only.")
         # same gap CPACK_RPM_PACKAGE_AUTOREQPROV's reasoning above already
         # names. docs/releasing.md tells a release manager the same thing in
         # the reader's own words.
-        set(CPACK_RPM_CRUCIBLE_PACKAGE_NAME "ac3forge-crucible")
+        set(CPACK_RPM_CRUCIBLE_PACKAGE_NAME "iclforge-crucible")
         set(CPACK_RPM_CRUCIBLE_FILE_NAME RPM-DEFAULT)
         set(CPACK_RPM_CRUCIBLE_PACKAGE_REQUIRES "pipewire, wireplumber")
         set(CPACK_RPM_LIBRUNTIME_PACKAGE_NAME "libiclforge0")
         set(CPACK_RPM_LIBRARY_PACKAGE_NAME "iclforge-devel")
         set(CPACK_RPM_LIBRARY_PACKAGE_REQUIRES "libiclforge0 = %{version}-%{release}")
 
-        # ac3hearth's RPM, the DEB block's own reasoning above - no per-QML-
+        # hearth's RPM, the DEB block's own reasoning above - no per-QML-
         # module Requires here, the same asymmetry CPACK_RPM_PACKAGE_AUTOREQPROV's
-        # own comment already names for ac3gui: AUTOREQPROV's soname scan
+        # own comment already names for forge-gui: AUTOREQPROV's soname scan
         # pulls the Qt Quick runtime in on Fedora/RHEL without a hand-written
         # list, unlike Debian's split QML packages.
-        if(TARGET ac3hearth)
-            set(CPACK_RPM_HEARTH_PACKAGE_NAME "ac3forge-hearth")
+        if(TARGET hearth)
+            set(CPACK_RPM_HEARTH_PACKAGE_NAME "iclforge-hearth")
             set(CPACK_RPM_HEARTH_FILE_NAME RPM-DEFAULT)
         endif()
     endif()
@@ -502,14 +502,14 @@ endif()
 
 # ---------------------------------------------------------------------------
 # Library component(s): a second, separate download alongside the existing
-# ac3cli/ac3gui package - headers + .lib/.dll/.a/.so + CMake package config
+# forge/forge-gui package - headers + .lib/.dll/.a/.so + CMake package config
 # for a third party consuming iclforge::ac3/iclforge::matroska via
 # find_package(iclforge) (see cmake/InstallLibrary.cmake). Everything
 # install()'d without an explicit COMPONENT falls into CPack's own
-# "Unspecified" component, which is why ac3cli/ac3gui and every
+# "Unspecified" component, which is why forge/forge-gui and every
 # InstallLibrary.cmake rule now carry one explicitly.
 #
-# Three components, not two: "runtime" (ac3cli/ac3gui, unchanged), "library"
+# Three components, not two: "runtime" (forge/forge-gui, unchanged), "library"
 # (headers, static archives, CMake package config, and - on Unix - the
 # unversioned .so namelink symlink you link against), and "libruntime" (just
 # the versioned .so/.dylib a linked binary loads at runtime - see
@@ -536,23 +536,23 @@ endif()
 # DEB/RPM get their own *_COMPONENT_INSTALL switch, set inside their own
 # find_program() blocks above, now that the split is real work rather than
 # a placeholder.
-# The `runtime` component is ac3cli/ac3gui plus the
-# generated ac3cli.1 man page and the bash/zsh/fish/PowerShell completion
+# The `runtime` component is forge/forge-gui plus the
+# generated forge.1 man page and the bash/zsh/fish/PowerShell completion
 # scripts - all install()'d with COMPONENT runtime from
 # apps/cli/CMakeLists.txt, so every generator below picks them up with the
 # binary rather than needing a component of their own. They are absent only
 # from a package built where the host cannot run the target's binary - they are
-# produced by running the freshly built ac3cli - which is a host/target
+# produced by running the freshly built forge - which is a host/target
 # comparison, not CMAKE_CROSSCOMPILING (see that file's own guard for why the
 # difference matters: testing the flag instead left them out of every Linux and
 # macOS package for as long as it stood).
 set(CPACK_COMPONENTS_ALL runtime library libruntime)
 
-# The AC3Forge Crucible as a fourth component, and so its own
+# The Crucible as a fourth component, and so its own
 # archive rather than part of the runtime one: on Windows and macOS it carries
 # a second Qt deployment of its own (Linux leaves Qt to the system loader),
 # and on Windows its null-sink driver is still test-signed, so someone
-# downloading ac3cli/ac3gui should not be handed it. Added only when it was
+# downloading forge/forge-gui should not be handed it. Added only when it was
 # actually built, since CPack would otherwise package an empty component;
 # kept out of the NSIS installer for now by cmake/CPackProjectConfig.cmake,
 # which is where that choice is explained.
@@ -560,7 +560,7 @@ if(ICLFORGE_BUILD_CRUCIBLE AND (WIN32 OR LINUX OR APPLE))
     list(APPEND CPACK_COMPONENTS_ALL crucible)
 endif()
 
-# ac3hearth (Hearth phase A7) as a fifth component, its own archive for the
+# hearth (Hearth phase A7) as a fifth component, its own archive for the
 # same reason as Crucible's above - it carries its own Qt deployment on
 # Windows and macOS - but with no NSIS exclusion: unlike Crucible it has no
 # test-signed driver holding it out of the shared installer, so it stays in
@@ -568,7 +568,7 @@ endif()
 # ICLFORGE_BUILD_HEARTH, because apps/hearth/ui/CMakeLists.txt only WARNs
 # and skips when Qt6 is not found rather than failing the configure -
 # checking the option alone would try to package a component nothing built.
-if(TARGET ac3hearth)
+if(TARGET hearth)
     list(APPEND CPACK_COMPONENTS_ALL hearth)
 endif()
 
@@ -583,7 +583,7 @@ set(CPACK_ARCHIVE_COMPONENT_INSTALL ON)
 set(CPACK_COMPONENT_LIBRARY_GROUP "dev")
 set(CPACK_COMPONENT_LIBRUNTIME_GROUP "dev")
 
-# Per-component/per-group filename overrides so the existing ac3cli/ac3gui
+# Per-component/per-group filename overrides so the existing forge/forge-gui
 # and library archives' names don't change now that they are formally
 # "the runtime component"/"the dev group" rather than "everything". Without
 # an override, an archive's default name appends the component or group's own
@@ -642,10 +642,10 @@ set(CPACK_ARCHIVE_RUNTIME_FILE_NAME "${CPACK_PACKAGE_FILE_NAME}")
 # Named for what it is rather than taking CPack's "-crucible" suffix on the
 # base name, the same reasoning as the dev group's override below.
 set(CPACK_ARCHIVE_CRUCIBLE_FILE_NAME
-    "ac3forge-crucible-${PROJECT_VERSION_FULL}-${CPACK_SYSTEM_NAME}")
+    "iclforge-crucible-${PROJECT_VERSION_FULL}-${CPACK_SYSTEM_NAME}")
 set(CPACK_ARCHIVE_DEV_FILE_NAME "iclforge-dev-${PROJECT_VERSION_FULL}-${CPACK_SYSTEM_NAME}")
 set(CPACK_ARCHIVE_HEARTH_FILE_NAME
-    "ac3forge-hearth-${PROJECT_VERSION_FULL}-${CPACK_SYSTEM_NAME}")
+    "iclforge-hearth-${PROJECT_VERSION_FULL}-${CPACK_SYSTEM_NAME}")
 
 include(CPack)
 

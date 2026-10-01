@@ -126,7 +126,7 @@ impl Acmod {
     }
 }
 
-/// `iclforge_drc_profile_t` — the five conventional Dolby DRC curves, the same presets `ac3cli
+/// `iclforge_drc_profile_t` — the five conventional Dolby DRC curves, the same presets `forge
 /// --drc` accepts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DrcProfile {

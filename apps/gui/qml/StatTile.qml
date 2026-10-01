@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 
-import Ac3Forge
+import ForgeGui
 
 // One boxed stat, the shape the design's five-column grids repeat
 // (main-play.png, "04 LOUDNESS"/"05 THIS FRAME"): a muted micro-label over a

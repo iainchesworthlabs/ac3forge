@@ -12,7 +12,7 @@
 //     UX6 asks for, not a separate page.
 //
 // Every class does the real thing: encode_frame() calls the real codec, the
-// same functions ac3cli/iclforge::c/the Python bindings call, not a
+// same functions forge/iclforge::c/the Python bindings call, not a
 // reimplementation for the browser.
 
 #include <array>
@@ -64,7 +64,7 @@ std::string_view describe_frame_error(iclforge::FrameError error) {
 // The coding modes encode/app.js exposes. 0-2 are the single-substream
 // layouts a plain FrameEncoder codes; 3-5 are the wide layouts that take an
 // AccessUnitEncoder (a 5.1 bed plus dependent substreams - E-AC-3 only, the
-// same constraint ac3cli's own eac3-encode layouts carry). The WAV-side
+// same constraint forge's own eac3-encode layouts carry). The WAV-side
 // channel identification mirrors iclforge::plan's generic_wav_layout: 8 channels
 // reads as 7.1, 10 as 5.1.4, 12 as 7.1.4 (the commoner delivery layout at
 // each ambiguous count), and codedOrderForWav() below hands JS the exact
@@ -154,7 +154,7 @@ class WasmEncoder {
     // The wide layouts (7.1/5.1.4/7.1.4) build an iclforge::eac3::
     // AccessUnitEncoder from iclforge::plan's own config and ROUTE the source
     // onto it (iclforge::plan::route/render - the same direction-based placement
-    // ac3cli itself uses), so encodeFrame() takes the source's channels in
+    // forge itself uses), so encodeFrame() takes the source's channels in
     // plain WAV order at ANY width for those layouts: a stereo source aimed
     // at 7.1.4 is panned onto it, a 12-channel source is carried. The
     // channel-order knowledge stays in the plan code that defines it,

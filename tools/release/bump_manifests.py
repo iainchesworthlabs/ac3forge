@@ -195,7 +195,7 @@ _WINGET_INSTALLER_TEMPLATE = """\
 # windows-msvc leg) rather than an NSIS .exe: tools/release/bump_manifests.py
 # renders this zip shape and never downloads the .exe (docs/releasing.md#winget-manifest
 # says how a release that ships an installer is converted by hand). The zip
-# carries both end-user binaries (bin/ac3cli.exe, bin/ac3gui.exe -
+# carries both end-user binaries (bin/forge.exe, bin/forge-gui.exe -
 # CPack's "runtime" component, see docs/releasing.md#what-gets-published).
 # InstallerType zip + NestedInstallerType portable installs straight from
 # that archive with no separate installer to run.
@@ -209,10 +209,10 @@ MinimumOSVersion: 10.0.17763.0
 InstallerType: zip
 NestedInstallerType: portable
 NestedInstallerFiles:
-  - RelativeFilePath: bin/ac3cli.exe
-    PortableCommandAlias: ac3cli
-  - RelativeFilePath: bin/ac3gui.exe
-    PortableCommandAlias: ac3gui
+  - RelativeFilePath: bin/forge.exe
+    PortableCommandAlias: forge
+  - RelativeFilePath: bin/forge-gui.exe
+    PortableCommandAlias: forge-gui
 Installers:
   - Architecture: x64
     InstallerUrl: {installer_url}
@@ -255,8 +255,8 @@ ShortDescription: Clean-room AC-3/E-AC-3/AC-4 encoder, decoder and Atmos object-
 Description: >-
   iclforge is a clean-room C++23 implementation of the AC-3 (ATSC A/52, "Dolby Digital"),
   E-AC-3 ("Dolby Digital Plus") and AC-4 codecs, including a spatial object layer for
-  Atmos-style authoring and decode. This package installs ac3cli (the command-line
-  encoder and decoder) and ac3gui (the Qt6 desktop application) as portable executables;
+  Atmos-style authoring and decode. This package installs forge (the command-line
+  encoder and decoder) and forge-gui (the Qt6 desktop application) as portable executables;
   both encode and decode AC-3, E-AC-3 and AC-4.
 Moniker: iclforge
 Tags:

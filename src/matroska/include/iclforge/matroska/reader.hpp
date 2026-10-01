@@ -129,7 +129,7 @@ struct Demuxed {
     std::span<const std::byte> file, const ReadOptions& options = {});
 
 // Incrementally reads frames out of a Matroska file as its bytes arrive -
-// iclforge::matroska::Writer's mirror image, and the shape `ac3cli demux` uses so a
+// iclforge::matroska::Writer's mirror image, and the shape `forge demux` uses so a
 // multi-gigabyte rip never lands in memory.
 //
 // Frames are delivered to a callback rather than returned, so nothing

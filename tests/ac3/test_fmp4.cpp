@@ -1022,7 +1022,7 @@ TEST_CASE("build_dash_mpd wraps a Period, static or dynamic", "[dash]") {
 
 namespace {
 
-// An AC-4 track as ac3cli describes one: the 'ac-4' sample entry, its dac4 as
+// An AC-4 track as forge describes one: the 'ac-4' sample entry, its dac4 as
 // opaque bytes, and a frame of 2 048 samples.
 iclforge::mp4::AudioTrack ac4_track() {
     return iclforge::mp4::AudioTrack{.codec_id = std::string{iclforge::mp4::kCodecAc4},

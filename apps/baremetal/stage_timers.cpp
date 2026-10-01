@@ -6,7 +6,7 @@
 // The design is set by what the target can afford: a fixed table, no
 // allocation on any path (operator new is the thing being measured, and the
 // probe's own counters would see it), integer arithmetic only, and a clock
-// read that is the platform's own ac3probe::now_us().
+// read that is the platform's own iclforge_probe::now_us().
 //
 // Two figures per zone. INCLUSIVE is wall time between enter and leave;
 // SELF is that minus the inclusive time of every zone opened inside it,
@@ -129,14 +129,14 @@ void zone_enter(const char* name) {
     // The lookup runs before the clock is read, so its cost lands on the
     // PARENT's self time rather than inflating this zone's inclusive one.
     const std::size_t zone = resolve(name);
-    g_stack[g_depth] = Open{zone, ac3probe::now_us(), 0};
+    g_stack[g_depth] = Open{zone, iclforge_probe::now_us(), 0};
     ++g_depth;
 }
 
 void zone_leave() {
     // The clock first, before any bookkeeping, for the same reason as above:
     // what follows belongs to whoever is still open.
-    const std::uint64_t now = ac3probe::now_us();
+    const std::uint64_t now = iclforge_probe::now_us();
     if (g_depth == 0) {
         ++g_overflows;
         return;
@@ -162,7 +162,7 @@ void zone_leave() {
 
 }  // namespace iclforge::internal::profiling
 
-namespace ac3probe {
+namespace iclforge_probe {
 
 void reset_stages() {
     for (std::size_t i = 0; i < g_zone_count; ++i) {
@@ -243,4 +243,4 @@ std::uint64_t stage_pair_cost_ns() {
     return (elapsed_us * 1000) / kPairs;
 }
 
-}  // namespace ac3probe
+}  // namespace iclforge_probe

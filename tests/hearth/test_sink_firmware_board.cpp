@@ -646,18 +646,18 @@ TEST_CASE("sink firmware board: going away does not wait out the board's answer 
 // An image onto a real board with this app's own client, hidden (it needs the
 // board, and the board keeps the image):
 //
-//   AC3HEARTH_LIVE_FIRMWARE_HOST   the board's address or .local name; the case
+//   ICLFORGE_HEARTH_LIVE_FIRMWARE_HOST   the board's address or .local name; the case
 //                                  is skipped without it
-//   AC3HEARTH_LIVE_FIRMWARE_IMAGE  the image, as a build leaves it
+//   ICLFORGE_HEARTH_LIVE_FIRMWARE_IMAGE  the image, as a build leaves it
 //                                  (iclforge_hearth_sink.bin)
 //
 // Each step prints as the Firmware tab would show it.
 TEST_CASE("sink firmware live: an image goes onto a real board and is accepted",
           "[.][hearth][sink-firmware][live]") {
-    const char* const host = std::getenv("AC3HEARTH_LIVE_FIRMWARE_HOST");
-    const char* const path = std::getenv("AC3HEARTH_LIVE_FIRMWARE_IMAGE");
+    const char* const host = std::getenv("ICLFORGE_HEARTH_LIVE_FIRMWARE_HOST");
+    const char* const path = std::getenv("ICLFORGE_HEARTH_LIVE_FIRMWARE_IMAGE");
     if (host == nullptr || *host == '\0' || path == nullptr || *path == '\0') {
-        SKIP("AC3HEARTH_LIVE_FIRMWARE_HOST and AC3HEARTH_LIVE_FIRMWARE_IMAGE name the board and the image");
+        SKIP("ICLFORGE_HEARTH_LIVE_FIRMWARE_HOST and ICLFORGE_HEARTH_LIVE_FIRMWARE_IMAGE name the board and the image");
     }
     std::ifstream in(path, std::ios::binary);
     REQUIRE(in.good());

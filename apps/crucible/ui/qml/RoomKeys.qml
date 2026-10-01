@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 
-import Ac3ForgeCrucible
+import Crucible
 
 // The room's keyboard: one tab stop that moves whichever application is
 // selected, wrapped around the room views so that the ring says the keys

@@ -1,9 +1,9 @@
-AC3Forge Crucible {{VERSION}} - third-party notices, {{PLATFORM}} build
+Crucible {{VERSION}} - third-party notices, {{PLATFORM}} build
 ========================================================================
 
 This file is installed as {{LOCATION}}, and is shown by About > Licences.
 
-AC3Forge Crucible, and the ac3forge library it is built from, are free
+Crucible, and the iclforge library it is built from, are free
 software under the GNU General Public License, version 3 or later; the
 full text is LICENSE.txt beside this file. The source is at
 https://github.com/iainchesworthlabs/ac3forge

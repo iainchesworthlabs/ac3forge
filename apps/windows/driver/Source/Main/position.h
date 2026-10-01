@@ -17,7 +17,7 @@
 
 #pragma once
 
-namespace ac3nullsink {
+namespace iclforge_nullsink {
 
 using u64 = unsigned long long;
 
@@ -106,4 +106,4 @@ private:
     bool running_ = false;
 };
 
-}  // namespace ac3nullsink
+}  // namespace iclforge_nullsink

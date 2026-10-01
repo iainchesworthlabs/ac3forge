@@ -58,7 +58,7 @@ namespace iclforge::signing {
 //
 // Where the tag lives is fixed by the EMDF container's own protection-length
 // codes (§H.2.2.4); only whether it is the RIGHT tag needs the key. So the
-// two questions separate cleanly, and an inspection tool (`ac3cli probe`) can
+// two questions separate cleanly, and an inspection tool (`forge probe`) can
 // report that a stream is signed, and by how many frames, while holding
 // nothing secret. False for a frame with no container, for one whose
 // container declares no primary protection field, and for one whose field is
@@ -91,7 +91,7 @@ struct VerifySummary {
 
 // Checks every syncframe in `stream` against `key`, without modifying it.
 //
-// Verifying runs on a stream the caller did not produce (`ac3cli decode
+// Verifying runs on a stream the caller did not produce (`forge decode
 // ... verify-objects` points it at whatever arrived), so a plain non-Atmos
 // E-AC-3 frame is an ordinary input here, answered with kNoContainer, not a
 // caller error - see sign_atmos_stream's own comment above for where that

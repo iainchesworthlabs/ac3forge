@@ -23,7 +23,7 @@ steady_live_growth against fixed thresholds with no baseline, which is right
 for a series on main. Copied unchanged into a per-PR job it would annotate
 every pull request for bytes no pull request retained. Three of the six
 workloads retain bytes across their steady state and two are already past the
-4 KiB warn line, on both platforms that build ac3membench:
+4 KiB warn line, on both platforms that build iclforge-membench:
 
     workload             linux-gcc   windows-msvc
     ac3_51_encode            1,456          1,367
@@ -58,7 +58,7 @@ BYTES_FLOOR = amh.BYTES_ABSOLUTE_FLOOR
 
 
 def record(allocs=67.0, byts=28792.0, live=0, config="eac3_51_encode", leg="linux-gcc"):
-    """One ac3membench result as both scripts see it after their shared
+    """One iclforge-membench result as both scripts see it after their shared
     load_leg_results."""
     return {"leg": leg, "config": config, "allocs_per_frame": allocs,
             "bytes_per_frame": byts, "steady_live_growth": live}
@@ -71,7 +71,7 @@ def side(*records):
 
 def write_side(root: Path, *records, leg="linux-gcc"):
     """A real results tree - one memory-<leg> subdirectory holding
-    ac3membench's own JSON - so load_side is exercised over the layout CI
+    iclforge-membench's own JSON - so load_side is exercised over the layout CI
     actually produces rather than over a hand-built dict."""
     leg_dir = root / f"memory-{leg}"
     leg_dir.mkdir(parents=True, exist_ok=True)
@@ -313,7 +313,7 @@ class EndToEndTests(unittest.TestCase):
         self.assertIn("hard_regression=false", output)
 
     def test_a_missing_base_side_is_a_skip_reporting_false(self):
-        """A PR whose merge base predates ac3membench, or a runner that could
+        """A PR whose merge base predates iclforge-membench, or a runner that could
         not build one side. Explicitly false, so the gate job is never left
         interpreting an unset output."""
         write_side(self.root / "head", record())

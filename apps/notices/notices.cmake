@@ -1,12 +1,12 @@
 # ---------------------------------------------------------------------------
-# Forge's NOTICES.txt and LICENSE.txt - what the `runtime` component (ac3cli
-# and ac3gui) actually installs, on every platform that packages it.
+# Forge's NOTICES.txt and LICENSE.txt - what the `runtime` component (forge
+# and forge-gui) actually installs, on every platform that packages it.
 #
 # Until this existed, no Forge package carried either file. cmake/Packaging.cmake's
 # CPACK_RESOURCE_FILE_LICENSE only makes the NSIS and DragNDrop installers
 # DISPLAY the licence while installing; nothing landed on disk, so a .zip, a
 # .deb, a .rpm, a .dmg or the AppImage could be unpacked and read end to end
-# without finding the GPL text, the LGPL text for the Qt ac3gui ships on
+# without finding the GPL text, the LGPL text for the Qt forge-gui ships on
 # Windows and macOS, the SIL OFL for the typefaces it embeds, or the MIT text
 # for the {fmt} compiled into both binaries.
 #
@@ -56,7 +56,7 @@ endif()
 set(ICLFORGE_NOTICES_DIR "${CMAKE_CURRENT_LIST_DIR}")
 include("${ICLFORGE_NOTICES_DIR}/platform/${ICLFORGE_NOTICES_PLATFORM_DIR}/components.cmake")
 
-# A CLI-only build carries no Qt and no typefaces: ac3cli links neither, and
+# A CLI-only build carries no Qt and no typefaces: forge links neither, and
 # a package that named them would be describing files it does not contain.
 # ICLFORGE_BUILD_GUI is the whole test - apps/gui's find_package(Qt6 6.5
 # REQUIRED ...) means the option being ON and a Qt kit being absent cannot
@@ -66,9 +66,9 @@ if(NOT ICLFORGE_BUILD_GUI)
         qt-windows qt-macos qt-linux windows-runtime fonts)
 endif()
 
-# Tracy's client library: apps/gui/CMakeLists.txt's ac3gui links iclforge::tracy
+# Tracy's client library: apps/gui/CMakeLists.txt's forge-gui links iclforge::tracy
 # unconditionally, which only pulls in Tracy::TracyClient - and so is only worth
-# disclosing - when ICLFORGE_ENABLE_TRACY is on (cmake/Tracy.cmake); ac3cli links no
+# disclosing - when ICLFORGE_ENABLE_TRACY is on (cmake/Tracy.cmake); forge links no
 # such thing, so a CLI-only build (ICLFORGE_BUILD_GUI off) never carries this section
 # either way. Same fact, same fragment (found via the apps/crucible/notices/fragments
 # FRAGMENT_DIR entry below, not copied) and same conditional as
@@ -84,14 +84,14 @@ endif()
 # and cmake/Notices.cmake's header for why those two are shared and the Qt
 # sections are not).
 if(ICLFORGE_BUILD_CLI AND ICLFORGE_BUILD_GUI)
-    set(ICLFORGE_NOTICES_PROGRAMS "ac3cli, the command-line tool, and ac3gui, the window")
-    set(ICLFORGE_NOTICES_FMT_USERS "ac3cli and ac3gui")
+    set(ICLFORGE_NOTICES_PROGRAMS "forge, the command-line tool, and forge-gui, the window")
+    set(ICLFORGE_NOTICES_FMT_USERS "forge and forge-gui")
 elseif(ICLFORGE_BUILD_GUI)
-    set(ICLFORGE_NOTICES_PROGRAMS "ac3gui, the window")
-    set(ICLFORGE_NOTICES_FMT_USERS "ac3gui")
+    set(ICLFORGE_NOTICES_PROGRAMS "forge-gui, the window")
+    set(ICLFORGE_NOTICES_FMT_USERS "forge-gui")
 else()
-    set(ICLFORGE_NOTICES_PROGRAMS "ac3cli, the command-line tool")
-    set(ICLFORGE_NOTICES_FMT_USERS "ac3cli")
+    set(ICLFORGE_NOTICES_PROGRAMS "forge, the command-line tool")
+    set(ICLFORGE_NOTICES_FMT_USERS "forge")
 endif()
 
 # The versions, from what CMake already holds: {fmt}'s from its package or the
@@ -149,11 +149,11 @@ ac3_generate_notices("${ICLFORGE_NOTICES_FILE}"
         "QT_SERIES=${ICLFORGE_NOTICES_QT_SERIES}"
         "FMT_VERSION=${ICLFORGE_NOTICES_FMT_VERSION}"
         "FMT_USERS=${ICLFORGE_NOTICES_FMT_USERS}"
-        "FONT_USER=ac3gui"
+        "FONT_USER=forge-gui"
         "TRACY_VERSION=${ICLFORGE_NOTICES_TRACY_VERSION}"
-        # Always ac3gui, unlike FMT_USERS above: ac3cli links no iclforge::tracy in any
+        # Always forge-gui, unlike FMT_USERS above: forge links no iclforge::tracy in any
         # configuration, so the tracy fragment only ever names the one binary that does.
-        "TRACY_USERS=ac3gui"
+        "TRACY_USERS=forge-gui"
     FILES
         "LGPL3=${CMAKE_SOURCE_DIR}/apps/crucible/notices/licences/LGPL-3.0.txt"
         "OFL=${CMAKE_SOURCE_DIR}/apps/gui/fonts/OFL.txt"
@@ -165,7 +165,7 @@ message(STATUS "Forge notices  : ${ICLFORGE_NOTICES_PLATFORM} build, sections: $
 
 # ---------------------------------------------------------------------------
 # Where the two files land. COMPONENT runtime for the pair above - the same
-# component ac3cli, ac3gui, the man page, the completions and the XDG files
+# component forge, forge-gui, the man page, the completions and the XDG files
 # already install under, so every generator picks them up with the binaries
 # rather than needing a component of their own (cmake/Packaging.cmake).
 #
@@ -213,14 +213,14 @@ foreach(_iclforge_lib_component library libruntime)
 endforeach()
 if(WIN32 OR APPLE)
     # The archive/installer root and the .dmg root, beside bin/ and (on
-    # macOS) ac3gui.app - the same place apps/crucible puts its pair in the
+    # macOS) forge-gui.app - the same place apps/crucible puts its pair in the
     # Windows zip, and where someone who unpacked a download looks first.
     install(FILES "${ICLFORGE_NOTICES_FILE}" DESTINATION "." COMPONENT runtime)
     install(FILES "${CMAKE_SOURCE_DIR}/LICENSE"
         DESTINATION "." RENAME "LICENSE.txt" COMPONENT runtime)
 else()
     # share/doc/<package>/ - where a .deb and a .rpm keep documentation, and
-    # what lands at usr/share/doc/iclforge/ inside the AppImage. ac3forge is
+    # what lands at usr/share/doc/iclforge/ inside the AppImage. iclforge is
     # the runtime component's Debian and RPM package name, set in
     # cmake/Packaging.cmake (CPACK_DEBIAN_RUNTIME_PACKAGE_NAME /
     # CPACK_RPM_RUNTIME_PACKAGE_NAME) - the directory has to match the

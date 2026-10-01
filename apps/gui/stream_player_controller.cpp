@@ -83,10 +83,10 @@ struct DecodeOutcome {
     std::shared_ptr<RawResult> result;
 };
 
-// AC-4 through iclforge::ac4::Decoder's public API, as `ac3cli play` (monitor_ac4 in
+// AC-4 through iclforge::ac4::Decoder's public API, as `forge play` (monitor_ac4 in
 // apps/cli/commands/live_audio.cpp) and Hearth's engine decode it: the
 // presentation `presentation` chooses (the decoder's own choice where unset),
-// each frame's channels in the WAV order `ac3cli decode` writes, frames that
+// each frame's channels in the WAV order `forge decode` writes, frames that
 // wait for an I-frame playing nothing. A layout that changes mid-stream is
 // refused, as monitor refuses it.
 bool decode_ac4_to_memory(const QString& path, std::span<const std::byte> stream,
@@ -102,7 +102,7 @@ bool decode_ac4_to_memory(const QString& path, std::span<const std::byte> stream
     iclforge::ac4::Decoder decoder(config);
     result.codec_label = QStringLiteral("AC-4");
     result.ac4 = true;
-    for (const auto& row : ac3gui::ac4_presentation_rows(scan.frames)) {
+    for (const auto& row : forge_gui::ac4_presentation_rows(scan.frames)) {
         result.presentations.append(QString::fromStdString(row.label));
     }
     std::vector<std::size_t> order;
@@ -140,7 +140,7 @@ bool decode_ac4_to_memory(const QString& path, std::span<const std::byte> stream
             result.acmod = iclforge::apps::ac4_bed_acmod(pcm.speakers);
             result.lfe =
                 std::ranges::find(pcm.speakers, iclforge::ac4::Speaker::kLfe) != pcm.speakers.end();
-            result.layout_label = to_qstring(ac3gui::ac4_speaker_names(pcm.speakers));
+            result.layout_label = to_qstring(forge_gui::ac4_speaker_names(pcm.speakers));
             for (const std::size_t c : order) {
                 result.locations.push_back(iclforge::apps::ac4_location(pcm.speakers[c]));
             }
@@ -180,8 +180,8 @@ bool decode_ac4_to_memory(const QString& path, std::span<const std::byte> stream
 
 // Reads the whole file, dispatches on the AC-4 sync word and then on bsid,
 // and decodes every frame/access unit into whole-file planar buffers - the
-// GUI twin of `ac3cli monitor`
-// (bed playback) fused with `ac3cli decode`'s object export (objects_dir),
+// GUI twin of `forge monitor`
+// (bed playback) fused with `forge decode`'s object export (objects_dir),
 // since this dialog offers both from one decode pass rather than two. Runs
 // entirely on the calling thread; openFile() is what moves this off the GUI
 // thread, mirroring ObjectDecodeController::inspectFile/
@@ -337,7 +337,7 @@ DecodeOutcome decode_stream_to_memory(const QString& path,
                 result->lfe = decoded->lfe;
                 result->layout_label =
                     to_qstring(iclforge::analysis::layout_name(result->acmod, result->lfe));
-                result->locations = ac3gui::ac3_bed_locations(result->acmod, result->lfe);
+                result->locations = forge_gui::ac3_bed_locations(result->acmod, result->lfe);
                 if (decoded->acmod == iclforge::Acmod::kDualMono) {
                     order.resize(decoded->channels.size());
                     for (std::size_t i = 0; i < order.size(); ++i) {
@@ -409,13 +409,13 @@ QVariantList StreamPlayerController::channelMeta() const {
     for (std::size_t at = 0; at < result_->channels.size(); ++at) {
         const bool has_location = at < result_->locations.size();
         const auto azimuth =
-            has_location ? ac3gui::location_azimuth_deg(result_->locations[at]) : std::nullopt;
+            has_location ? forge_gui::location_azimuth_deg(result_->locations[at]) : std::nullopt;
         out.append(QVariantMap{
             {QStringLiteral("name"), channel_label(result_->locations, at)},
             {QStringLiteral("azimuthDeg"), azimuth.value_or(0.0)},
             {QStringLiteral("directional"), azimuth.has_value()},
             {QStringLiteral("ceiling"),
-             has_location && ac3gui::is_ceiling_location(result_->locations[at])},
+             has_location && forge_gui::is_ceiling_location(result_->locations[at])},
             {QStringLiteral("replaced"), false},
             {QStringLiteral("fed"), true},
         });
@@ -438,8 +438,9 @@ void StreamPlayerController::publishLevels(
         const bool has_location = ch < source.locations.size();
         const auto location =
             has_location ? source.locations[ch] : iclforge::eac3::chanmap::Location::kLeft;
-        const auto azimuth = has_location ? ac3gui::location_azimuth_deg(location) : std::nullopt;
-        const bool ceiling = has_location && ac3gui::is_ceiling_location(location);
+        const auto azimuth =
+            has_location ? forge_gui::location_azimuth_deg(location) : std::nullopt;
+        const bool ceiling = has_location && forge_gui::is_ceiling_location(location);
         clip_latched_[ch] = clip_latched_[ch] || level.clipped;
         entries.append(QVariantMap{
             {QStringLiteral("peakDb"), level.peak_db},
@@ -481,7 +482,7 @@ void StreamPlayerController::openFile(const QUrl& url) {
         return;
     }
     // A new file starts at the decoder's own choice of presentation, as a
-    // plain `ac3cli play` does.
+    // plain `forge play` does.
     if (path != file_path_ && presentation_index_ != -1) {
         presentation_index_ = -1;
         emit presentationChanged();

@@ -451,7 +451,7 @@ TEST_CASE("access-unit timing counts a whole access unit, dependents included",
 // bed stays playable on a decoder that validates emdf_protection - and it
 // must omit TS 103 420 §8.3.1's addbsi marker with it, because that marker is
 // the ONLY thing a reader has to go on: iclforge::io::build_codec_config_box writes
-// the dec3 box's Atmos extension off it, `ac3cli fmp4` writes CHANNELS="<N>/JOC"
+// the dec3 box's Atmos extension off it, `forge fmp4` writes CHANNELS="<N>/JOC"
 // off it, and FFmpeg reports "Dolby Digital Plus + Dolby Atmos" off it. Left
 // in, all three would advertise an object layer that was never encoded - a
 // promise as empty as an empty container would be.

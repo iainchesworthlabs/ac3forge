@@ -3,7 +3,7 @@ import QtQuick.Controls
 import QtQuick.Dialogs
 import QtQuick.Layouts
 
-import Ac3Forge
+import ForgeGui
 
 // Preferences — a modal on the standard backdrop, squared corners, three
 // columns: appearance, what happens when the app opens (plus files and
@@ -303,14 +303,14 @@ Dialog {
                 }
             }
 
-            // ---- When ac3forge opens / files and runs ----------------------
+            // ---- When Forge opens / files and runs ----------------------
             ColumnLayout {
                 Layout.fillWidth: true
                 Layout.preferredWidth: 1
                 Layout.alignment: Qt.AlignTop
                 spacing: Theme.space3
 
-                PrefsKicker { text: qsTr("WHEN AC3FORGE OPENS") }
+                PrefsKicker { text: qsTr("WHEN FORGE OPENS") }
 
                 PrefsLabel { text: qsTr("Controls") }
                 ComboBox {
@@ -516,7 +516,7 @@ Dialog {
 
                 PrefsKicker { text: qsTr("COMMAND LINE") }
                 CheckBox {
-                    text: qsTr("Keep the ac3cli line visible")
+                    text: qsTr("Keep the forge line visible")
                     checked: root.cliVisible
                     onToggled: root.cliVisible = checked
                     font.pixelSize: Theme.fontSmall

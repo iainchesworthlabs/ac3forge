@@ -25,7 +25,7 @@
 // untouched): the two have genuinely different data shapes (one iclforge::io::WavData vs several),
 // and duplicating the small amount that does overlap costs far less than a shared abstraction would
 // risk - see this header's own struct/function comments, carried over verbatim from main.cpp.
-namespace ac3cli {
+namespace forge_cli {
 
 struct LoadedSources {
     std::vector<iclforge::io::WavData> wavs;
@@ -97,4 +97,4 @@ void gather_frame(const LoadedSources& sources, std::size_t start,
 void print_routing(const iclforge::plan::Plan& p, const iclforge::plan::Routing& routing,
                    std::string_view label, FILE* out = stdout);
 
-}  // namespace ac3cli
+}  // namespace forge_cli

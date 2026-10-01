@@ -18,7 +18,7 @@ re-read from the catalogue.
 | Code | Language | Catalogue |
 | --- | --- | --- |
 | `en` | English | none — the `qsTr()` source text |
-| `fr` | Français | `apps/crucible/translations/ac3crucible_fr.ts` |
+| `fr` | Français | `apps/crucible/translations/crucible_fr.ts` |
 | `de` | Deutsch | `ac3crucible_de.ts` |
 | `es` | Español | `ac3crucible_es.ts` |
 | `ar` | العربية | `ac3crucible_ar.ts` |

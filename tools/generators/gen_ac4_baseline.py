@@ -188,11 +188,11 @@ Besides what G0 keeps, each G1 leg keeps MediaInfo's trace with --ParseSpeed=1 (
 contents for every frame) and DEE's MP4 muxer's file (dee.mp4, with its log and MediaInfo's
 summary), and its entry records the command, DEE's warnings and loudness measurement, every
 SHA-256, the table of contents' channel modes, language tags and I-frames, and, with --cli,
-what that ac3cli's probe and decode made of the stream. G0's streams get their MP4 under
-DIR/mp4/<leg>/. With --cli, the objects group builds its ADM BWF masters with that ac3cli
+what that forge's probe and decode made of the stream. G0's streams get their MP4 under
+DIR/mp4/<leg>/. With --cli, the objects group builds its ADM BWF masters with that forge
 (DIR/masters/<name>/, atmos-encode then decode's adm_out) and checks them with atmos_info.
 Every AC-4 leg's syntax digest goes to <scratch>/census/, for the census comparison:
-AC4DEC_GOLDEN_DIR=<scratch>/census AC4DEC_STREAM_DIR=DIR/streams ac3tests "[ac4dec][syntax]".
+AC4DEC_GOLDEN_DIR=<scratch>/census AC4DEC_STREAM_DIR=DIR/streams iclforge-tests "[ac4dec][syntax]".
 
 What DEE 6.5.4 could not be made to write (G1's audit, recorded in the manifest's g1_dee_cannot):
 7.1 AC-4 (eight channels in come out as 5.1), 7.1.4 or 9.1.6 AC-4, any frame rate but index 13
@@ -204,7 +204,7 @@ check this project does not work around.
 
 Usage (repo root):
   python tools/generators/gen_ac4_baseline.py [--scratch-dir DIR]
-  python tools/generators/gen_ac4_baseline.py --gold-set D:/ac3bld/ac4-gold [--cli AC3CLI]
+  python tools/generators/gen_ac4_baseline.py --gold-set D:/ac3bld/ac4-gold [--cli ICLFORGE_CLI]
       [--jobs N] [--only NAME_PART ...] [--adm-master WAV]
 
 Never run in CI - see guard_not_ci(), the same rule gen_external_baseline.py's own copy of
@@ -1133,7 +1133,7 @@ def master_legs(masters):
     return legs
 
 
-# ADM BWF masters for the objects group, made with ac3cli: `atmos-encode <in> objects.ec3 kbps
+# ADM BWF masters for the objects group, made with forge: `atmos-encode <in> objects.ec3 kbps
 # objects [paths]` codes each input channel as an object, and `decode objects.ec3 bed.wav
 # objects adm-master.wav` writes the Dolby Atmos Master ADM Profile BW64 its adm_out argument
 # writes (planning/ac4.md, phase G0's objects). music51 is music_51's six channels (G0's master);
@@ -1161,7 +1161,7 @@ DEE_CANNOT = [
     "enhancement from a separate dialogue input: no encoder, option or template reaches them",
     "A-JOC, direct-coded objects, OAMD, or immersive stereo from objects: dee_ac4ajoc_encoder "
     "and dee_ac4ims_encoder take objects only as an Atmos master (ADM BWF, MXF IAB or a Dolby "
-    "Atmos master file set), and refuse every ADM BWF master ac3cli writes with 'Content was "
+    "Atmos master file set), and refuse every ADM BWF master forge writes with 'Content was "
     "not authored with Dolby tools' (dlb::isAtmosMezzFile), as atmos_info and "
     "dee_ddpjoc_encoder do; a bare IAB is 'ATMOS_STORAGE_RES_UNSUPPORTED_MASTER_TYPE'",
     "mono, 3.0 or 5.0 AC-4: dee_ac4_encoder refuses input of 1, 3, 4 or 5 channels ('Invalid "
@@ -1923,16 +1923,16 @@ def build_masters(cli, root):
         if not (master.is_file() and stamp_path.is_file()
                 and json.loads(stamp_path.read_text(encoding="utf-8")) == stamp):
             for step, cmd in (("atmos-encode", encode_cmd), ("decode", decode_cmd)):
-                code, output = run_logged(cmd, work, work / f"ac3cli_{step}.txt")
+                code, output = run_logged(cmd, work, work / f"forge_{step}.txt")
                 if code != 0:
-                    raise SystemExit(f"master {name}: ac3cli {step} exited {code}:\n"
+                    raise SystemExit(f"master {name}: forge {step} exited {code}:\n"
                                      + output[-2000:])
             stamp_path.write_text(json.dumps(stamp, indent=2) + "\n", encoding="utf-8")
         code, output = run_logged([str(ATMOS_INFO), "-i", str(master)], work,
                                   work / "atmos_info.txt")
         paths[name] = master
         entries[master.relative_to(root).as_posix()] = {
-            "description": (f"ADM BWF master written by ac3cli ({stamp['cli']}): "
+            "description": (f"ADM BWF master written by forge ({stamp['cli']}): "
                             f"{' then '.join(stamp['commands'])}"),
             "sha256": sha256(master), "phase": "G1",
             "atmos_info": dee_errors(output) or ["read"],
@@ -2099,7 +2099,7 @@ def gold_run(args, version):
         if names:
             print(f"  {label}: {names}")
     print(f"census digests in {census}: AC4DEC_GOLDEN_DIR={census} "
-          f"AC4DEC_STREAM_DIR={streams} ac3tests \"[ac4dec][syntax]\"")
+          f"AC4DEC_STREAM_DIR={streams} iclforge-tests \"[ac4dec][syntax]\"")
     if failed:
         raise SystemExit(1)
 
@@ -2117,8 +2117,8 @@ def main():
     parser.add_argument("--adm-master", type=Path, action="append", metavar="WAV",
                         help="with --gold-set: an Atmos ADM BWF master to try the A-JOC and "
                              "immersive stereo encoders on, as G0 did; repeatable")
-    parser.add_argument("--cli", type=Path, metavar="AC3CLI",
-                        help="with --gold-set: an ac3cli built with -DICLFORGE_BUILD_ADM=ON, which "
+    parser.add_argument("--cli", type=Path, metavar="ICLFORGE_CLI",
+                        help="with --gold-set: a forge built with -DICLFORGE_BUILD_ADM=ON, which "
                              "writes the objects group's masters and whose probe and decode are "
                              "recorded for every G1 leg")
     parser.add_argument("--jobs", type=int, default=4,

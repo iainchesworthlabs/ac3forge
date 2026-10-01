@@ -2,9 +2,10 @@
 
 planning/hearth-reference-player.md, A4's exit, with the stand-in for Sendspin's reference player
 that planning/hearth-sendspin-extension.md's Decisions chose. For each codec this starts the
-scripted player in aiosendspin_player.py on a loopback port, runs ac3tests' hidden [aiosendspin]
-case (tests/hearth/test_aiosendspin.cpp) with the player's URL, token and a directory, and checks
-what the player took against the programme and start time the case wrote there:
+scripted player in aiosendspin_player.py on a loopback port, runs iclforge-tests' hidden
+[aiosendspin] case (tests/hearth/test_aiosendspin.cpp) with the player's URL, token and a
+directory, and checks what the player took against the programme and start time the case wrote
+there:
 
 - one stream, in the codec the player offered, that ended;
 - every chunk's timestamp puts its first frame where the programme's timeline has it, from the
@@ -12,7 +13,7 @@ what the player took against the programme and start time the case wrote there:
 - PCM and FLAC decode to the programme sample for sample, and Opus, aligned by that look-ahead, to
   within 20 dB of it.
 
-Usage: python tools/sendspin/aiosendspin_exit.py --ac3tests PATH [--codecs pcm,flac,opus]
+Usage: python tools/sendspin/aiosendspin_exit.py --iclforge-tests PATH [--codecs pcm,flac,opus]
                                                  [--out DIR] [--verbose]
 
 Needs Python 3.12 or later and tools/sendspin/requirements.txt.
@@ -121,7 +122,7 @@ def check(codec: str, directory: Path, received: Received) -> tuple[list[str], s
     return problems, summary
 
 
-async def exercise(codec: str, ac3tests: Path, directory: Path) -> list[str]:
+async def exercise(codec: str, iclforge_tests: Path, directory: Path) -> list[str]:
     """Runs the host case against a fresh player in `codec`; the problems found."""
     player = ScriptedPlayer(AudioCodec(codec), HOST, free_port(HOST), f"aiosendspin {codec}")
     await player.start()
@@ -132,7 +133,7 @@ async def exercise(codec: str, ac3tests: Path, directory: Path) -> list[str]:
         ICLFORGE_AIOSENDSPIN_OUT=str(directory),
     )
     process = await asyncio.create_subprocess_exec(
-        str(ac3tests),
+        str(iclforge_tests),
         "[aiosendspin]",
         env=environment,
         stdout=asyncio.subprocess.PIPE,
@@ -144,7 +145,7 @@ async def exercise(codec: str, ac3tests: Path, directory: Path) -> list[str]:
         process.kill()
         await process.wait()
         await player.stop()
-        return [f"{codec}: ac3tests did not finish within 180 s"]
+        return [f"{codec}: iclforge-tests did not finish within 180 s"]
     with contextlib.suppress(TimeoutError):
         await asyncio.wait_for(player.closed.wait(), timeout=10)
     await player.stop()
@@ -159,10 +160,10 @@ async def exercise(codec: str, ac3tests: Path, directory: Path) -> list[str]:
     return [f"{codec}: {problem}" for problem in problems]
 
 
-async def run(ac3tests: Path, codecs: list[str], out: Path) -> int:
+async def run(iclforge_tests: Path, codecs: list[str], out: Path) -> int:
     problems: list[str] = []
     for codec in codecs:
-        problems += await exercise(codec, ac3tests, out / codec)
+        problems += await exercise(codec, iclforge_tests, out / codec)
     for problem in problems:
         print(problem, file=sys.stderr)
     return 1 if problems else 0
@@ -170,7 +171,9 @@ async def run(ac3tests: Path, codecs: list[str], out: Path) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--ac3tests", required=True, type=Path, help="the ac3tests binary")
+    parser.add_argument(
+        "--iclforge-tests", required=True, type=Path, help="the iclforge-tests binary"
+    )
     parser.add_argument("--codecs", default="pcm,flac,opus")
     parser.add_argument(
         "--out", type=Path, help="where each codec's files go; a temporary directory otherwise"
@@ -183,9 +186,9 @@ def main() -> int:
     if unknown or not codecs:
         parser.error(f"--codecs takes pcm, flac and opus, not {', '.join(unknown) or 'nothing'}")
     if arguments.out is not None:
-        return asyncio.run(run(arguments.ac3tests, codecs, arguments.out))
+        return asyncio.run(run(arguments.iclforge_tests, codecs, arguments.out))
     with tempfile.TemporaryDirectory(prefix="aiosendspin-exit-") as scratch:
-        return asyncio.run(run(arguments.ac3tests, codecs, Path(scratch)))
+        return asyncio.run(run(arguments.iclforge_tests, codecs, Path(scratch)))
 
 
 if __name__ == "__main__":

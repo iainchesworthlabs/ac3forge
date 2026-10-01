@@ -3,7 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Window
 
-import Ac3ForgeHearth
+import Hearth
 
 // "07 Signal path" (main-play.png / play-minimum-size.png): decode -> render
 // -> output. Pulled out of PlayPage.qml for the same reason and in the same

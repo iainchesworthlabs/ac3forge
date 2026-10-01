@@ -17,10 +17,10 @@
 // so this header is declared entirely in terms of iclforge::oba's own types (always available) and
 // plain strings, and apps/cli/CMakeLists.txt selects exactly one of adm/enabled/decode_adm.cpp or
 // adm/disabled/decode_adm.cpp to implement it - decode.cpp calls the function below
-// unconditionally either way, gating only on ac3cli::adm_capability() (declared in
+// unconditionally either way, gating only on forge_cli::adm_capability() (declared in
 // atmos_adm.hpp, reused here rather than duplicated - "is ADM available in this build?" is the
 // same question regardless of which direction a command needs it for).
-namespace ac3cli {
+namespace forge_cli {
 
 // One OAMD update to a dynamic object's DynamicObject state, timestamped in absolute samples from
 // the start of the whole decode - decode.cpp builds this by walking every decoded access unit's
@@ -56,8 +56,8 @@ struct AdmMasterInput {
 // writes it) - or a single diagnostic string already run through both BridgeError's and
 // AdmWriteError's own describe(), the same "main.cpp/decode.cpp never needs either error enum's
 // type" convention load_adm_atmos_source's own doc comment states for the read direction. Caller
-// checks ac3cli::adm_capability() first, same as run_atmos_adm does.
+// checks forge_cli::adm_capability() first, same as run_atmos_adm does.
 [[nodiscard]] std::expected<void, std::string> write_adm_atmos_master(std::string_view path,
                                                                        const AdmMasterInput& input);
 
-}  // namespace ac3cli
+}  // namespace forge_cli

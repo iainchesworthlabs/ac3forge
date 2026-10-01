@@ -160,7 +160,7 @@ All of these are run from the repo root.
 | `gen_baremetal_ac4_fixture.py` | `apps/baremetal/ac4_fixture.hpp`, the committed AC-4 streams the bare-metal AC-4 probe decodes and their per-channel levels | needs a built `ac3cli` (`--ac3cli`) |
 | `gen_device_streams.py` | `esp-idf/iclforge/examples/hearth_sink/www/`: the ESP32 player's stream set and its `streams.json` | needs a built `ac3cli` (`--ac3cli`) and numpy; `tools/checks/check_stream_set.py` checks the committed set |
 | `gen_conformance_vectors.py` | the conformance vector bundle under `--out`, and with `--archive` its `.tar.gz` | needs a built `ac3cli` (`--cli`); the one script CI runs, see above |
-| `gen_pseudo_locale.py` | `apps/gui/translations/ac3gui_xx.ts`, the GUI's pseudo-locale, made from `ac3gui_fr.ts` | stdlib only |
+| `gen_pseudo_locale.py` | `apps/gui/translations/forge_gui_xx.ts`, the GUI's pseudo-locale, made from `ac3gui_fr.ts` | stdlib only |
 
 Regenerating a programme fixture:
 

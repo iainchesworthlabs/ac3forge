@@ -5,7 +5,7 @@
 #include "iclforge/ac3/decoder/decoder.hpp"
 #include "crc_mutator.hpp"
 
-// Mirrors ac3cli's 'decode' path for E-AC-3 (apps/cli/main.cpp:
+// Mirrors forge's 'decode' path for E-AC-3 (apps/cli/main.cpp:
 // run_decode_eac3): split the raw stream into access units, then render each
 // one with a single Eac3Decoder. decode_access_unit calls split_frames and
 // decode_substream internally, so this one harness exercises the whole Annex
@@ -30,5 +30,5 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
 // decode_substream's checksum. See crc_mutator.hpp.
 extern "C" std::size_t LLVMFuzzerCustomMutator(std::uint8_t* data, std::size_t size,
                                                std::size_t max_size, unsigned int seed) {
-    return ac3fuzz::crc_repairing_mutate(data, size, max_size, seed);
+    return iclforge_fuzz::crc_repairing_mutate(data, size, max_size, seed);
 }

@@ -15,7 +15,7 @@ const DEMO = 'http://10.0.2.2:8000/demo.ec3';
 // (planning/hearth-reference-player.md): this page is what the BOARD is, and
 // POST /play stays in the REST surface for a person with curl. So the plays
 // these tests need are started through the device's own API rather than
-// through the page, as ac3hearth or Music Assistant would.
+// through the page, as hearth or Music Assistant would.
 const startPlay = (page, stub, location = DEMO) => page.request.post(stub.url + 'play', { data: location });
 
 test.describe('with the clock running', () => {

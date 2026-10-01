@@ -37,7 +37,7 @@
 // without a code change.
 //
 // No Qt, no platform header and no fmt here: the engine's threads write to
-// the ring, the console runner can reuse the renderer, and ac3tests holds
+// the ring, the console runner can reuse the renderer, and iclforge-tests holds
 // the rule on every CI leg.
 
 namespace iclforge::crucible {

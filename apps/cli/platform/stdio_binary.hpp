@@ -1,6 +1,6 @@
 #pragma once
 
-// Puts stdin and stdout into pure binary mode, so ac3cli's "-" convention (a
+// Puts stdin and stdout into pure binary mode, so forge's "-" convention (a
 // lone '-' in place of a file argument means stdin for an input path, stdout
 // for an output path - see main.cpp's is_stdio_path()) can move raw audio
 // bytes through them unmodified.
@@ -12,7 +12,7 @@
 // draw no distinction between text and binary streams, so there is nothing
 // to set there.
 //
-// This is the one piece of platform-specific code ac3cli needs - see this
+// This is the one piece of platform-specific code forge needs - see this
 // directory's CMakeLists.txt entry for the WIN32/else split that selects
 // between platform/windows/ and platform/posix/, the same shape iclforge::audio's
 // own platform tree uses (src/audio/CMakeLists.txt) scaled down to one

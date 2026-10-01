@@ -525,7 +525,7 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
             // chunk is written again rather than lost, so what the caller
             // submitted is what the device is given. Were the chunk skipped,
             // frames_rendered would fall behind frames_submitted for good and
-            // a caller waiting for the one to catch the other (ac3cli
+            // a caller waiting for the one to catch the other (forge
             // monitor's drain) would wait for ever.
             //
             // A device that under-runs again on every retry without taking a

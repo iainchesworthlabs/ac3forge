@@ -1,6 +1,6 @@
 """Unit tests for fuzz_encoder_space.py, the AC-3 encoder input-space fuzzer.
 
-ac3cli and ffmpeg are never run: the module's _run() is replaced by a fake
+forge and ffmpeg are never run: the module's _run() is replaced by a fake
 that plays the encoder, the decoder and FFmpeg. What is tested is the
 harness's own logic, because that is what decides whether a defect found by
 the search is reported:
@@ -198,7 +198,7 @@ class RunCase(unittest.TestCase):
 
     def run_case(self, fake, ffmpeg="ffmpeg", case=None):
         with mock.patch.object(fes, "_run", fake):
-            return fes.run_case("ac3cli", ffmpeg, case or small_case(), self.work, self.artifacts)
+            return fes.run_case("forge", ffmpeg, case or small_case(), self.work, self.artifacts)
 
     def test_clean_case(self):
         fake = FakeTools()
@@ -228,7 +228,7 @@ class RunCase(unittest.TestCase):
     def test_decode_failures(self):
         result = self.run_case(FakeTools(decode=(4, "bad frame")))
         self.assertEqual((result.status, result.stage), ("fail", "decode"))
-        self.assertIn("ac3cli decode exited 4", result.detail)
+        self.assertIn("forge decode exited 4", result.detail)
         result = self.run_case(FakeTools(write_pcm=False))
         self.assertIn("wrote no PCM", result.detail)
 
@@ -268,7 +268,7 @@ class Envelope(unittest.TestCase):
         with mock.patch.object(fes, "_run", fake), \
                 mock.patch.object(fes, "generate_pcm", light_pcm), \
                 contextlib.redirect_stdout(buf):
-            rc = fes.check_envelope("ac3cli")
+            rc = fes.check_envelope("forge")
         return rc, buf.getvalue()
 
     def test_matching_envelope_passes(self):
@@ -293,7 +293,7 @@ class Main(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.tmp = Path(self._tmp.name)
-        self.cli = self.tmp / "ac3cli"
+        self.cli = self.tmp / "forge"
         self.cli.write_text("")
 
     def tearDown(self):
@@ -332,7 +332,7 @@ class Main(unittest.TestCase):
         self.assertIn("ffmpeg not found", str(code))
         self.cli.unlink()
         code, _ = self.run_main()
-        self.assertIn("ac3cli not found", str(code))
+        self.assertIn("forge not found", str(code))
 
     def test_bounded_run_that_passes(self):
         code, out = self.run_main("--cases", "30", "--seed", "7", "--jobs", "2",

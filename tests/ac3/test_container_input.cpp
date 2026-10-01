@@ -91,7 +91,7 @@ TEST_CASE("sniff_container still finds a real MPEG-TS packet grid", "[containers
 
 // The same false positive from a WAV: steady PCM repeats bytes at a fixed
 // period (a 1 kHz sine at 48 kHz is 48 samples a cycle), and a float WAV
-// `ac3cli decode` wrote had five 0x47 bytes exactly 192 apart, so every
+// `forge decode` wrote had five 0x47 bytes exactly 192 apart, so every
 // command that sniffs its input refused it as an undemuxable transport
 // stream. Its RIFF/WAVE magic - and RF64's and BW64's - settles it first.
 TEST_CASE("sniff_container does not mistake a WAV with a 0x47 grid for MPEG-TS",

@@ -4,7 +4,7 @@ Phase D7 of planning/ac4.md builds presentations of several substreams (music an
 dialogue, main with associated audio, main with a dialogue enhancement substream) from the
 substreams of separate streams: the main and music and effects substreams from DEE's committed
 tone legs (tests/golden/external-baseline/ac4-51-tones-384 and ac4-20-tones-192), and the
-dialogue, associated and dialogue enhancement substreams from these, which `ac3cli ac4-encode`
+dialogue, associated and dialogue enhancement substreams from these, which `forge ac4-encode`
 writes, since DEE writes no mono. Each carries a tone of its own at -20 dBFS, so that a mix can
 be measured tone by tone:
 
@@ -25,7 +25,7 @@ AC4DEC_WRITE_PRESENTATIONS set to rewrite the multiplexed streams, then
 tools/references/ac4_syntax.py for their digests.
 
 Usage:
-    python tools/generators/gen_ac4_presentation_sources.py --cli build/config-linux-llvm/bin/ac3cli
+    python tools/generators/gen_ac4_presentation_sources.py --cli build/config-linux-llvm/bin/forge
 """
 
 import argparse
@@ -83,7 +83,7 @@ def first_frames(data, count):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--cli", required=True, type=Path, help="the ac3cli to encode with")
+    parser.add_argument("--cli", required=True, type=Path, help="the forge to encode with")
     args = parser.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as work:
@@ -95,7 +95,7 @@ def main():
                        "codec-mode=simple", "quiet"]
             result = subprocess.run(command, capture_output=True, text=True, check=False)
             if result.returncode != 0:
-                sys.exit(f"{name}: ac3cli ac4-encode failed ({result.returncode}):\n"
+                sys.exit(f"{name}: forge ac4-encode failed ({result.returncode}):\n"
                          f"{result.stdout}{result.stderr}")
             (OUT / f"{name}.ac4").write_bytes(first_frames(stream.read_bytes(), FRAMES))
             print(f"{name}: {len(tones)} channel(s), {kbps} kbps, {FRAMES} frames")

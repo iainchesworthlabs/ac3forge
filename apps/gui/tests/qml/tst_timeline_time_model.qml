@@ -1,7 +1,7 @@
 import QtQuick
 import QtTest
 
-import Ac3Forge
+import ForgeGui
 
 // Bundle A - the Objects tab's timeline and time model: a derived
 // programme length (A1), per-source start offsets (A2), programme-

@@ -1,13 +1,13 @@
 import QtQuick
 import QtQuick.Layouts
 
-import Ac3Forge
+import ForgeGui
 
 // A titled panel. Children are laid out vertically inside `content`.
 //
 // Three shapes, because the family draws three:
 //
-//   default    one box around the header AND the content. ac3gui's older
+//   default    one box around the header AND the content. forge-gui's older
 //              shape; left as the default so that app is untouched.
 //   flat       no box at all, just the header and the content under it -
 //              the Play page's monitor column (main-play.png).

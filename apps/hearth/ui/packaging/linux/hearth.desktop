@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=hearth
+GenericName=AC-3 / E-AC-3 / AC-4 Player
+Comment=Play AC-3, E-AC-3 and AC-4 streams on speakers, a receiver or a Sendspin network
+Exec=hearth %F
+Icon=hearth
+Terminal=false
+Categories=AudioVideo;Audio;Player;
+MimeType=audio/ac3;audio/eac3;
+StartupNotify=true

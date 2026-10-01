@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Window
 import QtTest
 
-import Ac3ForgeHearth
+import Hearth
 
 // Speakers.qml's routing grid (issue #886, the arrow-key navigation PR #859
 // added): HearthController.speakerLabels/trimDb/delayMs/etc. come from the

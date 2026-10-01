@@ -3,7 +3,7 @@
 //
 // Roadmap item IM1 phase 3 of 3 (the last piece - phase 1 is iclforge::iab, src/iab; phase 2
 // is iclforge::iab::parse_mxf_iab, src/iab/src/mxf_reader.cpp). This is a minimal, standalone
-// illustration of the same pipeline ac3cli's 'atmos-iab' command drives for real:
+// illustration of the same pipeline forge's 'atmos-iab' command drives for real:
 // iclforge::iab::parse_iabitstream() reads the frame sequence, iclforge::admbridge::build_iab()
 // maps it onto iclforge::oba::AtmosEncoder's flat object-list input shape (one bed channel pinned
 // in place, one dynamic object panned by its own authored motion), and a plain per-frame loop calls
@@ -23,7 +23,7 @@
 //
 // Run with `--write-fixture <path>` to just write that same fixture to a real file and exit,
 // skipping the parse/bridge/encode demo below - see main()'s own comment on why
-// tools/ci/run_codec_matrix.sh uses exactly this to drive a real `ac3cli atmos-iab` invocation
+// tools/ci/run_codec_matrix.sh uses exactly this to drive a real `forge atmos-iab` invocation
 // (the same convention encode_adm.cpp's own --write-fixture already established).
 
 #include <fmt/printf.h>

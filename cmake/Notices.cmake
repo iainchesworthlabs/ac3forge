@@ -12,7 +12,7 @@
 # fragments, so the one file a package installs and an application embeds
 # is written once, from the versions CMake already knows, rather than kept
 # by hand per platform. apps/crucible/notices/ is the first user;
-# apps/notices/ (Forge - ac3cli and ac3gui) is the second.
+# apps/notices/ (Forge - forge and forge-gui) is the second.
 #
 # FRAGMENT_DIR takes more than one directory because those two callers share
 # text. A fragment that names no application - the typefaces, the trademark

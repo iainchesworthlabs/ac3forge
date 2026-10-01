@@ -40,7 +40,7 @@ namespace iclforge::hearth::ui {
         // two-argument one always uses the native store, whatever
         // QSettings::setDefaultFormat() says (hearth_controller.cpp's own
         // comment on why that matters for the test suites).
-        QSettings settings{QSettings::defaultFormat(), QSettings::UserScope, QStringLiteral("ac3forge"),
+        QSettings settings{QSettings::defaultFormat(), QSettings::UserScope, QStringLiteral("iclforge"),
                            QStringLiteral("Hearth")};
         QSettingsStore store{settings};
         iclforge::hearth::PairingStore pairing{

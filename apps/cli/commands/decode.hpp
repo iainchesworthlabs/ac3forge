@@ -8,9 +8,9 @@
 // object-layer/DRC-reporting half. Confirmed still physically contiguous (report_decoded_objects,
 // print_drc_summary, run_decode_eac3, run_decode) after 8 prior extraction rounds.
 // Split out of main.cpp as part of the repo-structure review's H4 monolith split.
-namespace ac3cli::commands {
+namespace forge_cli::commands {
 
-int run_decode(std::string_view in_path, std::string_view out_path, const ac3cli::Options& meta,
+int run_decode(std::string_view in_path, std::string_view out_path, const forge_cli::Options& meta,
                std::string_view objects_dir, std::string_view adm_out);
 
-}  // namespace ac3cli::commands
+}  // namespace forge_cli::commands

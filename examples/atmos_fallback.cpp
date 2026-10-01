@@ -116,7 +116,7 @@ int main() {
     // TS 103 420 §8.3.1's addbsi object marker follows the container, because
     // it is the only thing a reader has to go on: iclforge::io::scan reports it as
     // oba_complexity_index, iclforge::io::build_codec_config_box turns it into the
-    // dec3 box's Dolby Atmos extension, `ac3cli fmp4` writes it as an HLS
+    // dec3 box's Dolby Atmos extension, `forge fmp4` writes it as an HLS
     // CHANNELS="<N>/JOC" attribute, and FFmpeg reports "Dolby Digital Plus +
     // Dolby Atmos" off it. Left on the container-less stream, all four would
     // claim an object layer that is not there - an empty promise, the same

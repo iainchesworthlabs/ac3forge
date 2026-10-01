@@ -40,7 +40,7 @@
 // does each poll a flag for that reason. A job that is one call into a library
 // has none; see EncoderController::encodeAc4, which quitting mid-encode waits
 // for, as ~QCoreApplication's wait on the global pool always did.
-namespace ac3gui {
+namespace forge_gui {
 
 class BackgroundJobs {
    public:
@@ -60,4 +60,4 @@ class BackgroundJobs {
     QThreadPool pool_;
 };
 
-}  // namespace ac3gui
+}  // namespace forge_gui

@@ -10,7 +10,7 @@
 names) and writes into DIR:
 
 - <name>-<version>.bin: the app image, for an update over the network
-  (tools/hearth/ota.py push, the board's page, ac3hearth's Firmware tab);
+  (tools/hearth/ota.py push, the board's page, hearth's Firmware tab);
 - <name>-<version>-factory.bin: every region flash_args writes, laid out as
   one file written at 0x0, with 0xFF between regions as erased flash has. It
   is for a new board: it overwrites NVS too;

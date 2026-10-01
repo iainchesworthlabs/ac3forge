@@ -362,19 +362,19 @@ jobs:
           preset: linux-gcc
 
       # ctest covers the codec; this covers the one thing it cannot: that
-      # ac3gui starts, loads its QML and drives a real encode through the Qt
+      # forge-gui starts, loads its QML and drives a real encode through the Qt
       # event loop. offscreen needs no display.
-      - name: Smoke test ac3gui (headless)
+      - name: Smoke test forge-gui (headless)
         if: ${{ !cancelled() && steps.leg.outputs.built == 'true' && needs.plan.outputs.gui == 'true' }}
         shell: bash
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
           set -euo pipefail
-          build/config-linux-gcc/bin/ac3gui --smoke \
+          build/config-linux-gcc/bin/forge-gui --smoke \
             fuzz/seeds/fuzz_wav_read/roundtrip-stereo.wav \
-            "${RUNNER_TEMP}/ac3gui-smoke.ac3" \
-            "${RUNNER_TEMP}/ac3gui-smoke.png"
+            "${RUNNER_TEMP}/forge-gui-smoke.ac3" \
+            "${RUNNER_TEMP}/forge-gui-smoke.png"
 
       # A qsTr() string added or edited without re-running lupdate rots silently
       # otherwise. Re-runs lupdate against the sources and fails if that changed
@@ -385,11 +385,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cmake --build --preset build-linux-gcc --target ac3gui_lupdate -- -k 0
+          cmake --build --preset build-linux-gcc --target forge-gui_lupdate -- -k 0
           git config --global --add safe.directory "${GITHUB_WORKSPACE}"
           cd "${GITHUB_WORKSPACE}"
           git diff --exit-code -- apps/gui/translations || {
-            echo "::error::a qsTr() string changed without regenerating the catalogues - build the ac3gui_lupdate target and commit apps/gui/translations"
+            echo "::error::a qsTr() string changed without regenerating the catalogues - build the forge-gui_lupdate target and commit apps/gui/translations"
             exit 1
           }
 
@@ -474,10 +474,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cmake --build "build/config-windows-msvc" --target ac3hearth_lupdate
+          cmake --build "build/config-windows-msvc" --target hearth_lupdate
           git diff --exit-code -I '^[[:space:]]*<location filename="[^"]*" line="[0-9]+"/>' \
             -- apps/hearth/ui/translations || {
-            echo "::error::a qsTr() string changed without regenerating the catalogues - build the ac3hearth_lupdate target and commit apps/hearth/ui/translations"
+            echo "::error::a qsTr() string changed without regenerating the catalogues - build the hearth_lupdate target and commit apps/hearth/ui/translations"
             exit 1
           }
 

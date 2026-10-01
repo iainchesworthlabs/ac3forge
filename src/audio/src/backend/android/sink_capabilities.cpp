@@ -8,7 +8,7 @@
 // exactly one addressable output route on this build's target hardware (see
 // passthrough.cpp's own header comment), so a second, lower-level path to the
 // same answer would not add anything the existing probe does not already
-// give. 'ac3cli play' falls back to that probe here - see
+// give. 'forge play' falls back to that probe here - see
 // docs/platforms/android.md.
 
 namespace iclforge::audio {

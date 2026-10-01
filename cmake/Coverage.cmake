@@ -8,18 +8,18 @@
 #
 # Link it PRIVATE into every first-party target whose coverage should be
 # measured - today that is every library component (forge, audio, signing,
-# matroska, mp4, mpegts, the C API, ac3adm, admbridge) plus ac3cli and
-# ac3tests.
+# matroska, mp4, mpegts, the C API, ac3adm, admbridge) plus forge and
+# iclforge-tests.
 #
 # The distinction that matters, and that cost a measurement run to notice:
 # LINKING an instrumented library gets a target the gcov RUNTIME, not
 # instrumentation of its own sources. A PRIVATE link of this target lands in
 # the library's INTERFACE_LINK_LIBRARIES as $<LINK_ONLY:iclforge::coverage>, so
-# --coverage reaches every downstream LINK line automatically (ac3perf/ac3bench
+# --coverage reaches every downstream LINK line automatically (iclforge-perf/iclforge-bench
 # link the instrumented iclforge::ac3 with no iclforge::coverage of their own and link
 # fine) - but --coverage is target-scoped at COMPILE time, so a consumer's own
 # .cpp files still compile without -fprofile-arcs and emit no .gcno. That is
-# why ac3cli has to link this explicitly (apps/cli/CMakeLists.txt) now that
+# why forge has to link this explicitly (apps/cli/CMakeLists.txt) now that
 # tools/checks/coverage_report.sh gates it: without it a gcovr filter for
 # apps/cli returns zero files, not a low percentage.
 #

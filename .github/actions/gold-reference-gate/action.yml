@@ -1,6 +1,6 @@
 name: Gold reference gate
 description: >-
-  Run tools/checks/verify_gold_reference.sh against one leg's ac3cli, the
+  Run tools/checks/verify_gold_reference.sh against one leg's forge, the
   single canonical invocation every gold_reference leg makes - extracted
   alongside ./.github/actions/build-leg (docs/ci-lanes.md) so a future
   per-platform workflow calls this instead of copying the step. The
@@ -10,7 +10,7 @@ description: >-
 
 inputs:
   preset:
-    description: "matrix.preset - locates build/config-<preset>/bin/ac3cli[.exe]."
+    description: "matrix.preset - locates build/config-<preset>/bin/forge[.exe]."
     required: true
   persist-quality-trend:
     description: "The reusable workflow's own persist_quality_trend input. 'true' asks compare_wav.py to also write a structured per-codec result for the quality-trend job to pick up; anything else runs the gate exactly as an ordinary PR does - no extra files, no extra step."
@@ -30,7 +30,7 @@ runs:
         RESULTS_JSON_DIR: ${{ inputs.persist-quality-trend == 'true' && format('{0}/gold-reference-results', runner.temp) || '' }}
       run: |
         set -euo pipefail
-        bin="build/config-$LEG_PRESET/bin/ac3cli"
+        bin="build/config-$LEG_PRESET/bin/forge"
         if [ "$RUNNER_OS" = "Windows" ]; then
           bin="${bin}.exe"
         fi

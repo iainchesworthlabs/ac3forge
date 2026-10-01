@@ -26,7 +26,7 @@
 // apps/cli/platform/{windows,posix}/ stdio_binary.cpp and src/audio's own src/backend/<os>/
 // directory already use for an OS difference - here for a library-linked-or-not difference instead.
 // apps/cli/CMakeLists.txt adds exactly one of adm/enabled/atmos_adm.cpp or
-// adm/disabled/atmos_adm.cpp to the ac3cli target; main.cpp calls the two functions below
+// adm/disabled/atmos_adm.cpp to the forge target; main.cpp calls the two functions below
 // completely unconditionally either way.
 //
 // The functions below are declared entirely in terms of iclforge::oba's own types (always available
@@ -35,9 +35,9 @@
 // header itself never needs those two modules' own headers, and main.cpp (which includes this one)
 // never gains a hard dependency on them either. adm/enabled/atmos_adm.cpp is the one place both
 // meet.
-namespace ac3cli {
+namespace forge_cli {
 
-// Whether THIS build's ac3cli can run 'atmos-adm' at all - the same "is this available here?"
+// Whether THIS build's forge can run 'atmos-adm' at all - the same "is this available here?"
 // question main.cpp's existing Needs::kCapture/kPassthrough/kMonitor already ask of
 // iclforge::audio::audio_backend() (see that header's own top comment on why a per-platform TU,
 // not a conditional, answers it); Needs::kAdm (main.cpp's kCommands table) asks this instead,
@@ -70,4 +70,4 @@ struct AdmAtmosSource {
 [[nodiscard]] std::expected<AdmAtmosSource, std::string> load_adm_atmos_source(
     std::string_view path, std::string_view programme_id);
 
-}  // namespace ac3cli
+}  // namespace forge_cli

@@ -1,9 +1,9 @@
 import QtQuick
 import QtTest
 
-import Ac3Forge
+import ForgeGui
 
-// Proves the harness itself works end to end: the Ac3Forge module this
+// Proves the harness itself works end to end: the ForgeGui module this
 // binary embeds resolves, Main.qml (the real shell, not a stand-in) loads
 // under the offscreen platform, and EncoderController - the real singleton,
 // not a mock - is reachable with no source loaded. Every other tst_*.qml

@@ -1,7 +1,7 @@
 import QtQuick
 import QtTest
 
-import Ac3Forge
+import ForgeGui
 
 // What becomes of work still running when the controllers are destroyed, which
 // is what closing the window during an encode does. Every controller hands its

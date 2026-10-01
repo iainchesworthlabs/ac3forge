@@ -474,7 +474,7 @@ void StreamDecoder::deliver_silence(std::size_t frames, const BlockFn& deliver) 
 void StreamDecoder::place_ac4_frame(const iclforge::ac4::DecodedFrame& pcm,
                                     const BlockFn& deliver) {
     // A presentation with objects renders both its objects and any channels beside them together,
-    // through the same layout renderer ac3cli's own 'decode' plays AC-4 objects with
+    // through the same layout renderer forge's own 'decode' plays AC-4 objects with
     // (apps/common/ac4_object_render.hpp); one without takes the decoder's own channels as before
     // this control existed.
     std::span<const iclforge::ac4::Speaker> speakers;

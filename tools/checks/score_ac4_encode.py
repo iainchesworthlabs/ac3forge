@@ -1,9 +1,9 @@
-"""Score ac3cli's AC-4 encoding: the encoder's streams, decoded, against their sources.
+"""Score forge's AC-4 encoding: the encoder's streams, decoded, against their sources.
 
 planning/ac4.md, the encoder's ladder, items 4 and 5, as phases E1 to E5 and E8 need them: SIMPLE,
 ASPX and A-CPL, mono, stereo, 5.0 and 5.1, at frame_rate_index 13 and, in the frame-rate legs, the
-others, and the immersive element's 5.1.4. Each leg encodes a source with `ac3cli
-ac4-encode`, which picks the codec mode from the rate, decodes the stream with `ac3cli decode`,
+others, and the immersive element's 5.1.4. Each leg encodes a source with `forge
+ac4-encode`, which picks the codec mode from the rate, decodes the stream with `forge decode`,
 aligns the output with the source by cross-correlation, fits a least-squares gain per channel,
 and checks, as score_ac4_decode.py scores DEE's streams:
 
@@ -85,8 +85,8 @@ decision 13.
 --measure prints what every leg measures and checks nothing, for pinning a new leg.
 
 Usage:
-    python tools/checks/score_ac4_encode.py --cli build/config-linux-llvm/bin/ac3cli
-    python tools/checks/score_ac4_encode.py --cli ac3cli.exe --gold D:/ac3bld/ac4-gold
+    python tools/checks/score_ac4_encode.py --cli build/config-linux-llvm/bin/forge
+    python tools/checks/score_ac4_encode.py --cli forge.exe --gold D:/ac3bld/ac4-gold
         [--librempeg /mnt/d/ac3bld/librempeg/install/bin/ffmpeg]
 """
 
@@ -1087,7 +1087,7 @@ def decode_librempeg(args, stream, out_wav):
 
 
 def decode_with_groups(cli, stream, out_wav):
-    """ac3cli's decode of `stream`, and per channel the low-resolution A-SPX subband groups its
+    """forge's decode of `stream`, and per channel the low-resolution A-SPX subband groups its
     first aspx_config() gives with the crossover offset of the aspx_data element carrying that
     channel (score_ac4_decode.py's aspx_groups and ASPX_UNIT), or None for a SIMPLE stream and
     for the LFE, which A-SPX leaves out."""
@@ -1710,7 +1710,7 @@ def immersive_race(args, work, legs):
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
-        "--cli", required=True, type=Path, help="the ac3cli to encode and decode with"
+        "--cli", required=True, type=Path, help="the forge to encode and decode with"
     )
     parser.add_argument(
         "--gold", type=Path, help="run the race against G0's gold set in this directory"

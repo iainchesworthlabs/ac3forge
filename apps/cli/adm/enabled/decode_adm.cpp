@@ -10,7 +10,7 @@
 // apps/cli/CMakeLists.txt) - see ../decode_adm.hpp's own top comment for why this file, rather
 // than a preprocessor conditional inside decode.cpp, is the mechanism.
 
-namespace ac3cli {
+namespace forge_cli {
 
 std::expected<void, std::string> write_adm_atmos_master(std::string_view path, const AdmMasterInput& input) {
     iclforge::admbridge::WriteInput bridged;
@@ -49,4 +49,4 @@ std::expected<void, std::string> write_adm_atmos_master(std::string_view path, c
     return {};
 }
 
-}  // namespace ac3cli
+}  // namespace forge_cli

@@ -77,7 +77,7 @@
       "gui": true,
       "packageable": true,
       "gold_reference": true,
-      // AC3Forge Crucible's Linux half (Crucible cross-platform promotion). This leg and not
+      // Crucible's Linux half (Crucible cross-platform promotion). This leg and not
       // a GCC one because the GCC legs carry alsa_fallback, which
       // asserts that disabling ALSA falls back to posix - true only
       // while no PipeWire headers are installed, and the Crucible pass
@@ -134,7 +134,7 @@
       "gui": true,
       "packageable": true,
       "gold_reference": true,
-      // AC3Forge Crucible's Linux half on aarch64 (Crucible cross-platform promotion). The
+      // Crucible's Linux half on aarch64 (Crucible cross-platform promotion). The
       // Crucible pass further down is written against matrix.preset, so
       // this leg only has to ask for it: same apt list, same configure
       // assertions, same tests, same package as linux-llvm, and no
@@ -157,10 +157,10 @@
       // disabling ALSA falls back to posix holds only while no PipeWire
       // headers are installed, and the pass installs them. The second
       // is release_package, which the GCC arm64 leg also carries: the
-      // "Assert the AC3Forge Crucible was packaged (Windows)" step keys
+      // "Assert the Crucible was packaged (Windows)" step keys
       // off matrix.crucible && matrix.release_package with no runner.os
       // guard of its own, so on a do_package run it would go looking on
-      // Linux for a packages/ac3forge-crucible-*.zip that no Linux leg
+      // Linux for a packages/iclforge-crucible-*.zip that no Linux leg
       // ever produces.
       "crucible": true
     },
@@ -218,7 +218,7 @@
       // itself was 7 seconds over 36 tests when this landed.
       //
       // No `sanitizer: true`: that flag means the codec-matrix step, and
-      // driving every layout/tool combination through ac3cli is an
+      // driving every layout/tool combination through forge is an
       // ASan/UBSan errand. Not `gold_reference` or `packageable` either,
       // same reasoning as the ASan+UBSan leg's own comment above.
       // Self-hosted-capable again (reverted to ubuntu-latest in #460).
@@ -263,7 +263,7 @@
       "packageable": true,
       "release_package": true,
       "gold_reference": true,
-      // AC3Forge Crucible (WASAPI loopback tap/UX12, apps/crucible): built and
+      // Crucible (WASAPI loopback tap/UX12, apps/crucible): built and
       // tested on both Windows legs, packaged on this one (the Package
       // step's own condition already singles out windows-msvc), as its
       // own archive - see cmake/Packaging.cmake's crucible component. The

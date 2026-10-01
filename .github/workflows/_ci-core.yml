@@ -80,7 +80,7 @@ permissions:
   contents: read
 
 jobs:
-  # ac3tests coverage over every library component: src/ac3 plus audio,
+  # iclforge-tests coverage over every library component: src/ac3 plus audio,
   # signing, matroska, mp4, mpegts, capi, and - via the coverage preset's
   # ICLFORGE_BUILD_ADM=ON with vcpkg's 'adm' feature, the same pair
   # adm-validate passes by hand - ac3adm/admbridge. Originally src/ac3 only
@@ -92,7 +92,7 @@ jobs:
   #
   # config-linux-gcc-coverage (CMakePresets.json) builds just the library
   # components and their test suite - ICLFORGE_BUILD_CLI/EXAMPLES are off
-  # there purely to save build time: ac3cli and the example executables
+  # there purely to save build time: forge and the example executables
   # would link fine against the instrumented libraries (the gcov runtime
   # propagates to consumers automatically - see cmake/Coverage.cmake), but
   # tools/checks/coverage_report.sh filters the report to the library components,
@@ -220,7 +220,7 @@ jobs:
       # Qt on this container or standing up a second instrumented leg, both of
       # which cost real runner time for a tree whose interactive surfaces are
       # already covered by apps/gui/tests' own Qt Quick suite and whose one
-      # Qt-free class (RecordingSink) is already in ac3tests. See
+      # Qt-free class (RecordingSink) is already in iclforge-tests. See
       # tools/checks/coverage_report.sh's header for the same note beside the
       # threshold table.
       #
@@ -298,7 +298,7 @@ jobs:
   # named three legs that needed this same override and missed this one.
   #
   # ICLFORGE_BUILD_CLI/EXAMPLES stay at their preset default (ON): ADM BWF reader phase 3 (the
-  # 'atmos-adm' ac3cli command, apps/cli/main.cpp's run_atmos_adm, and examples/encode_adm.cpp) is
+  # 'atmos-adm' forge command, apps/cli/main.cpp's run_atmos_adm, and examples/encode_adm.cpp) is
   # the first code outside tests/ to link iclforge::adm/iclforge::admbridge at all, so unlike phases 1
   # and 2 (when neither the CLI nor the examples touched this module, hence this job originally
   # turning both off), this job now has to build and run both too or the CLI command and example
@@ -307,7 +307,7 @@ jobs:
   # (examples/CMakeLists.txt), so `ctest --preset test-linux-gcc` below already exercises
   # encode_adm's own standalone fixture-driven run alongside adm/test_adm.cpp/admbridge/test_adm_bridge.cpp/
   # test_cli_atmos_adm.cpp (tests/CMakeLists.txt only compiles that last one in when
-  # ICLFORGE_BUILD_ADM AND ac3cli are both present, exactly the combination this job now builds).
+  # ICLFORGE_BUILD_ADM AND forge are both present, exactly the combination this job now builds).
   # ICLFORGE_BUILD_GUI already defaults OFF on this preset.
   adm-validate:
     name: ADM Module (Linux, GCC)
@@ -453,7 +453,7 @@ jobs:
   # Assistant's server, which needs a Python environment no build leg carries. The short
   # [sendspin],[hearth] run below stays as this job's own check that the binary it is about to
   # drive is sound. One Linux leg, for adm-validate's reason: the module has little platform
-  # code. Only ac3tests and ac3hearth-testsink are built; the rest of the suite is
+  # code. Only iclforge-tests and hearth-testsink are built; the rest of the suite is
   # build-and-test's.
   hearth-validate:
     name: Hearth Sendspin (Linux, GCC)
@@ -504,16 +504,16 @@ jobs:
           -DICLFORGE_BUILD_HEARTH=ON
           -DICLFORGE_BUILD_EXAMPLES=OFF
 
-      # ac3cli and ac3hearth-render for the AC-4 gains through the engine, the last step.
+      # forge and hearth-render for the AC-4 gains through the engine, the last step.
       - name: Build
         shell: bash
         run: >-
           cmake --build --preset build-linux-gcc
-          --target ac3tests ac3hearth-testsink ac3cli ac3hearth-render -- -k 0
+          --target iclforge-tests hearth-testsink forge hearth-render -- -k 0
 
       - name: Test
         shell: bash
-        run: ./build/config-linux-gcc/bin/ac3tests "[sendspin],[hearth]"
+        run: ./build/config-linux-gcc/bin/iclforge-tests "[sendspin],[hearth]"
 
       # A4's exit with the stand-in for Sendspin's reference player
       # (planning/hearth-sendspin-extension.md, Decisions): a host pairs with a scripted
@@ -528,7 +528,7 @@ jobs:
           /tmp/aiosendspin-venv/bin/pip install --no-cache-dir --only-binary=:all: \
             -r tools/sendspin/requirements.txt
           /tmp/aiosendspin-venv/bin/python tools/sendspin/aiosendspin_exit.py \
-            --ac3tests ./build/config-linux-gcc/bin/ac3tests
+            --iclforge-tests ./build/config-linux-gcc/bin/iclforge-tests
 
       # A6's own exit (same planning doc): the scripted player as one member of a group alongside
       # a burst-taking test sink, played from the app's own ac3::hearth::Engine - not just Group
@@ -538,7 +538,7 @@ jobs:
         run: |
           set -eu
           /tmp/aiosendspin-venv/bin/python tools/sendspin/aiosendspin_group_exit.py \
-            --ac3tests ./build/config-linux-gcc/bin/ac3tests
+            --iclforge-tests ./build/config-linux-gcc/bin/iclforge-tests
 
       # Music Assistant's side of the same exit, rehearsed: aiosendspin 9.1.1's server, which Music
       # Assistant runs, pairs with the test sink by its token and by its dynamic code, and plays it
@@ -549,24 +549,24 @@ jobs:
           set -eu
           for pair in token code; do
             /tmp/aiosendspin-venv/bin/python tools/sendspin/aiosendspin_server.py \
-              --testsink ./build/config-linux-gcc/bin/ac3hearth-testsink --pair "$pair"
+              --testsink ./build/config-linux-gcc/bin/hearth-testsink --pair "$pair"
           done
 
       # planning/ac4.md, phase I2: AC-4's output level, downmixes and dialogue enhancement held to
       # Part 1's formulas through Hearth's engine - the player, session and stream decoder the
-      # window plays with (apps/hearth/render) - with each of ac3cli's options as the Decoder
+      # window plays with (apps/hearth/render) - with each of forge's options as the Decoder
       # page's setting for it, on the committed streams and on the encoder's. The stream's values
-      # come from ac3cli's syntax trace; numpy from the venv above.
+      # come from forge's syntax trace; numpy from the venv above.
       - name: AC-4 output gains through Hearth's engine
         shell: bash
         run: |
           set -eu
           /tmp/aiosendspin-venv/bin/python tools/checks/gain_ac4_decode.py \
-            --cli ./build/config-linux-gcc/bin/ac3cli \
-            --engine ./build/config-linux-gcc/bin/ac3hearth-render
+            --cli ./build/config-linux-gcc/bin/forge \
+            --engine ./build/config-linux-gcc/bin/hearth-render
           /tmp/aiosendspin-venv/bin/python tools/checks/gain_ac4_decode.py \
-            --cli ./build/config-linux-gcc/bin/ac3cli \
-            --engine ./build/config-linux-gcc/bin/ac3hearth-render --encoder
+            --cli ./build/config-linux-gcc/bin/forge \
+            --engine ./build/config-linux-gcc/bin/hearth-render --encoder
 
       # See adm-validate's identical step for why the result is recorded this way.
       - name: Record result
@@ -883,13 +883,13 @@ jobs:
           exit 0
 
   # FFmpeg as an independent oracle (CONTRIBUTING.md's "Oracles" list, #2),
-  # automated - previously a manual/developer-only practice. Builds ac3cli
+  # automated - previously a manual/developer-only practice. Builds forge
   # only (linux-llvm preset; no GUI, and build-and-test already covers
   # ctest), then runs three layers against it, all against FFmpeg and all
   # already exiting non-zero on their own failure - this job's only new work
   # is wiring them up, pinning FFmpeg, and gating on the result. Answers a
   # different question from _build.yml's gold-reference gate (every leg,
-  # one fixed sample, ac3cli's own decoder vs FFmpeg's - output *quality* and
+  # one fixed sample, forge's own decoder vs FFmpeg's - output *quality* and
   # cross-platform reproducibility): this leg checks that every layout,
   # Annex E tool token and metadata option in the encoder's surface produces
   # a structurally valid stream at all - output *correctness* across the
@@ -1018,25 +1018,25 @@ jobs:
       - name: Configure
         run: cmake --preset config-linux-llvm
 
-      - name: Build ac3cli
-        run: cmake --build --preset build-linux-llvm --target ac3cli -- -k 0
+      - name: Build forge
+        run: cmake --build --preset build-linux-llvm --target forge -- -k 0
 
       - name: Codec matrix against the FFmpeg oracle
-        run: bash tools/ci/run_codec_matrix.sh build/config-linux-llvm/bin/ac3cli
+        run: bash tools/ci/run_codec_matrix.sh build/config-linux-llvm/bin/forge
 
       - name: Metadata checks against FFmpeg (dynrng, compr, downmix, dialnorm)
-        run: python3 tools/checks/check_drc.py --cli build/config-linux-llvm/bin/ac3cli
+        run: python3 tools/checks/check_drc.py --cli build/config-linux-llvm/bin/forge
 
       - name: Coupling checks against FFmpeg (envelope and absolute level)
         env:
-          AC3CLI: build/config-linux-llvm/bin/ac3cli
+          ICLFORGE_CLI: build/config-linux-llvm/bin/forge
         run: |
           python3 tools/checks/check_coupling.py
           python3 tools/checks/check_coupling_level.py
 
       - name: Fidelity gate against FFmpeg (SNR/LSD floors)
         env:
-          AC3CLI: build/config-linux-llvm/bin/ac3cli
+          ICLFORGE_CLI: build/config-linux-llvm/bin/forge
         run: python3 tools/ci/quality_race.py ci
 
       # FFmpeg has no AC-4 decoder, so the AC-4 decoder is scored against the
@@ -1049,7 +1049,7 @@ jobs:
       # writes somewhere upload-artifact never looks.
       - name: AC-4 decode against DEE's sources (level, SNR floors, lag)
         run: |
-          python3 tools/checks/score_ac4_decode.py --cli build/config-linux-llvm/bin/ac3cli \
+          python3 tools/checks/score_ac4_decode.py --cli build/config-linux-llvm/bin/forge \
             --json-out ac4-quality/ac4-decode-quality.json
 
       - name: Upload AC-4 decode quality results
@@ -1063,20 +1063,20 @@ jobs:
       # Part 1's formulas with each committed stream's own dialnorm and mix
       # gains, read from the decoder's syntax trace.
       - name: AC-4 output level and downmix gains against Part 1's formulas
-        run: python3 tools/checks/gain_ac4_decode.py --cli build/config-linux-llvm/bin/ac3cli
+        run: python3 tools/checks/gain_ac4_decode.py --cli build/config-linux-llvm/bin/forge
 
       # planning/ac4.md, phase E5: the same, and dialogue enhancement's gains,
       # on streams the encoder writes here with each metadata option those
       # read, at several frame rates.
       - name: AC-4 output gains against Part 1's formulas on the encoder's streams
-        run: python3 tools/checks/gain_ac4_decode.py --cli build/config-linux-llvm/bin/ac3cli --encoder
+        run: python3 tools/checks/gain_ac4_decode.py --cli build/config-linux-llvm/bin/forge --encoder
 
       # planning/ac4.md, phase D7: each presentation of several substreams in
       # the multiplexed streams, fitted on its substreams decoded alone, held to
       # the mixing formulas with the stream's gains, pans and dialogue
       # enhancement read from the syntax trace.
       - name: AC-4 presentation mixes against Part 1's and Part 2's formulas
-        run: python3 tools/checks/mix_ac4_decode.py --cli build/config-linux-llvm/bin/ac3cli
+        run: python3 tools/checks/mix_ac4_decode.py --cli build/config-linux-llvm/bin/forge
 
       # planning/ac4.md, the encoder's ladder, item 4: the encoder's own streams
       # of the programme fixtures and synthetic signals, decoded by this
@@ -1084,7 +1084,7 @@ jobs:
       # floors pinned at the first measurement. The race against DEE's streams
       # of the same sources is the same script's --gold, locally.
       - name: AC-4 encode, decoded against its sources (SNR, LSD and ViSQOL floors)
-        run: python3 tools/checks/score_ac4_encode.py --cli build/config-linux-llvm/bin/ac3cli
+        run: python3 tools/checks/score_ac4_encode.py --cli build/config-linux-llvm/bin/forge
 
       # The AC-4 decoder in float (planning/ac4.md, D14a): the two scorers above
       # again with a decoder built ICLFORGE_DECODE_SCALAR=float, at the same pins,
@@ -1092,25 +1092,25 @@ jobs:
       # below and above A-SPX's crossover, at the floors pinned in
       # tests/golden/ac4dec/scalar-agreement.json. The AC-4 encoder is double in
       # every build (decision 34); its streams are decoded by the float decoder.
-      - name: Build a float32 ac3cli
+      - name: Build a float32 forge
         run: |
           cmake --preset config-linux-llvm -B build/decode-scalar-float -DICLFORGE_DECODE_SCALAR=float
-          cmake --build build/decode-scalar-float --target ac3cli -- -k 0
+          cmake --build build/decode-scalar-float --target forge -- -k 0
 
       - name: AC-4 decode against DEE's sources, float32 decoder
-        run: python3 tools/checks/score_ac4_decode.py --cli build/decode-scalar-float/bin/ac3cli
+        run: python3 tools/checks/score_ac4_decode.py --cli build/decode-scalar-float/bin/forge
 
       - name: AC-4 encode, decoded by the float32 decoder against its sources
-        run: python3 tools/checks/score_ac4_encode.py --cli build/decode-scalar-float/bin/ac3cli
+        run: python3 tools/checks/score_ac4_encode.py --cli build/decode-scalar-float/bin/forge
 
       - name: AC-4 float32 against double decode (below and above A-SPX's crossover)
         run: |
           python3 tools/checks/check_ac4_decode_scalar_snr.py \
-            --double-cli build/config-linux-llvm/bin/ac3cli \
-            --float-cli build/decode-scalar-float/bin/ac3cli
+            --double-cli build/config-linux-llvm/bin/forge \
+            --float-cli build/decode-scalar-float/bin/forge
 
       - name: Matrix coverage (every CLI option is exercised somewhere)
-        run: python3 tools/checks/check_matrix_coverage.py --cli build/config-linux-llvm/bin/ac3cli
+        run: python3 tools/checks/check_matrix_coverage.py --cli build/config-linux-llvm/bin/forge
 
       # The generator half of this job's question. Everything above walks a
       # HAND-ENUMERATED set of command lines against one bootstrap tone: the
@@ -1142,7 +1142,7 @@ jobs:
       # almost nothing.
       - name: Encoder acceptance envelope (the rate floors the search draws from)
         env:
-          AC3CLI: build/config-linux-llvm/bin/ac3cli
+          ICLFORGE_CLI: build/config-linux-llvm/bin/forge
         run: python3 tools/ci/fuzz_encoder_space.py --check-envelope
 
       # Every case seed that ever produced a wrong verdict - from the encoder
@@ -1151,12 +1151,12 @@ jobs:
       # envelope check does; the unseeded search below stays a search.
       - name: Encoder input-space regressions (recorded past failures)
         env:
-          AC3CLI: build/config-linux-llvm/bin/ac3cli
+          ICLFORGE_CLI: build/config-linux-llvm/bin/forge
         run: python3 tools/ci/fuzz_encoder_space.py --regressions
 
       - name: Encoder input-space fuzz (bounded, both decoders)
         env:
-          AC3CLI: build/config-linux-llvm/bin/ac3cli
+          ICLFORGE_CLI: build/config-linux-llvm/bin/forge
         run: python3 tools/ci/fuzz_encoder_space.py --seconds 120
 
       # The same question asked of the E-AC-3 encoder (E-AC-3 encoder fuzzing), which the
@@ -1175,7 +1175,7 @@ jobs:
       # wrongly listed as a gap cannot quietly stop being tested.
       - name: E-AC-3 encoder oracle model (what this FFmpeg can actually read)
         env:
-          AC3CLI: build/config-linux-llvm/bin/ac3cli
+          ICLFORGE_CLI: build/config-linux-llvm/bin/forge
         run: python3 tools/ci/fuzz_eac3_encoder_space.py --check-oracles
 
       # Same role as the AC-3 envelope check above - the rate floors the
@@ -1186,17 +1186,17 @@ jobs:
       # refusal there used to be an assert() rather than a message.
       - name: E-AC-3 encoder acceptance envelope (rate floors + the frmsiz ceiling)
         env:
-          AC3CLI: build/config-linux-llvm/bin/ac3cli
+          ICLFORGE_CLI: build/config-linux-llvm/bin/forge
         run: python3 tools/ci/fuzz_eac3_encoder_space.py --check-envelope
 
       - name: E-AC-3 encoder input-space regressions (recorded past failures)
         env:
-          AC3CLI: build/config-linux-llvm/bin/ac3cli
+          ICLFORGE_CLI: build/config-linux-llvm/bin/forge
         run: python3 tools/ci/fuzz_eac3_encoder_space.py --regressions
 
       - name: E-AC-3 encoder input-space fuzz (bounded, both decoders)
         env:
-          AC3CLI: build/config-linux-llvm/bin/ac3cli
+          ICLFORGE_CLI: build/config-linux-llvm/bin/forge
         run: python3 tools/ci/fuzz_eac3_encoder_space.py --seconds 120
 
       # The same question asked of ac4-encode (planning/ac4.md, the encoder's
@@ -1204,20 +1204,20 @@ jobs:
       # its raw AC-4 and mov demuxers read what the encoder wrote. What reads
       # the audio is the three traces - the encoder's, the decoder's and
       # tools/references/ac4_syntax.py's, which must agree record for record -
-      # and a clean decode through ac3cli.
+      # and a clean decode through forge.
       - name: AC-4 encoder acceptance envelope (the rates it takes)
         env:
-          AC3CLI: build/config-linux-llvm/bin/ac3cli
+          ICLFORGE_CLI: build/config-linux-llvm/bin/forge
         run: python3 tools/ci/fuzz_ac4_encoder_space.py --check-envelope
 
       - name: AC-4 encoder input-space regressions (recorded past failures)
         env:
-          AC3CLI: build/config-linux-llvm/bin/ac3cli
+          ICLFORGE_CLI: build/config-linux-llvm/bin/forge
         run: python3 tools/ci/fuzz_ac4_encoder_space.py --regressions
 
       - name: AC-4 encoder input-space fuzz (bounded; three traces, FFmpeg's framing, a decode)
         env:
-          AC3CLI: build/config-linux-llvm/bin/ac3cli
+          ICLFORGE_CLI: build/config-linux-llvm/bin/forge
         run: python3 tools/ci/fuzz_ac4_encoder_space.py --seconds 120
 
       - name: Upload failing encoder-space inputs
@@ -1249,7 +1249,7 @@ jobs:
       # to encode.
       - name: External-encoder landscape trend (compute-only)
         env:
-          AC3CLI: build/config-linux-llvm/bin/ac3cli
+          ICLFORGE_CLI: build/config-linux-llvm/bin/forge
         run: python3 tools/ci/quality_race.py trend --json-out results/trend.json --spectrogram-dir results/spectrograms
 
       - name: Upload landscape trend
@@ -1280,12 +1280,12 @@ jobs:
       # tools/ci/quality_race.py and docs/object-quality-trend.md.
       #
       # It lives on this job rather than a job of its own because it needs
-      # exactly what this one already has built and installed - ac3cli and
+      # exactly what this one already has built and installed - forge and
       # numpy - and takes a couple of seconds on top of a job that already
       # runs several minutes.
       - name: Object-reconstruction quality (compute-only)
         env:
-          AC3CLI: build/config-linux-llvm/bin/ac3cli
+          ICLFORGE_CLI: build/config-linux-llvm/bin/forge
         run: python3 tools/ci/quality_race.py objects --json-out results/objects.json
 
       - name: Upload object-reconstruction quality

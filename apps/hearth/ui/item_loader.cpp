@@ -46,7 +46,7 @@ iclforge::hearth::ItemLoader make_file_item_loader() {
             // apps/common/container_input.hpp's readers join this loader in a
             // later slice; until then a container is recognised but not
             // playable, which is what this sentence says.
-            return std::unexpected("not yet playable: ac3hearth reads raw .ac3/.ec3/.ac4 only so far");
+            return std::unexpected("not yet playable: hearth reads raw .ac3/.ec3/.ac4 only so far");
         }
         std::error_code sized;
         const std::uintmax_t size = std::filesystem::file_size(path, sized);

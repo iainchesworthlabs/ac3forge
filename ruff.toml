@@ -47,7 +47,7 @@ exclude = [
 #         ones that no longer suppress anything
 #   PLC/PLE/PLW  pylint's convention/error/warning tiers; PLW1510
 #         (subprocess.run without check=) is the highest-value rule in this
-#         whole set for a tree whose scripts shell out to ffmpeg and ac3cli
+#         whole set for a tree whose scripts shell out to ffmpeg and forge
 #         for their answers
 select = ["E", "W", "F", "I", "UP", "B", "C4", "SIM", "RUF", "PLC", "PLE", "PLW"]
 

@@ -39,7 +39,7 @@
 
 // Qt Quick Test entry point for the Hearth window: runs every tst_*.qml under
 // QUICK_TEST_SOURCE_DIR against the REAL HearthController the embedded
-// Ac3ForgeHearth module registers - the same rule apps/gui/tests and
+// Hearth module registers - the same rule apps/gui/tests and
 // apps/crucible/ui/tests follow, and for the same reason: a parallel fake API
 // is a second thing the real one could silently disagree with. Unlike
 // CrucibleController, HearthController is QML_SINGLETON, so no manual
@@ -49,7 +49,7 @@
 // Hearth has no tray, no icon provider and no scripted-machine TestServices
 // double, so this file is still shorter than apps/crucible/ui/tests/
 // qml_test_main.cpp's own. It DOES need a LanguageManager now: Settings.qml
-// imports Ac3ForgeHearthLanguage, and unlike HearthController that singleton
+// imports HearthLanguage, and unlike HearthController that singleton
 // is not QML_SINGLETON-registered by the module - main.cpp registers the
 // instance by hand, so the suite has to as well or Settings.qml will not
 // load here.
@@ -57,7 +57,7 @@
 namespace {
 
 // The fakes a suite can hand the REAL controllers (test_room.hpp), registered
-// as the Ac3ForgeHearthTest singleton - apps/crucible/ui/tests/qml_test_main.cpp's
+// as the HearthTest singleton - apps/crucible/ui/tests/qml_test_main.cpp's
 // own TestServices is the pattern this follows, and for the same reason: a
 // suite that wants to see the engine actually play needs somewhere to play
 // into, and neither a CI container nor a developer's desk should be it.
@@ -338,11 +338,11 @@ private:
     }
 
     [[nodiscard]] iclforge::hearth::ui::HearthController* hearth() const {
-        return engine_->singletonInstance<iclforge::hearth::ui::HearthController*>(QStringLiteral("Ac3ForgeHearth"),
+        return engine_->singletonInstance<iclforge::hearth::ui::HearthController*>(QStringLiteral("Hearth"),
                                                                               QStringLiteral("HearthController"));
     }
     [[nodiscard]] iclforge::hearth::ui::NetworkController* network() const {
-        return engine_->singletonInstance<iclforge::hearth::ui::NetworkController*>(QStringLiteral("Ac3ForgeHearth"),
+        return engine_->singletonInstance<iclforge::hearth::ui::NetworkController*>(QStringLiteral("Hearth"),
                                                                                QStringLiteral("NetworkController"));
     }
 
@@ -354,7 +354,7 @@ private:
 
 // Mirrors DeskIsolation (apps/crucible/ui/tests/qml_test_main.cpp) and
 // apps/gui/tests: real organisation/application names plus a QTemporaryDir
-// settings path, so HearthController's QSettings (organisation "ac3forge",
+// settings path, so HearthController's QSettings (organisation "iclforge",
 // application "Hearth", the shipped app's own - hearth_controller.cpp's
 // constructor) read and write a store that is empty at start and gone at
 // exit rather than the developer's own. HearthController::start() is called
@@ -366,7 +366,7 @@ class HearthTestIsolation : public QObject {
 
 public slots:
     void applicationAvailable() {
-        QCoreApplication::setOrganizationName(QStringLiteral("ac3forge"));
+        QCoreApplication::setOrganizationName(QStringLiteral("iclforge"));
         QCoreApplication::setApplicationName(QStringLiteral("Hearth"));
         QQuickStyle::setStyle(QStringLiteral("Basic"));
         scratch_.emplace();
@@ -392,13 +392,13 @@ public slots:
     void qmlEngineAvailable(QQmlEngine* engine) {
         // Same URI and reasoning as main.cpp's own registration: its own,
         // not the module's, so registering a type by hand cannot mark
-        // Ac3ForgeHearth registered and stop HearthController registering.
+        // Hearth registered and stop HearthController registering.
         language_manager_ = std::make_unique<LanguageManager>(
-            *qGuiApp, *engine, QStringLiteral("ac3hearth"));
-        qmlRegisterSingletonInstance("Ac3ForgeHearthLanguage", 1, 0, "LanguageManager",
+            *qGuiApp, *engine, QStringLiteral("hearth"));
+        qmlRegisterSingletonInstance("HearthLanguage", 1, 0, "LanguageManager",
                                      language_manager_.get());
         test_services_ = std::make_unique<TestServices>(*engine);
-        qmlRegisterSingletonInstance("Ac3ForgeHearthTest", 1, 0, "TestServices", test_services_.get());
+        qmlRegisterSingletonInstance("HearthTest", 1, 0, "TestServices", test_services_.get());
     }
 
 private:
@@ -409,6 +409,6 @@ private:
 
 }  // namespace
 
-QUICK_TEST_MAIN_WITH_SETUP(ac3hearth, HearthTestIsolation)
+QUICK_TEST_MAIN_WITH_SETUP(hearth, HearthTestIsolation)
 
 #include "qml_test_main.moc"

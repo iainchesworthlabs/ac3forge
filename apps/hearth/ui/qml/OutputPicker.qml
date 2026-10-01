@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-import Ac3ForgeHearth
+import Hearth
 
 // The output picker (issue #828): a modal listing this computer's PCM
 // devices, what they can carry over passthrough, and the Sendspin groups
@@ -13,7 +13,7 @@ import Ac3ForgeHearth
 //
 // "This computer · PCM" and "Network · Sendspin" are actionable here:
 // HearthController.outputDevices comes straight from
-// ac3::audio::enumerate_render_devices(), the same enumeration `ac3cli
+// ac3::audio::enumerate_render_devices(), the same enumeration `forge
 // outputs` prints, and "Play here" pins the engine to whichever row is
 // selected (HearthController.selectOutputDevice); a group row pins it to the
 // group instead (HearthController.selectOutputGroup), whose members each get

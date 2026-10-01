@@ -28,7 +28,7 @@
 // the reason the H4 monolith split gives generally: these five share a
 // subject (an encoded stream in, an encoded stream out) that none of the
 // existing groups has.
-namespace ac3cli::commands {
+namespace forge_cli::commands {
 
 // The whole input, scanned. Every command in this file needs the same two
 // things first - the bytes, and what the bitstream says it is - and reports
@@ -94,19 +94,19 @@ using RenderedFrame = std::function<bool(std::span<const std::span<const float>>
 // source's dialnorm and downmix values sent as AC-4's. A bitrate of 0 takes
 // the default, 448 kbps for AC-3 and E-AC-3 and 192 for AC-4.
 int run_transcode(std::string_view in_path, std::string_view out_path, std::uint32_t bitrate,
-                  std::string_view layout, const ac3cli::Options& meta);
+                  std::string_view layout, const forge_cli::Options& meta);
 
 // Rewrite dialnorm/compr/bsmod/dsurmod on an existing stream, audio
 // untouched. The values come from the same metadata options every encoding
 // command takes.
 int run_metadata(std::string_view in_path, std::string_view out_path,
-                 const ac3cli::Options& meta);
+                 const forge_cli::Options& meta);
 
 // The measurement-driven special case of the above: decode to measure
 // BS.1770-4 integrated loudness, derive dialnorm from it (ATSC A/85 §8), and
 // rewrite that one field. Nothing else changes.
 int run_normalize(std::string_view in_path, std::string_view out_path,
-                  const ac3cli::Options& meta);
+                  const forge_cli::Options& meta);
 
 // A frame-aligned extract. `start_seconds`/`duration_seconds` are snapped to
 // access-unit boundaries - an E-AC-3 access unit being an independent
@@ -119,4 +119,4 @@ int run_cut(std::string_view in_path, std::string_view out_path, std::string_vie
 // differ - a decoder cannot follow a stream that changes those mid-file.
 int run_cat(std::string_view out_path, std::span<const std::string_view> in_paths);
 
-}  // namespace ac3cli::commands
+}  // namespace forge_cli::commands

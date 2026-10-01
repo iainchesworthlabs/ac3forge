@@ -39,7 +39,7 @@ FRAMES = 8192
 
 
 def write_wav_f32(path: Path, channels: list[list[float]]) -> None:
-    """Float32 WAVE_FORMAT_IEEE_FLOAT, the format ac3cli's own decode writes -
+    """Float32 WAVE_FORMAT_IEEE_FLOAT, the format forge's own decode writes -
     see compare_wav.py's read_channels. Float rather than PCM16 so a test can
     place a channel at an exact SNR without quantization moving it."""
     nch = len(channels)

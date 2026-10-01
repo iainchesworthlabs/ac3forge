@@ -18,7 +18,7 @@
 //
 // The engine talks to this and never to a platform API. One implementation
 // drives iclforge::audio::PcmOutput (A2), which opens a local device at its own
-// width and places each rendered slot by the device's speakers; ac3tests has
+// width and places each rendered slot by the device's speakers; iclforge-tests has
 // another, a fake device with a clock of its own, which is what A3's exit
 // needs - "a queue of mixed containers plays to a fake device gaplessly, with
 // the expected sample count at every join" - and what makes the player's

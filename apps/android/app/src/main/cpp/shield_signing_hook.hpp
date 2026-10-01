@@ -24,7 +24,7 @@
 
 struct AAssetManager;
 
-namespace ac3shield {
+namespace shield {
 
 // Loads the bundled `signing.key` asset into this unit's key, once, if present.
 // Must be called before signing_available()/maybe_sign_atmos_unit(). A missing
@@ -43,4 +43,4 @@ void init_signing(AAssetManager* asset_manager);
 // EMDF container to sign.
 [[nodiscard]] bool maybe_sign_atmos_unit(std::vector<std::byte>& unit);
 
-}  // namespace ac3shield
+}  // namespace shield

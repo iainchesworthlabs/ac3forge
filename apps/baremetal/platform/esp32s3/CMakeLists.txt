@@ -64,4 +64,4 @@ set(ICLFORGE_MINIMAL_HOT_O2 ON CACHE BOOL
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 
-project(ac3probe_esp32s3 LANGUAGES C CXX)
+project(iclforge_probe_esp32s3 LANGUAGES C CXX)

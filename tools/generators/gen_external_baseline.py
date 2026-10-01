@@ -46,15 +46,15 @@ under build/ by quality_race.py's materialise_fixture(), which is what the
 `wav` key below goes through.
 
 For each leg: encode with FFmpeg, encode with DEE, encode with the current
-build's ac3cli (a sanity check, not the point of this script - CI's `trend`
+build's forge (a sanity check, not the point of this script - CI's `trend`
 mode re-encodes with whatever build is under test).
 
 Scoring decodes FFmpeg's and DEE's output with FFmpeg's own decoder (its
 established role everywhere else in this project - see decode_scores'
-"neutral referee" docstring), and ac3cli's own output with ac3cli's own
+"neutral referee" docstring), and forge's own output with forge's own
 decoder (self-consistency, the same pattern decode_scores_ours uses
 elsewhere). This is a deliberate change from decoding every bitstream with
-ac3cli's own decoder: FFmpeg's encoder turns out to legally choose Table
+forge's own decoder: FFmpeg's encoder turns out to legally choose Table
 E2.12's default coupling band structure (cplbndstrce=0), which this
 project's own decoder declines to read (eac3_decoder.cpp - no stream this
 project's own encoder produces ever sets that flag, so it was never
@@ -143,17 +143,17 @@ and not a decode defect. DEE writes a MEASURED dialnorm of 12 (dialogue at
 -12 dBFS) because invoke_dee asks for loudness-management measure_only; the
 reference player then does what a player is supposed to do and normalises
 dialogue to -31 dBFS, attenuating the output by exactly 31 - 12 = 19 dB.
-Neither FFmpeg's decoder nor ac3cli's applies dialnorm, and the scoring here
+Neither FFmpeg's decoder nor forge's applies dialnorm, and the scoring here
 compares against an un-normalised source WAV, so the player's output scored
 1.02 dB. Undo that 19 dB and the same decode scores 32.19 dB, with an
-LSD of 1.878 sitting between FFmpeg's 1.899 and ac3cli's 1.857 - a good
+LSD of 1.878 sitting between FFmpeg's 1.899 and forge's 1.857 - a good
 decode all along. FFmpeg's own encoder writes dialnorm 31, a 0 dB shift,
 which is the only reason its stream looked fine through the same pipeline.
 The player is therefore usable as an oracle, provided dialnorm is either
 compensated for or encoded as 31.
 
-Usage (repo root, after building ac3cli):  python tools/generators/gen_external_baseline.py
-Set AC3CLI to override the ac3cli binary, same as quality_race.py.
+Usage (repo root, after building forge):  python tools/generators/gen_external_baseline.py
+Set ICLFORGE_CLI to override the forge binary, same as quality_race.py.
 
 The wider set of DEE's AC-3, E-AC-3, E-AC-3 JOC and TrueHD streams, every layout, rate and
 metadata option DEE takes, kept on a local disk and never committed, is
@@ -362,7 +362,7 @@ def split_for_dee(wav_path, scratch_dir, tag):
 
 
 # Every one of these turns OFF a DEE default that changes the signal for
-# production reasons rather than coding ones. ac3cli does none of them, so
+# production reasons rather than coding ones. forge does none of them, so
 # leaving them on measures the difference between two mastering policies and
 # calls it a difference in encoder quality.
 #
@@ -388,7 +388,7 @@ def split_for_dee(wav_path, scratch_dir, tag):
 #   + surround_90deg_phase_shift=0 23.47 | 47.3 47.9 46.2 18.9 18.1 19.6
 #   + lfe_filter=0                 36.57 | 47.3 47.9 46.2 36.8 18.1 19.6
 #
-# For reference FFmpeg scores 39.00 and ac3cli 39.95 on the same leg, so the
+# For reference FFmpeg scores 39.00 and forge 39.95 on the same leg, so the
 # last row is the first one that puts DEE in the same conversation. The
 # surrounds staying near 18-19 dB is not a residual problem: FFmpeg's own
 # are 20.2/20.2, because that fixture's surrounds are band-limited noise and
@@ -441,7 +441,7 @@ def decode_scores_ffmpeg_fixed(original, coded, wav_path, perceptual=False):
 
 
 def score_tool(original, coded, wav_scratch, is_eac3, decoder):
-    """decoder: "ours" (ac3cli's own decoder) or "ffmpeg" (FFmpeg's own
+    """decoder: "ours" (forge's own decoder) or "ffmpeg" (FFmpeg's own
     decoder - used for FFmpeg's own output and DEE's, matching FFmpeg's
     established "neutral referee" role elsewhere in this project).
 

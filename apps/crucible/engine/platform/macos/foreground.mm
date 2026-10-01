@@ -61,7 +61,7 @@
 //   - There is a window session and something is in front of it, but macOS
 //     will not say whether it fills the screen.
 //   - There is no window session at all - Crucible launched from a shell over
-//     ssh, or ac3crucible-run under launchd - so there is nothing in front to
+//     ssh, or crucible-run under launchd - so there is nothing in front to
 //     name either.
 //
 // That two-reason shape is the Linux file's (platform/linux/foreground.cpp

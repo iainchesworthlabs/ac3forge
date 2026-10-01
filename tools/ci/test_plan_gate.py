@@ -22,7 +22,7 @@ class DocsOnly(unittest.TestCase):
         self.assertEqual((got["docs_only"], got["build"], got["gui"]), ("true", "false", "false"))
 
     def test_generated_snippets_and_assets_are_docs(self):
-        got = plan("docs-snippets/generated/platform-linux.md", "assets/icon/ac3forge-icon.svg")
+        got = plan("docs-snippets/generated/platform-linux.md", "assets/icon/iclforge-icon.svg")
         self.assertEqual((got["docs_only"], got["build"]), ("true", "false"))
 
     def test_root_docs_files(self):

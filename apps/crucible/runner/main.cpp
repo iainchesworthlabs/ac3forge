@@ -1,9 +1,9 @@
-// ac3crucible-run: the AC3Forge Crucible's engine with a console instead of a
+// crucible-run: the Crucible's engine with a console instead of a
 // window - Phase 2's exit criterion (docs/platforms/windows-demo.md). Lists
 // the applications the engine sees, takes positions on stdin, and reports
 // which output it chose and why.
 //
-//   ac3crucible-run [--null-sink SUBSTR] [--key PATH] [--pin MODE] [--low-latency]
+//   crucible-run [--null-sink SUBSTR] [--key PATH] [--pin MODE] [--low-latency]
 //              [--bitrate KBPS] [--set-default SUBSTR]
 //
 //   --null-sink SUBSTR         the silent endpoint applications render into ("Desktop Atmos")

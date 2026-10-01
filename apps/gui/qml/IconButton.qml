@@ -1,6 +1,6 @@
 import QtQuick
 
-import Ac3Forge
+import ForgeGui
 
 // A square button whose whole label is one icon glyph - the design system's
 // transport row (docs/hearth/design/screenshots/components.png, "TRANSPORT"):

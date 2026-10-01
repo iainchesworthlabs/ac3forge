@@ -1,7 +1,7 @@
 import QtQuick
 import QtTest
 
-import Ac3Forge
+import ForgeGui
 
 // The three "open what already exists" dialogs, reached only through their
 // header buttons and fed only through their own "Choose file…" pickers - the

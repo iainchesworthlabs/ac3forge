@@ -60,7 +60,7 @@ struct WavData {
 [[nodiscard]] ICLFORGE_AC3_EXPORT std::expected<WavData, WavError> read_wav(const std::string& path);
 
 // Same parse, from an already-open stream rather than a path - e.g. stdin,
-// for a caller that has put it into binary mode itself (see ac3cli's "-"
+// for a caller that has put it into binary mode itself (see forge's "-"
 // convention for stdin/stdout in place of a file argument). Both overloads
 // read their whole source into memory before parsing anything, so neither
 // one needs its stream to be seekable.
@@ -99,7 +99,7 @@ struct Ac3Layout {
     std::uint32_t sample_rate, std::span<const std::size_t> channel_order = {});
 
 // Same write, to an already-open stream rather than a path - e.g. stdout for
-// ac3cli's "-" output convention. `channels` already carries every sample,
+// forge's "-" output convention. `channels` already carries every sample,
 // so the RIFF/data chunk sizes are known before the first byte goes out:
 // this writes strictly forward, once, and never seeks back to patch a
 // header - it works the same on a plain file and on an unseekable pipe.

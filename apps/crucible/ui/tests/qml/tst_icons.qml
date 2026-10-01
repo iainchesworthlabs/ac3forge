@@ -1,7 +1,7 @@
 import QtQuick
 import QtTest
 
-import Ac3ForgeCrucible
+import Crucible
 
 // The application icon, through the appicon image provider the harness
 // registers (qml_test_main.cpp). On Linux, each of the provider's lookup
@@ -58,7 +58,7 @@ TestCase {
         if (!isLinux) skip("the .desktop entries are the Linux provider's");
         // A sandboxed application: no path at all, only its application id,
         // which is the .desktop file's name.
-        expectIcon(makeIcon({ name: "Sandboxed", appId: "org.ac3forge.CrucibleFixture" }), "the application-id rung");
+        expectIcon(makeIcon({ name: "Sandboxed", appId: "org.iclforge.CrucibleFixture" }), "the application-id rung");
     }
 
     function test_themeByBinaryName() {

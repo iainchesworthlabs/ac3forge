@@ -16,7 +16,7 @@ namespace {
 // is the documented way to ask.
 //
 // Both stdout and stderr are asked, because they part company routinely here:
-// `ac3cli encode in.wav - > out.ac3` sends the coded stream to a file and the
+// `forge encode in.wav - > out.ac3` sends the coded stream to a file and the
 // human-readable level report to the console via stderr (support.hpp's
 // status_stream() explains that split), so a rule that only looked at stdout
 // would leave exactly that case unfixed. If NEITHER is a console then nothing

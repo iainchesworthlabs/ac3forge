@@ -28,7 +28,7 @@
 #include "iclforge/sendspin/transport.hpp"
 
 // One connection from a Sendspin server to a client: the server half of src/sendspin
-// (planning/hearth-reference-player.md, A4), one per client in ac3hearth's engine.
+// (planning/hearth-reference-player.md, A4), one per client in hearth's engine.
 //
 // The session runs the handshake as the Noise initiator, sends server/hello, reads the
 // client's client/hello (and with it the client's dialect, planning/hearth-sendspin-extension.md,

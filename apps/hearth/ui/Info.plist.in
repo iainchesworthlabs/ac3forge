@@ -9,7 +9,7 @@
   explicitly here too. See apps/hearth/ui/CMakeLists.txt's APPLE branch for
   where each ${VAR} is set.
 
-  ac3hearth is the reference player, so it now owns .ac3/.ec3: this file
+  hearth is the reference player, so it now owns .ac3/.ec3: this file
   both DECLARES the two UTIs (UTExportedTypeDeclarations, conforming to
   public.audio) and CLAIMS them (CFBundleDocumentTypes, LSHandlerRank
   Owner). apps/gui/Info.plist.in no longer does either - a UTI can only

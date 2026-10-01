@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-import Ac3ForgeHearth
+import Hearth
 
 // A Hearth sink's own speaker and decoder settings pages (planning/hearth-
 // reference-player.md#a6-network-outputs-in-the-application, A6's second

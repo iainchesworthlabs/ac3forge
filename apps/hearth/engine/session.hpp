@@ -66,7 +66,7 @@
 // dynamic range control's gain smoothing, whose state takes longer than any
 // pre-roll to settle where the stream compresses hard. A stream played from
 // its start gets no pre-roll: its first frames play as the decoder puts them
-// out, its latency included, as `ac3cli decode` writes them. A frame waiting
+// out, its latency included, as `forge decode` writes them. A frame waiting
 // for an I-frame puts out nothing, and plays as silence of its length.
 //
 // One programme: an AC-4 stream is sent to a sink whole, and a sink decodes

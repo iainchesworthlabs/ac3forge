@@ -301,7 +301,7 @@ private:
         const DWORD n = GetEnvironmentVariableW(L"LOCALAPPDATA", base, MAX_PATH);
         std::filesystem::path dir = (n > 0 && n < MAX_PATH) ? std::filesystem::path(base)
                                                             : std::filesystem::temp_directory_path();
-        dir /= L"ac3forge";
+        dir /= L"iclforge";
         std::error_code ec;
         std::filesystem::create_directories(dir, ec);
         return (dir / (L"driver-" + std::wstring(verb_.begin(), verb_.end()) + L".log")).wstring();

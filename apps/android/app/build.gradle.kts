@@ -29,7 +29,7 @@ val releaseSigningAvailable = !releaseKeystorePath.isNullOrBlank() &&
     !releaseKeyPassword.isNullOrBlank()
 
 android {
-    namespace = "com.ac3forge.shield"
+    namespace = "com.iclforge.shield"
     // 36 is what's installed locally; 34 is the target actually exercised -
     // compiling against a newer SDK than the app targets is normal and lets
     // the app run correctly on the Shield's actual (older) system image
@@ -37,7 +37,7 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.ac3forge.shield"
+        applicationId = "com.iclforge.shield"
         // 26 (Oreo): the floor for AAudio, which monitor.cpp depends on
         // outright - there is no lower-API fallback path for it. Real Shield
         // TV hardware (2017 model onward) ships well above this.

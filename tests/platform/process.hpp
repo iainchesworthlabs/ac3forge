@@ -26,7 +26,7 @@ namespace iclforge::test::platform {
 //
 // Every test that writes a file puts its artefacts under a leaf of
 // ICLFORGE_TEST_SCRATCH_DIR (see tests/CMakeLists.txt), and that root is
-// keyed to the build tree rather than to the process - so two ac3tests
+// keyed to the build tree rather than to the process - so two iclforge-tests
 // runs against one build tree (a concurrent re-run, or two sessions sharing
 // a tree) would otherwise race on the same directory, one's
 // remove_all/create_directories/file-open colliding with the other's
@@ -40,7 +40,7 @@ namespace iclforge::test::platform {
 std::string process_id();
 
 // Runs `command` through the system command interpreter and returns the
-// child's OWN exit code - 0..7 for ac3cli (apps/cli/exit_codes.hpp), or
+// child's OWN exit code - 0..7 for forge (apps/cli/exit_codes.hpp), or
 // 128 + signal where a POSIX child was killed rather than exiting, or -1
 // where the interpreter could not be started at all.
 //
@@ -54,7 +54,7 @@ std::string process_id();
 //
 // Quoting is the other half. Windows hands `command` to `cmd.exe /c`, and
 // where the command both contains spaces and starts with its own quoted
-// executable path - which every ac3cli invocation in this suite does - the
+// executable path - which every forge invocation in this suite does - the
 // CRT's argument quoting backslash-escapes the embedded quotes on the way,
 // and cmd.exe does not read \" as an escaped quote, so what runs is
 // corrupted ("The filename, directory name, or volume label syntax is

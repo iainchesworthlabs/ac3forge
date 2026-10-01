@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# ac3gui - the Qt6 Quick front end over iclforge::ac3. Presentation and platform
+# forge-gui - the Qt6 Quick front end over iclforge::ac3. Presentation and platform
 # glue only: every codec decision lives in the library.
 #
 # Qt is a PREBUILT dependency discovered by cmake/FindQt6.cmake (which widens
@@ -20,7 +20,7 @@ set(ICLFORGE_GUI_QT_VERSION "${Qt6_VERSION}" PARENT_SCOPE)
 
 qt_standard_project_setup(REQUIRES 6.5)
 
-qt_add_executable(ac3gui
+qt_add_executable(forge-gui
     main.cpp
     encoder_controller.cpp
     encoder_controller.hpp
@@ -54,10 +54,12 @@ qt_add_executable(ac3gui
     system_theme.cpp
     system_theme.hpp
     language_manager.cpp
-    language_manager.hpp)
+    language_manager.hpp
+    settings_migration.cpp
+    settings_migration.hpp)
 
 # RecordingSink and its Fmp4FolderWriter moved to apps/common when
-# `ac3cli record`/`live` started writing their takes through the same classes
+# `forge record`/`live` started writing their takes through the same classes
 # (wide-layout record/live paths) - see recording_sink.hpp's own header comment, and
 # Fmp4FolderWriter's own comment on the third near-identical copy this move
 # closes. `RecordingSink::Config::fmp4_window_segments` carries container=
@@ -68,8 +70,8 @@ qt_add_executable(ac3gui
 # exactly two executables in the same build would be more machinery than the
 # thing it wraps. container_input.cpp (container readers (mkv/mp4/ts)) joined it the same way,
 # for the QC/Inspect pickers below to accept a container in place of a bare
-# elementary stream the same way ac3cli's decode/qc/levels/play/monitor do.
-target_include_directories(ac3gui PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../common")
+# elementary stream the same way forge's decode/qc/levels/play/monitor do.
+target_include_directories(forge-gui PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../common")
 
 # The QML lives in qml/ on disk but belongs at the root of the QML module, so
 # every file is aliased to its bare name. Left alone, Qt lays the module out as
@@ -81,7 +83,7 @@ target_include_directories(ac3gui PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../common
 # generated qmldir, and keeps working whichever way the policy defaults later.
 # Absolute, not "qml/Main.qml": qt_add_qml_module resolves QML_FILES against
 # whichever CMakeLists.txt calls it, and tests/CMakeLists.txt below reuses
-# this same list to embed an identical module into ac3gui_qmltests - a
+# this same list to embed an identical module into forge_gui_qmltests - a
 # relative path would resolve against the wrong directory from there.
 set(AC3_QML_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/Main.qml"
@@ -121,26 +123,26 @@ set(AC3_QML_FILES
 # is include()d into this one's own scope, not a separate directory, so a
 # plain variable set here is already visible there. See
 # docs/forge/gui/localisation.md for how to update or add to this list, and
-# translations/ac3gui_xx.ts (tools/generators/gen_pseudo_locale.py) for the
+# translations/forge_gui_xx.ts (tools/generators/gen_pseudo_locale.py) for the
 # separate pseudo-locale QA fixture, which is intentionally NOT part of this
-# list - it is loaded only through the AC3GUI_LOCALE test override, never
+# list - it is loaded only through the ICLFORGE_GUI_LOCALE test override, never
 # through the real qt_add_translations() pipeline below.
 set(AC3_TS_FILES
-    "${CMAKE_CURRENT_SOURCE_DIR}/translations/ac3gui_fr.ts"
-    "${CMAKE_CURRENT_SOURCE_DIR}/translations/ac3gui_de.ts"
-    "${CMAKE_CURRENT_SOURCE_DIR}/translations/ac3gui_es.ts"
-    "${CMAKE_CURRENT_SOURCE_DIR}/translations/ac3gui_ar.ts"
-    "${CMAKE_CURRENT_SOURCE_DIR}/translations/ac3gui_he.ts"
-    "${CMAKE_CURRENT_SOURCE_DIR}/translations/ac3gui_yi.ts")
+    "${CMAKE_CURRENT_SOURCE_DIR}/translations/forge_gui_fr.ts"
+    "${CMAKE_CURRENT_SOURCE_DIR}/translations/forge_gui_de.ts"
+    "${CMAKE_CURRENT_SOURCE_DIR}/translations/forge_gui_es.ts"
+    "${CMAKE_CURRENT_SOURCE_DIR}/translations/forge_gui_ar.ts"
+    "${CMAKE_CURRENT_SOURCE_DIR}/translations/forge_gui_he.ts"
+    "${CMAKE_CURRENT_SOURCE_DIR}/translations/forge_gui_yi.ts")
 
 # The pseudo-locale QA fixture (see AC3_TS_FILES's own comment above) -
-# deliberately kept out of that list and out of ac3gui's own
-# qt_add_translations() call below, since production ac3gui.exe has no
-# reason to carry it. tests/CMakeLists.txt embeds it into ac3gui_qmltests
+# deliberately kept out of that list and out of forge-gui's own
+# qt_add_translations() call below, since production forge-gui.exe has no
+# reason to carry it. tests/CMakeLists.txt embeds it into forge_gui_qmltests
 # ALONGSIDE AC3_TS_FILES instead, purely for tst_localisation_pipeline.qml's
-# AC3GUI_LOCALE=xx suite.
+# ICLFORGE_GUI_LOCALE=xx suite.
 set(AC3_PSEUDO_TS_FILE
-    "${CMAKE_CURRENT_SOURCE_DIR}/translations/ac3gui_xx.ts")
+    "${CMAKE_CURRENT_SOURCE_DIR}/translations/forge_gui_xx.ts")
 
 foreach(qml_file IN LISTS AC3_QML_FILES)
     get_filename_component(qml_name "${qml_file}" NAME)
@@ -151,7 +153,7 @@ endforeach()
 # embeds the QML and the generated type registrations directly into it - no
 # separate plugin, and none of the WHOLE_ARCHIVE gymnastics a standalone
 # backing library would need to keep its resource initialisers alive.
-# tests/CMakeLists.txt's ac3gui_qmltests target follows the same pattern - a
+# tests/CMakeLists.txt's forge_gui_qmltests target follows the same pattern - a
 # second, independent embedding of the identical module, not a shared
 # library - for exactly this reason.
 # Theme is a QML singleton. This MUST run before qt_add_qml_module below:
@@ -162,8 +164,8 @@ endforeach()
 set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/qml/Theme.qml"
     PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
-qt_add_qml_module(ac3gui
-    URI Ac3Forge
+qt_add_qml_module(forge-gui
+    URI ForgeGui
     VERSION 1.0
     QML_FILES ${AC3_QML_FILES})
 
@@ -180,7 +182,7 @@ qt_add_qml_module(ac3gui
 # ships for exactly this purpose (Latin has no Arabic/Hebrew glyph coverage,
 # and Yiddish is written in Hebrew script) - copied verbatim rather than
 # re-sourced, license files included per font per Noto's own naming.
-qt_add_resources(ac3gui "ac3gui_fonts"
+qt_add_resources(forge-gui "forge_gui_fonts"
     PREFIX "/fonts"
     BASE "${CMAKE_CURRENT_SOURCE_DIR}/fonts"
     FILES
@@ -198,26 +200,26 @@ qt_add_resources(ac3gui "ac3gui_fonts"
 # plus AboutDialog.qml's own Image. Generated, along with every other
 # platform's icon asset, by assets/icon/generate_icons.py - see that
 # script's header comment before editing any file under icons/ by hand.
-qt_add_resources(ac3gui "ac3gui_icons"
+qt_add_resources(forge-gui "forge_gui_icons"
     PREFIX "/icons"
     BASE "${CMAKE_CURRENT_SOURCE_DIR}/icons"
     FILES
-        "${CMAKE_CURRENT_SOURCE_DIR}/icons/ac3forge-32.png"
-        "${CMAKE_CURRENT_SOURCE_DIR}/icons/ac3forge-256.png")
+        "${CMAKE_CURRENT_SOURCE_DIR}/icons/iclforge-32.png"
+        "${CMAKE_CURRENT_SOURCE_DIR}/icons/iclforge-256.png")
 
 # ---------------------------------------------------------------------------
 # GUI localisation: lupdate (scan every source SOURCE_TARGETS' own target already
 # lists - AC3_QML_FILES is the only source of qsTr() calls in this app; no
 # .cpp file has one) plus lrelease (.ts -> .qm) and a /i18n resource
 # embedding, all in one call. LanguageManager (language_manager.cpp) loads
-# the matching ac3gui_<code>.qm at runtime.
+# the matching forge_gui_<code>.qm at runtime.
 #
 # IMMEDIATE_CALL, and SOURCE_TARGETS given explicitly rather than left to the
 # default auto-collection: CountdownSolver's own src/app/CMakeLists.txt
 # documents a real, reproduced Xcode "is attached to multiple targets"
 # failure from the deferred form's directory-scope mismatch (its
 # qt_add_translations() call and its QML module target lived in different
-# scopes; ac3gui doesn't have that split - qt_add_qml_module(ac3gui ...)
+# scopes; forge-gui doesn't have that split - qt_add_qml_module(forge-gui ...)
 # above backs the executable target directly - but there is no upside to
 # relying on the deferred/auto-collected path here either, so this avoids
 # the failure mode outright rather than trusting the scopes stay aligned).
@@ -230,13 +232,13 @@ qt_add_resources(ac3gui "ac3gui_icons"
 # reworded string leaves its old self behind as a vanished entry and fails
 # that case. Which is how this was found, on 2026-09-06: one note was
 # reworded, six catalogues kept the old wording, and the case named all six.
-qt_add_translations(ac3gui
+qt_add_translations(forge-gui
     IMMEDIATE_CALL
-    SOURCE_TARGETS ac3gui
+    SOURCE_TARGETS forge-gui
     TS_FILES ${AC3_TS_FILES}
     LUPDATE_OPTIONS -no-obsolete
-    LUPDATE_TARGET ac3gui_lupdate
-    LRELEASE_TARGET ac3gui_lrelease)
+    LUPDATE_TARGET forge-gui_lupdate
+    LRELEASE_TARGET forge-gui_lrelease)
 
 # Qt generates a lot of C++ into this target - moc output, the QML type
 # registrations, the rcc resources and qmlcachegen's AOT-compiled QML - and it
@@ -264,7 +266,7 @@ qt_add_translations(ac3gui
 # rather than as silence, the same as it always has.
 #
 # This deliberately misses one generated file: AUTOMOC adds
-# ac3gui_autogen/mocs_compilation.cpp at generate time, which is after this
+# forge-gui_autogen/mocs_compilation.cpp at generate time, which is after this
 # directory's CMakeLists.txt - and therefore this loop - has already run, so
 # it never appears in SOURCES here and keeps the full set. That is the outcome
 # we want - moc's own output is clean under these flags, and the file pulls in
@@ -281,25 +283,25 @@ qt_add_translations(ac3gui
 #
 # This must run after qt_add_qml_module, which is what adds the sources.
 # ---------------------------------------------------------------------------
-get_target_property(AC3_GUI_SOURCES ac3gui SOURCES)
-set(AC3_GUI_GENERATED_SOURCES "")
-foreach(source IN LISTS AC3_GUI_SOURCES)
+get_target_property(ICLFORGE_GUI_SOURCES forge-gui SOURCES)
+set(ICLFORGE_GUI_GENERATED_SOURCES "")
+foreach(source IN LISTS ICLFORGE_GUI_SOURCES)
     if(source MATCHES "^${CMAKE_CURRENT_BINARY_DIR}/.*\\.(cpp|cxx|cc)$")
-        list(APPEND AC3_GUI_GENERATED_SOURCES "${source}")
+        list(APPEND ICLFORGE_GUI_GENERATED_SOURCES "${source}")
     endif()
 endforeach()
 
-if(AC3_GUI_GENERATED_SOURCES)
-    set_source_files_properties(${AC3_GUI_GENERATED_SOURCES}
+if(ICLFORGE_GUI_GENERATED_SOURCES)
+    set_source_files_properties(${ICLFORGE_GUI_GENERATED_SOURCES}
         PROPERTIES COMPILE_OPTIONS "${AC3_WARNINGS_OFF_FLAG}")
 else()
     message(WARNING
-        "No Qt-generated sources found on ac3gui. If Qt has changed where it "
+        "No Qt-generated sources found on forge-gui. If Qt has changed where it "
         "writes them, they are now being compiled with iclforge::warnings and a "
         "warning in Qt's own output will fail the build.")
 endif()
 
-target_link_libraries(ac3gui
+target_link_libraries(forge-gui
     PRIVATE
         iclforge::ac3
         # EncoderController's live-capture/monitor/passthrough panel is a
@@ -323,7 +325,7 @@ target_link_libraries(ac3gui
         # (src/ac3/CMakeLists.txt), this app has no intermediate engine
         # library of its own to hang the profiling header pair on the way
         # apps/crucible/CMakeLists.txt and apps/hearth/engine/CMakeLists.txt
-        # do for their windows - so ac3gui (and ac3gui_qmltests, tests/CMakeLists.txt's
+        # do for their windows - so forge-gui (and forge_gui_qmltests, tests/CMakeLists.txt's
         # identical pair below) links and includes it directly.
         iclforge::tracy
         Qt6::Core
@@ -331,13 +333,13 @@ target_link_libraries(ac3gui
         Qt6::Quick
         Qt6::QuickControls2
         Qt6::Concurrent)
-target_include_directories(ac3gui PRIVATE
+target_include_directories(forge-gui PRIVATE
     "$<IF:$<BOOL:${ICLFORGE_ENABLE_TRACY}>,${CMAKE_SOURCE_DIR}/src/base/variants/profiling-tracy_enabled,${CMAKE_SOURCE_DIR}/src/base/variants/profiling-tracy_disabled>")
 
 # A GUI app rather than a console one. MACOSX_BUNDLE moves the binary to
-# bin/ac3gui.app/Contents/MacOS/ac3gui, which is where --smoke lives on macOS;
+# bin/forge-gui.app/Contents/MacOS/forge-gui, which is where --smoke lives on macOS;
 # both properties are ignored on the platform they do not apply to.
-set_target_properties(ac3gui PROPERTIES
+set_target_properties(forge-gui PROPERTIES
     WIN32_EXECUTABLE ON
     MACOSX_BUNDLE ON)
 
@@ -356,27 +358,27 @@ if(WIN32)
     # rc.exe's own path parsing is happier with forward slashes than the
     # backslashes CMAKE_CURRENT_SOURCE_DIR carries on Windows - avoids the
     # icon path being misread as containing escape sequences.
-    set(AC3_GUI_ICON_ICO "${CMAKE_CURRENT_SOURCE_DIR}/icons/ac3forge.ico")
-    file(TO_CMAKE_PATH "${AC3_GUI_ICON_ICO}" AC3_GUI_ICON_ICO)
+    set(ICLFORGE_GUI_ICON_ICO "${CMAKE_CURRENT_SOURCE_DIR}/icons/iclforge.ico")
+    file(TO_CMAKE_PATH "${ICLFORGE_GUI_ICON_ICO}" ICLFORGE_GUI_ICON_ICO)
     configure_file(
-        "${CMAKE_CURRENT_SOURCE_DIR}/icons/ac3gui.rc.in"
-        "${CMAKE_CURRENT_BINARY_DIR}/ac3gui.rc"
+        "${CMAKE_CURRENT_SOURCE_DIR}/icons/forge-gui.rc.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/forge-gui.rc"
         @ONLY)
-    target_sources(ac3gui PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/ac3gui.rc")
+    target_sources(forge-gui PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/forge-gui.rc")
 elseif(APPLE)
-    set(AC3_GUI_ICON_ICNS "${CMAKE_CURRENT_SOURCE_DIR}/icons/ac3forge.icns")
+    set(ICLFORGE_GUI_ICON_ICNS "${CMAKE_CURRENT_SOURCE_DIR}/icons/iclforge.icns")
     # MACOSX_PACKAGE_LOCATION is what makes add_executable/qt_add_executable
     # copy this source into Contents/Resources instead of trying to compile
     # it; MACOSX_BUNDLE_ICON_FILE below takes just the bare filename since
     # it's resolved relative to that same Resources directory at bundle time.
-    set_source_files_properties("${AC3_GUI_ICON_ICNS}" PROPERTIES
+    set_source_files_properties("${ICLFORGE_GUI_ICON_ICNS}" PROPERTIES
         MACOSX_PACKAGE_LOCATION "Resources")
-    target_sources(ac3gui PRIVATE "${AC3_GUI_ICON_ICNS}")
-    set_target_properties(ac3gui PROPERTIES MACOSX_BUNDLE_ICON_FILE ac3forge.icns)
+    target_sources(forge-gui PRIVATE "${ICLFORGE_GUI_ICON_ICNS}")
+    set_target_properties(forge-gui PROPERTIES MACOSX_BUNDLE_ICON_FILE iclforge.icns)
 
     # GUI AppStream packaging: a custom Info.plist (Info.plist.in, beside this file). It
     # carried .ac3/.ec3's CFBundleDocumentTypes/UTExportedTypeDeclarations until
-    # ac3hearth took them over (Info.plist.in says why) and declares none now. Supplying
+    # hearth took them over (Info.plist.in says why) and declares none now. Supplying
     # a template of our own means opting out of the default Info.plist CMake
     # generates when MACOSX_BUNDLE_INFO_PLIST is left unset, so every variable
     # that default would have substituted is set explicitly here too. These are plain CMake
@@ -384,16 +386,16 @@ elseif(APPLE)
     # bundle-generation logic - the same logic MACOSX_BUNDLE_ICON_FILE's
     # target property above already reaches through - substitutes into
     # Info.plist.in's ${VAR} tokens.
-    set(MACOSX_BUNDLE_EXECUTABLE_NAME "ac3gui")
-    set(MACOSX_BUNDLE_BUNDLE_NAME "ac3gui")
+    set(MACOSX_BUNDLE_EXECUTABLE_NAME "forge-gui")
+    set(MACOSX_BUNDLE_BUNDLE_NAME "forge-gui")
     set(MACOSX_BUNDLE_INFO_STRING "${PROJECT_DESCRIPTION}")
-    set(MACOSX_BUNDLE_ICON_FILE "ac3forge.icns")
-    set(MACOSX_BUNDLE_GUI_IDENTIFIER "com.iainchesworthlabs.ac3gui")
+    set(MACOSX_BUNDLE_ICON_FILE "iclforge.icns")
+    set(MACOSX_BUNDLE_GUI_IDENTIFIER "com.iainchesworthlabs.forge-gui")
     set(MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}")
     set(MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}")
     set(MACOSX_BUNDLE_LONG_VERSION_STRING "${PROJECT_VERSION_FULL}")
     set(MACOSX_BUNDLE_COPYRIGHT "Copyright (c) Iain Chesworth")
-    set_target_properties(ac3gui PROPERTIES
+    set_target_properties(forge-gui PROPERTIES
         MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/Info.plist.in")
 endif()
 
@@ -446,24 +448,24 @@ if(WIN32)
         # Qt kit ships (they can be loaded for QML debugging/profiling at
         # runtime), and one of them - qmldbg_quick3dprofiler.dll, the Quick3D
         # profiler backend - pulls in Qt6Quick3DUtils, which optionally links
-        # the DirectX Shader Compiler. ac3gui has no QtQuick3D import anywhere
+        # the DirectX Shader Compiler. forge-gui has no QtQuick3D import anywhere
         # (grep the qml/ tree) and never loads that profiler plugin, so the
         # two DLLs windeployqt cannot find are for a code path this app never
         # takes. Safe to ignore.
-        add_custom_command(TARGET ac3gui POST_BUILD
+        add_custom_command(TARGET forge-gui POST_BUILD
             COMMAND "${CMAKE_COMMAND}" -E env "VCINSTALLDIR=${AC3_VCINSTALLDIR}"
                 "${AC3_WINDEPLOYQT_EXECUTABLE}"
                 --qmldir "${CMAKE_CURRENT_SOURCE_DIR}/qml"
                 --compiler-runtime
-                "$<TARGET_FILE:ac3gui>"
+                "$<TARGET_FILE:forge-gui>"
             COMMAND "${CMAKE_COMMAND}" -E copy_if_different
                 "${AC3_QT_BIN_DIR}/../plugins/platforms/qoffscreen$<$<CONFIG:Debug>:d>.dll"
-                "$<TARGET_FILE_DIR:ac3gui>/platforms/"
-            COMMENT "Deploying Qt runtime dependencies for ac3gui")
+                "$<TARGET_FILE_DIR:forge-gui>/platforms/"
+            COMMENT "Deploying Qt runtime dependencies for forge-gui")
     else()
         message(WARNING
             "windeployqt not found next to Qt6 (looked in ${AC3_QT_BIN_DIR}); "
-            "ac3gui.exe will not run standalone from the build tree.")
+            "forge-gui.exe will not run standalone from the build tree.")
     endif()
 endif()
 
@@ -481,7 +483,7 @@ endif()
 # obvious choice and is NOT what this calls: it only runs
 # qt6_deploy_runtime_dependencies() (library dependencies), never
 # qt6_deploy_qml_imports() - confirmed empirically, a packaged build with it
-# produced a completely empty qml/ directory and ac3gui.exe failed outside
+# produced a completely empty qml/ directory and forge-gui.exe failed outside
 # the build tree with "the QML failed to load" (no Fusion style plugin, no
 # QtQuick.Controls modules - nothing qmlimportscanner would have caught).
 # qt_generate_deploy_qml_app_script() is the QML-aware sibling that actually
@@ -505,22 +507,22 @@ endif()
 # dependency was not implemented "yet" and could not bite in CI because
 # ICLFORGE_BUILD_GUI defaults OFF on every Linux preset. Both halves had gone
 # stale: .github/workflows/_build.yml's four Linux legs carry `gui: true`
-# alongside `packageable: true`, so ac3gui has been going into a released .deb
+# alongside `packageable: true`, so forge-gui has been going into a released .deb
 # with nothing declaring the QML runtime it needs. Do not "fix" the qt.conf
 # problem above by adding the WIN32 OR APPLE guard below back in for Linux too.
 # ---------------------------------------------------------------------------
 include(GNUInstallDirs)
 
-# COMPONENT runtime - see apps/cli/CMakeLists.txt's identical ac3cli install()
+# COMPONENT runtime - see apps/cli/CMakeLists.txt's identical forge install()
 # for why.
-install(TARGETS ac3gui
+install(TARGETS forge-gui
     RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT runtime
     BUNDLE DESTINATION "." COMPONENT runtime)
 
 if(WIN32 OR APPLE)
     qt_generate_deploy_qml_app_script(
-        TARGET ac3gui
-        OUTPUT_SCRIPT AC3_GUI_DEPLOY_SCRIPT
+        TARGET forge-gui
+        OUTPUT_SCRIPT ICLFORGE_GUI_DEPLOY_SCRIPT
         NO_UNSUPPORTED_PLATFORM_ERROR)
     # COMPONENT runtime, not left implicit: install(SCRIPT) with no COMPONENT
     # is filed under CPack's own "Unspecified" component, which only runs
@@ -533,8 +535,8 @@ if(WIN32 OR APPLE)
     # the runtime component's tree, including this script's copied Qt
     # Frameworks/PlugIns/QML, to lipo-merge against the other architecture's.
     # Without this, that install would silently skip the whole deploy step
-    # and stage an ac3gui.app with no Qt inside it.
-    install(SCRIPT "${AC3_GUI_DEPLOY_SCRIPT}" COMPONENT runtime)
+    # and stage a forge-gui.app with no Qt inside it.
+    install(SCRIPT "${ICLFORGE_GUI_DEPLOY_SCRIPT}" COMPONENT runtime)
 endif()
 
 # The same defect the Crucible has, in the same place and for the same reason:
@@ -542,7 +544,7 @@ endif()
 # tst_*.qml all `import QtTest`, and the runtime zip, the NSIS installer and
 # the macOS .app have been carrying qml/QtTest/ (plus Qt6Test.dll and
 # Qt6QuickTest.dll on Windows, Contents/PlugIns/libquicktestplugin.dylib on
-# macOS) ever since. Only ac3gui_qmltests loads any of it, and that binary is
+# macOS) ever since. Only forge_gui_qmltests loads any of it, and that binary is
 # not installed. cmake/StripQtTestDeployment.cmake has the measurement.
 #
 # WIN32 OR APPLE, matching the deploy-script block above: a macOS .app keeps
@@ -555,22 +557,22 @@ endif()
 # the strip script needs this bundle name set in the same pass it runs in.
 if(WIN32 OR APPLE)
     if(APPLE)
-        install(CODE "set(_ac3_macos_bundle_name \"ac3gui\")" COMPONENT runtime)
+        install(CODE "set(_ac3_macos_bundle_name \"forge-gui\")" COMPONENT runtime)
     endif()
     install(SCRIPT "${CMAKE_SOURCE_DIR}/cmake/StripQtTestDeployment.cmake"
         COMPONENT runtime)
 endif()
 
 # ---------------------------------------------------------------------------
-# GUI AppStream packaging's Linux leg: what actually puts ac3gui in a desktop's own
-# application menu, the gap the roadmap named directly ("ac3gui is absent
+# GUI AppStream packaging's Linux leg: what actually puts forge-gui in a desktop's own
+# application menu, the gap the roadmap named directly ("forge-gui is absent
 # from Linux application menus"). Every file lives under packaging/linux/
 # beside this CMakeLists.txt rather than under icons/ (the macOS/Windows
 # icon assets .rc.in/.icns wiring above already claims that directory for a
 # narrower, per-platform meaning) and installs under the standard XDG/FHS
 # paths GNUInstallDirs' own CMAKE_INSTALL_DATADIR already resolves
 # correctly for both a system prefix and a package's staging root. COMPONENT
-# runtime - same component ac3gui's own binary installs under, so a .deb/
+# runtime - same component forge-gui's own binary installs under, so a .deb/
 # .rpm split by component (cmake/Packaging.cmake) still ships every one of
 # these alongside the executable they describe rather than needing a
 # component of its own.
@@ -581,26 +583,26 @@ endif()
 # built-in, true only on Linux).
 # ---------------------------------------------------------------------------
 if(LINUX)
-    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/packaging/linux/ac3gui.desktop"
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/packaging/linux/forge-gui.desktop"
         DESTINATION "${CMAKE_INSTALL_DATADIR}/applications"
         COMPONENT runtime)
-    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/packaging/linux/ac3gui.metainfo.xml"
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/packaging/linux/forge-gui.metainfo.xml"
         DESTINATION "${CMAKE_INSTALL_DATADIR}/metainfo"
         COMPONENT runtime)
-    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/packaging/linux/ac3gui-mime.xml"
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/packaging/linux/forge-gui-mime.xml"
         DESTINATION "${CMAKE_INSTALL_DATADIR}/mime/packages"
         COMPONENT runtime)
     # Both sizes generate_icons.py already produces (the same two the
     # in-app window/taskbar icon above embeds via qt_add_resources) - the
     # hicolor theme picks whichever fits, same convention every other
     # freedesktop-menu application follows.
-    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/icons/ac3forge-256.png"
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/icons/iclforge-256.png"
         DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/256x256/apps"
-        RENAME "ac3gui.png"
+        RENAME "forge-gui.png"
         COMPONENT runtime)
-    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/icons/ac3forge-32.png"
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/icons/iclforge-32.png"
         DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/32x32/apps"
-        RENAME "ac3gui.png"
+        RENAME "forge-gui.png"
         COMPONENT runtime)
 endif()
 
@@ -609,7 +611,7 @@ endif()
 # rather than inside the Qt-free tests/ Catch2 tree.
 #
 # include(), not add_subdirectory(): tests/CMakeLists.txt's qt_add_executable
-# and qt_add_qml_module calls for ac3gui_qmltests need to run in THIS
+# and qt_add_qml_module calls for forge_gui_qmltests need to run in THIS
 # directory's own scope, not a nested one - add_subdirectory() creates one,
 # and a fresh CI build (never an incrementally-rebuilt local tree, which can
 # mask this on stale cached state) then fails: Qt's AUTOMOC "collect

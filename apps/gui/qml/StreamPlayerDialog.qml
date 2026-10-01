@@ -3,10 +3,10 @@ import QtQuick.Controls
 import QtQuick.Dialogs
 import QtQuick.Layouts
 
-import Ac3Forge
+import ForgeGui
 
-// "Open stream" — the GUI twin of `ac3cli monitor` (play an already-encoded
-// file's decoded bed through an ordinary output) fused with `ac3cli decode`'s
+// "Open stream" — the GUI twin of `forge monitor` (play an already-encoded
+// file's decoded bed through an ordinary output) fused with `forge decode`'s
 // export (a WAV of the bed, and for an Atmos or an AC-4 object stream one WAV
 // per decoded object - planning/ac4.md, I5). Open → decode → real transport, the same
 // "distinct surface, reachable from the header" shape QcDialog.qml/
@@ -59,7 +59,7 @@ Dialog {
     // A folder picker, not a file one: exportObjects() writes one
     // object_NN.wav per decoded object (JOC-reconstructed for E-AC-3, D10's
     // own for AC-4) into the folder chosen, the same objects_dir shape
-    // `ac3cli decode` takes - see
+    // `forge decode` takes - see
     // Main.qml's saveFolderDialog for the identical "no filename field"
     // reasoning.
     FolderDialog {
@@ -134,7 +134,7 @@ Dialog {
             }
         }
 
-        // AC-4: which presentation plays, as `ac3cli play presentation=<n>`
+        // AC-4: which presentation plays, as `forge play presentation=<n>`
         // chooses it; the first entry is the one the decoder takes with no
         // preference.
         RowLayout {

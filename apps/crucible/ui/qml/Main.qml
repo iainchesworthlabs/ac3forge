@@ -3,7 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import Qt.labs.platform as Platform
 
-import Ac3ForgeCrucible
+import Crucible
 
 // The window: header with the mode pill and the page switch, one of three
 // pages, the status strip, and the tray icon that keeps the engine alive
@@ -425,7 +425,7 @@ ApplicationWindow {
         id: tray
         objectName: "tray"
         visible: CrucibleController.trayAvailable
-        icon.source: "qrc:/qt/qml/Ac3ForgeCrucible/tray.svg"
+        icon.source: "qrc:/qt/qml/Crucible/tray.svg"
         tooltip: qsTr("Crucible · %1").arg(window.hearing)
         onActivated: function(reason) {
             if (reason === Platform.SystemTrayIcon.Trigger || reason === Platform.SystemTrayIcon.DoubleClick) {

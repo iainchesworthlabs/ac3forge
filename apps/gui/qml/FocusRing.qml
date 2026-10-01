@@ -1,6 +1,6 @@
 import QtQuick
 
-import Ac3Forge
+import ForgeGui
 
 // The ring that says where the keyboard is. Put one inside any hand-drawn
 // control and it draws just outside that control's own border while the
@@ -12,9 +12,9 @@ import Ac3Forge
 //
 // Shared by both windows (apps/crucible/CMakeLists.txt copies this file into
 // the Crucible's own QML module and rewrites the import), so the examples
-// name neither: Crucible's CrucibleButton/CrucibleCheck and ac3gui's bed,
+// name neither: Crucible's CrucibleButton/CrucibleCheck and forge-gui's bed,
 // low-frequency, tab, run and command-line chips all carry one the same way.
-// The controls that are not hand-drawn - ac3gui's extras checkboxes, every
+// The controls that are not hand-drawn - forge-gui's extras checkboxes, every
 // plain Button - draw the style's own focus indicator instead and have no
 // ring of their own; SegmentedControl draws a third kind, on whichever
 // segment is current, for the reason its own comment gives.

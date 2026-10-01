@@ -1,7 +1,7 @@
 import QtQuick
 import QtTest
 
-import Ac3Forge
+import ForgeGui
 
 // The decode-side counterpart to tst_qc_panel.qml: ObjectDecodeController (a
 // decode-and-collect pass over an ALREADY-ENCODED E-AC-3 file, deliberately

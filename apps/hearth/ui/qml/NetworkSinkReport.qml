@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 
-import Ac3ForgeHearth
+import Hearth
 
 // The right-hand "WHAT THE SINK REPORTS" panel (network-sink-decoder.png):
 // NetworkController.sinkReport, already the display strings the page shows

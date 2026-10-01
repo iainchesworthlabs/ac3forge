@@ -62,8 +62,8 @@ Each leg, in DIR/streams/<leg>, keeps DEE's command and log, the stream, MediaIn
 legs up to 60 s, --Details=1 --ParseSpeed=1) and its summary, DEE's MP4 of every AC-3 and E-AC-3
 stream, and leg.json, which lets a rerun reuse a stream whose command and sources are unchanged.
 DIR/dee-gold-manifest.json holds each leg's group, what it is for, the command, the SHA-256s,
-DEE's warnings and loudness measurement, ac3cli probe's reading (substreams, metadata, the tools
-each stream uses), what that ac3cli's decode and FFmpeg's make of the stream, and for TrueHD
+DEE's warnings and loudness measurement, forge probe's reading (substreams, metadata, the tools
+each stream uses), what that forge's decode and FFmpeg's make of the stream, and for TrueHD
 whether FFmpeg's decode equals the source sample for sample. A refused leg keeps DEE's message.
 
 TrueHD. The roadmap keeps "TrueHD interoperability by black-box analysis of Dolby streams" out of
@@ -74,7 +74,7 @@ made them. Each TrueHD entry says so (TRUEHD_NOTE).
 What DEE 6.5.4 could not be made to write is in the manifest's dee_cannot (DEE_CANNOT).
 
 Usage (repo root):
-  python tools/generators/gen_dee_gold.py --gold-set D:/ac3bld/dee-gold [--cli AC3CLI]
+  python tools/generators/gen_dee_gold.py --gold-set D:/ac3bld/dee-gold [--cli ICLFORGE_CLI]
       [--jobs N] [--only NAME_PART ...] [--masters DIR]
 
 Never run in CI - see guard_not_ci(), the same rule gen_external_baseline.py states.
@@ -218,7 +218,7 @@ DEE_CANNOT = [
     "metadata (programme scale factors, mixdef, pan), or reduced-rate (fscod2) frames",
     "an embedded timecode in DD+ ('Embedding timestamp is supported only by DD and Bluray "
     "encoder modes'); where DD and the 'bluray' mode embed one, it is a 16-byte packet ahead "
-    "of each sync frame, so the file is no longer a bare elementary stream (FFmpeg and ac3cli "
+    "of each sync frame, so the file is no longer a bare elementary stream (FFmpeg and forge "
     "both stop at byte 0; DEE's MP4 muxer takes the DD ones)",
     "an MP4 of a 'bluray' stream: DEE's MP4 muxer refuses the AC-3 core with its E-AC-3 "
     "dependent substream ('Unsupported bitstream id')",
@@ -1051,7 +1051,7 @@ def mux_mp4(stream, work, fmt, suffix):
                                if line.strip().startswith("Warning")]}
 
 
-def ac3cli_probe(cli, stream):
+def forge_probe(cli, stream):
     result = subprocess.run([str(cli), "probe", str(stream), "json=1"], capture_output=True,
                             check=False, timeout=600)
     if result.returncode != 0:
@@ -1085,7 +1085,7 @@ def wav_shape(path):
     return None
 
 
-def ac3cli_decode(cli, stream, scratch):
+def forge_decode(cli, stream, scratch):
     scratch.mkdir(parents=True, exist_ok=True)
     wav = scratch / f"{stream.parent.name}-{stream.stem}.wav"
     wav.unlink(missing_ok=True)
@@ -1263,10 +1263,10 @@ def run_leg(task):
             else:
                 d["mp4"] = previous["mp4"]
         if cli:
-            d["ac3cli_probe"] = ac3cli_probe(cli, stream)
-            d["ac3cli_decode"] = ac3cli_decode(cli, stream, scratch / "decode")
+            d["forge_probe"] = forge_probe(cli, stream)
+            d["forge_decode"] = forge_decode(cli, stream, scratch / "decode")
         else:
-            for key in ("ac3cli_probe", "ac3cli_decode"):
+            for key in ("forge_probe", "forge_decode"):
                 if key in previous:
                     d[key] = previous[key]
         d["ffmpeg"] = ffmpeg_check(stream, scratch / "decode", lossless_source)
@@ -1354,7 +1354,7 @@ def gold_run(args, version):
                 entry = {"failed": [f"the generator's checks raised {exc!r}"]}
             made[name] = entry
             state = ("refused" if "refused" in entry else "FAILED" if "failed" in entry
-                     else entry.get("ac3cli_decode", "made")[:60])
+                     else entry.get("forge_decode", "made")[:60])
             extra = ""
             if entry.get("ffmpeg", {}).get("lossless") is not None:
                 extra = f"; lossless {entry['ffmpeg']['lossless']}"
@@ -1372,8 +1372,8 @@ def gold_run(args, version):
         "dee_version": version, "mediainfo_version": tool_version([str(MEDIAINFO),
                                                                    "--Version"]),
         "ffmpeg_version": tool_version(["ffmpeg", "-version"]).split(" Copyright")[0],
-        "ac3cli": tool_version([str(args.cli.resolve()), "--version"]) if args.cli
-        else old.get("ac3cli"),
+        "forge": tool_version([str(args.cli.resolve()), "--version"]) if args.cli
+        else old.get("forge"),
         "groups": G2_GROUPS, "dee_cannot": DEE_CANNOT, "sources": sources, "legs": entries,
     }
     replace_file(manifest_path, (json.dumps(manifest, indent=2) + "\n").encode("utf-8"))
@@ -1393,8 +1393,8 @@ def main():
                         help="the set's directory, e.g. D:/ac3bld/dee-gold")
     parser.add_argument("--scratch-dir", type=Path, default=REPO / "build" / "dee_gold_scratch",
                         help="where decodes go while they are checked")
-    parser.add_argument("--cli", type=Path, metavar="AC3CLI",
-                        help="an ac3cli whose probe and decode are recorded for each stream")
+    parser.add_argument("--cli", type=Path, metavar="ICLFORGE_CLI",
+                        help="a forge whose probe and decode are recorded for each stream")
     parser.add_argument("--jobs", type=int, default=4, help="legs made at once (default 4)")
     parser.add_argument("--only", nargs="+", metavar="NAME_PART",
                         help="make only the legs whose names contain one of these; the others "

@@ -19,6 +19,7 @@ Each script's header says what it does and takes. This page says in what order.
 | S2, paths in text | `python tools/n1b/n1b_paths.py --root <worktree> --plan <plan.json>`: every other file that names a moved file by its repository path (pages, plans, comments, strings, a Python path built from its components, workflows, scripts) follows it, so `check_doc_paths.py` stays green. It lists the directories whose files went to several libraries and are still named. |
 | S3, the namespace root | `python tools/n1b/n1b_names.py --root <worktree>`; then `python tools/n1b/n1b_reflow.py --root <worktree> --base HEAD~1`, which wraps the lines the first pass pushed past the column limit. Each is committed alone (below). |
 | S4, packages and identifiers | `n1b_apply.py --scope packages` and `n1b_paths.py` (the package directories and the files named for the brand), `n1b_sendspin.py`, `n1b_idents.py`, `n1b_reflow.py`, and then `cargo fmt` and `cargo update --workspace --offline` in `rust/`. Each is committed alone (below). |
+| N1A, the programs' names | `python tools/n1b/n1b_programs.py --root <worktree> --phase all --json <table.json>` (the moves are staged, the text is not), `n1b_reflow.py`, and then `lupdate` and `gen_pseudo_locale.py` over the renamed sources. The settings migration, the JNI check and what the driver keeps are by hand. Each is committed alone (below). |
 
 The plan a stage writes is what the build-file pass reads, since the pass runs after the files have moved.
 All the passes are idempotent: a second run on a finished tree changes nothing.
@@ -273,6 +274,112 @@ What S4 leaves: N1A's list (the programs' own names and what they register: `--r
 (the pages, the changelog and the plans: 177 lines of `CHANGELOG.md`, 735 of `planning/`, 1,885 of `docs/` and the
 other pages), and the external identities.
 
+## N1A, start to finish
+
+In a worktree of `main` with S4 merged, with `<before>` a record of that `main` (S4's own record of its result is one: `baseline.py
+record` over an MSVC build with every option on and no `--target`) and `<work>` a directory outside the tree. The script arrives in a
+commit of its own just before the pass that uses it, so the parent of a scripted commit holds the script that made it.
+
+    python tools/n1b/n1b_programs.py --root . --dry-run                                           # 47 moves, 671 files and 3 pages
+    python tools/n1b/n1b_programs.py --root . --phase all --report <work>/programs-report.txt --json <work>/programs-table.json   # 34 s
+    git commit -m "N1A: move the files named for a program"      # nothing added: the staged renames alone, 47 files, all R100
+    git add -A && git commit -m "N1A: the programs take their own names ..."                       # 674 files, 3,974 lines each way
+    python tools/n1b/n1b_reflow.py --root . --base HEAD~1                                         # 27 lines in 14 files
+    git add -A && git commit -m "N1A: wrap the lines the program-names pass pushed past 100 columns"
+    (by hand: below)
+    cmake --build <tree> --target forge-gui_lupdate hearth_lupdate crucible_lupdate               # 836, 832 and 385 texts, 0 new
+    python tools/generators/gen_pseudo_locale.py
+    git add -A && git commit -m "N1A: lupdate and the pseudo-locale generator on the renamed sources"   # 28 lines in 7 files
+
+Each of the three scripted commits is what its script gives on its parent: a scratch repository made from `git -c core.autocrlf=false
+archive` of the script commit, with the script run in it, has the trees of the three commits (`git write-tree` after the moves, after
+the text and after the reflow), and a second run of the pass changes no file. `git mv` leaves the directories it emptied and
+`check_doc_paths.py` finds them on disk, so the pass removes the four it emptied.
+
+### What `n1b_programs.py` decides
+
+One table, `PROGRAMS` (`--table` prints it as data, `--json` writes it with the moves): for each program the name it takes, the stem it
+takes where an underscore joins it to a word, the C++ namespace it becomes where it is one, and the stem of its variables.
+
+| was | is | stem | namespace | variables |
+|---|---|---|---|---|
+| `ac3cli` | `forge` | `forge` | `forge_cli` | `ICLFORGE_CLI_*` |
+| `ac3gui` | `forge-gui` | `forge_gui` | `forge_gui` | `ICLFORGE_GUI_*` (and `AC3_GUI_*`) |
+| `ac3hearth` | `hearth` | `hearth` | | `ICLFORGE_HEARTH_*` |
+| `ac3hearth-render`, `-testsink`, `-testserver` | `hearth-render`, `hearth-testsink`, `hearth-testserver` | `hearth_...` | | |
+| `ac3crucible` | `crucible` | `crucible` | | `ICLFORGE_CRUCIBLE_*` (and `AC3DESK_*`, the desktop demo's) |
+| `ac3crucible-run` | `crucible-run` | `crucible_run` | | |
+| `ac3tests`, `ac3perf`, `ac3bench`, `ac3membench`, `ac3kernelbench` | `iclforge-tests`, `-perf`, `-bench`, `-membench`, `-kernelbench` | `iclforge_...` | | |
+| `ac3probe`, `ac3fuzz`, `ac3test` | `iclforge-probe`, `-fuzz`, `-test` | `iclforge_...` | `iclforge_probe`, `iclforge_fuzz`, `iclforge_test` | |
+| `ac3shield` | `shield` | `shield` | `shield` | |
+| `ac3nullsink` | `iclforge-nullsink` | `iclforge_nullsink` | `iclforge_nullsink` | |
+
+The place decides where the name alone does not. `ac3cli encode` is `forge encode` and `ac3cli::` is `forge_cli::` (`forge` is a CMake
+alias and a sub-namespace elsewhere, so no namespace is a bare program name); a name joined to a word by an underscore takes the stem
+(`ac3gui_qmltests` is `forge_gui_qmltests`, `ac3gui_fr.ts` is `forge_gui_fr.ts`, which is the base name the translation loader is given)
+and one joined by a hyphen or a dot takes the program's name; the names Qt and CMake make from a target's own spelling are written out
+(`forge-gui_lupdate`, `forge-gui_autogen`, `libcrucible_engine`). A program's name that the language needs as an identifier, where
+a hyphen is not allowed (a Python parameter or attribute: the `ac3tests` of `tools/sendspin/aiosendspin_exit.py`, which `--ac3tests`
+sets), takes the stem form; the source is read by its tokens for that, and a source that parsed before the pass and would not after
+it is not written (the run fails and lists it). A scan of the tree before the pass, for a program name in a name position of any other
+language, found the C++ namespaces and one macro argument that the preprocessor makes a string, and nothing else.
+
+The QML module URIs (`Ac3Forge` is `ForgeGui`, `Ac3ForgeHearth` is `Hearth`, `Ac3ForgeCrucible` is `Crucible`, and the `Test` and
+`Language` modules of each) are read by the build and by every `import`, so they are one decision in the script (`MODULES`). A
+translation in a Qt catalogue names what its source names, in whatever word order.
+
+The brand where a program owns it is what `n1b_idents.py` kept for this stage (the `n1a-*` places of its report): the packages named for
+a program (`iclforge-crucible`, `iclforge-hearth`, `iclforge-shield`), the family's icons, the Android package `com.iclforge.shield` with
+its JNI names and library, the PipeWire node, the organisation the settings are stored under, and the display name by context ("AC3Forge
+Hearth" is "Hearth", the family is "ICL Forge", and the GUI window's own words are "Forge"). The man page's title is the command's name
+in capitals.
+
+It keeps, and says so (`--report` lists every place): the Windows driver's installed identity (`Ac3ForgeNullSink`: its hardware id,
+service, INF, SYS and CAT names, the endpoint's name, the names in the scripts that install it, and the .NET namespace `Ac3Forge` those
+scripts compile for themselves); the old names the settings migration reads (`FORMER_NAME_FILES`) and the lines `n1b_idents.py` keeps
+on purpose; the pages, `CHANGELOG.md`, `planning/`, `tests/golden` and the released winget manifests; the external identities. Only the
+text of the INF's provider and manufacturer, the version resource's description and copyright line, and the notices follow the program
+names, since no code reads them and no installed device is matched by them.
+
+### What the pass cannot decide, by hand
+
+- Stored settings move with the names. `forge-gui`, Hearth and Crucible stored them under the organisation `ac3forge` and now store
+  them under `iclforge`, so a program started after this stage would find nothing. `apps/gui/settings_migration.{hpp,cpp}` copies, once
+  and at start-up, the old application store (read without Qt's fallback to the organisation's keys) and the files under the old
+  `QStandardPaths` directories (leaving Qt's own cache) to the new ones, and records it in a key of the new store; it never writes the
+  old store or the old files. Crucible's older migration from the desktop demo's store is the same helper's second former store.
+  `iclforge-settings-tests` (19 cases, in ctest) runs it over INI files in a temporary directory; a probe against the Windows registry
+  (identities that exist only there, removed after) read and wrote every value type, and showed that Qt creates the empty registry key
+  of any store it reads, so a machine with no former store gets the old names' keys, empty.
+- The Android JNI names are the package written into about forty C++ function names, and a disagreement is an `UnsatisfiedLinkError`
+  on a device, in a job CI reaches late. `tools/checks/check_android_jni.py` (17 tests, a step of `_static.yml`) checks that the Gradle
+  namespace and `applicationId` are one name, that every Kotlin source declares it and sits in its directory, that every
+  `external fun` has a native `Java_...` definition and the reverse, that the library loaded is one the app's CMake builds, and that
+  every class path the C++ or the ProGuard rules name is a class the Kotlin declares.
+- `apps/windows/README.md` says which text of the driver changed and which did not; `encoder_controller.cpp`'s comment about what
+  `main()` sets follows the new names; `baseline.py` and `cli_bytes.py` record the CLI as `forge` and still find `ac3cli` in a tree built
+  before this stage, which is what a stage's own before-record is.
+- Two lines of `tools/sendspin/aiosendspin_exit.py` and `aiosendspin_group_exit.py` that the pass made longer than ruff allows (a
+  docstring's and the flag's `add_argument` call) are wrapped.
+
+### The proof
+
+    python tools/n1b/baseline.py record --build <after> --out <work>/after
+    python tools/n1b/baseline.py compare <before> <work>/after
+
+The pinned-hash streams and the exports of every shared library are identical, and so are all 44 commands of the CLI corpus, in exit
+code, stdout and every output file. The corpus does not print the program's name, so a second comparison runs the old `ac3cli` and the
+new `forge` over those 44 commands and 96 more that do (the usage, the help of every command, the version, an unknown command, every
+command with no arguments and a missing input) and compares the bytes, stderr included. The 44 are the same but for the decoder's
+progress meter, which a timer writes to stderr and which is there or not in either run; of the 96, 91 differ, and every difference is
+the program's name (430 times), the padding the usage aligns its columns with after a name of another length, the family's display
+name, or the build's own commit, its count and its branch. The 22 public headers whose blob changed differ in comments that say `ac3cli`.
+The ctest names after the stage are the ones before it with the program names renamed by this script's own rules (73), plus the 19 cases
+of the settings migration.
+
+What N1A leaves: S5's list (the pages, the changelog and the plans), the wording of what the programs say (U1), the external identities,
+and the driver's identity until it is rebuilt and signed.
+
 ## Proof
 
 `tools/n1b/baseline.py` records and compares what a stage must not change, against a build tree:
@@ -306,4 +413,6 @@ every tracked path goes, and the header spelling that reaches it before and afte
 that the branch meets only the hand-written commits of the stage; `-Measure` counts, without touching the
 branch, the files that conflict by hand and after the scripts. `check_anchors.py`, `check_tables.py`,
 `json_diff.py`, `show_conflicts.py`, `branch_table.py` and `control_experiment.ps1` are the small tools
-the study used to check its pages and its measurements.
+the study used to check its pages and its measurements. `adapt_branch.ps1` runs the scripts of S2 and S3 only (`n1b_apply.py`,
+`n1b_cmake.py`, `n1b_paths.py`, `n1b_names.py`); the scripts of S4 and N1A (`n1b_idents.py`, `n1b_programs.py`) are run on a branch by
+hand, in the order of their sections above, and the commit of each is merged the same way.

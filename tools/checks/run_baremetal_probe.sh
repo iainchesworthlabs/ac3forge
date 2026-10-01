@@ -325,7 +325,7 @@ else
     cmake --build --preset "$BUILD_PRESET"
 fi
 
-BIN="$BUILD_DIR/bin/ac3probe"
+BIN="$BUILD_DIR/bin/iclforge-probe"
 if [[ ! -f "$BIN" ]]; then
     echo "error: $BIN was not produced" >&2
     exit 1
@@ -335,10 +335,10 @@ OUTPUT=$(mktemp)
 trap 'rm -f "$OUTPUT"' EXIT
 
 if [[ "$HOST" == "1" ]]; then
-    echo "== running ac3probe natively =="
+    echo "== running iclforge-probe natively =="
     "$BIN" | tee "$OUTPUT"
 else
-    echo "== running ac3probe on qemu-system-arm (mps2-an385, cortex-m3) =="
+    echo "== running iclforge-probe on qemu-system-arm (mps2-an385, cortex-m3) =="
     # -semihosting is what gives the probe stdout and an exit code at all; the
     # newlib rdimon specs the toolchain file links against are its other half.
     # A timeout because a probe that faults early would otherwise hang the leg

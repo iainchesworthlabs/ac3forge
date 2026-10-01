@@ -490,7 +490,7 @@ jobs:
             rel="${f#arm64-runtime/}"
             case "$rel" in
               */_CodeSignature/*)
-                # ac3gui.app's Mach-O executables get ad-hoc code-signed at
+                # forge-gui.app's Mach-O executables get ad-hoc code-signed at
                 # build time (Apple Silicon requires at least an ad-hoc
                 # signature to execute at all), which is what produces this
                 # bundle-level manifest - it hashes every file in the bundle
@@ -529,7 +529,7 @@ jobs:
 
       # The actual proof this PR asked for: not "the script exited 0", but
       # that the merged binaries really do carry both architectures' code.
-      # ac3cli and ac3gui.app's own executable are the two entry points;
+      # forge and forge-gui.app's own executable are the two entry points;
       # QtCore is checked too so this also proves the merge over
       # qt_generate_deploy_qml_app_script()'s copied Frameworks, not just
       # this project's own two binaries.
@@ -543,26 +543,26 @@ jobs:
             lipo -info "$1" | grep -q 'x86_64' || { echo "::error::$1 is missing an x86_64 slice"; exit 1; }
             lipo -info "$1" | grep -q 'arm64'  || { echo "::error::$1 is missing an arm64 slice"; exit 1; }
           }
-          check "merged/bin/ac3cli"
-          gui_bin="merged/ac3gui.app/Contents/MacOS/ac3gui"
+          check "merged/bin/forge"
+          gui_bin="merged/forge-gui.app/Contents/MacOS/forge-gui"
           if [ -f "$gui_bin" ]; then
             check "$gui_bin"
-            qt_core="$(find "merged/ac3gui.app/Contents/Frameworks" -type f -name QtCore 2>/dev/null | head -1)"
+            qt_core="$(find "merged/forge-gui.app/Contents/Frameworks" -type f -name QtCore 2>/dev/null | head -1)"
             if [ -n "$qt_core" ]; then
               check "$qt_core"
             else
-              echo "::warning::no QtCore framework binary found under ac3gui.app/Contents/Frameworks - was ICLFORGE_BUILD_GUI actually ON for both legs?"
+              echo "::warning::no QtCore framework binary found under forge-gui.app/Contents/Frameworks - was ICLFORGE_BUILD_GUI actually ON for both legs?"
             fi
           else
-            echo "::warning::no ac3gui.app in the merged tree - CLI-only merge, nothing to verify there"
+            echo "::warning::no forge-gui.app in the merged tree - CLI-only merge, nothing to verify there"
           fi
 
-      # The merge above skipped ac3gui.app/Contents/_CodeSignature/* rather
+      # The merge above skipped forge-gui.app/Contents/_CodeSignature/* rather
       # than fail on it (see that step's own comment) - which leaves the
       # bundle carrying whichever architecture's original signature the
       # rsync baseline happened to copy through, computed against THAT
       # build's file content, not the merged one. codesign --deep walks in
-      # and re-signs every nested Mach-O (the merged ac3cli's own signature
+      # and re-signs every nested Mach-O (the merged forge's own signature
       # is untouched by lipo -create - it concatenates already-signed thin
       # slices without altering their bytes, so this is about the bundle-level
       # manifest, not the executables' own embedded signatures) and
@@ -579,10 +579,10 @@ jobs:
       # Observed for real, not hypothetical: the first proven run
       # (v0.0.0-alpha.2 dry run) hit exactly this fallback - codesign
       # refused with "bundle format is ambiguous (could be app or
-      # framework)" on ac3gui.app/Contents/Frameworks/QtQuickControls2.framework,
+      # framework)" on forge-gui.app/Contents/Frameworks/QtQuickControls2.framework,
       # one of Qt's own bundled frameworks, not anything this project
       # controls the layout of. The runtime .dmg still built and shipped
-      # from the same run with a merged, lipo-verified ac3cli/ac3gui/QtCore
+      # from the same run with a merged, lipo-verified forge/forge-gui/QtCore
       # (confirmed via lipo -info in that job's log) - only the bundle-level
       # signature stayed stale. Worth another look if it turns out to matter
       # in practice; not chased further here since there is no real Mac to
@@ -592,19 +592,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [ ! -d "merged/ac3gui.app" ]; then
-            echo "no ac3gui.app in the merged tree - nothing to re-sign"
+          if [ ! -d "merged/forge-gui.app" ]; then
+            echo "no forge-gui.app in the merged tree - nothing to re-sign"
             exit 0
           fi
-          if codesign --force --deep --sign - "merged/ac3gui.app"; then
-            codesign --verify --deep --strict "merged/ac3gui.app" && echo "codesign: merged ac3gui.app verifies against its own (ad-hoc) signature"
+          if codesign --force --deep --sign - "merged/forge-gui.app"; then
+            codesign --verify --deep --strict "merged/forge-gui.app" && echo "codesign: merged forge-gui.app verifies against its own (ad-hoc) signature"
           else
-            echo "::warning::ad-hoc re-sign of the merged ac3gui.app failed - shipping it with a stale single-architecture signature instead. Gatekeeper already refuses an unsigned/ad-hoc app outright (see the Homebrew Cask's caveats and DR6), so this does not change what a downloader has to do to run it."
+            echo "::warning::ad-hoc re-sign of the merged forge-gui.app failed - shipping it with a stale single-architecture signature instead. Gatekeeper already refuses an unsigned/ad-hoc app outright (see the Homebrew Cask's caveats and DR6), so this does not change what a downloader has to do to run it."
           fi
 
       # The universal .dmg is the one macOS artifact a release actually
       # publishes, and it is built below from `merged/` rather than by cpack,
-      # so the packaging-leg assertion on ac3cli's man page and completions
+      # so the packaging-leg assertion on forge's man page and completions
       # (see the build job's own step) never sees it. This tree has two ways
       # to lose those files: the install steps that fed it (`cmake --install
       # --component runtime`, which is where an install(SCRIPT) with no
@@ -732,15 +732,15 @@ jobs:
             iclforge-dev-*-Darwin.zip.sha512
           if-no-files-found: error
 
-  # Windows ARM64 / reach builds (Reach): a self-contained AppImage for ac3gui, so a user on a
+  # Windows ARM64 / reach builds (Reach): a self-contained AppImage for forge-gui, so a user on a
   # distro whose own Qt 6 is too old, or split differently than
   # qt6-declarative-dev/qt6-declarative-dev-tools expect (the `linux-gcc`/
   # `linux-llvm` legs' own "Install Qt6 (Linux GUI)" step above), can still
   # run it - the `.deb`/`.rpm` cmake/Packaging.cmake already produces both
   # depend on whatever the host distro's package manager resolves for those
-  # names, and nothing in ac3gui's own install() rules controls that.
+  # names, and nothing in forge-gui's own install() rules controls that.
   #
-  # AppImage over Flatpak, decided and not re-litigated here: ac3gui's whole
+  # AppImage over Flatpak, decided and not re-litigated here: forge-gui's whole
   # point is iclforge::audio's IEC 61937 passthrough - exclusive-mode ALSA
   # `iec958:...,AES0=0x06` device args or PipeWire's native
   # `SPA_MEDIA_SUBTYPE_iec958` straight to an AVR (docs/platforms/linux.md's
@@ -773,7 +773,7 @@ jobs:
   # Packaging section): a standing smoke test of the packaging path itself,
   # not just something exercised once at release time.
   linux-appimage:
-    name: Linux AppImage (ac3gui)
+    name: Linux AppImage (forge-gui)
     needs: [toolchain-versions]
     # Not on a pull_request run: GitHub-hosted, so it waits for the merge
     # queue instead (ci.yml's run_android comment). run_linux itself stays on
@@ -964,7 +964,7 @@ jobs:
       # are for BUILD_SHARED_LIBS=ON, which the plain linux-gcc preset used
       # here does not set (only config-linux-llvm-shared does - see that
       # preset's own description) - so iclforge::ac3/matroska/mp4/mpegts should
-      # all be linked straight into the ac3gui binary already. Checked with
+      # all be linked straight into the forge-gui binary already. Checked with
       # ldd rather than just assumed, so a future default flip doesn't
       # silently ship an AppImage missing a .so it now needs.
       - name: Install into AppDir
@@ -972,14 +972,14 @@ jobs:
         run: |
           set -euo pipefail
           cmake --install build/config-linux-gcc --prefix "$PWD/AppDir/usr" --component runtime
-          echo "ldd build/config-linux-gcc/bin/ac3gui:"
-          ldd build/config-linux-gcc/bin/ac3gui
-          if ldd build/config-linux-gcc/bin/ac3gui | grep -qE 'libiclforge|libmatroska\.so|libmp4\.so|libmpegts\.so'; then
-            echo "ac3gui links a project .so - installing the library/libruntime components too"
+          echo "ldd build/config-linux-gcc/bin/forge-gui:"
+          ldd build/config-linux-gcc/bin/forge-gui
+          if ldd build/config-linux-gcc/bin/forge-gui | grep -qE 'libiclforge|libmatroska\.so|libmp4\.so|libmpegts\.so'; then
+            echo "forge-gui links a project .so - installing the library/libruntime components too"
             cmake --install build/config-linux-gcc --prefix "$PWD/AppDir/usr" --component library
             cmake --install build/config-linux-gcc --prefix "$PWD/AppDir/usr" --component libruntime
           else
-            echo "ac3gui links every project library statically - the runtime component alone is enough"
+            echo "forge-gui links every project library statically - the runtime component alone is enough"
           fi
 
       # The actual glibc floor this AppImage ships with - what
@@ -1031,10 +1031,10 @@ jobs:
           fetch "$LINUXDEPLOY_APPIMAGE_URL" "$LINUXDEPLOY_APPIMAGE_SHA256" "$tools_dir/linuxdeploy-plugin-appimage-x86_64.AppImage"
           echo "$tools_dir" >> "$GITHUB_PATH"
 
-      # linuxdeploy's own version string (ac3cli's, actually - see the
+      # linuxdeploy's own version string (forge's, actually - see the
       # conformance-vectors step above for why querying the built binary
       # rather than re-deriving the tag independently is the established
-      # pattern in this file) names the output ac3gui-<VERSION>-x86_64.AppImage.
+      # pattern in this file) names the output forge-gui-<VERSION>-x86_64.AppImage.
       # APPIMAGE_EXTRACT_AND_RUN=1 is an environment variable, not a CLI flag,
       # deliberately: linuxdeploy spawns the qt and appimage plugins above as
       # their own child AppImages, and only the environment variable form is
@@ -1061,7 +1061,7 @@ jobs:
       # libstdc++6 (installed by "Install GCC 16" above, which upgrades
       # this exact multiarch path in place) - confirmed for real: `strings`
       # on this file lists GLIBCXX_3.4.35, the version the smoke test needed.
-      # No further RPATH-ordering fix needed on top of this: ac3gui's own
+      # No further RPATH-ordering fix needed on top of this: forge-gui's own
       # RUNPATH is $ORIGIN/../lib (confirmed with readelf -d against a real
       # built binary), which resolves relative to the AppImage's own
       # usr/bin/ - not LD_LIBRARY_PATH, and not something the host's
@@ -1101,8 +1101,8 @@ jobs:
       # not found") rather than added preemptively. apps/gui/CMakeLists.txt's
       # Windows windeployqt step already documents exactly this class of
       # problem and passes --qmldir "${CMAKE_CURRENT_SOURCE_DIR}/qml" for
-      # the same underlying reason: ac3gui's QML is AOT-compiled into the Qt
-      # resource system (qrc:/qt/qml/Ac3Forge/Main.qml), never present as
+      # the same underlying reason: forge-gui's QML is AOT-compiled into the Qt
+      # resource system (qrc:/qt/qml/ForgeGui/Main.qml), never present as
       # loose .qml files anywhere in the built/installed tree. linuxdeploy-
       # plugin-qt's own qmlimportscanner-based deployer
       # (src/qml.cpp:getQmlImports, deployQml) scans the AppDir itself by
@@ -1127,7 +1127,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          version="$(build/config-linux-gcc/bin/ac3cli --version | head -1 | awk '{print $NF}')"
+          version="$(build/config-linux-gcc/bin/forge --version | head -1 | awk '{print $NF}')"
           export VERSION="$version"
           export APPIMAGE_EXTRACT_AND_RUN=1
           export EXTRA_PLATFORM_PLUGINS=libqoffscreen.so
@@ -1142,9 +1142,9 @@ jobs:
           done
           linuxdeploy-x86_64.AppImage \
             --appdir AppDir \
-            --executable AppDir/usr/bin/ac3gui \
-            --desktop-file AppDir/usr/share/applications/ac3gui.desktop \
-            --icon-file AppDir/usr/share/icons/hicolor/256x256/apps/ac3gui.png \
+            --executable AppDir/usr/bin/forge-gui \
+            --desktop-file AppDir/usr/share/applications/forge-gui.desktop \
+            --icon-file AppDir/usr/share/icons/hicolor/256x256/apps/forge-gui.png \
             --library "$libstdcxx" \
             --library "$libgcc_s" \
             --plugin qt \
@@ -1157,7 +1157,7 @@ jobs:
             echo "::error::QML_SOURCES_PATHS did not get the QtQuick.Controls plugin bundled under AppDir/usr/qml - the smoke test's QML load would fail the same way this was fixed for"
             exit 1
           fi
-          ls -la ac3gui-*.AppImage
+          ls -la forge-gui-*.AppImage
 
       # cmake/Packaging.cmake's CPACK_PACKAGE_CHECKSUM gives every CPack
       # product a SHA512 side-car for free; the AppImage isn't a CPack
@@ -1166,7 +1166,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          appimage="$(ls ac3gui-*.AppImage)"
+          appimage="$(ls forge-gui-*.AppImage)"
           sha512sum "$appimage" > "${appimage}.sha512"
           cat "${appimage}.sha512"
 
@@ -1180,8 +1180,8 @@ jobs:
         with:
           name: packages-linux-appimage
           path: |
-            ac3gui-*.AppImage
-            ac3gui-*.AppImage.sha512
+            forge-gui-*.AppImage
+            forge-gui-*.AppImage.sha512
           if-no-files-found: error
 
       # The actual claim under test: not "did cpack/linuxdeploy exit 0" but
@@ -1207,7 +1207,7 @@ jobs:
       # debian:12-slim (glibc 2.36), not ubuntu:20.04: 20.04 ships glibc
       # 2.31, OLDER than this job's own ubuntu:22.04 build container
       # (2.35, "Report glibc floor" above) - running there would fail with
-      # an unrelated "GLIBC_2.3x not found" error on ac3gui's own binary
+      # an unrelated "GLIBC_2.3x not found" error on forge-gui's own binary
       # before ever reaching the question this step actually asks. That
       # question needs a target that (a) never had Qt or a single build
       # tool installed and (b) is otherwise new enough that only the
@@ -1221,7 +1221,7 @@ jobs:
       # bind mount asks the DAEMON to resolve $PWD against its own (the
       # HOST's) filesystem, and there is no guarantee that path means
       # anything there even when it very much exists in this container's own
-      # shell (confirmed for real: `ls ac3gui-*.AppImage` here finds the
+      # shell (confirmed for real: `ls forge-gui-*.AppImage` here finds the
       # file, but the mount landed on an empty directory - the daemon and
       # this container simply don't agree on what that path is). `docker
       # cp` sidesteps the question entirely: it streams the file's bytes
@@ -1268,7 +1268,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          appimage="$(ls ac3gui-*.AppImage)"
+          appimage="$(ls forge-gui-*.AppImage)"
           chmod +x "$appimage"
           echo "pwd: $PWD"
           ls -la "$appimage" fuzz/seeds/fuzz_wav_read/roundtrip-stereo.wav
@@ -1295,9 +1295,9 @@ jobs:
                 attempt=$((attempt + 1))
                 sleep 30
               done
-              exec /ac3gui.AppImage --appimage-extract-and-run --smoke \
-                /roundtrip-stereo.wav /ac3gui-smoke.ac3 /ac3gui-smoke.png')"
-          docker cp "$appimage" "${cid}:/ac3gui.AppImage"
+              exec /forge-gui.AppImage --appimage-extract-and-run --smoke \
+                /roundtrip-stereo.wav /forge-gui-smoke.ac3 /forge-gui-smoke.png')"
+          docker cp "$appimage" "${cid}:/forge-gui.AppImage"
           docker cp fuzz/seeds/fuzz_wav_read/roundtrip-stereo.wav "${cid}:/roundtrip-stereo.wav"
           # `|| true`: `docker start --attach` propagates the CONTAINER's own
           # exit code as its own (confirmed locally - a nonzero exit here
@@ -1314,7 +1314,7 @@ jobs:
             echo "::error::AppImage smoke test failed on debian:12-slim (exit $status)"
             exit 1
           fi
-          echo "ac3gui ran clean on debian:12-slim, which never had Qt installed and only gained ALSA/graphics-stack libraries as normal runtime dependencies"
+          echo "forge-gui ran clean on debian:12-slim, which never had Qt installed and only gained ALSA/graphics-stack libraries as normal runtime dependencies"
 
   # The Shield app (apps/android): a Gradle/NDK build, not a CMake preset
   # leg, so it is its own job outside the split platform workflows - there is
@@ -1523,7 +1523,7 @@ jobs:
             echo "No ANDROID_KEYSTORE_BASE64 secret provisioned - assembleRelease will fall back to the debug keystore."
             exit 0
           fi
-          keystore_path="$RUNNER_TEMP/ac3forge-shield-release.keystore"
+          keystore_path="$RUNNER_TEMP/iclforge-shield-release.keystore"
           base64 -d <<<"$ANDROID_KEYSTORE_BASE64" > "$keystore_path"
           {
             echo "ANDROID_KEYSTORE_PATH=$keystore_path"
@@ -1554,8 +1554,8 @@ jobs:
           version="${VERSION_TAG_INPUT:-0.0.0-dev}"
           mkdir -p packages
           cp apps/android/app/build/outputs/apk/release/app-release.apk \
-             "packages/ac3forge-shield-${version}.apk"
-          ( cd packages && sha512sum "ac3forge-shield-${version}.apk" > "ac3forge-shield-${version}.apk.sha512" )
+             "packages/iclforge-shield-${version}.apk"
+          ( cd packages && sha512sum "iclforge-shield-${version}.apk" > "iclforge-shield-${version}.apk.sha512" )
 
       # The removal step above is a precaution; THIS is the guard. It inspects
       # the actual bytes about to be published rather than trusting that the
@@ -1571,7 +1571,7 @@ jobs:
         run: |
           set -euo pipefail
           version="${VERSION_TAG_INPUT:-0.0.0-dev}"
-          apk="packages/ac3forge-shield-${version}.apk"
+          apk="packages/iclforge-shield-${version}.apk"
           entries="$(unzip -Z1 "$apk")"
           if grep -Eq '(^|/)signing\.key$' <<<"$entries"; then
             echo "::error::$apk contains a signing.key entry - this APK is key material and must not be published."
@@ -1836,7 +1836,7 @@ jobs:
         working-directory: rust
         run: cargo fmt --check
 
-  # The AC3Forge Crucible's null-sink driver (apps/windows/driver, roadmap
+  # The Crucible's null-sink driver (apps/windows/driver, roadmap
   # UX11): an ACX/KMDF kernel driver, built and test-signed the way Microsoft's
   # own driver-samples CI builds theirs - the WDK and SDK as NuGet packages
   # (apps/windows/driver/packages.config) restored into the tree, MSBuild from
@@ -1929,7 +1929,7 @@ jobs:
       - name: Upload the test-signed package
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: ac3forge-nullsink-driver-testsigned
+          name: iclforge-nullsink-driver-testsigned
           path: |
             ${{ env.ICLFORGE_DRIVER_PACKAGE }}
             ${{ env.ICLFORGE_DRIVER_CERT }}
@@ -2168,7 +2168,7 @@ jobs:
           # same configuration, obtained independently of anything this leg
           # builds:
           #
-          #   ac3cli decode stream/sample.ac3 out.wav downmix=loro drcmode=line
+          #   forge decode stream/sample.ac3 out.wav downmix=loro drcmode=line
           #
           # giving RMS x 1e6 of 107370 and 106234. The target reports 107811 and
           # 106647 - 0.41% and 0.39% out, which is the float32 decode path
@@ -2529,7 +2529,7 @@ jobs:
       # E-AC-3 decode; only WiFi itself is left for hardware.
       #
       # The levels are held against the host's
-      #   ac3cli decode apps/wasm/assets/demo.ec3 out.wav downmix=loro drcmode=line
+      #   forge decode apps/wasm/assets/demo.ec3 out.wav downmix=loro drcmode=line
       # 56,673 and 47,346 (x 1e6), which the float32 target reproduced to the
       # digit on 2026-09-10. Same tolerance as the steps above.
       #
@@ -3028,7 +3028,7 @@ jobs:
         with:
           name: footprint-esp32s3
           path: |
-            apps/baremetal/platform/esp32s3/build/ac3probe_esp32s3.map
+            apps/baremetal/platform/esp32s3/build/iclforge_probe_esp32s3.map
             apps/baremetal/platform/esp32s3/build/esp32s3-probe.txt
             apps/baremetal/platform/esp32s3/build/esp32s3-encode-probe.txt
             esp-idf/iclforge/examples/hearth_sink/qemu-stream.txt
@@ -3044,7 +3044,7 @@ jobs:
           if-no-files-found: error
 
   # Hearth B4 (planning/hearth-reference-player.md): the Sendspin player
-  # build-esp32s3 built for QEMU, played to from the host. ac3hearth-testserver
+  # build-esp32s3 built for QEMU, played to from the host. hearth-testserver
   # pairs with the emulated board by the token on its console, gives it a 2.0
   # layout and plays it the E-AC-3 JOC fixture in one group with a test sink of
   # its own; tools/checks/run_sendspin_qemu.sh then holds the board's levels to
@@ -3108,7 +3108,7 @@ jobs:
             -DVCPKG_MANIFEST_FEATURES=hearth \
             -DICLFORGE_BUILD_HEARTH=ON \
             -DICLFORGE_BUILD_EXAMPLES=OFF
-          cmake --build --preset build-linux-gcc --target ac3hearth-testserver
+          cmake --build --preset build-linux-gcc --target hearth-testserver
 
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -3134,7 +3134,7 @@ jobs:
           tools/checks/run_sendspin_qemu.sh \
             --qemu "$QEMU_XTENSA" \
             --image sendspin-qemu-image \
-            --server build/config-linux-gcc/bin/ac3hearth-testserver \
+            --server build/config-linux-gcc/bin/hearth-testserver \
             --out sendspin-qemu-run
 
       # B2's Improv provisioning, which the step above never reaches: its
@@ -3152,7 +3152,7 @@ jobs:
             --qemu "$QEMU_XTENSA" \
             --image sendspin-qemu-image \
             --wifi-image sendspin-qemu-image/wifi \
-            --server build/config-linux-gcc/bin/ac3hearth-testserver \
+            --server build/config-linux-gcc/bin/hearth-testserver \
             --out improv-qemu-run
 
       - name: Upload the run
@@ -3593,7 +3593,7 @@ jobs:
         if: always()
         run: |
           set -eu
-          python3 tools/checks/footprint_report.py             --probe "${{ runner.temp }}/footprint.txt"             --elf build/config-arm-none-eabi-minimal/bin/ac3probe             --map build/config-arm-none-eabi-minimal/apps/baremetal/ac3probe.map             --markdown >> "$GITHUB_STEP_SUMMARY"
+          python3 tools/checks/footprint_report.py             --probe "${{ runner.temp }}/footprint.txt"             --elf build/config-arm-none-eabi-minimal/bin/iclforge-probe             --map build/config-arm-none-eabi-minimal/apps/baremetal/iclforge-probe.map             --markdown >> "$GITHUB_STEP_SUMMARY"
           if [ -f "build/config-arm-none-eabi-minimal/icount.txt" ]; then
             {
               echo '### Instructions per frame (QEMU -icount)'
@@ -3620,7 +3620,7 @@ jobs:
           name: footprint-arm-none-eabi
           path: |
             ${{ runner.temp }}/footprint.txt
-            build/config-arm-none-eabi-minimal/apps/baremetal/ac3probe.map
+            build/config-arm-none-eabi-minimal/apps/baremetal/iclforge-probe.map
           if-no-files-found: warn
 
   # Persists this run's gold-reference SNR numbers (docs/quality-trend.md) so

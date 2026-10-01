@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-import Ac3ForgeHearth
+import Hearth
 
 // Pinned to the bottom of every page, the way every round-1 artboard shows
 // it (planning/hearth-design.md). None of these buttons is inside a

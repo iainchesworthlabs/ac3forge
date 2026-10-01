@@ -1,6 +1,6 @@
-# Homebrew Cask for ac3gui, iclforge's Qt6 GUI front end.
+# Homebrew Cask for forge-gui, iclforge's Qt6 GUI front end.
 #
-# A Cask, not a Formula, is the right shape here: ac3gui ships as a prebuilt
+# A Cask, not a Formula, is the right shape here: forge-gui ships as a prebuilt
 # .app bundle inside each release's DragNDrop .dmg (cmake/Packaging.cmake),
 # not as something a user builds from source - the same reasoning
 # Formula/iclforge.rb's own header comment and packaging/homebrew/README.md
@@ -18,7 +18,7 @@
 # v0.8.0-beta.2 was the first tagged release whose macos-llvm leg builds
 # ICLFORGE_BUILD_GUI=ON (see docs/platforms/macos.md#gui-on-macos), so it was
 # the first release whose iclforge-*-Darwin.dmg actually contained
-# ac3gui.app. **Every release tag** needs the same follow-up update "Every
+# forge-gui.app. **Every release tag** needs the same follow-up update "Every
 # release tag" in docs/releasing.md#homebrew-formula-and-cask already
 # documents for the sibling Formula: bump version, recompute sha256 from
 # that release's own iclforge-*-Darwin.dmg, validate locally, then copy into
@@ -52,7 +52,7 @@ cask "iclforge" do
   dmg_version = version.major_minor_patch
 
   url "https://github.com/iainchesworthlabs/ac3forge/releases/download/v#{version}/iclforge-#{dmg_version}-Darwin.dmg"
-  name "ac3gui"
+  name "forge-gui"
   desc "GUI to encode, decode, play and check AC-3, E-AC-3 and AC-4 streams"
   homepage "https://github.com/iainchesworthlabs/ac3forge"
 
@@ -68,16 +68,16 @@ cask "iclforge" do
   # file's own header comment.
   depends_on macos: ">= :ventura"
 
-  app "ac3gui.app"
+  app "forge-gui.app"
 
   caveats <<~EOS
-    ac3gui is not Apple-notarized or code-signed. release.yml
+    forge-gui is not Apple-notarized or code-signed. release.yml
     (.github/workflows/release.yml) signs release artifacts with GPG (a detached
     .asc) and attests build provenance via Sigstore/OIDC - neither is Apple code
     signing. macOS Gatekeeper will very likely refuse to open the app on first
     launch ("cannot be opened because the developer cannot be verified") until you
-    right-click ac3gui.app in Finder and choose Open, or run:
-      xattr -dr com.apple.quarantine "#{appdir}/ac3gui.app"
+    right-click forge-gui.app in Finder and choose Open, or run:
+      xattr -dr com.apple.quarantine "#{appdir}/forge-gui.app"
     This Cask itself is unverified on real hardware, same as every other macOS
     claim in this project - see docs/platforms/macos.md, which documents each one
     as CI-only until someone with a Mac checks it by hand.

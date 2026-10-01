@@ -1,4 +1,4 @@
-// ac3hearth-testserver: a Sendspin server for Hearth's board and CI tests
+// hearth-testserver: a Sendspin server for Hearth's board and CI tests
 // (planning/hearth-reference-player.md, B3 and B4).
 //
 // It dials each player it is given, pairs it, sends it settings, plays one AC-3 or E-AC-3
@@ -56,7 +56,7 @@ namespace testsink = iclforge::hearth::testsink;
 using namespace std::chrono_literals;
 using SteadyClock = std::chrono::steady_clock;
 
-constexpr std::string_view kUsage = R"(usage: ac3hearth-testserver [options] --play FILE --player URL [player options]...
+constexpr std::string_view kUsage = R"(usage: hearth-testserver [options] --play FILE --player URL [player options]...
 
 A Sendspin server for Hearth's tests. It dials each player, pairs it, sends it
 settings, plays one AC-3 or E-AC-3 programme to all of them as a group over
@@ -807,7 +807,7 @@ int main(int argc, char** argv) {
 
     auto store = iclforge::hearth::testserver::FileServerStore::open(state_directory);
     if (!store) {
-        std::cerr << "ac3hearth-testserver: " << store.error() << "\n";
+        std::cerr << "hearth-testserver: " << store.error() << "\n";
         return kExitUsage;
     }
     Events events;
@@ -821,7 +821,7 @@ int main(int argc, char** argv) {
                                        .mdns_interfaces = {}},
                                       **store, events);
     if (!host) {
-        std::cerr << "ac3hearth-testserver: " << host.error() << "\n";
+        std::cerr << "hearth-testserver: " << host.error() << "\n";
         return kExitUsage;
     }
     note("server " + (*host)->server_id().substr(0, 8) + " (\"" + server_name + "\")");
@@ -841,7 +841,7 @@ int main(int argc, char** argv) {
         options.layout = sink_layout;
         auto started = testsink::Sink::start(options, sink_log);
         if (!started) {
-            std::cerr << "ac3hearth-testserver: the test sink: " << started.error() << "\n";
+            std::cerr << "hearth-testserver: the test sink: " << started.error() << "\n";
             return kExitUsage;
         }
         sink = std::move(*started);

@@ -22,3 +22,11 @@ af6b96212eae0a22514aec67bd68c4a061854a41  # S4: paths in text follow the moved p
 6ccafc41e13cbe1596d537cda2886bf3bdc8329c  # S4: wrap the lines the identifier pass pushed past 100 columns
 101a36a4762da1b89182173fa3095f14db7a8033  # S4: cargo fmt puts the renamed use items in order
 86c053253d5ca404319ca62cbb567c7c5155c477  # S4: Cargo.lock lists the renamed crates in cargo's order
+
+# N1A, the programs' names: what n1b_programs.py gives on its parent, the lines n1b_reflow.py wrapped after it, and what lupdate and
+# gen_pseudo_locale.py made of the catalogues (the commit that moves the files is the one before the rewrite; the tools commit and
+# the hand-written one are not listed)
+848910ab02d6a369f4a6b94bd1b241cddf58fd10  # N1A: the programs take their own names, and what they register follows
+758ac01b8ac625a49c0973d04c1a124dd0bac294  # N1A: wrap the lines the program-names pass pushed past 100 columns
+377c3d5ef3811d2ba334bc762c4500eb3bb180fc  # N1A: lupdate and the pseudo-locale generator on the renamed sources
+5b9ada431ba1c655ed9eb13f45bd71dd5d9ca772  # N1A: clang-format the settings migration and its tests

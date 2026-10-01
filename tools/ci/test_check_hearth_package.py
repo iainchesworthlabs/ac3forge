@@ -20,7 +20,7 @@ module docstring): no part of Qt's test module is in the package
 (test_windows_zip_must_not_carry_qt_test, test_macos_zip_must_not_carry_qt_test).
 test_dispatch_is_by_bundle_content_not_filename guards the thing that tells a
 macOS archive from a Windows one in the first place - both are
-ac3forge-hearth-<version>-<system>.zip alike, so main() has to look inside.
+iclforge-hearth-<version>-<system>.zip alike, so main() has to look inside.
 
 Run: python3 -m unittest discover -s tools/ci -p 'test_*.py'
 """
@@ -62,11 +62,11 @@ THIRDPARTY_SECTIONS = (
     "Sendspin time filter\n"
 )
 WINDOWS_NOTICES = (
-    "AC3Forge Hearth 0.10.0 - third-party notices\n" + QT_SECTION + THIRDPARTY_SECTIONS
+    "Hearth 0.10.0 - third-party notices\n" + QT_SECTION + THIRDPARTY_SECTIONS
 )
 MACOS_NOTICES = WINDOWS_NOTICES
 LINUX_NOTICES = (
-    "AC3Forge Hearth 0.10.0 - third-party notices\n" + THIRDPARTY_SECTIONS
+    "Hearth 0.10.0 - third-party notices\n" + THIRDPARTY_SECTIONS
 )
 
 
@@ -76,7 +76,7 @@ def windows_zip(directory, notices, extra=()):
     `extra` adds members the required list does not name, which is how the
     Qt-Test rule is exercised: that rule is about what must NOT be there.
     """
-    path = os.path.join(directory, "ac3forge-hearth-test-win64.zip")
+    path = os.path.join(directory, "iclforge-hearth-test-win64.zip")
     with zipfile.ZipFile(path, "w") as archive:
         for name in gate.REQUIRED:
             archive.writestr(name, notices if name == "NOTICES.txt" else "")
@@ -91,7 +91,7 @@ def macos_zip(directory, notices, extra=()):
     Same `extra` role as windows_zip(): members the required list does not
     name, for exercising the Qt-Test negative rule.
     """
-    path = os.path.join(directory, "ac3forge-hearth-test-Darwin.zip")
+    path = os.path.join(directory, "iclforge-hearth-test-Darwin.zip")
     with zipfile.ZipFile(path, "w") as archive:
         for name in gate.REQUIRED_MACOS:
             archive.writestr(name, notices if name == "NOTICES.txt" else "")
@@ -102,7 +102,7 @@ def macos_zip(directory, notices, extra=()):
 
 def linux_tar(directory, notices, omit=()):
     """A tarball with the Linux install layout and this NOTICES.txt, minus `omit`."""
-    path = os.path.join(directory, "ac3forge-hearth-test-Linux-x86_64.tar.gz")
+    path = os.path.join(directory, "iclforge-hearth-test-Linux-x86_64.tar.gz")
     with tarfile.open(path, "w:gz") as archive:
         for name in gate.REQUIRED_LINUX:
             if name in omit:
@@ -193,14 +193,14 @@ class NoticesContentTest(unittest.TestCase):
     def test_linux_tar_needs_debian_copyright(self):
         with tempfile.TemporaryDirectory() as directory:
             code, out = run(
-                linux_tar(directory, LINUX_NOTICES, omit=("share/doc/ac3forge-hearth/copyright",))
+                linux_tar(directory, LINUX_NOTICES, omit=("share/doc/iclforge-hearth/copyright",))
             )
             self.assertEqual(code, 1)
-            self.assertIn("::error::missing share/doc/ac3forge-hearth/copyright", out)
+            self.assertIn("::error::missing share/doc/iclforge-hearth/copyright", out)
 
     def test_windows_zip_must_not_carry_qt_test(self):
         # Currently unreachable from a real build (apps/hearth/ui/
-        # CMakeLists.txt has no ac3hearth_qmltests target for
+        # CMakeLists.txt has no hearth_qmltests target for
         # qmlimportscanner to find a `import QtTest` beneath - see the
         # module docstring), asserted anyway so it is already watching the
         # day one lands. Each payload separately, the same reasoning
@@ -231,10 +231,10 @@ class NoticesContentTest(unittest.TestCase):
         # either of the two Frameworks it depends on - each checked
         # separately, the same reasoning as the Windows version above.
         payloads = (
-            "ac3hearth.app/Contents/Resources/qml/QtTest/qmldir",
-            "ac3hearth.app/Contents/PlugIns/libquicktestplugin.dylib",
-            "ac3hearth.app/Contents/Frameworks/QtTest.framework/QtTest",
-            "ac3hearth.app/Contents/Frameworks/QtQuickTest.framework/QtQuickTest",
+            "hearth.app/Contents/Resources/qml/QtTest/qmldir",
+            "hearth.app/Contents/PlugIns/libquicktestplugin.dylib",
+            "hearth.app/Contents/Frameworks/QtTest.framework/QtTest",
+            "hearth.app/Contents/Frameworks/QtQuickTest.framework/QtQuickTest",
         )
         for payload in payloads:
             with self.subTest(payload=payload), tempfile.TemporaryDirectory() as directory:
@@ -248,7 +248,7 @@ class NoticesContentTest(unittest.TestCase):
             self.assertIn("no Qt Test", out)
 
     def test_dispatch_is_by_bundle_content_not_filename(self):
-        # Windows and macOS packages are both ac3forge-hearth-<version>-
+        # Windows and macOS packages are both iclforge-hearth-<version>-
         # <system>.zip (cmake/Packaging.cmake) - main() tells them apart by
         # a top-level "*.app/" entry, not by name. Proved here by renaming a
         # macOS-shaped archive to something that says nothing about the
@@ -256,7 +256,7 @@ class NoticesContentTest(unittest.TestCase):
         # success message names which rules ran).
         with tempfile.TemporaryDirectory() as directory:
             macos_path = macos_zip(directory, MACOS_NOTICES)
-            renamed = os.path.join(directory, "ac3forge-hearth-test.zip")
+            renamed = os.path.join(directory, "iclforge-hearth-test.zip")
             os.replace(macos_path, renamed)
             code, out = run(renamed)
             self.assertEqual(code, 0, out)
@@ -264,7 +264,7 @@ class NoticesContentTest(unittest.TestCase):
 
     def test_missing_notices_is_reported_by_name(self):
         with tempfile.TemporaryDirectory() as directory:
-            path = os.path.join(directory, "ac3forge-hearth-bare-win64.zip")
+            path = os.path.join(directory, "iclforge-hearth-bare-win64.zip")
             with zipfile.ZipFile(path, "w") as archive:
                 for name in gate.REQUIRED:
                     if name != "NOTICES.txt":
@@ -273,7 +273,7 @@ class NoticesContentTest(unittest.TestCase):
             self.assertEqual(code, 1)
             self.assertIn("missing NOTICES.txt", out)
         with tempfile.TemporaryDirectory() as directory:
-            path = os.path.join(directory, "ac3forge-hearth-bare-Darwin.zip")
+            path = os.path.join(directory, "iclforge-hearth-bare-Darwin.zip")
             with zipfile.ZipFile(path, "w") as archive:
                 for name in gate.REQUIRED_MACOS:
                     if name != "NOTICES.txt":

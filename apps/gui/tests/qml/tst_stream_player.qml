@@ -1,10 +1,10 @@
 import QtQuick
 import QtTest
 
-import Ac3Forge
+import ForgeGui
 
-// StreamPlayerController (GUI stream player) - the GUI twin of `ac3cli monitor`/
-// `ac3cli decode`, opened from the header's "Open stream…" button and from a
+// StreamPlayerController (GUI stream player) - the GUI twin of `forge monitor`/
+// `forge decode`, opened from the header's "Open stream…" button and from a
 // finished run chip's own "More…" menu (see tst_run_history.qml's sibling
 // coverage of the encode side that menu's items reach into). Like
 // tst_object_inspector.qml's own note: the playback path itself (play()/

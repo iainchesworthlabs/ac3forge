@@ -329,7 +329,7 @@ test('text from the device goes into the page as text', async ({ page, stub }) =
     await expect(page.locator('#location')).toHaveText(`http://h/${markup}`);
     await expect(page.locator('#reason')).toHaveText(`Stopped by a ${markup} error (${parsed('failed-decode.json').error}).`);
     await expect(page.locator('img')).toHaveCount(0);
-    await expect(page).toHaveTitle('ac3forge player');
+    await expect(page).toHaveTitle('iclforge player');
 });
 
 // Bodies the firmware sent once it reported how a play serves its layout,

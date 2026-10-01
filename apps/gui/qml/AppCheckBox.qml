@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 
-import Ac3Forge
+import ForgeGui
 
 // A checkbox with an optional note beneath, drawn to the design system
 // (docs/hearth/design/screenshots/components.png, "CHECK BOXES · OFF, ON,

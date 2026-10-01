@@ -27,7 +27,7 @@
 #include "iclforge/sendspin/websocket.hpp"
 #include "store.hpp"
 
-// ac3hearth-testsink: src/sendspin's player half as a program (planning/hearth-reference-player.md,
+// hearth-testsink: src/sendspin's player half as a program (planning/hearth-reference-player.md,
 // The test sink). A Sendspin client that waits for servers: it listens on a WebSocket, advertises
 // _sendspin._tcp, pairs by its pairing PSK and a dynamic or static code, admits servers as the
 // specification ranks them, and decodes each stream it plays to a WAV file with a play-time log:

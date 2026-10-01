@@ -6,7 +6,7 @@
 #include "iclforge/ac3/meta/qc.hpp"
 
 // iclforge::meta::qc.hpp's own surface: the named delivery-gate presets (roadmap
-// C2, refreshed by IO11) and the pure gate-evaluation math ac3cli qc and
+// C2, refreshed by IO11) and the pure gate-evaluation math forge qc and
 // examples/qc_report.cpp both call. The presets' numeric values are copied
 // here as CHECKs against the primary sources cited in qc.hpp's own
 // qc_preset() comment (EBU R 128 s2 + EBU R 128, ATSC A/85:2026-07 Section 6

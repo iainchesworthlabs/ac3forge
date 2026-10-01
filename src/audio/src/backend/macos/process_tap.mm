@@ -145,7 +145,7 @@ CATapDescription* make_description(AudioObjectID process_object, TapMixdown mixd
     // device's tap list and there is no way to ask a created tap for the
     // description it came from.
     description.UUID = [NSUUID UUID];
-    description.name = @"AC3Forge process tap";
+    description.name = @"ICL Forge process tap";
     // The whole reason this platform needs no silent device - see this
     // file's header comment, and process_tap.hpp for what it means when
     // `scope` is the global-exclude one and the covered set is everything
@@ -163,7 +163,7 @@ NSDictionary* make_aggregate_description(NSString* output_uid, NSString* tap_uid
                                          std::uint32_t process_id) {
     return @{
         @kAudioAggregateDeviceNameKey :
-            [NSString stringWithFormat:@"AC3Forge tap (pid %u)", process_id],
+            [NSString stringWithFormat:@"ICL Forge tap (pid %u)", process_id],
         @kAudioAggregateDeviceUIDKey : [[NSUUID UUID] UUIDString],
         // The device that clocks the aggregate, named twice: once as the
         // main sub-device and once as the single entry of the sub-device

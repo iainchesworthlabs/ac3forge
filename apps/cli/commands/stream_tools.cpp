@@ -42,7 +42,7 @@
 #include "ac4_channels.hpp"
 #include "stream_playback.hpp"
 
-namespace ac3cli::commands {
+namespace forge_cli::commands {
 
 namespace plan = iclforge::plan;
 using iclforge::apps::ac4_location;
@@ -1498,7 +1498,7 @@ int run_metadata(std::string_view in_path, std::string_view out_path, const Opti
     if (meta.dialnorm_given) {
         if (meta.p.measure_dialnorm) {
             fmt::println(stderr,
-                         "error: dialnorm=auto needs a measurement - use 'ac3cli normalize', "
+                         "error: dialnorm=auto needs a measurement - use 'forge normalize', "
                          "which decodes the stream to measure it");
             return kExitUsage;
         }
@@ -1506,7 +1506,7 @@ int run_metadata(std::string_view in_path, std::string_view out_path, const Opti
     }
     if (meta.dialnorm2_given) {
         if (meta.p.measure_dialnorm2) {
-            fmt::println(stderr, "error: dialnorm2=auto needs a measurement - use 'ac3cli "
+            fmt::println(stderr, "error: dialnorm2=auto needs a measurement - use 'forge "
                                  "normalize'");
             return kExitUsage;
         }
@@ -1849,4 +1849,4 @@ int run_cat(std::string_view out_path, std::span<const std::string_view> in_path
     return 0;
 }
 
-}  // namespace ac3cli::commands
+}  // namespace forge_cli::commands

@@ -26,7 +26,7 @@
 // deliberately separate types, because a trace kept for a whole file's worth
 // of frames wants none of mirror.hpp's per-bin exponent/bap vectors.
 //
-// `ac3cli probe`'s per-block dump is built on this; see ac3/io/probe.hpp.
+// `forge probe`'s per-block dump is built on this; see ac3/io/probe.hpp.
 
 namespace iclforge {
 

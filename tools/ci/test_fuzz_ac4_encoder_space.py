@@ -1,6 +1,6 @@
 """Unit tests for fuzz_ac4_encoder_space.py, the AC-4 encoder's input-space fuzzer.
 
-ac3cli and ffprobe are never run. What is tested is the harness logic that decides
+forge and ffprobe are never run. What is tested is the harness logic that decides
 whether a defect is reported:
 
 - the CRC and the sync frame walk, which read nothing of the encoder's, catching each
@@ -8,7 +8,7 @@ whether a defect is reported:
 - the trace comparison naming the first record that differs;
 - draw_case purity, the configurations it draws, and the lengths a measurement needs; the
   substreams and presentations it draws, apart from the other draws, and the rate shares
-  at_rate() turns into ac3cli's options; the immersive layouts, apart from the other draws;
+  at_rate() turns into forge's options; the immersive layouts, apart from the other draws;
 - run_case()'s verdicts: a refusal only with the encoder's own message, an out-of-range
   rate or a frame rate 44.1 kHz does not have that encodes is a failure, a stream whose
   frames do not cover the input at its lag is a failure, and a stream whose traces differ
@@ -178,7 +178,7 @@ class DrawCase(unittest.TestCase):
         self.assertTrue(any(c.substreams and 0 in c.substreams for c in several))
         for case in several:
             keys = [o.split("=", 1)[0] for o in case.options]
-            # The measured options take one programme, and ac3cli refuses them with several.
+            # The measured options take one programme, and forge refuses them with several.
             self.assertNotIn("dialnorm=auto", case.options)
             self.assertFalse(any(k == "loudness" for k in keys))
             # Substreams from 2 to the last drawn, and the first presentation plays substream 1.
@@ -324,14 +324,14 @@ class RunCase(unittest.TestCase):
             tempfile.TemporaryDirectory() as tmp,
             mock.patch.object(fa4, "_run", return_value=refusal),
         ):
-            result = fa4.run_case("ac3cli", None, case, tmp)
+            result = fa4.run_case("forge", None, case, tmp)
         self.assertEqual(result.status, "refused")
         encoded = completed(0, stdout="encoded 3 AC-4 frames")
         with (
             tempfile.TemporaryDirectory() as tmp,
             mock.patch.object(fa4, "_run", return_value=encoded),
         ):
-            result = fa4.run_case("ac3cli", None, case, tmp)
+            result = fa4.run_case("forge", None, case, tmp)
         self.assertEqual(result.status, "fail")
 
     def test_a_rate_too_low_for_the_least_frame_refused_if_frames_of_the_cap_encode(self):
@@ -353,7 +353,7 @@ class RunCase(unittest.TestCase):
                 tempfile.TemporaryDirectory() as tmp,
                 mock.patch.object(fa4, "_run", side_effect=fake(accept_higher)),
             ):
-                result = fa4.run_case("ac3cli", None, case, tmp)
+                result = fa4.run_case("forge", None, case, tmp)
             self.assertEqual(result.status, status)
         # A refusal of frames the cap holds is a failure outright, with no second encode.
         case.bitrate = 400
@@ -362,7 +362,7 @@ class RunCase(unittest.TestCase):
             tempfile.TemporaryDirectory() as tmp,
             mock.patch.object(fa4, "_run", return_value=refusal) as run,
         ):
-            result = fa4.run_case("ac3cli", None, case, tmp)
+            result = fa4.run_case("forge", None, case, tmp)
         self.assertEqual((result.status, run.call_count), ("fail", 1))
         self.assertIn("exit 1", result.detail)
 
@@ -383,7 +383,7 @@ class RunCase(unittest.TestCase):
                 tempfile.TemporaryDirectory() as tmp,
                 mock.patch.object(fa4, "_run", side_effect=run),
             ):
-                result = fa4.run_case("ac3cli", None, case, tmp)
+                result = fa4.run_case("forge", None, case, tmp)
             self.assertEqual(result.status, status)
 
     def test_frames_that_do_not_cover_the_input_fail(self):
@@ -396,7 +396,7 @@ class RunCase(unittest.TestCase):
             tempfile.TemporaryDirectory() as tmp,
             mock.patch.object(fa4, "_run", return_value=completed(0, stdout=stdout)),
         ):
-            result = fa4.run_case("ac3cli", None, case, tmp)
+            result = fa4.run_case("forge", None, case, tmp)
         self.assertEqual((result.status, result.stage), ("fail", "encode"))
         self.assertIn("decode to", result.detail)
 
@@ -407,11 +407,11 @@ class RunCase(unittest.TestCase):
                 fa4, "_run", return_value=completed(1, stderr=fa4.REFUSALS["rate out of range"])
             ),
         ):
-            result = fa4.run_case("ac3cli", None, self.case(4), tmp)
+            result = fa4.run_case("forge", None, self.case(4), tmp)
         self.assertEqual(result.status, "refused")
 
     def test_a_case_wrong_on_both_counts_takes_either_refusal(self):
-        # An out-of-range rate at 44.1 kHz with another frame rate: ac3cli names the frame rate
+        # An out-of-range rate at 44.1 kHz with another frame rate: forge names the frame rate
         # first (CI, 2026-09-25, case 5756050987806798014).
         case = self.case(4)
         case.sample_rate = 44100
@@ -421,13 +421,13 @@ class RunCase(unittest.TestCase):
                 tempfile.TemporaryDirectory() as tmp,
                 mock.patch.object(fa4, "_run", return_value=completed(1, stderr=fa4.REFUSALS[why])),
             ):
-                result = fa4.run_case("ac3cli", None, case, tmp)
+                result = fa4.run_case("forge", None, case, tmp)
             self.assertEqual((result.status, result.detail), ("refused", why))
         with (
             tempfile.TemporaryDirectory() as tmp,
             mock.patch.object(fa4, "_run", return_value=completed(134, stderr="abort")),
         ):
-            result = fa4.run_case("ac3cli", None, case, tmp)
+            result = fa4.run_case("forge", None, case, tmp)
         self.assertEqual(result.status, "fail")
         self.assertIn("rate out of range and a frame rate at 44.1 kHz", result.detail)
 
@@ -438,7 +438,7 @@ class RunCase(unittest.TestCase):
                 fa4, "_run", return_value=completed(0, stdout="encoded 3 AC-4 frames")
             ),
         ):
-            result = fa4.run_case("ac3cli", None, self.case(4000), tmp)
+            result = fa4.run_case("forge", None, self.case(4000), tmp)
         self.assertEqual(result.status, "fail")
 
     def test_a_refusal_without_the_message_fails(self):
@@ -446,7 +446,7 @@ class RunCase(unittest.TestCase):
             tempfile.TemporaryDirectory() as tmp,
             mock.patch.object(fa4, "_run", return_value=completed(134, stderr="abort")),
         ):
-            result = fa4.run_case("ac3cli", None, self.case(), tmp)
+            result = fa4.run_case("forge", None, self.case(), tmp)
         self.assertEqual((result.status, result.stage), ("fail", "encode"))
 
     def test_differing_traces_fail(self):
@@ -471,7 +471,7 @@ class RunCase(unittest.TestCase):
             mock.patch.object(fa4, "_run", side_effect=fake),
             mock.patch.object(fa4, "python_trace", return_value=([(0, 0, 0, 1, 0)], [])),
         ):
-            result = fa4.run_case("ac3cli", None, case, tmp)
+            result = fa4.run_case("forge", None, case, tmp)
         self.assertEqual((result.status, result.stage), ("fail", "traces"))
         self.assertIn("the decoder's", result.detail)
 

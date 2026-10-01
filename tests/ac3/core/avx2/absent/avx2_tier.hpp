@@ -16,7 +16,7 @@
 // exactly this configuration (see src/ac3/CMakeLists.txt) - the same
 // directory-selected shape, for the same reason. So the header comes straight
 // from src/internal/avx2, which tests/CMakeLists.txt puts on the include path
-// here, and ac3tests links the stubs it already had.
+// here, and iclforge-tests links the stubs it already had.
 //
 // avx2_probe.cpp is the one gap: it has no `none/` twin, because nothing in
 // the library calls it - it exists only for the test below to execute. Hence

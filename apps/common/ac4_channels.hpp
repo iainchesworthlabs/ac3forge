@@ -10,8 +10,8 @@
 #include "iclforge/ac3/core/tables.hpp"
 #include "iclforge/ac4dec/decoder.hpp"
 
-// AC-4's channels in WAV files, for ac3cli's `decode` and `ac4-encode` and
-// ac3gui's AC-4 pages alike: a WAV file holds them in the WAVEFORMATEXTENSIBLE
+// AC-4's channels in WAV files, for forge's `decode` and `ac4-encode` and
+// forge-gui's AC-4 pages alike: a WAV file holds them in the WAVEFORMATEXTENSIBLE
 // speaker order the E-AC-3 path writes (plan::wav_order: FL FR FC LFE BL BR,
 // then SL SR and the top front pair), with Ls and Rs at SL and SR, Lb and Rb at
 // BL and BR, the top back pair at TBL and TBR, and Lw and Rw, which that order

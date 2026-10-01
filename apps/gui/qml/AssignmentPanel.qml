@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-import Ac3Forge
+import ForgeGui
 
 // The assignment surface: one row per loaded source channel, each with a
 // destination dropdown — a bed position of the current layout, a new object,

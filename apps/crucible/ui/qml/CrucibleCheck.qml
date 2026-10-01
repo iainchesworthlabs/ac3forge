@@ -1,4 +1,4 @@
-import Ac3ForgeCrucible
+import Crucible
 
 // The family's checkbox, which this file used to carry its own copy of. It
 // now lives in apps/gui/qml/AppCheckBox.qml and is staged into every family

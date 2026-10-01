@@ -1,7 +1,7 @@
 // Decode a stream and report what it measures: peak/RMS per channel, and
 // where the soundfield's energy sits on the speaker ring.
 //
-// iclforge::analysis is what ac3cli and ac3gui share so their meters never
+// iclforge::analysis is what forge and forge-gui share so their meters never
 // disagree about a signal - one LevelMeter instance serves both the moving
 // display (levels(), ballistic) and the exact end-of-run report (summary()),
 // fed by the same pass over the samples.

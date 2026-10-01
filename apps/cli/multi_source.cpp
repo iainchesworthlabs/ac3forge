@@ -19,7 +19,7 @@
 #include "iclforge/ac3/io/wav.hpp"
 #include "support.hpp"
 
-namespace ac3cli {
+namespace forge_cli {
 
 namespace plan = iclforge::plan;
 
@@ -175,4 +175,4 @@ void print_routing(const plan::Plan& p, const plan::Routing& routing, std::strin
     }
 }
 
-}  // namespace ac3cli
+}  // namespace forge_cli

@@ -260,7 +260,7 @@ bool eventually(const std::function<bool()>& done) {
 
 }  // namespace
 
-// [aiosendspin-group], not [aiosendspin]: aiosendspin_exit.py's own "ac3tests [aiosendspin]"
+// [aiosendspin-group], not [aiosendspin]: aiosendspin_exit.py's own "iclforge-tests [aiosendspin]"
 // (once per codec) must not also pick this up - it shares ICLFORGE_AIOSENDSPIN_URL/_TOKEN/_OUT's
 // names with test_aiosendspin.cpp, but expects a different scripted player and a different group
 // shape (two members here, one there); the two must never run against the same process.

@@ -1,8 +1,8 @@
-// ac3crucible: the AC3Forge Crucible's window (docs/platforms/windows-demo.md,
+// crucible: the Crucible's window (docs/platforms/windows-demo.md,
 // "UI"). Everything that is not the window lives in ../engine; this file
 // only stands the QML up, applies the language, and offers one debugging
 // aid: `--shot <path.png>` grabs the window after it has settled and quits,
-// the way ac3gui's smoke modes do, so a headless check can see the screen;
+// the way forge-gui's smoke modes do, so a headless check can see the screen;
 // `--page settings` (or output, room, room3d; about, licences or firstrun for
 // that dialog over the room) picks the page it shows first,
 // `--place Name=x,y,z` positions a listed application before the capture, and
@@ -41,45 +41,9 @@
 #include <QUrl>
 
 #include "language_manager.hpp"
+#include "settings_migration.hpp"
 
 namespace {
-
-// The demo stored its settings under iclforge/DesktopAtmos; the product
-// stores them under iclforge/Crucible (Crucible cross-platform promotion, Phase 1). Copy the old
-// tree across the first time the new one is empty, so a machine that ran the
-// demo keeps its signing-key path, endpoint choice and appearance. The old
-// tree is left where it is rather than deleted: nothing here is large enough
-// to be worth removing, and a person who goes back to the demo build should
-// still find their settings.
-//
-// Both use the four-argument constructor for the reason CrucibleController
-// does: the two-argument one always takes the native store whatever
-// QSettings::setDefaultFormat says, which would make this read and write the
-// developer's real registry from a test process. With the format honoured,
-// the QML tests' INI-in-a-temporary-directory isolation holds and this is a
-// no-op there. Runs before anything constructs a controller.
-void migrate_demo_settings() {
-    QSettings current(QSettings::defaultFormat(), QSettings::UserScope,
-                      QStringLiteral("ac3forge"), QStringLiteral("Crucible"));
-    if (!current.allKeys().isEmpty()) {
-        return;
-    }
-    QSettings previous(QSettings::defaultFormat(), QSettings::UserScope,
-                       QStringLiteral("ac3forge"), QStringLiteral("DesktopAtmos"));
-    const auto keys = previous.allKeys();
-    if (keys.isEmpty()) {
-        return;
-    }
-    for (const auto& key : keys) {
-        current.setValue(key, previous.value(key));
-    }
-    // A marker that the copy happened, for the first-run dialog's one
-    // sentence that says so. The dialog's own acknowledgement cannot have
-    // been copied: the demo never wrote one, so a migrated machine sees the
-    // explanation once too.
-    current.setValue(QStringLiteral("migration/fromDesktopAtmos"), true);
-    current.sync();
-}
 
 // Qt's own messages - this file's --shot and --place lines, a QML warning,
 // a font that failed to register - into the diagnostics ring
@@ -140,16 +104,21 @@ int main(int argc, char** argv) {
     QApplication app(argc, argv);
     // The ring exists from here, so its clock starts with the window and
     // every later message lands in it.
-    iclforge::crucible::process_diagnostics().note("ac3crucible started");
+    iclforge::crucible::process_diagnostics().note("crucible started");
     g_previous_handler = qInstallMessageHandler(forward_to_diagnostics);
     QGuiApplication::setApplicationName(QStringLiteral("Crucible"));
-    QGuiApplication::setOrganizationName(QStringLiteral("ac3forge"));
-    migrate_demo_settings();
+    QGuiApplication::setOrganizationName(QStringLiteral("iclforge"));
+    // What a person saved under the old names (organisation ac3forge, application Crucible, and
+    // the desktop demo's DesktopAtmos before it) is copied to the store Crucible has now, once,
+    // before anything constructs a controller (settings_migration.hpp has the rules). The four-
+    // argument QSettings constructor it uses honours QSettings::setDefaultFormat(), which keeps
+    // the QML tests' INI-in-a-temporary-directory isolation.
+    iclforge::settings_migration::migrate_program(iclforge::settings_migration::Program::kCrucible);
     // The window and taskbar icon; the .exe's own icon comes from the
     // resource script CMake generates.
     QIcon app_icon;
-    app_icon.addFile(QStringLiteral(":/icons/ac3forge-32.png"));
-    app_icon.addFile(QStringLiteral(":/icons/ac3forge-256.png"));
+    app_icon.addFile(QStringLiteral(":/icons/iclforge-32.png"));
+    app_icon.addFile(QStringLiteral(":/icons/iclforge-256.png"));
     QGuiApplication::setWindowIcon(app_icon);
     QGuiApplication::setApplicationDisplayName(QStringLiteral("Crucible"));
     // The GUI app's faces (Archivo, and Noto Sans for the scripts it does
@@ -191,34 +160,34 @@ int main(int argc, char** argv) {
         }
     }
     // A capture in one language, with the person's own settings left
-    // alone: AC3GUI_LOCALE is the override LanguageManager already reads
+    // alone: ICLFORGE_GUI_LOCALE is the override LanguageManager already reads
     // ahead of the saved key (apps/gui/language_manager.cpp), so setting it
     // here shows the window in that language without writing language/code
     // to the store the way setLanguage() would. An unsupported code is
     // ignored by the manager and the run falls back to the saved language.
     if (!language.isEmpty()) {
-        qputenv("AC3GUI_LOCALE", language.toUtf8());
+        qputenv("ICLFORGE_GUI_LOCALE", language.toUtf8());
     }
 
     QQmlApplicationEngine engine;
     // The GUI's own language manager, pointed at this app's translation
     // files: system locale by default, a saved override when the user chose
     // one (docs/forge/gui/localisation.md).
-    LanguageManager language_manager(app, engine, QStringLiteral("ac3crucible"));
+    LanguageManager language_manager(app, engine, QStringLiteral("crucible"));
     language_manager.applyInitialLanguage();
     // A singleton instance rather than a context property: QML compiled
     // ahead of time resolves a registered type, where an unqualified
     // context name came back null at first evaluation. Under its own URI,
-    // not the module's: registering a type into Ac3ForgeCrucible by hand marks
+    // not the module's: registering a type into Crucible by hand marks
     // that module as registered and the module's own types (CrucibleController)
     // then never get registered at load.
-    qmlRegisterSingletonInstance("Ac3ForgeCrucibleLanguage", 1, 0, "LanguageManager",
+    qmlRegisterSingletonInstance("CrucibleLanguage", 1, 0, "LanguageManager",
                                  &language_manager);
 
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &app,
                      [] { QCoreApplication::exit(1); }, Qt::QueuedConnection);
     engine.addImageProvider(QStringLiteral("appicon"), new iclforge::crucible::ui::AppIconProvider);
-    engine.loadFromModule("Ac3ForgeCrucible", "Main");
+    engine.loadFromModule("Crucible", "Main");
     if (engine.rootObjects().isEmpty()) {
         return 1;
     }
@@ -279,7 +248,7 @@ int main(int argc, char** argv) {
         QCoreApplication::exit(code);
     };
     QObject::connect(poll, &QTimer::timeout, &app, [&engine, &app, poll, pending, tries, take_shot, shot_path] {
-        auto* controller = engine.singletonInstance<CrucibleController*>("Ac3ForgeCrucible", "CrucibleController");
+        auto* controller = engine.singletonInstance<CrucibleController*>("Crucible", "CrucibleController");
         if (controller != nullptr) {
             for (auto it = pending->begin(); it != pending->end();) {
                 const QString& spec = *it;

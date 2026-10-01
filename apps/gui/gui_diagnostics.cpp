@@ -13,7 +13,7 @@
 #include <utility>
 #include <vector>
 
-namespace ac3gui {
+namespace forge_gui {
 
 namespace {
 
@@ -176,7 +176,7 @@ std::string render_report(const ReportFacts& facts, const MessageLog& log, const
         out += '\n';
     };
 
-    line("AC3Forge ac3gui diagnostics");
+    line("ICL Forge forge-gui diagnostics");
     row("written", facts.written_at);
     row("log started", facts.log_started_at);
 
@@ -191,7 +191,7 @@ std::string render_report(const ReportFacts& facts, const MessageLog& log, const
     }
 
     // Whether the variables exist, never what they hold. There is no third
-    // row here for a key chosen in the window, because ac3gui has no such
+    // row here for a key chosen in the window, because forge-gui has no such
     // control: object signing reaches it through the library's own resolver
     // (src/signing/signing_key.hpp), which reads these two.
     line("");
@@ -275,4 +275,4 @@ std::string render_report(const ReportFacts& facts, const MessageLog& log, const
     return scrub(std::move(out), secrets);
 }
 
-}  // namespace ac3gui
+}  // namespace forge_gui

@@ -24,7 +24,7 @@
 # Every install() rule below carries COMPONENT library: without one, CPack
 # files it under its own "Unspecified" component, inconsistent once
 # component-based packaging is on (see cmake/Packaging.cmake) - same reason
-# apps/cli/CMakeLists.txt's ac3cli install() carries COMPONENT runtime.
+# apps/cli/CMakeLists.txt's forge install() carries COMPONENT runtime.
 #
 # The LIBRARY DESTINATION rules below additionally carry NAMELINK_COMPONENT
 # library, splitting them from COMPONENT libruntime. On Unix, a versioned
@@ -34,7 +34,7 @@
 # own mechanism for filing those two files under different CPack components:
 # COMPONENT names the real .so, NAMELINK_COMPONENT names the symlink. Confirmed
 # empirically (see cmake/Packaging.cmake's DEB/RPM comment) that today's
-# monolithic .deb bundles ac3cli together with the full SDK - headers, static
+# monolithic .deb bundles forge together with the full SDK - headers, static
 # archives, CMake package config, .so and symlink alike - because CPack's DEB/
 # RPM generators ignore CPACK_COMPONENTS_ALL entirely unless *_COMPONENT_INSTALL
 # is explicitly turned on for them. This split is what makes a real

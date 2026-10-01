@@ -1,6 +1,6 @@
 #pragma once
 
-// Makes a Windows console render what ac3cli actually prints.
+// Makes a Windows console render what forge actually prints.
 //
 // The CLI's own text is UTF-8 and always has been. Every source file here is
 // UTF-8, the root CMakeLists.txt gives MSVC /utf-8 (so both its source and
@@ -52,7 +52,7 @@
 // outright skips that, which is the same bargain every console tool that
 // touches the code page makes.
 //
-// The second entry in ac3cli's platform seam, alongside stdio_binary.hpp,
+// The second entry in forge's platform seam, alongside stdio_binary.hpp,
 // and selected the same way: see this directory's CMakeLists.txt entry for
 // the WIN32/else split, and tools/checks/check_platform_macros.ps1 for why an
 // #ifdef in main.cpp is not an option.

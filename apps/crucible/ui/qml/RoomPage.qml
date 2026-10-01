@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 
-import Ac3ForgeCrucible
+import Crucible
 
 // The Room: the application rail, the plan and elevation views, the bed
 // tray, and the output summary (docs/platforms/windows-demo.md, "UI").

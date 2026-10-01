@@ -4,8 +4,8 @@ trailing-baseline slowdown - as a ::warning:: at both tiers, never a job
 failure.
 
 This is the third, finest-grained member of the performance suite
-(docs/performance-trend.md): ac3perf gates absolute real-time throughput,
-ac3bench trends whole-frame ms/frame, and ac3kernelbench
+(docs/performance-trend.md): iclforge-perf gates absolute real-time throughput,
+iclforge-bench trends whole-frame ms/frame, and iclforge-kernelbench
 (tests/performance/kernel_bench.cpp) trends each hot kernel's ns/call in
 isolation, so a whole-frame drift can be attributed to the kernel that
 caused it without re-running a profiler.
@@ -14,7 +14,7 @@ Deliberately NON-GATING, unlike append_performance_history.py's
 hard-regression tier: a micro-kernel's ns/call on a shared CI runner is far
 noisier than a 200-frame whole-frame average (some kernels here run in tens
 of nanoseconds, where one scheduler hiccup moves the number a lot), and the
-whole-frame series plus ac3perf already gate anything a user would feel.
+whole-frame series plus iclforge-perf already gate anything a user would feel.
 Kernel regressions surface on docs/performance-trend.md's per-kernel tables
 and as workflow annotations; they do not fail the run at any threshold.
 
@@ -54,7 +54,7 @@ def load_leg_results(results_dir: Path):
     """results_dir holds one subdirectory per leg (named 'kernels-<leg>'),
     each holding kernel_bench.cpp's --json-out file. A separate tree from
     append_performance_history.py's --results-dir on purpose: that script
-    globs every *.json under its legs and requires ac3bench's schema, so the
+    globs every *.json under its legs and requires iclforge-bench's schema, so the
     two producers' outputs must never share a directory."""
     for leg_dir in sorted(results_dir.iterdir()):
         if not leg_dir.is_dir():
@@ -127,7 +127,7 @@ def main() -> int:
                   f"{slowdown * 100:.0f}% slower than the trailing "
                   f"{REGRESSION_TRAILING_WINDOW}-run mean ({baseline:.1f} ns/call) on "
                   f"{args.branch}. Recorded; the kernel trend never fails the job - "
-                  "ac3perf and the whole-frame series are the gates.")
+                  "iclforge-perf and the whole-frame series are the gates.")
         elif slowdown is not None and slowdown >= REGRESSION_SLOWDOWN_FRACTION:
             print(f"::warning title=Kernel trend regression::{rec['leg']}/"
                   f"{rec['kernel']}: {rec['ns_per_call']:.1f} ns/call is "

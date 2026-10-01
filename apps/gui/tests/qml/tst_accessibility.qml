@@ -1,7 +1,7 @@
 import QtQuick
 import QtTest
 
-import Ac3Forge
+import ForgeGui
 
 // GUI localisation's accessibility half. The discipline this suite enforces is
 // the QC preset regression's own lesson (tst_qc_panel.qml's

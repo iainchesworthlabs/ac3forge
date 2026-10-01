@@ -1,7 +1,7 @@
 import QtQuick
 import QtTest
 
-import Ac3Forge
+import ForgeGui
 
 // The whole file workflow, driven the way a person drives it: the first-run
 // card or the rail's own button opens the WAV picker, the Encode button opens
@@ -141,7 +141,7 @@ TestCase {
     // implementation and clears selectedFile before onAccepted runs.
     // Emitting accepted() runs exactly the handler a real pick runs, with
     // the file set; close() then dismisses the picker (it emits rejected(),
-    // which no ac3gui picker handles).
+    // which no forge-gui picker handles).
     function pickFile(root, dialogName, url) {
         const dialog = findByName(root, dialogName);
         tryCompare(dialog, "visible", true, 5000);

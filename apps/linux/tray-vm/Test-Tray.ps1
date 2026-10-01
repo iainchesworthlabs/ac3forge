@@ -1,4 +1,4 @@
-# The measurement. Builds ac3crucible in the guest and launches it in the
+# The measurement. Builds crucible in the guest and launches it in the
 # guest's own desktop session, counting how many launches survived - which is
 # the only measurement that means anything for a fault that appears on nine
 # or ten launches out of ten.

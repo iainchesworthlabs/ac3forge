@@ -2,7 +2,7 @@
 
 #include "platform_services.hpp"
 
-// ac3tests compiles the application's engine core on every platform
+// iclforge-tests compiles the application's engine core on every platform
 // (tests/CMakeLists.txt), and that core falls back to the platform's own
 // services when a test hands it none - a path the tests never take, since
 // every one of them passes a fake. These definitions satisfy the linker

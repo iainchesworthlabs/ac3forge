@@ -10,10 +10,10 @@
 #include "iclforge/signing/emdf_atmos_signer.hpp"
 #include "iclforge/signing/signing_key.hpp"
 
-namespace ac3shield {
+namespace shield {
 namespace {
 
-constexpr char kLogTag[] = "ac3forge.shield.signing";
+constexpr char kLogTag[] = "iclforge.shield.signing";
 
 // The bundled key asset. Its contents are base64 or raw key bytes - CI writes
 // the base64 ATMOS_SIGNING_KEY secret verbatim into it (_build.yml) and a local
@@ -75,4 +75,4 @@ bool maybe_sign_atmos_unit(std::vector<std::byte>& unit) {
     return iclforge::signing::sign_atmos_frame(unit, key_slot());
 }
 
-}  // namespace ac3shield
+}  // namespace shield

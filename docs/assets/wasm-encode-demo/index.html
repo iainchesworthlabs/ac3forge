@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ac3forge - WASM encode demo</title>
+<title>ICL Forge - WASM encode demo</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <link rel="icon" type="image/png" href="favicon-32.png">
 <style>
@@ -83,7 +83,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>ac3forge - WASM encode demo</h1>
+  <h1>ICL Forge - WASM encode demo</h1>
   <p class="lede">
     A real AC-3/E-AC-3 encoder, compiled to WebAssembly and running entirely in this tab: no
     server-side encode, no upload. Drop a <code>.wav</code> file - mono, stereo, 5.1, or the wide
@@ -147,7 +147,7 @@
     <p class="hint">
       Measured with <code>ac3::meta::LoudnessMeter</code> (ITU-R BS.1770-4; the BS.1770-5
       extended channel set for 7.1/5.1.4/7.1.4) against the same five presets
-      <code>ac3cli qc</code> checks - see each row's source document. Integrated loudness is a
+      <code>forge qc</code> checks - see each row's source document. Integrated loudness is a
       gated, whole-programme measure, so this verdict is only available once the whole file has
       been processed - and the same measurement now sets the stream's <code>dialnorm</code>
       (BSI §5.4.2.8) instead of shipping the unmeasured default.
@@ -155,7 +155,7 @@
   </div>
 
   <footer>
-    Part of <a href="https://github.com/iainchesworthlabs/ac3forge">ac3forge</a>, in-browser encoding.
+    Part of <a href="https://github.com/iainchesworthlabs/ac3forge">ICL Forge</a>, in-browser encoding.
     Source: <code>apps/wasm/encode/</code>. Sibling to the
     <a href="https://iainchesworthlabs.github.io/ac3forge/wasm-demo/">decode demo</a> (WASM browser demo).
     Licensed under <a href="https://github.com/iainchesworthlabs/ac3forge/blob/main/LICENSE">GPLv3</a>.
