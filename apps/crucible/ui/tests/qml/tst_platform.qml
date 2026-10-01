@@ -247,7 +247,7 @@ TestCase {
         // engine matches by. It reaches the window as the default of the
         // nullSinkName setting, which is why this case does not write that
         // setting first: the first Linux screenshot labelled every station
-        // "Crucible Silent Output" on a machine that has never had one, because the
+        // with the Windows device's name on a machine that has never had one, because the
         // name lived in the window as a default rather than in the platform
         // that owns it.
         if (isLinux) {
