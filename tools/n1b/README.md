@@ -348,7 +348,9 @@ names, since no code reads them and no installed device is matched by them.
   and at start-up, the old application store (read without Qt's fallback to the organisation's keys) and the files under the old
   `QStandardPaths` directories (leaving Qt's own cache) to the new ones, and records it in a key of the new store; it never writes the
   old store or the old files. Crucible's older migration from the desktop demo's store is the same helper's second former store.
-  `iclforge-settings-tests` (19 cases, in ctest) runs it over INI files in a temporary directory.
+  `iclforge-settings-tests` (19 cases, in ctest) runs it over INI files in a temporary directory; a probe against the Windows registry
+  (identities that exist only there, removed after) read and wrote every value type, and showed that Qt creates the empty registry key
+  of any store it reads, so a machine with no former store gets the old names' keys, empty.
 - The Android JNI names are the package written into about forty C++ function names, and a disagreement is an `UnsatisfiedLinkError`
   on a device, in a job CI reaches late. `tools/checks/check_android_jni.py` (17 tests, a step of `_static.yml`) checks that the Gradle
   namespace and `applicationId` are one name, that every Kotlin source declares it and sits in its directory, that every

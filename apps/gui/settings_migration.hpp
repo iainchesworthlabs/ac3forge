@@ -19,7 +19,10 @@
 //   - a key of the new store records that it happened, which is also what makes the second start
 //     find the new store already in use;
 //   - the old store and the old files are never written, renamed or removed: a person who goes
-//     back to a release that still has the old names finds everything where they left it.
+//     back to a release that still has the old names finds everything where they left it. (Qt on
+//     Windows creates the empty registry key of every store it reads, so a machine that never had
+//     a former store gets that key, empty, under the old names; no value is written in it, and
+//     the first start after the new store holds keys does not read a former store at all.)
 //
 // This is data preservation and not a compatibility shim: the old names are not accepted anywhere,
 // the program reads only the new store, and nothing is copied after the first start. The old
