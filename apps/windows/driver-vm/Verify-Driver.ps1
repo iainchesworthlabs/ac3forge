@@ -34,6 +34,12 @@ param(
     # kernel). A KASAN proof needs this: special pool catches an overrun on
     # its guard page before the sanitizer sees it.
     [switch]$NoVerifier,
+    # Keep the guest as it is instead of reverting it first (the exercise
+    # still arms the verifiers and restarts the guest). A guest reverted to
+    # the snapshot installs the updates it had downloaded then, over two
+    # restarts a few minutes apart; Wait-GuestSettled waits those out, and a
+    # guest that has already been through them needs no second wait.
+    [switch]$NoRevert,
     [switch]$ReportOnly
 )
 $ErrorActionPreference = 'Stop'
@@ -77,6 +83,29 @@ function Invoke-Guest([string]$script, [string]$tag) {
 }
 $GuestStepTimeoutMs = 240000
 
+function Wait-GuestSettled([int]$seconds = 1500) {
+    # Tools reports running while Windows is still at the logon screen, and a
+    # guest reverted to the snapshot goes on to install the updates it had
+    # downloaded then ("Updates are underway"): two restarts, minutes apart.
+    # A step that lands inside one is lost without an error (the first run of
+    # 2026-10-01 installed nothing and then exercised a guest with no driver).
+    # Settled is the desktop up, no servicing process, and the same boot time
+    # on two reads a minute apart.
+    $deadline = (Get-Date).AddSeconds($seconds)
+    $last = ''
+    while ((Get-Date) -lt $deadline) {
+        $procs = & $vmrun @guest listProcessesInGuest $vmx 2>$null | Out-String
+        $boot = ''
+        if ($procs -match 'Explorer\.EXE' -and $procs -notmatch 'TiWorker\.exe|TrustedInstaller\.exe') {
+            $boot = @(Invoke-Guest '(Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToString("o")' 'boot')[0]
+        }
+        if ($boot -and $boot -eq $last) { return }
+        $last = $boot
+        Start-Sleep -Seconds 60
+    }
+    Write-Host "  (the guest did not settle in $seconds s; going on)"
+}
+
 function Restart-Guest {
     # A guest-initiated restart, then Tools again. Driver Verifier and the
     # KASAN kernel switch both apply at boot.
@@ -84,12 +113,15 @@ function Restart-Guest {
     Start-Sleep -Seconds 20
     Wait-Tools 600
     Start-Sleep -Seconds 10
+    Wait-GuestSettled
 }
 
 if (-not $ReportOnly) {
-    Write-Host 'reverting to "clean-install"'
-    & $vmrun -T ws revertToSnapshot $vmx 'clean-install'
-    & $vmrun -T ws start $vmx nogui
+    if (-not $NoRevert) {
+        Write-Host 'reverting to "clean-install"'
+        & $vmrun -T ws revertToSnapshot $vmx 'clean-install'
+        & $vmrun -T ws start $vmx nogui
+    }
     Wait-Tools
 
     # The package: the normal one or the KASAN-instrumented one, found by its
@@ -150,10 +182,23 @@ Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\K
     Restart-Guest
 
     Write-Host 'installing the package under the verifiers'
-    Invoke-Guest @'
+    # Up to three tries: a step the guest restarted under comes back with no
+    # output at all, and exercising a guest with no driver in it proves nothing.
+    # (A device left by an earlier run, as under -NoRevert, answers "device
+    # already present" and counts.)
+    $present = 'created ROOT|device already present'
+    for ($attempt = 1; $attempt -le 3; ++$attempt) {
+        $installed = Invoke-Guest @'
 "verifier active: " + ((verifier /query | Select-String -Pattern 'IclForgeNullSink' -SimpleMatch) -join ' ')
 & C:\Users\atmos\install.ps1 -PackageDir C:\Users\atmos\package
-'@ 'install' | ForEach-Object { "  $_" }
+'@ 'install'
+        $installed | ForEach-Object { "  $_" }
+        if ($installed -match $present) { break }
+        Write-Host "  (no device was created, attempt $attempt of 3: the guest may have restarted under the step)"
+        Wait-Tools 600
+        Wait-GuestSettled
+    }
+    if (-not ($installed -match $present)) { throw 'the install step never created the device; not exercising a guest with no driver in it' }
     Start-Sleep -Seconds 10
     Wait-Tools
 

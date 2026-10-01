@@ -28,7 +28,7 @@ The driver took these names on 2026-10-01 (change N1D of the re-layout), from `A
 and "Desktop Atmos", which used a trademark of Dolby's to name a system-wide device. It had never
 been signed and had been installed nowhere but the test guest, so no installed copy was orphaned
 and no attestation package holds the old names. Changing a name again is one run of
-`tools/n1b/n1d_driver_names.py` (its `NAMES` table) over a tree that does not yet use the new
+`tools/n1b/n1d_driver_names.py` (its tables of names) over a tree that does not yet use the new
 one; the endpoint's name is also one constant in Crucible, `kWindowsSilentDeviceName` in
 `apps/crucible/engine/virtual_device.hpp`.
 
@@ -209,9 +209,9 @@ KASAN-instrumented package on the guest's KASAN-enabled kernel, which catches ou
 and use-after-free in pool the other checks miss. `-NoVerifier` leaves Driver Verifier off
 and keeps the WDF verifier and, with `-Kasan`, the KASAN kernel, which a KASAN proof needs
 because special pool catches an overrun on its guard page before the sanitizer sees it;
-`-NoExercise` installs under the verifiers and reports without the exercise; `-ReportOnly`
-just reports; `-VmDir`, `-Name` and `-Workstation` name the guest and the Workstation
-install. Driver Verifier bugchecks on a violation, which the report reads back from the guest
+`-NoExercise` installs under the verifiers and reports without the exercise; `-NoRevert` keeps
+the guest as it is instead of reverting it first; `-ReportOnly` just reports; `-VmDir`, `-Name`
+and `-Workstation` name the guest and the Workstation install. Driver Verifier bugchecks on a violation, which the report reads back from the guest
 rather than taking the workstation down.
 
 Re-run `..\driver-vm\Test-Driver.ps1` after any change here before trusting it, static-analysis
