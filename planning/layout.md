@@ -1,14 +1,20 @@
 # The layout of `src/` (N1B): a study
 
-!!! note "Status as of 2026-09-30: a proposal, merged as #1122, which moved no source file; the decisions await the user"
+!!! note "Status as of 2026-10-01: carried out as L2, in the stages below, except S6 and the owner's renames"
     Asked for by the user on 2026-09-29 ("it's kind of weird ... the old stuff is over here in forge and
     the new AC4 stuff's over here which is two folders higher, not as a sibling"). This page and its
     appendix, [layout-inventory.md](layout-inventory.md), read the tree as it stood on `main` at
     `4ca84d66d` and propose a layout that puts the codecs side by side over a base that knows none of
-    them. The user reads it, picks a layout and answers [the decisions](#i-decisions), which they have
-    not yet done; a later phase runs the moves with the scripts written for this study. `main` has
-    moved since: every count here is of `4ca84d66d`, and [what changed
-    since](#what-changed-on-main-since-the-study) lists what the later commits touch.
+    them. The user took its recommendation on each of [the decisions](#i-decisions) on 2026-09-30, and
+    the stages ran as one freeze, 2026-09-30 to 2026-10-01: S0 and S1 (#1153 to #1155, #1158, #1159),
+    S2 (#1160), S3 (#1161), S4 (#1162), N1A (#1164) and S5 (the pages, the addresses and the build
+    and tool text). Left: S6, and the owner's renames of the repository, the tap and the SonarCloud
+    project key before the first release under the new names ([N1](ac4.md#n1-the-names)).
+    The text below is the study as it was written, with the names of its time (`ac3::forge`,
+    `ac3cli`) and the counts of `4ca84d66d`; [what the runs
+    found](#what-the-runs-found-that-the-plan-did-not) gives the counts that differed and the hazards
+    it did not name, and [what changed since](#what-changed-on-main-since-the-study) lists what the
+    later commits touched.
 
     N1 is two tasks now. **N1A** names the programs and what they register with the system; **N1B**,
     this page, names and lays out the libraries. Decisions already taken: the family is "ICL Forge"
@@ -656,3 +662,56 @@ them. Three statements are affected:
   [the migration plan](#f-the-migration-plan) merged (#1123, #1118, #1119, #1117, #1113, #1112 and
   #1109). Of the branches the study measured, `feature/truehd-atmos-support` is the one still
   unmerged: 23 commits ahead of `main` and 1,280 behind it on 2026-09-30.
+
+## What the runs found that the plan did not
+
+The stages ran on 2026-09-30 and 2026-10-01 as #1160 (S2), #1161 (S3), #1162 (S4), #1164 (N1A) and the S5
+pull request; S0 and S1 were #1153 to #1155, #1158 and #1159. Each pull request's description holds its
+proof and its own list of what differed from this page. The counts changed:
+
+| | the study | the run |
+|---|---:|---:|
+| S2, files moved | 396 | 404 (300 under `src/`, 104 under `tests/`) |
+| S2, files whose includes changed | 877 C and C++ | 899 (891 C and C++, 8 other text) |
+| S3, files of the namespace pass | 1,190 | 1,208 |
+| S3, lines pushed past 100 columns | 657 in 190 files | 1,365 in 294 files |
+| S4, package files moved | 201 | 211 |
+| N1A, files that carry a program name | 603 | 671, and 3 pages |
+| S5, documents that carry a name | 128 | 256 files by the text phase, 121 by the address phase, 20 by the words phase, and a hand-written commit |
+
+The reflow is about twice the count because the study counted `ac3::` alone: `ac4::`, `mp4::` and the
+others gain ten columns where `ac3::` gains five. The ten package files S4 moved beyond the 201 are the
+files named for the wire extension, the six committed WebAssembly fallbacks of the docs site and
+`iclforgeConfig.cmake.in`.
+
+Hazards the study did not name:
+
+- **libadm's own `adm` namespace.** Once `ac3adm` is `iclforge::adm`, an unqualified `adm::Time` inside
+  `iclforge::adm::detail` names the project's namespace (194 uses; MSVC C2039 on the first build). The
+  namespace pass writes every unqualified `adm::` as `::adm::`, and a stage builds with every option on,
+  since a tree without `ICLFORGE_BUILD_ADM` does not show it.
+- **Two namespaces that would hide the root.** `iclforge::sendspin::ac3forge` would have become
+  `iclforge::sendspin::iclforge`, and was renamed `player` first. The ESPHome component's own namespace
+  `esphome::iclforge` hides the root the same way, and its four references are written `::iclforge::`.
+- **What a third-party patch says.** `src/adm/patch_libbw64.cmake` recognises a patched libbw64 by a
+  comment that named the old brand, and a warm build tree that had configured ADM stops at configure
+  until its `libbw64-src` and the FetchContent stamps are deleted.
+- **A warm build tree ignores the renamed options.** `AC3FORGE_BUILD_ADM=ON` is not read, and
+  `ICLFORGE_BUILD_ADM` takes its default, OFF: a tree built 1,130 steps where the full one has 1,422
+  until it was configured again.
+- **Generators, catalogues and lock files.** Nine generators write a namespace and belonged to S3, not
+  S5; Qt translation contexts and the mangled names in the ABI allowlists carry the namespace;
+  `cargo build --locked` refuses a `Cargo.lock` whose renamed crates sort differently.
+- **Emptied directories.** `git mv` leaves the emptied directories on disk, so `check_doc_paths.py`
+  passes on a worktree and fails on a fresh checkout until they are removed.
+- **A cold compiler cache.** The first run of a stage that rewrites most sources outlasts a job's limit:
+  `linux-llvm` after S2 (25.8% of its objects found, against 98.2% on `main`) and `macos-llvm-x64` after
+  S4. Both legs have a 120-minute limit now.
+- **A source tarball changes with the repository's name.** GitHub names the top directory of a tag's
+  tarball after the repository, so renaming the repository changes the digest the port, the formula and
+  the Conan recipe pin for a tag made before it ([Releasing](../docs/releasing.md#post-release)).
+- **A page script that names the repository by a literal** breaks between the deploy of the site (every
+  push to `main`) and the rename. The nine scripts that read the quality history take the repository
+  from the address they are served under.
+- **A code span over two lines** was cut in two by the text phase, which reads a line at a time; two
+  such spans were put right by hand.

@@ -1,5 +1,11 @@
 # Windows (Desktop Atmos Demo)
 
+!!! info "Names"
+    The names on this page are those of the demo's own time (`ac3desk`, `ac3windemo`, `ac3forge`, the
+    `AC3FORGE_` variables and the `ac3::` namespaces), and the note below says how the demo became
+    Crucible. The family was renamed ICL Forge after that, and Crucible's program is `crucible`:
+    [Renamed](../renamed.md) puts each old name beside its new one.
+
 !!! info "Renamed: this application is now AC3Forge Crucible"
     This page is the design and phase record of the Windows demo, kept under the names it was
     built with (`ac3desk`, `ac3::windemo`, `apps/windows/`). The application was promoted to a

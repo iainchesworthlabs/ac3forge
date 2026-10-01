@@ -10,6 +10,11 @@ do. Where this file disagrees with those pages, they are current and this file i
 
 Milestone numbering is as it was used during development. Milestone 4 was folded into 5.
 
+!!! info "Names"
+    The family was called AC3Forge when these steps were done, and this record keeps the names of the
+    time: `ac3cli`, `ac3gui`, the `ac3::` namespaces, the `AC3FORGE_` variables and `ac3forge` itself.
+    [Renamed](renamed.md) puts each beside its new name.
+
 ## Milestones 0–2 — a valid syncframe
 
 The encoder emits AC-3 syncframes carrying 2/0 digital silence at any legal bit rate and

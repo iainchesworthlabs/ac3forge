@@ -4,6 +4,12 @@
 by phase — for using the application today, see [What it is](../index.md) and
 [Install and first run](../install.md) instead.
 
+!!! info "Names"
+    The record keeps the names of the time it describes: AC3Forge Crucible, `ac3crucible`,
+    `ac3forge`, the `AC3FORGE_` variables and the `ac3::` namespaces. The application is Crucible,
+    `crucible`, in the family ICL Forge; [Renamed](../../renamed.md) puts each old name beside its
+    new one.
+
 !!! success "Where this stands: built and run on Windows and Linux; written but not run on macOS"
     Written 2026-09-04 as a plan, and kept as the record of the work. Crucible exists, runs on
     Windows and Linux, and reached a real receiver over PipeWire on 2026-09-05. What is open is
