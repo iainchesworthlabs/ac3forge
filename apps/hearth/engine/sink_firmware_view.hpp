@@ -59,7 +59,7 @@ struct FirmwarePanel {
     std::string coredump_url{};  // its last crash's core dump, when it has one
 };
 
-// `app_version` is this app's own git describe (iclforge::git_describe), empty
+// `app_version` is this app's own git describe (iclforge::ac3::git_describe), empty
 // when it was built without one.
 [[nodiscard]] FirmwarePanel to_firmware_panel(const SinkFirmware::Snapshot& snapshot, std::string_view app_version);
 

@@ -43,14 +43,14 @@ namespace forge_cli::commands {
 
 namespace {
 
-// A container track carries one programme. iclforge::io::scan hands back the FIRST
+// A container track carries one programme. iclforge::ac3::io::scan hands back the FIRST
 // programme's access units for exactly that reason - two independent
 // substreams (§E2.3.1.2) are alternatives rather than layers, and splicing
 // their units into one track is not something a player can undo - so a stream
 // carrying more than one loses the rest here. Said out loud rather than left
 // for someone to notice a missing commentary later; carrying every programme,
 // a track each, is container readers (mkv/mp4/ts)/IO6.
-void warn_if_programmes_dropped(const iclforge::io::ScannedStream& scanned) {
+void warn_if_programmes_dropped(const iclforge::ac3::io::ScannedStream& scanned) {
     if (scanned.programmes.size() <= 1) {
         return;
     }
@@ -63,17 +63,18 @@ void warn_if_programmes_dropped(const iclforge::io::ScannedStream& scanned) {
 // Every container writer here holds ONE samples_per_frame for the whole
 // track (iclforge::mp4::AudioTrack, iclforge::mpegts::AudioTrack, iclforge::matroska::AudioTrack),
 // so a stream whose access units differ in length cannot be described to any of them. That was
-// invisible while this passed iclforge::kSamplesPerFrame outright: an E-AC-3 stream coding fewer
-// than six blocks per syncframe (numblkscod 0/1/2, §E2.3.1.4 - legal, and nothing this project's
-// own encoders emit) got a track claiming 1536 samples a frame when its units really carry 256, 512
-// or 768, and every timestamp downstream was wrong by the ratio.
+// invisible while this passed iclforge::ac3::kSamplesPerFrame outright: an E-AC-3 stream coding
+// fewer than six blocks per syncframe (numblkscod 0/1/2, §E2.3.1.4 - legal, and nothing this
+// project's own encoders emit) got a track claiming 1536 samples a frame when its units really
+// carry 256, 512 or 768, and every timestamp downstream was wrong by the ratio.
 //
-// iclforge::io::uniform_access_unit_samples answers the question these writers
+// iclforge::ac3::io::uniform_access_unit_samples answers the question these writers
 // can actually act on. Nothing means the units genuinely differ from each
 // other, which no fixed-duration track models at all - refused with a real
 // reason rather than muxed to a silently wrong timeline.
-std::optional<std::uint32_t> track_samples_per_frame(const iclforge::io::ScannedStream& scanned) {
-    const auto uniform = iclforge::io::uniform_access_unit_samples(scanned);
+std::optional<std::uint32_t> track_samples_per_frame(
+    const iclforge::ac3::io::ScannedStream& scanned) {
+    const auto uniform = iclforge::ac3::io::uniform_access_unit_samples(scanned);
     if (!uniform.has_value()) {
         fmt::println(stderr,
                      "error: this stream's access units are not all the same length, which no "
@@ -105,13 +106,13 @@ bool write_text_to_path(const std::filesystem::path& path, std::string_view text
 // §E2.3.1.2's legacy-core delivery - an AC-3 bed with Annex E dependent
 // substreams extending it - has no codec-config box defined for it in any of
 // these containers: 'dac3' cannot mention the dependents and 'dec3' would
-// have to call the AC-3 core Annex E syntax (iclforge::io::build_codec_config_box
+// have to call the AC-3 core Annex E syntax (iclforge::ac3::io::build_codec_config_box
 // declines it for exactly that reason, returning an empty payload). Refused
 // here, where the message can name the file and point somewhere useful,
 // rather than written into a file whose header contradicts its own mdat.
-[[nodiscard]] bool reject_legacy_core(const iclforge::io::ScannedStream& scanned,
+[[nodiscard]] bool reject_legacy_core(const iclforge::ac3::io::ScannedStream& scanned,
                                       std::string_view in_path, std::string_view container) {
-    if (scanned.kind != iclforge::io::StreamKind::kAc3CoreEac3Extension) {
+    if (scanned.kind != iclforge::ac3::io::StreamKind::kAc3CoreEac3Extension) {
         return false;
     }
     fmt::println(stderr,
@@ -124,7 +125,7 @@ bool write_text_to_path(const std::filesystem::path& path, std::string_view text
 }  // namespace
 
 // AC-4 input for the mp4/ts commands (AC-4 bitstream inspector's carriage slice). The
-// iclforge::io::scan above rejects a TS 103 190 stream outright (different sync
+// iclforge::ac3::io::scan above rejects a TS 103 190 stream outright (different sync
 // word), so the commands that can carry AC-4 retry with iclforge::ac4::scan and take
 // this path instead. Two framings come out of one scan because the two
 // containers disagree about what a "sample" is: an ISOBMFF 'ac-4' sample is
@@ -220,7 +221,7 @@ int run_mkv(std::string_view in_path, std::string_view out_path) {
     // input here, not just a raw .ac3/.ec3 - which is what makes this
     // container-to-container remux (`forge mkv broken.mp4 fixed.mkv`) rather
     // than only ever an encode target. Nothing below has to know the
-    // difference: everything this container declares comes from iclforge::io::
+    // difference: everything this container declares comes from iclforge::ac3::io::
     // scan(raw) a few lines down, never from whatever the SOURCE container
     // declared - see run_mp4's own comment for the sharpest case of that,
     // the dec3 box.
@@ -246,16 +247,16 @@ int run_mkv(std::string_view in_path, std::string_view out_path) {
                      in_path);
         return kExitUsage;
     }
-    const auto scanned = iclforge::io::scan(raw);
+    const auto scanned = iclforge::ac3::io::scan(raw);
     if (!scanned.has_value()) {
-        fmt::println(stderr, "error: {}", iclforge::io::describe(scanned.error()));
+        fmt::println(stderr, "error: {}", iclforge::ac3::io::describe(scanned.error()));
         return kExitInput;
     }
     warn_if_programmes_dropped(*scanned);
     if (reject_legacy_core(*scanned, in_path, "Matroska")) {
         return kExitInput;
     }
-    const bool eac3 = scanned->kind == iclforge::io::StreamKind::kEac3;
+    const bool eac3 = scanned->kind == iclforge::ac3::io::StreamKind::kEac3;
 
     // scan()'s access units pass to the muxer as the views they already are
     // - the whole-stream copy that satisfied the old parameter type is gone.
@@ -269,7 +270,7 @@ int run_mkv(std::string_view in_path, std::string_view out_path) {
     const iclforge::matroska::AudioTrack track{
         .codec_id =
             std::string{eac3 ? iclforge::matroska::kCodecEac3 : iclforge::matroska::kCodecAc3},
-        .sample_rate = iclforge::sample_rate_hz(scanned->sample_rate),
+        .sample_rate = iclforge::ac3::sample_rate_hz(scanned->sample_rate),
         .channels = scanned->channels,
         .samples_per_frame = *samples_per_frame};
     const auto file = iclforge::matroska::mux(track, units);
@@ -294,7 +295,7 @@ int run_mkv(std::string_view in_path, std::string_view out_path) {
     const std::string shape =
         scanned->substreams_per_unit > 1
             ? fmt::format("{} substreams", scanned->substreams_per_unit)
-            : std::string{iclforge::analysis::layout_name(scanned->acmod, scanned->lfe)};
+            : std::string{iclforge::ac3::analysis::layout_name(scanned->acmod, scanned->lfe)};
     status_println(status_stream(), "wrote {} {} access units ({}, {} channels, {} bytes) to {}",
                    units.size(), eac3 ? "E-AC-3" : "AC-3", shape, track.channels,
                    file->size(), out_path);
@@ -306,15 +307,15 @@ int run_mp4(std::string_view in_path, std::string_view out_path) {
     // MPEG-TS input here, so this doubles as container-to-container remux
     // (`forge mp4 broken.mkv fixed.mp4`). That is what makes it the
     // dec3-repair case the Atmos dec3-repair remux case: codec_config below is
-    // built by iclforge::io::build_codec_config_box(*scanned), which reads the
-    // real bitstream iclforge::io::scan just walked - never whatever dec3 (or
+    // built by iclforge::ac3::io::build_codec_config_box(*scanned), which reads the
+    // real bitstream iclforge::ac3::io::scan just walked - never whatever dec3 (or
     // its absence) the SOURCE container declared - so a source whose Atmos
     // dec3 flag is wrong or missing comes out correct on the far side.
     const auto raw = read_elementary_stream(in_path);
     if (raw.empty()) {
         return kExitInput;
     }
-    const auto scanned = iclforge::io::scan(raw);
+    const auto scanned = iclforge::ac3::io::scan(raw);
     if (!scanned.has_value()) {
         // Not A/52? It may be AC-4, which this command can also carry
         // (AC-4 bitstream inspector): TS 103 190-2 Annex E's 'ac-4' sample entry and
@@ -372,14 +373,14 @@ int run_mp4(std::string_view in_path, std::string_view out_path) {
                 ac4_file->size(), track.rfc6381, out_path);
             return kExitOk;
         }
-        fmt::println(stderr, "error: {}", iclforge::io::describe(scanned.error()));
+        fmt::println(stderr, "error: {}", iclforge::ac3::io::describe(scanned.error()));
         return kExitInput;
     }
     warn_if_programmes_dropped(*scanned);
     if (reject_legacy_core(*scanned, in_path, "MP4")) {
         return kExitInput;
     }
-    const bool eac3 = scanned->kind == iclforge::io::StreamKind::kEac3;
+    const bool eac3 = scanned->kind == iclforge::ac3::io::StreamKind::kEac3;
 
     // scan()'s access units pass to the muxer as the views they already are
     // - the whole-stream copy that satisfied the old parameter type is gone.
@@ -392,10 +393,10 @@ int run_mp4(std::string_view in_path, std::string_view out_path) {
 
     const iclforge::mp4::AudioTrack track{
         .codec_id = std::string{eac3 ? iclforge::mp4::kCodecEac3 : iclforge::mp4::kCodecAc3},
-        .sample_rate = iclforge::sample_rate_hz(scanned->sample_rate),
+        .sample_rate = iclforge::ac3::sample_rate_hz(scanned->sample_rate),
         .channels = scanned->channels,
         .samples_per_frame = *samples_per_frame,
-        .codec_config = iclforge::io::build_codec_config_box(*scanned)};
+        .codec_config = iclforge::ac3::io::build_codec_config_box(*scanned)};
     const auto file = iclforge::mp4::mux(track, units);
     if (!file.has_value()) {
         fmt::println(stderr, "error: {}", iclforge::mp4::describe(file.error()));
@@ -415,7 +416,7 @@ int run_mp4(std::string_view in_path, std::string_view out_path) {
     const std::string shape =
         scanned->substreams_per_unit > 1
             ? fmt::format("{} substreams", scanned->substreams_per_unit)
-            : std::string{iclforge::analysis::layout_name(scanned->acmod, scanned->lfe)};
+            : std::string{iclforge::ac3::analysis::layout_name(scanned->acmod, scanned->lfe)};
     const std::string atmos =
         scanned->oba_complexity_index
             ? fmt::format(", Atmos complexity {}", *scanned->oba_complexity_index)
@@ -463,19 +464,19 @@ bool write_rendition(const std::filesystem::path& dir, const RenditionFiles& ren
 // Everything iclforge::mp4::fragment needs about one elementary stream, read off the
 // bitstream rather than taken on trust - the same derivation for the JOC
 // rendition and for its stripped companion.
-std::optional<RenditionFiles> build_rendition(const iclforge::io::ScannedStream& scanned,
+std::optional<RenditionFiles> build_rendition(const iclforge::ac3::io::ScannedStream& scanned,
                                               std::uint32_t frames_per_fragment) {
-    const bool eac3 = scanned.kind == iclforge::io::StreamKind::kEac3;
+    const bool eac3 = scanned.kind == iclforge::ac3::io::StreamKind::kEac3;
     const auto samples_per_frame = track_samples_per_frame(scanned);
     if (!samples_per_frame.has_value()) {
         return std::nullopt;
     }
     iclforge::mp4::AudioTrack track{
         .codec_id = std::string{eac3 ? iclforge::mp4::kCodecEac3 : iclforge::mp4::kCodecAc3},
-        .sample_rate = iclforge::sample_rate_hz(scanned.sample_rate),
+        .sample_rate = iclforge::ac3::sample_rate_hz(scanned.sample_rate),
         .channels = scanned.channels,
         .samples_per_frame = *samples_per_frame,
-        .codec_config = iclforge::io::build_codec_config_box(scanned)};
+        .codec_config = iclforge::ac3::io::build_codec_config_box(scanned)};
     // ETSI TS 103 420 §E.5's 'ceao' compatibility brand, which DASH-IF IOP
     // Part 8 v5.0.0 §5.3.3 asks for on a backward-compatible object-audio
     // E-AC-3 track: iclforge::mp4:: never reads the object layer itself, so this front
@@ -493,7 +494,7 @@ std::optional<RenditionFiles> build_rendition(const iclforge::io::ScannedStream&
     }
     // Dolby Digital Plus with Atmos objects needs CHANNELS="<N>/JOC" instead
     // of a plain channel count (see mp4/hls.hpp's own citations) - N is the
-    // same decodable-object count iclforge::io::scan already read off the
+    // same decodable-object count iclforge::ac3::io::scan already read off the
     // bitstream to build the dec3 box above (TS 103 420 §8.3.2's
     // complexity_index_type_a). iclforge::mp4:: itself never reads that field; only
     // this CLI front end, which already has it, does. A stripped stream has
@@ -674,13 +675,13 @@ int run_fmp4(std::string_view in_path, std::string_view out_dir,
     if (raw.empty()) {
         return kExitInput;
     }
-    const auto scanned = iclforge::io::scan(raw);
+    const auto scanned = iclforge::ac3::io::scan(raw);
     if (!scanned.has_value()) {
         // AC-4, which keeps TS 103 190-2 Annex H's rules for a CMAF track.
         if (auto ac4_in = try_ac4_input(raw)) {
             return fmp4_ac4(*ac4_in, in_path, out_dir, frames_per_fragment, meta);
         }
-        fmt::println(stderr, "error: {}", iclforge::io::describe(scanned.error()));
+        fmt::println(stderr, "error: {}", iclforge::ac3::io::describe(scanned.error()));
         return kExitInput;
     }
     warn_if_programmes_dropped(*scanned);
@@ -709,23 +710,23 @@ int run_fmp4(std::string_view in_path, std::string_view out_dir,
                                            .is_default = true});
 
     // The 5.1 companion: the SAME bed audio, bit for bit, with the object
-    // layer taken out (iclforge::io::strip_objects). Its bytes have to outlive the
+    // layer taken out (iclforge::ac3::io::strip_objects). Its bytes have to outlive the
     // scan that views them, hence the locals here rather than a block.
     std::vector<std::byte> stripped_bytes;
-    iclforge::io::ScannedStream stripped_scan;
+    iclforge::ac3::io::ScannedStream stripped_scan;
     std::optional<RenditionFiles> companion;
     std::vector<iclforge::mp4::SegmentInfo> companion_segments;
     if (meta.hls_fallback_51 && scanned->oba_complexity_index.has_value()) {
-        auto stripped = iclforge::io::strip_objects(raw);
+        auto stripped = iclforge::ac3::io::strip_objects(raw);
         if (!stripped.has_value()) {
-            fmt::println(stderr, "error: {}", iclforge::io::describe(stripped.error()));
+            fmt::println(stderr, "error: {}", iclforge::ac3::io::describe(stripped.error()));
             return kExitInput;
         }
         stripped_bytes = std::move(stripped->bytes);
-        const auto rescanned = iclforge::io::scan(stripped_bytes);
+        const auto rescanned = iclforge::ac3::io::scan(stripped_bytes);
         if (!rescanned.has_value()) {
             fmt::println(stderr, "error: stripped stream did not scan: {}",
-                         iclforge::io::describe(rescanned.error()));
+                         iclforge::ac3::io::describe(rescanned.error()));
             return kExitInternal;
         }
         stripped_scan = *rescanned;
@@ -756,7 +757,7 @@ int run_fmp4(std::string_view in_path, std::string_view out_dir,
     // The DASH side of the same two facts: TS 103 420 §D.2's JOC extension
     // type and complexity index (DASH-IF IOP Part 8 §5.3.2), and the
     // AudioChannelConfiguration @value TS 102 366 clause I.1.2.1 defines -
-    // iclforge::io::dash_channel_configuration is the one place that word is
+    // iclforge::ac3::io::dash_channel_configuration is the one place that word is
     // derived from the bitstream (ac3/io/dec3.hpp).
     //
     // The MPD stays single-representation: mp4/dash.hpp builds one
@@ -764,7 +765,7 @@ int run_fmp4(std::string_view in_path, std::string_view out_dir,
     // rendition only - the 5.1 companion has no DASH representation.
     const iclforge::mp4::DashOptions dash_options{
         .joc_complexity_index = scanned->oba_complexity_index,
-        .dolby_channel_configuration = iclforge::io::dash_channel_configuration(*scanned)};
+        .dolby_channel_configuration = iclforge::ac3::io::dash_channel_configuration(*scanned)};
     const auto adaptation_set = iclforge::mp4::build_dash_adaptation_set(
         primary->track, primary->fragmented.media_segments, dash_options);
     const auto mpd = iclforge::mp4::build_dash_mpd(
@@ -776,7 +777,7 @@ int run_fmp4(std::string_view in_path, std::string_view out_dir,
     const std::string shape =
         scanned->substreams_per_unit > 1
             ? fmt::format("{} substreams", scanned->substreams_per_unit)
-            : std::string{iclforge::analysis::layout_name(scanned->acmod, scanned->lfe)};
+            : std::string{iclforge::ac3::analysis::layout_name(scanned->acmod, scanned->lfe)};
     const std::string atmos =
         scanned->oba_complexity_index
             ? fmt::format(", Atmos complexity {}", *scanned->oba_complexity_index)
@@ -785,7 +786,7 @@ int run_fmp4(std::string_view in_path, std::string_view out_dir,
         companion ? fmt::format(", and bed51/ with the same {} channels and the objects stripped",
                                 companion->track.channels)
                   : std::string{};
-    const bool eac3 = scanned->kind == iclforge::io::StreamKind::kEac3;
+    const bool eac3 = scanned->kind == iclforge::ac3::io::StreamKind::kEac3;
     status_println(
         status_stream(),
         "wrote {} {} access units ({}, {} channels{}) as {} fragment(s) to {} "
@@ -800,12 +801,12 @@ namespace {
 // iclforge::mpegts::ServiceInfo is plain A/52 field values (see its own header comment
 // on why that module maps them onto each registry's tables rather than being
 // handed finished descriptor bytes), so this is a field-for-field copy out of
-// what iclforge::io::scan already read off the bitstream - no derivation here, and
+// what iclforge::ac3::io::scan already read off the bitstream - no derivation here, and
 // nothing invented. The two values that are NOT in any bitstream, because
 // they describe how services in a multiplex relate rather than what one
 // stream contains, come from the operator via mainid=/asvc= and stay unset
 // otherwise.
-iclforge::mpegts::ServiceInfo service_info_from(const iclforge::io::ScannedStream& scanned,
+iclforge::mpegts::ServiceInfo service_info_from(const iclforge::ac3::io::ScannedStream& scanned,
                                       const Options& meta) {
     iclforge::mpegts::ServiceInfo service{
         .bsmod = scanned.bsmod,
@@ -850,24 +851,24 @@ iclforge::mpegts::ServiceInfo service_info_from(const iclforge::io::ScannedStrea
 // associated one, describes a relationship this file cannot actually have.
 // An absent bsmod (bsmod_present false) resolves to complete main here, the
 // same convention service_info_from()/the descriptor writer itself use.
-[[nodiscard]] bool validate_service_association(const iclforge::io::ScannedStream& scanned,
+[[nodiscard]] bool validate_service_association(const iclforge::ac3::io::ScannedStream& scanned,
                                                 const Options& meta) {
     const auto bsmod = scanned.bsmod_present
-                           ? static_cast<iclforge::meta::BitstreamMode>(scanned.bsmod)
-                           : iclforge::meta::BitstreamMode::kCompleteMain;
-    const bool associated = iclforge::meta::is_associated_service(bsmod, scanned.acmod);
+                           ? static_cast<iclforge::ac3::meta::BitstreamMode>(scanned.bsmod)
+                           : iclforge::ac3::meta::BitstreamMode::kCompleteMain;
+    const bool associated = iclforge::ac3::meta::is_associated_service(bsmod, scanned.acmod);
     if (meta.mainid.has_value() && associated) {
         fmt::println(stderr,
                      "error: mainid= given but this stream's bsmod ({}) is an associated "
                      "service - did you mean asvc=?",
-                     iclforge::meta::describe(bsmod, scanned.acmod));
+                     iclforge::ac3::meta::describe(bsmod, scanned.acmod));
         return false;
     }
     if (meta.asvc.has_value() && !associated) {
         fmt::println(stderr,
                      "error: asvc= given but this stream's bsmod ({}) is a main service - "
                      "did you mean mainid=?",
-                     iclforge::meta::describe(bsmod, scanned.acmod));
+                     iclforge::ac3::meta::describe(bsmod, scanned.acmod));
         return false;
     }
     return true;
@@ -891,7 +892,7 @@ int run_ts(std::string_view in_path, std::string_view out_path, std::string_view
     if (raw.empty()) {
         return kExitInput;
     }
-    const auto scanned = iclforge::io::scan(raw);
+    const auto scanned = iclforge::ac3::io::scan(raw);
     if (!scanned.has_value()) {
         if (const auto ac4_in = try_ac4_input(raw)) {
             // EN 300 468 Annex D.7 is DVB signalling; ATSC never registered
@@ -944,7 +945,7 @@ int run_ts(std::string_view in_path, std::string_view out_path, std::string_view
                            ac4_track.samples_per_frame, ac4_file->size(), out_path);
             return kExitOk;
         }
-        fmt::println(stderr, "error: {}", iclforge::io::describe(scanned.error()));
+        fmt::println(stderr, "error: {}", iclforge::ac3::io::describe(scanned.error()));
         return kExitInput;
     }
     warn_if_programmes_dropped(*scanned);
@@ -954,7 +955,7 @@ int run_ts(std::string_view in_path, std::string_view out_path, std::string_view
     if (!validate_service_association(*scanned, meta)) {
         return kExitUsage;
     }
-    const bool eac3 = scanned->kind == iclforge::io::StreamKind::kEac3;
+    const bool eac3 = scanned->kind == iclforge::ac3::io::StreamKind::kEac3;
 
     // scan()'s access units pass to the muxer as the views they already are
     // - the whole-stream copy that satisfied the old parameter type is gone.
@@ -967,7 +968,7 @@ int run_ts(std::string_view in_path, std::string_view out_path, std::string_view
 
     const iclforge::mpegts::AudioTrack track{
         .codec = eac3 ? iclforge::mpegts::AudioCodec::kEac3 : iclforge::mpegts::AudioCodec::kAc3,
-        .sample_rate = iclforge::sample_rate_hz(scanned->sample_rate),
+        .sample_rate = iclforge::ac3::sample_rate_hz(scanned->sample_rate),
         .channels = scanned->channels,
         .samples_per_frame = *samples_per_frame,
         .service = service_info_from(*scanned, meta)};
@@ -991,7 +992,7 @@ int run_ts(std::string_view in_path, std::string_view out_path, std::string_view
     const std::string shape =
         scanned->substreams_per_unit > 1
             ? fmt::format("{} substreams", scanned->substreams_per_unit)
-            : std::string{iclforge::analysis::layout_name(scanned->acmod, scanned->lfe)};
+            : std::string{iclforge::ac3::analysis::layout_name(scanned->acmod, scanned->lfe)};
     status_println(status_stream(),
                    "wrote {} {} access units ({}, {} channels, {} bytes) to {} ({} profile)",
                    units.size(), eac3 ? "E-AC-3" : "AC-3", shape, track.channels,

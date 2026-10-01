@@ -19,7 +19,7 @@
 //     EXCEPT the regions a licensed decoder is allowed to rewrite - the
 //     framing words, the metadata flags, the skip fields and the CRC tail.
 //     It needs those regions ("holes") and the container's own position.
-//   - iclforge::io::strip_objects (ac3/io/object_strip.hpp) removes the object
+//   - iclforge::ac3::io::strip_objects (ac3/io/object_strip.hpp) removes the object
 //     layer without touching the audio. It needs the skip fields' exact bit
 //     ranges, the frame-level skipflde flag, the addbsi object-audio marker,
 //     and where the last mantissa ends.
@@ -43,11 +43,11 @@
 // syncframe whatever its shape: everything up to and including skipflde is
 // reachable without a single content-dependent field width, so "does this
 // frame carry an object layer at all?" always has an answer. That is what
-// lets iclforge::io::strip_objects pass an ordinary stereo stream through
+// lets iclforge::ac3::io::strip_objects pass an ordinary stereo stream through
 // untouched instead of refusing it for being out of scope. See
 // FrameLayout::object_signals.
 
-namespace iclforge::emdf {
+namespace iclforge::ac3::emdf {
 
 // A closed bit range [first, last], counted from the frame's first bit.
 struct BitRange {
@@ -134,7 +134,7 @@ struct FrameLayout {
     // Table E1.3's blkstrtinfoe. Recorded because blkstrtinfo's own field
     // width is derived from frmsiz (E2.3.3.2's "bit_length(frmsiz+1)"), so a
     // rewriter that re-derives the frame size cannot leave this field alone -
-    // which is why iclforge::io::strip_objects refuses a frame that carries one
+    // which is why iclforge::ac3::io::strip_objects refuses a frame that carries one
     // rather than shifting the bits under it.
     bool blkstrtinfoe = false;
 };
@@ -147,4 +147,4 @@ struct FrameLayout {
 // one. Undefined for fewer than 4 bytes, which is not a syncframe.
 [[nodiscard]] ICLFORGE_AC3_EXPORT std::size_t syncframe_size(std::span<const std::byte> at);
 
-}  // namespace iclforge::emdf
+}  // namespace iclforge::ac3::emdf

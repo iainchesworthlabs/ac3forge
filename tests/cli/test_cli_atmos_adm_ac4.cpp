@@ -104,7 +104,7 @@ void append_chunk(Bytes& out, std::string_view id, const Bytes& content) {
     }
 }
 
-constexpr int kFrame = iclforge::kSamplesPerFrame;
+constexpr int kFrame = iclforge::ac3::kSamplesPerFrame;
 constexpr int kTotalFrames = 6;  // 3 frames holding SR, 3 frames holding centre
 // Well inside each hold - test_cli_decode_adm.cpp's own kPulseAt comment gives the same reasoning
 // for staying clear of a boundary rather than landing on one.
@@ -390,7 +390,7 @@ TEST_CASE(
     for (const auto& entry : fs::directory_iterator(objects_dir)) {
         if (entry.path().extension() == ".wav") {
             ++object_files;
-            const auto wav = iclforge::io::read_wav(entry.path().string());
+            const auto wav = iclforge::ac3::io::read_wav(entry.path().string());
             REQUIRE(wav.has_value());
             REQUIRE(wav->channels.size() == 1);
             const auto tone = tone_index_of(wav->channels.front(), wav->sample_rate);

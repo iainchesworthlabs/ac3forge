@@ -210,18 +210,19 @@ constexpr int kFrames = 10;
 constexpr std::uint32_t kFramesPerFragment = 3;
 
 std::vector<Bytes> encode_real_eac3_frames() {
-    using iclforge::eac3::AccessUnitConfig;
+    using iclforge::ac3::eac3::AccessUnitConfig;
     const AccessUnitConfig config{
-        .independent = {.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true}};
-    iclforge::eac3::AccessUnitEncoder encoder{config};
+        .independent = {.bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true}};
+    iclforge::ac3::eac3::AccessUnitEncoder encoder{config};
 
-    std::vector<std::vector<float>> pcm(6, std::vector<float>(iclforge::kSamplesPerFrame));
+    std::vector<std::vector<float>> pcm(6, std::vector<float>(iclforge::ac3::kSamplesPerFrame));
     constexpr std::array<double, 6> kTones{440.0, 660.0, 880.0, 1100.0, 1320.0, 55.0};
     std::vector<Bytes> frames;
     for (int f = 0; f < kFrames; ++f) {
         for (std::size_t ch = 0; ch < 6; ++ch) {
-            for (int n = 0; n < iclforge::kSamplesPerFrame; ++n) {
-                const double t = static_cast<double>(f * iclforge::kSamplesPerFrame + n) / 48000.0;
+            for (int n = 0; n < iclforge::ac3::kSamplesPerFrame; ++n) {
+                const double t =
+                    static_cast<double>(f * iclforge::ac3::kSamplesPerFrame + n) / 48000.0;
                 pcm[ch][static_cast<std::size_t>(n)] =
                     static_cast<float>(0.3 * std::sin(2.0 * std::numbers::pi * kTones[ch] * t));
             }
@@ -249,16 +250,16 @@ RealFixture make_real_fixture() {
     for (const auto& f : frames) {
         stream.insert(stream.end(), f.begin(), f.end());
     }
-    const auto scanned = iclforge::io::scan(stream);
+    const auto scanned = iclforge::ac3::io::scan(stream);
     REQUIRE(scanned.has_value());
-    REQUIRE(scanned->kind == iclforge::io::StreamKind::kEac3);
+    REQUIRE(scanned->kind == iclforge::ac3::io::StreamKind::kEac3);
 
     const iclforge::mp4::AudioTrack track{
         .codec_id = std::string{iclforge::mp4::kCodecEac3},
-        .sample_rate = iclforge::sample_rate_hz(scanned->sample_rate),
+        .sample_rate = iclforge::ac3::sample_rate_hz(scanned->sample_rate),
         .channels = scanned->channels,
-        .samples_per_frame = iclforge::kSamplesPerFrame,
-        .codec_config = iclforge::io::build_codec_config_box(*scanned),
+        .samples_per_frame = iclforge::ac3::kSamplesPerFrame,
+        .codec_config = iclforge::ac3::io::build_codec_config_box(*scanned),
     };
 
     const auto result = iclforge::mp4::fragment(
@@ -303,7 +304,7 @@ TEST_CASE("fragment() init segment is well-formed with mvex/trex and an empty sa
     REQUIRE(trex != nullptr);
     const auto trex_info = read_trex(fixture.fragmented.init_segment, *trex);
     CHECK(trex_info.track_id == 1);
-    CHECK(trex_info.default_sample_duration == iclforge::kSamplesPerFrame);
+    CHECK(trex_info.default_sample_duration == iclforge::ac3::kSamplesPerFrame);
     CHECK(trex_info.default_sample_size == 0);
     // sample_depends_on=2 ("does not depend on others"), every other field
     // (incl. sample_is_non_sync_sample) clear - see fragment.cpp's own
@@ -325,7 +326,7 @@ TEST_CASE("fragment() groups frames into fragments with correct sequence numbers
         CHECK(segments[i].sequence_number == i + 1);
         CHECK(segments[i].sample_count == expected_counts[i]);
         CHECK(segments[i].duration_samples ==
-              static_cast<std::uint64_t>(expected_counts[i]) * iclforge::kSamplesPerFrame);
+              static_cast<std::uint64_t>(expected_counts[i]) * iclforge::ac3::kSamplesPerFrame);
 
         const auto elements = parse(segments[i].bytes);
         const auto* styp = find(elements, "styp");
@@ -454,7 +455,7 @@ TEST_CASE("HLS media playlist lists every fragment in order with EXT-X-MAP and c
     }
     // TARGETDURATION must be an integer >= every #EXTINF value (RFC 8216
     // §4.3.3.1) - the longest fragment here is a full one, 3*1536/48000 s.
-    const double max_seconds = 3.0 * static_cast<double>(iclforge::kSamplesPerFrame) /
+    const double max_seconds = 3.0 * static_cast<double>(iclforge::ac3::kSamplesPerFrame) /
                                static_cast<double>(fixture.track.sample_rate);
     const auto target = static_cast<std::uint64_t>(std::ceil(max_seconds));
     CHECK(playlist.find(fmt::format("#EXT-X-TARGETDURATION:{}\n", target)) != std::string::npos);
@@ -497,7 +498,7 @@ TEST_CASE("HLS master playlist signals CODECS and CHANNELS correctly", "[hls]") 
 // Apple's HLS Authoring Specification for Apple Devices asks for a plain
 // 5.1 rendition alongside an Atmos one, IN THE SAME EXT-X-MEDIA group, so a
 // client that cannot render the object layer selects the bed instead of
-// failing. iclforge::io::strip_objects is what produces that companion; this is
+// failing. iclforge::ac3::io::strip_objects is what produces that companion; this is
 // the manifest half.
 TEST_CASE("HLS master playlist lists several renditions in one group", "[hls]") {
     const auto fixture = make_real_fixture();
@@ -983,7 +984,7 @@ TEST_CASE("build_dash_mpd wraps a Period, static or dynamic", "[dash]") {
     CHECK(vod.find("type=\"static\"") != std::string::npos);
     CHECK(vod.find(fmt::format(
               "mediaPresentationDuration=\"PT{:.3f}S\"",
-              static_cast<double>(kFrames) * iclforge::kSamplesPerFrame / 48000.0)) !=
+              static_cast<double>(kFrames) * iclforge::ac3::kSamplesPerFrame / 48000.0)) !=
           std::string::npos);
     CHECK(vod.find("availabilityStartTime") == std::string::npos);
     CHECK(vod.find(snippet) != std::string::npos);

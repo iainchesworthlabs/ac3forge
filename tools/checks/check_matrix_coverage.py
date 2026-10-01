@@ -15,11 +15,11 @@ directly, via the same error-message path real bad input hits:
   commands   forge with no args prints its own usage table.
   layouts    forge sine/eac3-sine reject a bogus layout with
              "unknown layout 'X' (mono | stereo | ...)" - built from
-             iclforge::plan::layout_names(codec), the same function 'sine' and
+             iclforge::ac3::plan::layout_names(codec), the same function 'sine' and
              'eac3-sine' validate a real layout against.
   tools      forge eac3-encode rejects a bogus tool set with
              "unknown tool set 'X' (none | cpl | ...)" - built from
-             iclforge::plan::kToolsSyntax. This one IS a hand-maintained string
+             iclforge::ac3::plan::kToolsSyntax. This one IS a hand-maintained string
              (see plan.hpp), not derived from parse_tools()'s own token
              list, so it carries its own smaller drift risk one level
              removed from what this script checks - out of scope here.

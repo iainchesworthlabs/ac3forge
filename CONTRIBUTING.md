@@ -80,9 +80,13 @@ If you cannot cite where something came from, it does not go in.
 **`src/` is the installable library; `apps/` consumes it, never the reverse.** `src/` holds 22
 libraries. Each is a directory with its own CMake target (`iclforge::<name>`), its own public
 headers (`iclforge/<name>/`) and its own row in `tools/checks/layering.json`, which lists the
-libraries it may include from; `check_layering.py` fails an include its row does not list.
-`src/ac3` is the AC-3, E-AC-3 and Atmos codec. `src/ac4`, `src/ac4core`, `src/ac4dec` and
-`src/ac4enc` are the AC-4 codec, in namespace `iclforge::ac4`, and link nothing from `src/ac3`.
+libraries it may include from; `check_layering.py` fails an include its row does not list. A
+library's public headers declare into the namespace named for it under the family's root, and
+`check_namespaces.py` (its table is `tools/checks/namespaces.json`) fails a header that declares
+into another library's namespace, or into `iclforge` itself.
+`src/ac3` is the AC-3, E-AC-3 and Atmos codec, in namespace `iclforge::ac3`. `src/ac4`,
+`src/ac4core`, `src/ac4dec` and `src/ac4enc` are the AC-4 codec, in namespace `iclforge::ac4`,
+and link nothing from `src/ac3`.
 The two codecs stand on libraries that know no codec: `src/base` (bit I/O, the speaker
 vocabulary, the CPU probe), `src/arithmetic` (header-only: `Fixed32`, the project's own float
 functions and the SIMD seam; it is not installed), `src/dsp` (the transforms more than one

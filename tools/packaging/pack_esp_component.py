@@ -261,9 +261,9 @@ def main_source(with_ac4: bool) -> str:
         "    // Instantiated and CALLED, not merely linked: a component",
         "    // that unpacked but whose headers did not resolve would",
         "    // still link an empty app_main and prove nothing.",
-        "    static iclforge::FrameDecoder decoder{",
-        "        {.output = {.target = iclforge::DownmixTarget::kLoRo}}};",
-        "    static std::array<float, iclforge::kSamplesPerFrame> pcm{};",
+        "    static iclforge::ac3::FrameDecoder decoder{",
+        "        {.output = {.target = iclforge::ac3::DownmixTarget::kLoRo}}};",
+        "    static std::array<float, iclforge::ac3::kSamplesPerFrame> pcm{};",
         "    static std::array<std::span<float>, 1> spans{std::span<float>(pcm)};",
         "    (void)decoder.decode_frame_into({}, spans);",
     ]

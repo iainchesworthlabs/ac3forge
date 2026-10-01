@@ -13,11 +13,11 @@ proves the codec works and is not how anything real gets its audio.
 
 ## What it demonstrates
 
-**An input path.** `iclforge::split_frames` and `iclforge::split_access_units` take a span
+**An input path.** `iclforge::ac3::split_frames` and `iclforge::ac3::split_access_units` take a span
 over the whole stream. Nothing streaming can produce one — an SD card, an HTTP
 body and this partition all arrive in pieces, and on a part with about 300 KB of RAM
 the whole file is not going to be resident anyway.
-`iclforge::io::AccessUnitAccumulator` applies the same boundary rule incrementally,
+`iclforge::ac3::io::AccessUnitAccumulator` applies the same boundary rule incrementally,
 over a buffer the caller owns, so framing allocates nothing.
 
 **Access units, not syncframes.** `Eac3Decoder::decode_access_unit_by_block`

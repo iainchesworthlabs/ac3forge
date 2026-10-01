@@ -94,12 +94,12 @@ namespace iclforge::hearth {
 // stay the surround pair, which a 7.X mode keeps at the sides; Lb and Rb, Lw
 // and Rw, and Tfl and Tfr are the rear, wide and front height pairs (ETSI TS
 // 103 190-1 clause D.1; A/52 Table E2.5).
-[[nodiscard]] eac3::chanmap::Layout ac4_bed(std::span<const iclforge::ac4::Speaker> speakers);
+[[nodiscard]] ac3::eac3::chanmap::Layout ac4_bed(std::span<const iclforge::ac4::Speaker> speakers);
 
 // The A/52 audio coding mode with those speakers' front and surround channels,
 // which is how an AC-4 unit's layout reads where an acmod is asked for:
 // 1/0, 2/0, 3/0 or 3/2, any back, wide or height pair left out.
-[[nodiscard]] Acmod ac4_acmod(std::span<const iclforge::ac4::Speaker> speakers);
+[[nodiscard]] ac3::Acmod ac4_acmod(std::span<const iclforge::ac4::Speaker> speakers);
 
 // What an AC-4 frame said about itself, as decoded.
 struct Ac4UnitReport {
@@ -120,13 +120,13 @@ struct Ac4UnitReport {
 
 // What one access unit said about itself, as decoded.
 struct UnitReport {
-    Acmod acmod = Acmod::k2_0;
+    ac3::Acmod acmod = ac3::Acmod::k2_0;
     bool lfe = false;
     // Substreams the unit assembled from: 1 for AC-3, the independent and
     // its dependents for E-AC-3.
     int substreams = 1;
     // The locations it decoded to; empty for dual mono.
-    eac3::chanmap::Layout layout{};
+    ac3::eac3::chanmap::Layout layout{};
     // §5.4.2.2's service, when the unit sends one (E-AC-3 in its
     // informational metadata only).
     std::optional<int> bsmod = std::nullopt;
@@ -135,14 +135,14 @@ struct UnitReport {
     std::optional<std::uint8_t> compr = std::nullopt;
     std::optional<std::uint8_t> compr2 = std::nullopt;  // AC-3 1+1
     // The effective dynrng word of each of the unit's `blocks` blocks.
-    std::array<std::uint8_t, kBlocksPerFrame> dynrng{};
-    int blocks = kBlocksPerFrame;
+    std::array<std::uint8_t, ac3::kBlocksPerFrame> dynrng{};
+    int blocks = ac3::kBlocksPerFrame;
     // AC-3: the blocks in which any channel used the short transform.
     std::optional<int> short_blocks = std::nullopt;
     // The fold levels the unit's own metadata gives, defaults included.
-    MixLevels levels{};
+    ac3::MixLevels levels{};
     // How the decoder concealed the unit, when it did (§7.10).
-    std::optional<Concealment> concealed = std::nullopt;
+    std::optional<ac3::Concealment> concealed = std::nullopt;
     // The program its object metadata describes, with every update block's
     // positions, when it carried any.
     std::optional<oba::DecodedProgram> objects = std::nullopt;
@@ -239,7 +239,7 @@ public:
     // reset() (a seek) both, without decoding a whole stream to hear it.
     [[nodiscard]] std::size_t object_lag() const { return renderer_.object_lag(); }
 
-    [[nodiscard]] const render::Serving& serving() const { return serving_; }
+    [[nodiscard]] const ac3::render::Serving& serving() const { return serving_; }
     [[nodiscard]] const render::OutputLayout& layout() const { return layout_; }
     [[nodiscard]] const DecoderSettings& settings() const { return settings_; }
     [[nodiscard]] std::uint32_t sample_rate() const { return sample_rate_; }
@@ -249,12 +249,12 @@ private:
     // What a unit's headers say about how to place it, read before it is
     // decoded: its bed, and whether it codes dual mono.
     struct UnitBed {
-        eac3::chanmap::Layout layout{};
+        ac3::eac3::chanmap::Layout layout{};
         bool dual_mono = false;
     };
 
-    void place(const PcmBlock& block, const BlockFn& deliver);
-    std::size_t render_flushed(std::span<DecodedSubstream> substreams, const BlockFn& deliver,
+    void place(const ac3::PcmBlock& block, const BlockFn& deliver);
+    std::size_t render_flushed(std::span<ac3::DecodedSubstream> substreams, const BlockFn& deliver,
                                const UnitFn& reported);
     // The AC-4 path (the header comment says what differs).
     [[nodiscard]] std::expected<std::size_t, std::string> decode_ac4(
@@ -286,20 +286,20 @@ private:
     std::uint32_t sample_rate_;
     DecoderSettings settings_;
     Substreams substreams_;
-    render::Serving serving_;
-    DecoderConfig config_;
+    ac3::render::Serving serving_;
+    ac3::DecoderConfig config_;
     render::LayoutRenderer renderer_;
     // renderer_'s own corner, kept so reset() can hand it to the fresh
     // LayoutRenderer it builds rather than losing it to the class's default.
     double crossover_hz_ = render::LayoutRenderer::kDefaultCrossoverHz;
-    std::optional<FrameDecoder> ac3_decoder_;
-    std::optional<Eac3Decoder> eac3_decoder_;
+    std::optional<ac3::FrameDecoder> ac3_decoder_;
+    std::optional<ac3::Eac3Decoder> eac3_decoder_;
     std::optional<int> programme_;
     std::deque<UnitBed> beds_;
-    std::optional<eac3::chanmap::Layout> renderer_bed_;
+    std::optional<ac3::eac3::chanmap::Layout> renderer_bed_;
     // Whether the unit being placed codes dual mono.
     bool dual_mono_ = false;
-    std::array<std::array<float, kSamplesPerBlock>, render::OutputLayout::kMaxSlots> block_{};
+    std::array<std::array<float, ac3::kSamplesPerBlock>, render::OutputLayout::kMaxSlots> block_{};
     std::size_t delivered_ = 0;
     // Filled for each unit and handed out by reference, keeping its storage.
     UnitReport report_{};
@@ -322,7 +322,7 @@ private:
     std::vector<std::vector<float>> ac4_object_pcm_;
     std::vector<std::span<const float>> ac4_channel_spans_;
     // A block of silence, for deliver_silence().
-    std::array<float, kSamplesPerBlock> zeros_{};
+    std::array<float, ac3::kSamplesPerBlock> zeros_{};
 };
 
 }  // namespace iclforge::hearth

@@ -22,7 +22,7 @@
 #include "iclforge/base/detail/profiling.hpp"
 #include "iclforge/ac3/oba/joc_tables.hpp"
 
-namespace iclforge::oba::joc {
+namespace iclforge::ac3::oba::joc {
 
 namespace {
 
@@ -1301,10 +1301,10 @@ constexpr std::size_t kMaxParameterBands = static_cast<std::size_t>(kNumBands.ba
 std::vector<std::vector<float>> reconstruct(std::span<const std::span<const float>> bed,
                                             const FrameParameters& params,
                                             ReconstructionState& state, bool fast_mdct,
-                                            bool fast_imdct, Domain domain) {
+                                            bool fast_imdct, iclforge::oba::joc::Domain domain) {
     assert(bed.size() == static_cast<std::size_t>(params.channels));
     assert(params.channels >= 1 && params.channels <= kMaxChannels);
-    assert(domain != Domain::kQmf || params.channels == kNumChannels5X);
+    assert(domain != iclforge::oba::joc::Domain::kQmf || params.channels == kNumChannels5X);
     assert(params.matrix.size() == params.coefficient_count());
 
     // Each domain function maintains its own previous_matrix/older_matrix/
@@ -1313,7 +1313,7 @@ std::vector<std::vector<float>> reconstruct(std::span<const std::span<const floa
     // post-processing step here - unlike params.matrix itself, that state
     // cannot be copied verbatim between calls once band counts and data
     // points are allowed to vary per object.
-    auto objects = domain == Domain::kQmf
+    auto objects = domain == iclforge::oba::joc::Domain::kQmf
                        ? reconstruct_qmf(bed, params, state)
                        : reconstruct_mdct_band(bed, params, state, fast_mdct, fast_imdct);
 
@@ -1335,4 +1335,4 @@ std::vector<std::vector<float>> reconstruct(std::span<const std::span<const floa
     return objects;
 }
 
-}  // namespace iclforge::oba::joc
+}  // namespace iclforge::ac3::oba::joc

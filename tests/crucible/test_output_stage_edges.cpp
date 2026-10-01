@@ -31,7 +31,7 @@ constexpr std::size_t kFrames = 1536;
 // test_output_stage.cpp's Encoded, with the object metadata switchable:
 // the headphones decode only has objects to place when the unit carries it.
 struct Encoder {
-    std::unique_ptr<iclforge::oba::AtmosEncoder> encoder;
+    std::unique_ptr<iclforge::ac3::oba::AtmosEncoder> encoder;
     std::vector<std::vector<float>> objects;
     std::vector<std::span<const float>> views;
     std::vector<iclforge::oba::ObjectPlacement> placements;
@@ -40,11 +40,11 @@ struct Encoder {
     double phase = 0.0;
 
     explicit Encoder(bool object_metadata) {
-        iclforge::oba::AtmosConfig atmos;
+        iclforge::ac3::oba::AtmosConfig atmos;
         atmos.numblkscod = 3;
         atmos.bitrate_kbps = 448;
         atmos.emit_object_metadata = object_metadata;
-        encoder = std::make_unique<iclforge::oba::AtmosEncoder>(atmos, kObjectSlots);
+        encoder = std::make_unique<iclforge::ac3::oba::AtmosEncoder>(atmos, kObjectSlots);
         objects.assign(kObjectSlots, std::vector<float>(kFrames, 0.0F));
         views.resize(kObjectSlots);
         placements.resize(kObjectSlots);

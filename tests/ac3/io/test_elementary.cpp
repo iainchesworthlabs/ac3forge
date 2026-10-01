@@ -23,9 +23,9 @@ namespace {
 std::vector<std::vector<float>> tone(int channels) {
     std::vector<std::vector<float>> pcm(
         static_cast<std::size_t>(channels),
-        std::vector<float>(static_cast<std::size_t>(iclforge::kSamplesPerFrame)));
+        std::vector<float>(static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame)));
     for (auto& channel : pcm) {
-        for (int i = 0; i < iclforge::kSamplesPerFrame; ++i) {
+        for (int i = 0; i < iclforge::ac3::kSamplesPerFrame; ++i) {
             channel[static_cast<std::size_t>(i)] = static_cast<float>(
                 0.4 * std::sin(2.0 * std::numbers::pi * 1000.0 * i / 48000.0));
         }
@@ -47,7 +47,7 @@ void set_numblkscod(std::span<std::byte> frame, int numblkscod) {
     byte = static_cast<std::uint8_t>((byte & 0xCF) |
                                      ((static_cast<unsigned>(numblkscod) & 0x3u) << 4));
     frame[4] = std::byte{byte};
-    REQUIRE(iclforge::io::restamp_crc(frame).has_value());
+    REQUIRE(iclforge::ac3::io::restamp_crc(frame).has_value());
 }
 
 // `frames` access units of real, multi-frame object audio - not
@@ -59,10 +59,10 @@ void set_numblkscod(std::span<std::byte> frame, int numblkscod) {
 // which decides both the EMDF container and the TS 103 420 §8.3.1 addbsi
 // marker that goes with it.
 std::vector<std::byte> atmos_stream(bool emit_objects, int objects, int frames) {
-    iclforge::oba::AtmosEncoder encoder{
+    iclforge::ac3::oba::AtmosEncoder encoder{
         {.bitrate_kbps = 448, .emit_object_metadata = emit_objects}, objects};
     std::vector<std::vector<float>> sources(static_cast<std::size_t>(objects),
-                                            std::vector<float>(iclforge::kSamplesPerFrame));
+                                            std::vector<float>(iclforge::ac3::kSamplesPerFrame));
     std::vector<std::span<const float>> views;
     for (auto& source : sources) {
         views.emplace_back(source);
@@ -74,8 +74,8 @@ std::vector<std::byte> atmos_stream(bool emit_objects, int objects, int frames) 
     std::vector<std::byte> stream;
     for (int f = 0; f < frames; ++f) {
         for (int obj = 0; obj < objects; ++obj) {
-            for (int n = 0; n < iclforge::kSamplesPerFrame; ++n) {
-                const double t = (f * iclforge::kSamplesPerFrame + n) / 48000.0;
+            for (int n = 0; n < iclforge::ac3::kSamplesPerFrame; ++n) {
+                const double t = (f * iclforge::ac3::kSamplesPerFrame + n) / 48000.0;
                 sources[static_cast<std::size_t>(obj)][static_cast<std::size_t>(n)] =
                     static_cast<float>(0.3 * std::sin(2.0 * std::numbers::pi *
                                                       (440.0 * static_cast<double>(obj + 1)) * t));
@@ -93,8 +93,8 @@ std::vector<std::byte> atmos_stream(bool emit_objects, int objects, int frames) 
 TEST_CASE("scan reads an AC-3 elementary stream", "[elementary]") {
     // Real audio, so the frames are full rather than mostly padding - a
     // sizing bug that only shows on a full frame would otherwise hide.
-    iclforge::FrameEncoder encoder{
-        {.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true}};
+    iclforge::ac3::FrameEncoder encoder{
+        {.bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true}};
     std::vector<std::byte> stream;
     auto pcm = tone(6);
     std::vector<std::span<const float>> views;
@@ -107,11 +107,11 @@ TEST_CASE("scan reads an AC-3 elementary stream", "[elementary]") {
         append(stream, *frame);
     }
 
-    const auto scanned = iclforge::io::scan(stream);
+    const auto scanned = iclforge::ac3::io::scan(stream);
     REQUIRE(scanned.has_value());
-    CHECK(scanned->kind == iclforge::io::StreamKind::kAc3);
-    CHECK(scanned->sample_rate == iclforge::SampleRate::k48000);
-    CHECK(scanned->acmod == iclforge::Acmod::k3_2);
+    CHECK(scanned->kind == iclforge::ac3::io::StreamKind::kAc3);
+    CHECK(scanned->sample_rate == iclforge::ac3::SampleRate::k48000);
+    CHECK(scanned->acmod == iclforge::ac3::Acmod::k3_2);
     CHECK(scanned->lfe);
     CHECK(scanned->channels == 6);
     CHECK(scanned->access_units.size() == 4);
@@ -120,32 +120,32 @@ TEST_CASE("scan reads an AC-3 elementary stream", "[elementary]") {
 }
 
 TEST_CASE("scan reads E-AC-3 substream layouts", "[elementary]") {
-    using iclforge::eac3::AccessUnitConfig;
-    using iclforge::eac3::FrameConfig;
-    namespace cm = iclforge::eac3::chanmap;
+    using iclforge::ac3::eac3::AccessUnitConfig;
+    using iclforge::ac3::eac3::FrameConfig;
+    namespace cm = iclforge::ac3::eac3::chanmap;
 
     const AccessUnitConfig bed{
-        .independent = {.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true}};
+        .independent = {.bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true}};
 
     // 7.1: the dependent's Ls/Rs overwrite the bed's and Lrs/Rrs extend it, so
     // ten coded channels render as eight. Counting locations rather than
     // channels is the only way to get that right.
     AccessUnitConfig seven_one = bed;
     seven_one.dependents.push_back({.bitrate_kbps = 224,
-                                    .acmod = iclforge::Acmod::k2_2,
+                                    .acmod = iclforge::ac3::Acmod::k2_2,
                                     .chanmap = cm::k71Rear});
 
     // 5.1.4: four ceiling channels, nothing replaced.
     AccessUnitConfig five_one_four = bed;
     five_one_four.dependents.push_back({.bitrate_kbps = 224,
-                                        .acmod = iclforge::Acmod::k2_2,
+                                        .acmod = iclforge::ac3::Acmod::k2_2,
                                         .chanmap = cm::kTopQuad});
 
     // 7.1.4 needs two dependents - six new channels, one more than a single
     // substream can carry.
     AccessUnitConfig seven_one_four = seven_one;
     seven_one_four.dependents.push_back({.bitrate_kbps = 224,
-                                         .acmod = iclforge::Acmod::k2_2,
+                                         .acmod = iclforge::ac3::Acmod::k2_2,
                                          .chanmap = cm::kTopQuad});
 
     // The DASH AudioChannelConfiguration @value each of these renders as on
@@ -162,7 +162,7 @@ TEST_CASE("scan reads E-AC-3 substream layouts", "[elementary]") {
         std::uint16_t map;
         std::string_view dash_value;
     };
-    using namespace iclforge::eac3::chanmap;
+    using namespace iclforge::ac3::eac3::chanmap;
     constexpr std::uint16_t k51 =
         kLeftBit | kCentreBit | kRightBit | kLeftSurroundBit | kRightSurroundBit | kLfeBit;
     for (const auto& [config, channels, substreams, map, dash_value] :
@@ -171,24 +171,24 @@ TEST_CASE("scan reads E-AC-3 substream layouts", "[elementary]") {
           Case{five_one_four, 10, 2, static_cast<std::uint16_t>(k51 | cm::kTopQuad), "F815"},
           Case{seven_one_four, 12, 3,
                static_cast<std::uint16_t>(k51 | cm::k71Rear | cm::kTopQuad), "FA15"}}) {
-        const auto unit = iclforge::eac3::build_silent_access_unit(config);
+        const auto unit = iclforge::ac3::eac3::build_silent_access_unit(config);
         REQUIRE(unit.has_value());
         std::vector<std::byte> stream;
         for (int f = 0; f < 3; ++f) {
             append(stream, unit->bytes);
         }
 
-        const auto scanned = iclforge::io::scan(stream);
+        const auto scanned = iclforge::ac3::io::scan(stream);
         REQUIRE(scanned.has_value());
-        CHECK(scanned->kind == iclforge::io::StreamKind::kEac3);
+        CHECK(scanned->kind == iclforge::ac3::io::StreamKind::kEac3);
         CHECK(scanned->channels == channels);
         CHECK(scanned->substreams_per_unit == substreams);
         // The location word `channels` is the count OF - kept rather than
         // discarded, since which locations is a different question from how
         // many (ScannedStream::channel_map).
         CHECK(scanned->channel_map == map);
-        CHECK(iclforge::eac3::chanmap::channel_count(scanned->channel_map) == channels);
-        CHECK(iclforge::io::dash_channel_configuration(*scanned) == dash_value);
+        CHECK(iclforge::ac3::eac3::chanmap::channel_count(scanned->channel_map) == channels);
+        CHECK(iclforge::ac3::io::dash_channel_configuration(*scanned) == dash_value);
         // Substreams group into access units, not one frame each.
         CHECK(scanned->access_units.size() == 3);
         CHECK(scanned->access_units.front().size() == unit->bytes.size());
@@ -198,18 +198,18 @@ TEST_CASE("scan reads E-AC-3 substream layouts", "[elementary]") {
 TEST_CASE("scan tells AC-3 and E-AC-3 apart by bsid", "[elementary]") {
     // Both formats spend exactly 40 bits before bsid, which is what makes
     // identifying the stream possible without being told which it is.
-    const auto legacy = iclforge::build_silent_stereo_frame({.bitrate_kbps = 192});
+    const auto legacy = iclforge::ac3::build_silent_stereo_frame({.bitrate_kbps = 192});
     REQUIRE(legacy.has_value());
-    const auto plus = iclforge::eac3::build_silent_frame({.bitrate_kbps = 192});
+    const auto plus = iclforge::ac3::eac3::build_silent_frame({.bitrate_kbps = 192});
     REQUIRE(plus.has_value());
 
-    const auto a = iclforge::io::scan(*legacy);
+    const auto a = iclforge::ac3::io::scan(*legacy);
     REQUIRE(a.has_value());
-    CHECK(a->kind == iclforge::io::StreamKind::kAc3);
+    CHECK(a->kind == iclforge::ac3::io::StreamKind::kAc3);
 
-    const auto e = iclforge::io::scan(*plus);
+    const auto e = iclforge::ac3::io::scan(*plus);
     REQUIRE(e.has_value());
-    CHECK(e->kind == iclforge::io::StreamKind::kEac3);
+    CHECK(e->kind == iclforge::ac3::io::StreamKind::kEac3);
 
     // Both open on the same sync word, so the discrimination really is coming
     // from bsid and not from anything earlier in the frame.
@@ -218,56 +218,56 @@ TEST_CASE("scan tells AC-3 and E-AC-3 apart by bsid", "[elementary]") {
 }
 
 TEST_CASE("scan refuses what it cannot read", "[elementary]") {
-    using iclforge::io::ScanError;
-    CHECK(iclforge::io::scan({}).error() == ScanError::kEmpty);
+    using iclforge::ac3::io::ScanError;
+    CHECK(iclforge::ac3::io::scan({}).error() == ScanError::kEmpty);
 
-    const auto frame = iclforge::eac3::build_silent_frame({.bitrate_kbps = 192});
+    const auto frame = iclforge::ac3::eac3::build_silent_frame({.bitrate_kbps = 192});
     REQUIRE(frame.has_value());
 
     // A stream that does not start on a sync word is not a stream.
     std::vector<std::byte> unsynced{std::byte{0x00}, std::byte{0x00}};
     unsynced.insert(unsynced.end(), frame->begin(), frame->end());
-    CHECK(iclforge::io::scan(unsynced).error() == ScanError::kLostSync);
+    CHECK(iclforge::ac3::io::scan(unsynced).error() == ScanError::kLostSync);
 
     // A frame cut short must be reported, not silently returned as a short
     // access unit - a muxer that packetised it would produce a broken file.
     const std::vector<std::byte> cut{frame->begin(), frame->end() - 64};
-    CHECK(iclforge::io::scan(cut).error() == ScanError::kTruncated);
+    CHECK(iclforge::ac3::io::scan(cut).error() == ScanError::kTruncated);
 
     // Trailing garbage after a whole frame is a lost sync, not a silent stop.
     std::vector<std::byte> trailing{frame->begin(), frame->end()};
     trailing.insert(trailing.end(), 8, std::byte{0xAB});
-    CHECK(iclforge::io::scan(trailing).error() == ScanError::kLostSync);
+    CHECK(iclforge::ac3::io::scan(trailing).error() == ScanError::kLostSync);
 
     // A dependent substream with no independent parent ahead of it must be
     // refused rather than scanned as though it were the bed - the same
-    // guard iclforge::split_access_units applies on the decode side
+    // guard iclforge::ac3::split_access_units applies on the decode side
     // (decoder.cpp), for the same reason: its channels have nothing to
     // extend, and its bsi fields (acmod, bsid, ...) describe an extension,
     // not a complete programme.
-    using iclforge::eac3::AccessUnitConfig;
-    namespace cm = iclforge::eac3::chanmap;
+    using iclforge::ac3::eac3::AccessUnitConfig;
+    namespace cm = iclforge::ac3::eac3::chanmap;
     const AccessUnitConfig seven_one{
-        .independent = {.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true},
+        .independent = {.bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true},
         .dependents = {
-            {.bitrate_kbps = 224, .acmod = iclforge::Acmod::k2_2, .chanmap = cm::k71Rear}}};
-    const auto unit = iclforge::eac3::build_silent_access_unit(seven_one);
+            {.bitrate_kbps = 224, .acmod = iclforge::ac3::Acmod::k2_2, .chanmap = cm::k71Rear}}};
+    const auto unit = iclforge::ac3::eac3::build_silent_access_unit(seven_one);
     REQUIRE(unit.has_value());
     REQUIRE(unit->substream_count() == 2);
     const auto dependent_bytes = unit->substream(1);
     const std::vector<std::byte> lone_dependent{dependent_bytes.begin(), dependent_bytes.end()};
-    CHECK(iclforge::io::scan(lone_dependent).error() == ScanError::kUnsupportedStructure);
+    CHECK(iclforge::ac3::io::scan(lone_dependent).error() == ScanError::kUnsupportedStructure);
 }
 
 // bsid/bsmod/bit_rate_code and the TS 103 420 addbsi Atmos marker exist
-// purely for iclforge::io::build_codec_config_box() (ac3/io/dec3.hpp) to build a
+// purely for iclforge::ac3::io::build_codec_config_box() (ac3/io/dec3.hpp) to build a
 // spec-correct dac3/dec3 box - see tests/ac3/test_mp4.cpp for the box byte
 // layout itself. These check the values scan() reports for them.
 TEST_CASE("scan reads bsid/bsmod/bit_rate_code straight off the bsi", "[elementary]") {
     // A/52 encoder.cpp always writes bsid 8; real audio, not silence, per
     // this project's own validation discipline - a bit offset error inside
     // bsi could otherwise still land on a plausible-looking bsmod by luck.
-    iclforge::FrameEncoder encoder{{.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0}};
+    iclforge::ac3::FrameEncoder encoder{{.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k2_0}};
     auto pcm = tone(2);
     const std::vector<std::span<const float>> views{pcm[0], pcm[1]};
     std::vector<std::byte> stream;
@@ -277,7 +277,7 @@ TEST_CASE("scan reads bsid/bsmod/bit_rate_code straight off the bsi", "[elementa
         append(stream, *frame);
     }
 
-    const auto scanned = iclforge::io::scan(stream);
+    const auto scanned = iclforge::ac3::io::scan(stream);
     REQUIRE(scanned.has_value());
     CHECK(scanned->bsid == 8);
     CHECK(scanned->bsmod == 0);  // "main audio service: complete main" - the default
@@ -291,7 +291,7 @@ TEST_CASE("scan reads the addbsi Dolby Atmos marker", "[elementary]") {
     constexpr int kObjects = 2;
     const auto stream = atmos_stream(/*emit_objects=*/true, kObjects, 3);
 
-    const auto scanned = iclforge::io::scan(stream);
+    const auto scanned = iclforge::ac3::io::scan(stream);
     REQUIRE(scanned.has_value());
     REQUIRE(scanned->oba_complexity_index.has_value());
     // §8.3.2.2: object_count is bed-first (the LFE, always present in this
@@ -301,8 +301,8 @@ TEST_CASE("scan reads the addbsi Dolby Atmos marker", "[elementary]") {
 
 TEST_CASE("access-unit timing is the absolute sample position, not a running sum",
           "[elementary]") {
-    iclforge::FrameEncoder encoder{
-        {.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true}};
+    iclforge::ac3::FrameEncoder encoder{
+        {.bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true}};
     std::vector<std::byte> stream;
     auto pcm = tone(6);
     std::vector<std::span<const float>> views;
@@ -314,7 +314,7 @@ TEST_CASE("access-unit timing is the absolute sample position, not a running sum
         REQUIRE(frame.has_value());
         append(stream, *frame);
     }
-    const auto scanned = iclforge::io::scan(stream);
+    const auto scanned = iclforge::ac3::io::scan(stream);
     REQUIRE(scanned.has_value());
     REQUIRE(scanned->access_unit_samples.size() == 5);
 
@@ -322,11 +322,12 @@ TEST_CASE("access-unit timing is the absolute sample position, not a running sum
     for (const auto samples : scanned->access_unit_samples) {
         CHECK(samples == 1536);
     }
-    CHECK(iclforge::io::stream_duration_samples(*scanned) == 5 * 1536);
-    CHECK(iclforge::io::stream_duration_seconds(*scanned) == Catch::Approx(5 * 1536 / 48000.0));
-    CHECK(iclforge::io::uniform_access_unit_samples(*scanned) == 1536);
+    CHECK(iclforge::ac3::io::stream_duration_samples(*scanned) == 5 * 1536);
+    CHECK(iclforge::ac3::io::stream_duration_seconds(*scanned) ==
+          Catch::Approx(5 * 1536 / 48000.0));
+    CHECK(iclforge::ac3::io::uniform_access_unit_samples(*scanned) == 1536);
 
-    const auto third = iclforge::io::access_unit_timing(*scanned, 2);
+    const auto third = iclforge::ac3::io::access_unit_timing(*scanned, 2);
     REQUIRE(third.has_value());
     CHECK(third->start_sample == 2 * 1536);
     CHECK(third->duration_samples == 1536);
@@ -337,16 +338,16 @@ TEST_CASE("access-unit timing is the absolute sample position, not a running sum
     CHECK(third->start_in_timescale(90'000) == 2 * 2880);
     CHECK(third->duration_in_timescale(90'000) == 2880);
 
-    CHECK_FALSE(iclforge::io::access_unit_timing(*scanned, 5).has_value());
+    CHECK_FALSE(iclforge::ac3::io::access_unit_timing(*scanned, 5).has_value());
 
     // The lookup a cut uses: a position anywhere inside a unit names that
     // whole unit, never a split.
-    CHECK(iclforge::io::access_unit_at_sample(*scanned, 0) == 0u);
-    CHECK(iclforge::io::access_unit_at_sample(*scanned, 1535) == 0u);
-    CHECK(iclforge::io::access_unit_at_sample(*scanned, 1536) == 1u);
-    CHECK(iclforge::io::access_unit_at_seconds(*scanned, 0.1) == 3u);  // 4800 samples
-    CHECK_FALSE(iclforge::io::access_unit_at_sample(*scanned, 5 * 1536).has_value());
-    CHECK_FALSE(iclforge::io::access_unit_at_seconds(*scanned, -1.0).has_value());
+    CHECK(iclforge::ac3::io::access_unit_at_sample(*scanned, 0) == 0u);
+    CHECK(iclforge::ac3::io::access_unit_at_sample(*scanned, 1535) == 0u);
+    CHECK(iclforge::ac3::io::access_unit_at_sample(*scanned, 1536) == 1u);
+    CHECK(iclforge::ac3::io::access_unit_at_seconds(*scanned, 0.1) == 3u);  // 4800 samples
+    CHECK_FALSE(iclforge::ac3::io::access_unit_at_sample(*scanned, 5 * 1536).has_value());
+    CHECK_FALSE(iclforge::ac3::io::access_unit_at_seconds(*scanned, -1.0).has_value());
 }
 
 TEST_CASE("a short-syncframe E-AC-3 stream reports its real access-unit length",
@@ -359,11 +360,11 @@ TEST_CASE("a short-syncframe E-AC-3 stream reports its real access-unit length",
     // never decodes an audblk, and the frame's own frmsiz - which is what
     // delimits it - is untouched. Its audio would not decode, and nothing
     // here asks it to.
-    using iclforge::eac3::AccessUnitConfig;
+    using iclforge::ac3::eac3::AccessUnitConfig;
     AccessUnitConfig config;
-    config.independent = {.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0};
+    config.independent = {.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k2_0};
 
-    const auto unit = iclforge::eac3::build_silent_access_unit(config);
+    const auto unit = iclforge::ac3::eac3::build_silent_access_unit(config);
     REQUIRE(unit.has_value());
     std::vector<std::byte> stream;
     for (int i = 0; i < 4; ++i) {
@@ -374,15 +375,15 @@ TEST_CASE("a short-syncframe E-AC-3 stream reports its real access-unit length",
         set_numblkscod(std::span{stream}.subspan(i * frame_bytes, frame_bytes), 2);
     }
 
-    const auto scanned = iclforge::io::scan(stream);
+    const auto scanned = iclforge::ac3::io::scan(stream);
     REQUIRE(scanned.has_value());
     REQUIRE(scanned->access_unit_samples.size() == 4);
     for (const auto samples : scanned->access_unit_samples) {
         CHECK(samples == 3 * 256);
     }
-    CHECK(iclforge::io::uniform_access_unit_samples(*scanned) == 768u);
-    CHECK(iclforge::io::stream_duration_samples(*scanned) == 4 * 768);
-    const auto second = iclforge::io::access_unit_timing(*scanned, 1);
+    CHECK(iclforge::ac3::io::uniform_access_unit_samples(*scanned) == 768u);
+    CHECK(iclforge::ac3::io::stream_duration_samples(*scanned) == 4 * 768);
+    const auto second = iclforge::ac3::io::access_unit_timing(*scanned, 1);
     REQUIRE(second.has_value());
     CHECK(second->start_sample == 768);
     CHECK(second->duration_samples == 768);
@@ -392,10 +393,10 @@ TEST_CASE("a stream whose access units differ in length has no uniform figure",
           "[elementary]") {
     // Same header-level fixture as above: one six-block unit, one three-block
     // unit, one six-block unit.
-    using iclforge::eac3::AccessUnitConfig;
+    using iclforge::ac3::eac3::AccessUnitConfig;
     AccessUnitConfig config;
-    config.independent = {.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0};
-    const auto unit = iclforge::eac3::build_silent_access_unit(config);
+    config.independent = {.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k2_0};
+    const auto unit = iclforge::ac3::eac3::build_silent_access_unit(config);
     REQUIRE(unit.has_value());
     const auto frame_bytes = unit->bytes.size();
 
@@ -405,7 +406,7 @@ TEST_CASE("a stream whose access units differ in length has no uniform figure",
     }
     set_numblkscod(std::span{stream}.subspan(frame_bytes, frame_bytes), 2);
 
-    const auto scanned = iclforge::io::scan(stream);
+    const auto scanned = iclforge::ac3::io::scan(stream);
     REQUIRE(scanned.has_value());
     REQUIRE(scanned->access_unit_samples.size() == 3);
     CHECK(scanned->access_unit_samples[0] == 1536);
@@ -413,36 +414,36 @@ TEST_CASE("a stream whose access units differ in length has no uniform figure",
     CHECK(scanned->access_unit_samples[2] == 1536);
     // No single samples_per_frame describes this, and saying otherwise is
     // what would put every timestamp after the second unit in the wrong place.
-    CHECK_FALSE(iclforge::io::uniform_access_unit_samples(*scanned).has_value());
-    CHECK(iclforge::io::stream_duration_samples(*scanned) == 1536 + 768 + 1536);
+    CHECK_FALSE(iclforge::ac3::io::uniform_access_unit_samples(*scanned).has_value());
+    CHECK(iclforge::ac3::io::stream_duration_samples(*scanned) == 1536 + 768 + 1536);
 
-    const auto third = iclforge::io::access_unit_timing(*scanned, 2);
+    const auto third = iclforge::ac3::io::access_unit_timing(*scanned, 2);
     REQUIRE(third.has_value());
     CHECK(third->start_sample == 1536 + 768);
 }
 
 TEST_CASE("access-unit timing counts a whole access unit, dependents included",
           "[elementary]") {
-    using iclforge::eac3::AccessUnitConfig;
-    namespace cm = iclforge::eac3::chanmap;
+    using iclforge::ac3::eac3::AccessUnitConfig;
+    namespace cm = iclforge::ac3::eac3::chanmap;
     AccessUnitConfig config;
-    config.independent = {.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true};
+    config.independent = {.bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true};
     config.dependents.push_back(
-        {.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0, .chanmap = cm::k512Height});
-    const auto unit = iclforge::eac3::build_silent_access_unit(config);
+        {.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k2_0, .chanmap = cm::k512Height});
+    const auto unit = iclforge::ac3::eac3::build_silent_access_unit(config);
     REQUIRE(unit.has_value());
 
     std::vector<std::byte> stream;
     append(stream, unit->bytes);
     append(stream, unit->bytes);
 
-    const auto scanned = iclforge::io::scan(stream);
+    const auto scanned = iclforge::ac3::io::scan(stream);
     REQUIRE(scanned.has_value());
     // Two access units of two syncframes each - the dependent does not add
     // its own 1536 samples, it codes the same ones.
     REQUIRE(scanned->access_units.size() == 2);
     REQUIRE(scanned->access_unit_samples.size() == 2);
-    CHECK(iclforge::io::stream_duration_samples(*scanned) == 2 * 1536);
+    CHECK(iclforge::ac3::io::stream_duration_samples(*scanned) == 2 * 1536);
 }
 
 // The other half of the objects-or-nothing fallback rule (docs/concepts/
@@ -450,7 +451,7 @@ TEST_CASE("access-unit timing counts a whole access unit, dependents included",
 // emit_object_metadata's own comment). bed51 omits the EMDF container so the
 // bed stays playable on a decoder that validates emdf_protection - and it
 // must omit TS 103 420 §8.3.1's addbsi marker with it, because that marker is
-// the ONLY thing a reader has to go on: iclforge::io::build_codec_config_box writes
+// the ONLY thing a reader has to go on: iclforge::ac3::io::build_codec_config_box writes
 // the dec3 box's Atmos extension off it, `forge fmp4` writes CHANNELS="<N>/JOC"
 // off it, and FFmpeg reports "Dolby Digital Plus + Dolby Atmos" off it. Left
 // in, all three would advertise an object layer that was never encoded - a
@@ -458,12 +459,12 @@ TEST_CASE("access-unit timing counts a whole access unit, dependents included",
 TEST_CASE("scan reports no Atmos marker for a bed51 stream", "[elementary]") {
     const auto stream = atmos_stream(/*emit_objects=*/false, 2, 3);
 
-    const auto scanned = iclforge::io::scan(stream);
+    const auto scanned = iclforge::ac3::io::scan(stream);
     REQUIRE(scanned.has_value());
     // Still an ordinary 5.1 E-AC-3 stream, which is the whole point of the
     // mode - it is only the object layer that is gone.
-    CHECK(scanned->kind == iclforge::io::StreamKind::kEac3);
-    CHECK(scanned->acmod == iclforge::Acmod::k3_2);
+    CHECK(scanned->kind == iclforge::ac3::io::StreamKind::kEac3);
+    CHECK(scanned->acmod == iclforge::ac3::Acmod::k3_2);
     CHECK(scanned->lfe);
     CHECK_FALSE(scanned->oba_complexity_index.has_value());
 }
@@ -478,20 +479,21 @@ TEST_CASE("scan reports no Atmos marker for a bed51 stream", "[elementary]") {
 namespace {
 
 std::vector<std::byte> legacy_core_stream(int access_units) {
-    iclforge::FrameEncoder core{{.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true}};
+    iclforge::ac3::FrameEncoder core{
+        {.bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true}};
     auto pcm = tone(6);
     std::vector<std::span<const float>> views;
     for (const auto& channel : pcm) {
         views.emplace_back(channel);
     }
-    iclforge::eac3::AccessUnitConfig config{
-        .independent = {.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true}};
+    iclforge::ac3::eac3::AccessUnitConfig config{
+        .independent = {.bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true}};
     config.dependents.push_back({.bitrate_kbps = 224,
-                                 .acmod = iclforge::Acmod::k2_2,
-                                 .chanmap = iclforge::eac3::chanmap::k71Rear});
-    const auto unit = iclforge::eac3::build_silent_access_unit(config);
+                                 .acmod = iclforge::ac3::Acmod::k2_2,
+                                 .chanmap = iclforge::ac3::eac3::chanmap::k71Rear});
+    const auto unit = iclforge::ac3::eac3::build_silent_access_unit(config);
     REQUIRE(unit.has_value());
-    const auto frames = iclforge::split_frames(unit->bytes);
+    const auto frames = iclforge::ac3::split_frames(unit->bytes);
     REQUIRE(frames.has_value());
     REQUIRE(frames->size() == 2);
     const auto dependent = (*frames)[1];
@@ -511,15 +513,15 @@ std::vector<std::byte> legacy_core_stream(int access_units) {
 TEST_CASE("scan reads an AC-3 core with E-AC-3 extension substreams", "[elementary]") {
     const auto stream = legacy_core_stream(3);
 
-    const auto scanned = iclforge::io::scan(stream);
+    const auto scanned = iclforge::ac3::io::scan(stream);
     REQUIRE(scanned.has_value());
     // Neither of the two plain kinds: the first syncframe is AC-3, so a reader
     // dispatching on bsid alone calls it AC-3 and then chokes on the
     // dependent - which is exactly the failure this kind exists to prevent.
-    CHECK(scanned->kind == iclforge::io::StreamKind::kAc3CoreEac3Extension);
-    CHECK(scanned->sample_rate == iclforge::SampleRate::k48000);
+    CHECK(scanned->kind == iclforge::ac3::io::StreamKind::kAc3CoreEac3Extension);
+    CHECK(scanned->sample_rate == iclforge::ac3::SampleRate::k48000);
     // acmod/lfe describe the CORE, which is the independent substream.
-    CHECK(scanned->acmod == iclforge::Acmod::k3_2);
+    CHECK(scanned->acmod == iclforge::ac3::Acmod::k3_2);
     CHECK(scanned->lfe);
     // §E3.8.2: the dependent's Ls/Rs overwrite the core's and its Lrs/Rrs
     // extend the layout, so a 5.1 core plus four coded channels renders 8.
@@ -534,13 +536,14 @@ TEST_CASE("scan reads an AC-3 core with E-AC-3 extension substreams", "[elementa
 }
 
 TEST_CASE("scan refuses substream arrangements it does not model", "[elementary]") {
-    using iclforge::io::ScanError;
+    using iclforge::ac3::io::ScanError;
 
     // An Annex E INDEPENDENT substream behind an AC-3 core is a second
     // programme (§E3.8.4's mixture), not an extension of the first. Folding it
     // into the core's access unit would union its channels into a layout they
     // have nothing to do with, so it is refused instead.
-    iclforge::FrameEncoder core{{.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true}};
+    iclforge::ac3::FrameEncoder core{
+        {.bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true}};
     auto pcm = tone(6);
     std::vector<std::span<const float>> views;
     for (const auto& channel : pcm) {
@@ -548,11 +551,11 @@ TEST_CASE("scan refuses substream arrangements it does not model", "[elementary]
     }
     const auto frame = core.encode_frame(views);
     REQUIRE(frame.has_value());
-    const auto independent = iclforge::eac3::build_silent_frame({.bitrate_kbps = 192});
+    const auto independent = iclforge::ac3::eac3::build_silent_frame({.bitrate_kbps = 192});
     REQUIRE(independent.has_value());
 
     std::vector<std::byte> mixture;
     append(mixture, *frame);
     append(mixture, *independent);
-    CHECK(iclforge::io::scan(mixture).error() == ScanError::kUnsupportedStructure);
+    CHECK(iclforge::ac3::io::scan(mixture).error() == ScanError::kUnsupportedStructure);
 }

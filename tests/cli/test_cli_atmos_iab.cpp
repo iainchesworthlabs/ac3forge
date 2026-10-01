@@ -288,11 +288,11 @@ TEST_CASE("forge atmos-iab parses, bridges and encodes a real IAB fixture end to
         stream_bytes[i] = static_cast<std::byte>(raw[i]);
     }
 
-    const auto units = iclforge::split_access_units(stream_bytes);
+    const auto units = iclforge::ac3::split_access_units(stream_bytes);
     REQUIRE(units.has_value());
     REQUIRE(units->size() >= 3);  // real content, more than one AC-3 frame
 
-    iclforge::Eac3Decoder decoder;
+    iclforge::ac3::Eac3Decoder decoder;
     constexpr int kCCh = 1;  // AC-3 3/2 coded order (Table 5.8): L, C, R, Ls, Rs.
 
     bool saw_center_energy = false;

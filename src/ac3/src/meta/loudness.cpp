@@ -13,7 +13,7 @@
 #include <span>
 #include <vector>
 
-namespace iclforge::meta {
+namespace iclforge::ac3::meta {
 
 namespace {
 
@@ -186,7 +186,7 @@ std::optional<double> position_weight(eac3::chanmap::Location location) {
 }
 
 // Every private data member, following the same pimpl pattern as
-// iclforge::io::WavStreamReader/Writer and iclforge::FrameEncoder.
+// iclforge::ac3::io::WavStreamReader/Writer and iclforge::ac3::FrameEncoder.
 struct LoudnessMeter::Impl {
     // BS.1770 K-weighting: a high-shelf pre-filter then the RLB high-pass,
     // both biquads, both per channel with their own state.
@@ -619,4 +619,4 @@ int dialnorm_from_lkfs(double lkfs) {
     return std::clamp(value, 1, 31);
 }
 
-}  // namespace iclforge::meta
+}  // namespace iclforge::ac3::meta

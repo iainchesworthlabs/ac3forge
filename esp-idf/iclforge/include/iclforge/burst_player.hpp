@@ -115,9 +115,9 @@ struct BurstPlayerConfig {
     // it: the server's settings replace these whole, as the extension page
     // says, and a stream that sends none plays with these.
     iclforge::render::OutputLayout layout = iclforge::render::OutputLayout::stereo();
-    iclforge::DecoderConfig decoder{.output = {.mode = iclforge::OperatingMode::kLine}};
-    iclforge::DownmixTarget stereo_fold = iclforge::DownmixTarget::kLoRo;
-    iclforge::render::ObjectsPolicy objects = iclforge::render::ObjectsPolicy::kAuto;
+    iclforge::ac3::DecoderConfig decoder{.output = {.mode = iclforge::ac3::OperatingMode::kLine}};
+    iclforge::ac3::DownmixTarget stereo_fold = iclforge::ac3::DownmixTarget::kLoRo;
+    iclforge::ac3::render::ObjectsPolicy objects = iclforge::ac3::render::ObjectsPolicy::kAuto;
 
     Playout::Tuning tuning;
 };

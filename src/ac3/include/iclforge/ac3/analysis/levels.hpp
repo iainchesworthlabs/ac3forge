@@ -17,7 +17,7 @@
 // belongs in the library because forge and forge-gui must report the same
 // numbers from the same ballistics rather than each inventing its own.
 
-namespace iclforge::analysis {
+namespace iclforge::ac3::analysis {
 
 // Everything at or below this reports as this, so callers never meet
 // log10(0). Well under the -96 dBFS noise floor of 16-bit material.
@@ -153,8 +153,8 @@ class ICLFORGE_AC3_EXPORT LevelMeter {
 
     // Every private data member - acmod/lfe/sample rate, the ballistics
     // config, the level/summary vectors, all of it - lives behind this one
-    // pimpl, following the same pattern as iclforge::io::WavStreamReader/Writer
-    // and iclforge::FrameEncoder. Impl is defined in levels.cpp.
+    // pimpl, following the same pattern as iclforge::ac3::io::WavStreamReader/Writer
+    // and iclforge::ac3::FrameEncoder. Impl is defined in levels.cpp.
     struct Impl;
     std::unique_ptr<Impl> impl_;
 };
@@ -175,4 +175,4 @@ struct SoundfieldVector {
 [[nodiscard]] ICLFORGE_AC3_EXPORT SoundfieldVector energy_vector(std::span<const ChannelLevel> levels,
                                                              Acmod acmod);
 
-}  // namespace iclforge::analysis
+}  // namespace iclforge::ac3::analysis

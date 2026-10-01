@@ -443,14 +443,14 @@ way the fixed findings used to.
 
 | Harness              | Calls                                                              |
 |-----------------------|--------------------------------------------------------------------|
-| `fuzz_scan`            | `iclforge::io::scan` - format-sniffing before any decoder commits to a layout |
+| `fuzz_scan`            | `iclforge::ac3::io::scan` - format-sniffing before any decoder commits to a layout |
 | `fuzz_matroska_demux`  | `iclforge::matroska::demux` + `iclforge::matroska::Reader` - the EBML walk over a container from a disc rip, a broadcast capture or a download, every length in it self-declared. Both entry points run on the same bytes, the reader in chunks whose size the input's first byte sets |
 | `fuzz_mp4_demux`       | `iclforge::mp4::demux` + `iclforge::mp4::Reader` - the box walk, and the sample table it resolves against the file: an index of self-declared offsets and sizes. Both entry points run on the same bytes, the reader in chunks whose size the input's first byte sets |
 | `fuzz_mpegts_demux`    | `iclforge::mpegts::demux` + `iclforge::mpegts::Reader` - sync search, PSI section reassembly and PES reassembly, every loop driven by a self-declared length, over a format that is expected to arrive damaged. Both entry points run on the same bytes, the reader in chunks whose size the input's first byte sets |
-| `fuzz_ac3_decode`      | `iclforge::split_frames` + `iclforge::FrameDecoder::decode_frame`, one decoder across all frames, the way `forge decode` drives it |
-| `fuzz_eac3_decode`     | `iclforge::split_access_units` + `iclforge::Eac3Decoder::decode_access_unit` (which calls `decode_substream` internally), the way `forge decode` drives it for E-AC-3 |
+| `fuzz_ac3_decode`      | `iclforge::ac3::split_frames` + `iclforge::ac3::FrameDecoder::decode_frame`, one decoder across all frames, the way `forge decode` drives it |
+| `fuzz_eac3_decode`     | `iclforge::ac3::split_access_units` + `iclforge::ac3::Eac3Decoder::decode_access_unit` (which calls `decode_substream` internally), the way `forge decode` drives it for E-AC-3 |
 | `fuzz_differential_ac3_decode`, `fuzz_differential_eac3_decode` | The same paths as the two rows above; the same bytes are then decoded by FFmpeg and the PCM compared. Not in the default list; see "Differential mode" below |
-| `fuzz_wav_read`        | `iclforge::io::read_wav` - a realistic input too (a truncated or hand-edited WAV), not only an adversarial one |
+| `fuzz_wav_read`        | `iclforge::ac3::io::read_wav` - a realistic input too (a truncated or hand-edited WAV), not only an adversarial one |
 | `fuzz_iec61937_unwrap` | `iclforge::iec61937::BurstReader` + `unwrap_stream` - IEC 61937 burst de-framing, driven the way `forge unspdif` drives it. The input is by definition off a wire (an S/PDIF or HDMI capture), and `Pd` states a length the parser must not believe past its data type's repetition period. Pushed as two chunks split at a mutation-chosen point, so the state machine's carry-across-a-chunk-boundary paths are reachable. The input also goes to `Ac4BurstPacker` as an AC-4 sync frame (IEC 61937-14), whose burst must be its period long and read back as the frame |
 | `fuzz_iab_parse`       | `iclforge::iab::parse_iabitstream`, `parse_mxf_iab` and `parse_iaframe` on one input - the IAB bitstream's Preamble+IAFrame run (§7), the KLV wrapper of an IAB track file in MXF, and one extracted frame (§9.1). Built with `ICLFORGE_BUILD_IAB` |
 | `fuzz_ac4_parse`       | `iclforge::ac4::scan`, `iclforge::ac4::SyncFrameSplitter` and `iclforge::ac4::parse_raw_frame` - sync search and the table of contents, on each sync frame `scan` finds and on the whole input as one raw frame, so a mutated table of contents is reached without a well-formed sync frame having to be guessed first; then `iclforge::ac4::build_dac4` and its refusals, the CMAF rules, the codec string and the manifest functions (`signalled_presentation` and the rest, Part 2 Annex G, and Annex H.1.2.4's `configuration_difference`) on every table of contents that reads. Built with `ICLFORGE_BUILD_AC4` |
@@ -458,7 +458,7 @@ way the fixed findings used to.
 | `fuzz_ac4_encode`      | `iclforge::ac4::Encoder` over the configuration the input's first bytes choose (layouts from mono to 7.1 and the immersive ones, rates, codec modes, I-frames, frame rates, metadata, DRC, downmix, dialogue enhancement, substreams and presentations) and the samples after them as 32-bit floats, NaN and values far past full scale included. Every frame must read back through the decoder's syntax layer with the encoder's own trace, decode to finite PCM, and come out the same from a second encoder. It draws no objects; `tools/ci/fuzz_ac4_encoder_space.py` does |
 | `fuzz_emdf_parse`      | `iclforge::emdf::parse_container` - ETSI TS 102 366 Annex H's container, located by a bit-by-bit sync scan and sized by its own 16-bit length field |
 | `fuzz_oamd_parse`      | `iclforge::oba::parse_payload` - TS 103 420 §5's `object_audio_metadata_payload`, as recovered from an EMDF payload with id 11 |
-| `fuzz_joc_parse`       | `iclforge::oba::joc::parse_payload` - TS 103 420 §6's `joc()` payload: Huffman-coded coefficients into a matrix sized from the stream's own numbers |
+| `fuzz_joc_parse`       | `iclforge::ac3::oba::joc::parse_payload` - TS 103 420 §6's `joc()` payload: Huffman-coded coefficients into a matrix sized from the stream's own numbers |
 | `fuzz_signing_verify`  | `iclforge::signing::verify_atmos_stream` + `verify_atmos_frame` - operator-supplied stream, operator-supplied key, no CRC check in front of either |
 | `fuzz_osc_parse`       | `iclforge::oba::parse_osc_packet` - the OSC 1.0 wire form of a live object-position update (live OSC object positions), reached straight from a UDP datagram by `iclforge::audio::LivePositionSource` whenever `positions=osc:<port>` is in play. No CRC, no container, no bitstream ahead of it at all - this project's first NETWORK-facing input rather than a file or capture-device one; see `docs/threat-model.md` |
 | `fuzz_adm_parse`       | `iclforge::adm::parse_bw64(std::istream&)` - BW64/RF64 chunks plus an arbitrary ADM XML document. Opt-in, see below |
@@ -515,7 +515,7 @@ BW64 chunk-walking is libbw64's and ADM XML is libadm's. That is worth
 knowing either way - the bytes reach them through an `iclforge::adm::` API this
 project ships - but it changes what "fix it" means for a finding here.
 
-`iclforge::io::read_wav` takes a path rather than a byte span, so
+`iclforge::ac3::io::read_wav` takes a path rather than a byte span, so
 `fuzz_wav_read` round-trips libFuzzer's buffer through a scratch file
 (`/dev/shm` when available) before calling it - the one unavoidable step
 beyond calling the function directly, since there is no in-memory
@@ -538,14 +538,14 @@ before the parser it was aimed at.
 `fuzz_ac3_decode` and `fuzz_eac3_decode` now define an
 `LLVMFuzzerCustomMutator` (`fuzz/crc_mutator.hpp`): run libFuzzer's own
 mutation first, then walk the result as a concatenation of syncframes -
-same bsid-at-bit-40 test and same two size derivations `iclforge::split_frames`
+same bsid-at-bit-40 test and same two size derivations `iclforge::ac3::split_frames`
 uses - and rewrite each frame's CRC words in place.
 
 Re-stamping is not a naive recompute. crc2 is an ordinary trailing CRC, but
 crc1 **precedes** the region it protects: A/52 §7.10.1 requires the register
 to read zero after the first 5/8 of the syncframe has been shifted through,
 and says outright that crc1 is not the CRC of that region. It has to be
-solved for, through the GF(2) polynomial inverse `iclforge::solve_leading_crc`
+solved for, through the GF(2) polynomial inverse `iclforge::ac3::solve_leading_crc`
 implements - the same call `src/ac3/src/encoder/encoder.cpp` makes, down to
 its crc2 == `kSyncWord` avoidance step (a crc2 that happens to equal 0x0B77
 would make the frame's own tail look like the start of the next syncframe, so

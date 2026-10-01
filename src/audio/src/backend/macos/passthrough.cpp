@@ -67,7 +67,7 @@
 // implementation cited above. E-AC-3 has no comparably established IEC
 // 60958-wrapped physical-format constant in CoreAudioTypes.h - the closest
 // published one is kAudioFormatEnhancedAC3 ('ec-3'), the same fourCC this
-// project's own iclforge::io::build_codec_config_box uses for a raw E-AC-3
+// project's own iclforge::ac3::io::build_codec_config_box uses for a raw E-AC-3
 // elementary stream in an MP4 sample entry, not a documented S/PDIF/HDMI
 // wire format. Apple's own support documentation confirms Dolby Digital
 // Plus and Dolby Atmos (E-AC-3 JOC) HDMI passthrough exists on Apple

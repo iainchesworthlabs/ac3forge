@@ -109,7 +109,7 @@ SAMPLES = [
         "sha256": "faa06c7b1ccbc5cf3c7897afb50004dd3d49feaa19d26bdeb03dc9bb4ec20802",
         "note": "AC-3 3/1 (L R C S) - an acmod nothing in this tree can encode; "
                 "a near-silent surround, so gated on absolute difference",
-        # This used to be decode-and-parse only: iclforge::io::wav_channel_order
+        # This used to be decode-and-parse only: iclforge::ac3::io::wav_channel_order
         # wrote 2/1 and 3/1 in bitstream order (L C R S) on the grounds that no
         # WAV convention claims a mono-surround slot, while FFmpeg maps 3/1
         # onto WAVEFORMATEXTENSIBLE's FL/FR/FC/BC (SPEAKER_BACK_CENTER, 0x100)

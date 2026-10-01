@@ -455,7 +455,7 @@ struct PcmBlock {
 };
 
 // A non-owning reference to any callable taking a const PcmBlock&, in the shape
-// of iclforge::BlockSink: no allocation, and the callable must outlive the call it
+// of iclforge::ac3::BlockSink: no allocation, and the callable must outlive the call it
 // is handed to, which a lambda written in the call's arguments does.
 class BlockSink {
    public:

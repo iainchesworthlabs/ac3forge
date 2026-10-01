@@ -37,11 +37,11 @@
 namespace fs = std::filesystem;
 
 using iclforge::apps::Ac4ObjectSlot;
-using iclforge::plan::Assignment;
-using iclforge::plan::Destination;
-using iclforge::plan::DestinationKind;
-using iclforge::plan::SourceShape;
-using Location = iclforge::eac3::chanmap::Location;
+using iclforge::ac3::plan::Assignment;
+using iclforge::ac3::plan::Destination;
+using iclforge::ac3::plan::DestinationKind;
+using iclforge::ac3::plan::SourceShape;
+using Location = iclforge::ac3::eac3::chanmap::Location;
 
 namespace {
 
@@ -97,12 +97,12 @@ fs::path tone_wav(const fs::path& path, std::size_t channels, std::size_t frames
                                static_cast<double>(n) / kRate));
         }
     }
-    REQUIRE(iclforge::io::write_wav_f32(path.string(), data, kRate).has_value());
+    REQUIRE(iclforge::ac3::io::write_wav_f32(path.string(), data, kRate).has_value());
     return path;
 }
 
-iclforge::io::WavData read(const fs::path& path) {
-    auto wav = iclforge::io::read_wav(path.string());
+iclforge::ac3::io::WavData read(const fs::path& path) {
+    auto wav = iclforge::ac3::io::read_wav(path.string());
     REQUIRE(wav.has_value());
     return std::move(*wav);
 }
@@ -141,7 +141,7 @@ fs::path write_scene(const fs::path& path, const iclforge::oba::ObjectScene& sce
 }
 
 // The bytes the shared steps write for one WAV file's channels as objects, given the scene.
-std::vector<std::byte> shared_bytes(const std::vector<const iclforge::io::WavData*>& sources,
+std::vector<std::byte> shared_bytes(const std::vector<const iclforge::ac3::io::WavData*>& sources,
                                     const std::vector<std::size_t>& offsets,
                                     const Assignment& assignment,
                                     const iclforge::oba::ObjectScene& scene, int kbps,

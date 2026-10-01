@@ -44,7 +44,7 @@ namespace iclforge::signing {
 // frame-level exponent strategy and SNR, no coupling. A frame outside that
 // subset is left unsigned rather than signed wrong - the same "nothing to
 // do here" answer every entry point in this file gives a frame it does not
-// recognise, not a caller error - iclforge::emdf::walk_frame's own `supported`
+// recognise, not a caller error - iclforge::ac3::emdf::walk_frame's own `supported`
 // field (ac3/emdf/frame_layout.hpp) is what draws that scope.
 [[nodiscard]] ICLFORGE_SIGNING_EXPORT int sign_atmos_stream(std::span<std::byte> stream,
                                                        const SigningKey& key);

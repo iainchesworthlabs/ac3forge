@@ -29,7 +29,7 @@
 // decoder reads a bsid-6 stream as timecode it already ignores rather than
 // losing sync.
 
-namespace iclforge::meta {
+namespace iclforge::ac3::meta {
 
 // §5.4.2.2, Table 5.7. Code 7 is two things at once: an associated voice-over
 // service at acmod 1/0, and a main karaoke service at anything wider. There is
@@ -266,4 +266,4 @@ inline constexpr std::string_view kTimeCodeSyntax = "HH:MM:SS[:FF[.N]] (FF 0..29
 [[nodiscard]] ICLFORGE_AC3_EXPORT std::string format_timecode(const TimeCodeCoarse& coarse,
                                                           const TimeCodeFine& fine);
 
-}  // namespace iclforge::meta
+}  // namespace iclforge::ac3::meta

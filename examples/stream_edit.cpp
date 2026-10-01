@@ -3,9 +3,9 @@
 //
 // dialnorm, compr, bsmod and dsurmod all live in bsi, ahead of the first
 // audblk. Correcting one by re-encoding the programme costs a whole
-// generation of lossy coding for nothing, so iclforge::io::edit_stream_metadata
+// generation of lossy coding for nothing, so iclforge::ac3::io::edit_stream_metadata
 // rewrites the bits in place and re-stamps the frame's CRCs instead - crc1
-// through iclforge::solve_leading_crc's GF(2) inverse, since A/52 §7.10.1 puts it
+// through iclforge::ac3::solve_leading_crc's GF(2) inverse, since A/52 §7.10.1 puts it
 // BEFORE the region it protects and it therefore has to be solved rather than
 // computed.
 //
@@ -37,11 +37,11 @@ namespace {
 // crc2 before it produces a sample, so a successful decode of the rewritten
 // stream is itself the proof that the re-stamp came out right.
 std::vector<float> decode_all(std::span<const std::byte> stream, int& dialnorm) {
-    const auto frames = iclforge::split_frames(stream);
+    const auto frames = iclforge::ac3::split_frames(stream);
     if (!frames.has_value()) {
         return {};
     }
-    iclforge::FrameDecoder decoder;
+    iclforge::ac3::FrameDecoder decoder;
     std::vector<float> pcm;
     bool first = true;
     for (const auto& frame : *frames) {
@@ -68,15 +68,15 @@ int main() {
 
     // Heap-allocated: FrameEncoder carries several KB of MDCT scratch/history
     // state (PREfast's C6262).
-    auto encoder = std::make_unique<iclforge::FrameEncoder>(iclforge::EncoderConfig{
-        .bitrate_kbps = 192, .dialnorm = 31, .acmod = iclforge::Acmod::k2_0});
-    std::vector<std::vector<float>> pcm(2, std::vector<float>(iclforge::kSamplesPerFrame));
+    auto encoder = std::make_unique<iclforge::ac3::FrameEncoder>(iclforge::ac3::EncoderConfig{
+        .bitrate_kbps = 192, .dialnorm = 31, .acmod = iclforge::ac3::Acmod::k2_0});
+    std::vector<std::vector<float>> pcm(2, std::vector<float>(iclforge::ac3::kSamplesPerFrame));
     std::vector<std::byte> stream;
     for (int frame = 0; frame < kFrames; ++frame) {
         for (std::size_t ch = 0; ch < pcm.size(); ++ch) {
             const double hz = ch == 0 ? 440.0 : 660.0;
-            for (int n = 0; n < iclforge::kSamplesPerFrame; ++n) {
-                const double t = (frame * iclforge::kSamplesPerFrame + n) / 48000.0;
+            for (int n = 0; n < iclforge::ac3::kSamplesPerFrame; ++n) {
+                const double t = (frame * iclforge::ac3::kSamplesPerFrame + n) / 48000.0;
                 pcm[ch][static_cast<std::size_t>(n)] =
                     static_cast<float>(0.4 * std::sin(2.0 * std::numbers::pi * hz * t));
             }
@@ -94,17 +94,17 @@ int main() {
     }
 
     // --- where each access unit sits ---------------------------------------
-    const auto scanned = iclforge::io::scan(stream);
+    const auto scanned = iclforge::ac3::io::scan(stream);
     if (!scanned.has_value()) {
         std::printf("scan failed: %.*s\n",
-                    static_cast<int>(iclforge::io::describe(scanned.error()).size()),
-                    iclforge::io::describe(scanned.error()).data());
+                    static_cast<int>(iclforge::ac3::io::describe(scanned.error()).size()),
+                    iclforge::ac3::io::describe(scanned.error()).data());
         return 1;
     }
     std::printf("%zu access units, %.3f s total\n", scanned->access_units.size(),
-                iclforge::io::stream_duration_seconds(*scanned));
+                iclforge::ac3::io::stream_duration_seconds(*scanned));
     for (const std::size_t index : {std::size_t{0}, std::size_t{6}, std::size_t{11}}) {
-        const auto at = iclforge::io::access_unit_timing(*scanned, index);
+        const auto at = iclforge::ac3::io::access_unit_timing(*scanned, index);
         if (!at.has_value()) {
             continue;
         }
@@ -125,11 +125,11 @@ int main() {
 
     auto rewritten = stream;
     const auto summary =
-        iclforge::io::edit_stream_metadata(rewritten, {.dialnorm = 24, .bsmod = 2});
+        iclforge::ac3::io::edit_stream_metadata(rewritten, {.dialnorm = 24, .bsmod = 2});
     if (!summary.has_value()) {
         std::printf("rewrite failed: %.*s\n",
-                    static_cast<int>(iclforge::io::describe(summary.error()).size()),
-                    iclforge::io::describe(summary.error()).data());
+                    static_cast<int>(iclforge::ac3::io::describe(summary.error()).size()),
+                    iclforge::ac3::io::describe(summary.error()).data());
         return 1;
     }
     std::printf("rewrote %zu of %zu syncframes; stream is still %zu bytes\n", summary->changed,
@@ -147,7 +147,7 @@ int main() {
     // access_unit_at_seconds names the unit covering a position; a cut is
     // always the whole unit, never a split, so the two halves together are
     // exactly the stream they came from.
-    const auto split = iclforge::io::access_unit_at_seconds(*scanned, 0.2);
+    const auto split = iclforge::ac3::io::access_unit_at_seconds(*scanned, 0.2);
     if (!split.has_value()) {
         std::printf("split point past the end\n");
         return 1;

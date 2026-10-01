@@ -25,7 +25,7 @@
 // probe/none - there is no AVX2 instruction on a Cortex-M3 for a runtime check
 // to find, and no supported way to build this profile for one that has it. The
 // AVX2-flagged object library (forge_simd_avx2) is not part of this profile at
-// all; mdct.cpp's calls into iclforge::internal::avx2:: are linked against
+// all; mdct.cpp's calls into iclforge::ac3::internal::avx2:: are linked against
 // src/internal/avx2/none/mdct_avx2.cpp's std::unreachable() bodies, which this
 // false makes unreachable in fact and not merely by contract.
 // ---------------------------------------------------------------------------

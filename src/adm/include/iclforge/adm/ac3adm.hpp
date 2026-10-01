@@ -17,7 +17,7 @@
 // JOC encoder" entry): this module knows nothing about AC-3, E-AC-3 or the
 // JOC/Atmos object layer - it is a container + XML metadata reader only, the
 // same "codec-blind" shape as iclforge::matroska, iclforge::mp4 and
-// iclforge::mpegts. Mapping the parsed graph onto iclforge::oba::AtmosEncoder is a
+// iclforge::mpegts. Mapping the parsed graph onto iclforge::ac3::oba::AtmosEncoder is a
 // separate, later task (phase 2); a worked end-to-end example is phase 3.
 //
 // Implemented on top of two vendored third-party libraries rather than a

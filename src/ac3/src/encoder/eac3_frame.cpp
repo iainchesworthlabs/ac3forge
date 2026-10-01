@@ -45,7 +45,7 @@
 #include "scalar_transform.hpp"
 #include "snr_search.hpp"
 
-namespace iclforge::eac3 {
+namespace iclforge::ac3::eac3 {
 
 namespace {
 
@@ -509,7 +509,7 @@ struct Payload {
     CouplingPlan cpl;
     SpxPlan spx;
     // §7.5.3, 2/0 only: [blk][band], band-indexed like rematrix_band_count's
-    // own return value (0..3, iclforge::kRematrixBands' index). Left at all-false
+    // own return value (0..3, iclforge::ac3::kRematrixBands' index). Left at all-false
     // for every other acmod and for silence, which is exactly "never
     // rematrixed" - the same bit pattern a stream with nothing to gain from
     // it would choose anyway.
@@ -1018,7 +1018,7 @@ struct ExtensionContent {
                 total += power;
                 if (bin >= startmant) {
                     region += power;
-                    log_sum += internal::scalar_log(power + static_cast<Scalar>(1e-30));
+                    log_sum += iclforge::internal::scalar_log(power + static_cast<Scalar>(1e-30));
                     ++count;
                 }
             }
@@ -1029,7 +1029,7 @@ struct ExtensionContent {
         return out;
     }
     out.energy_share = static_cast<double>(region / total);
-    const Scalar geometric = internal::scalar_exp(log_sum / static_cast<Scalar>(count));
+    const Scalar geometric = iclforge::internal::scalar_exp(log_sum / static_cast<Scalar>(count));
     const Scalar arithmetic = region / static_cast<Scalar>(count);
     out.flatness = arithmetic > 0
                        ? std::clamp(static_cast<double>(geometric / arithmetic), 0.0, 1.0)
@@ -1240,8 +1240,8 @@ inline constexpr double kCouplingEmptyRegionShare = 1.0e-4;
 // no SpxPlan of its own to pull band geometry out of.
 [[nodiscard]] double spx_noise_ratio(const SpxPlan& spx, int bnd, int blend) {
     const auto at = static_cast<std::size_t>(bnd);
-    return ::iclforge::eac3::spx_noise_ratio(spx.bands.start[at], spx.bands.size[at], spx.endmant,
-                                        blend);
+    return ::iclforge::ac3::eac3::spx_noise_ratio(spx.bands.start[at], spx.bands.size[at],
+                                                  spx.endmant, blend);
 }
 
 [[nodiscard]] int spx_blend(std::span<const internal::encode_scalar_t> region) {
@@ -1251,14 +1251,14 @@ inline constexpr double kCouplingEmptyRegionShare = 1.0e-4;
     int count = 0;
     for (const Scalar value : region) {
         const Scalar power = value * value + static_cast<Scalar>(1e-30);
-        log_sum += internal::scalar_log(power);
+        log_sum += iclforge::internal::scalar_log(power);
         sum += power;
         ++count;
     }
     if (count == 0 || !(sum > 0)) {
         return 31;  // nothing up here to blend; copying costs nothing either
     }
-    const Scalar flatness = internal::scalar_exp(log_sum / static_cast<Scalar>(count)) /
+    const Scalar flatness = iclforge::internal::scalar_exp(log_sum / static_cast<Scalar>(count)) /
                             (sum / static_cast<Scalar>(count));
     return std::clamp(
         static_cast<int>(std::lround((Scalar{1} - flatness) * static_cast<Scalar>(32))), 0, 31);
@@ -1424,7 +1424,7 @@ void emit_frame(BitWriter& w, const FrameConfig& config, std::uint32_t words,
     // exponent walking outside 0..24 or a grouped exponent above 124 - both
     // §7.10.2 error conditions - which is exactly how it was caught here:
     // FFmpeg and this project's own decoder both refused frame 284 of a
-    // 192 kbit/s stereo encode. iclforge::verify models the AC-3 encoder, whose
+    // 192 kbit/s stereo encode. iclforge::ac3::verify models the AC-3 encoder, whose
     // own emitter (encoder.cpp) carries the same rule for the same reason.
     //
     // So: emit when some stream has a correction to send this block, and emit
@@ -2558,8 +2558,8 @@ std::expected<void, FrameError> validate(const FrameConfig& config) {
 }  // namespace
 
 // Every private data member (eac3_frame.hpp's opaque Impl), following the
-// same pimpl pattern as iclforge::io::WavStreamReader/Writer and
-// iclforge::FrameEncoder. Defined here - after the anonymous namespace that owns
+// same pimpl pattern as iclforge::ac3::io::WavStreamReader/Writer and
+// iclforge::ac3::FrameEncoder. Defined here - after the anonymous namespace that owns
 // the plan types closes - because class members cannot be defined inside it;
 // an internal-linkage member type is fine for state only this translation
 // unit ever completes.
@@ -2581,7 +2581,7 @@ struct FrameEncoder::Impl {
     std::array<internal::encode_scalar_t, 512> time_scratch_{};
     // Four windowed blocks, not one (batched MDCT (four blocks)): step 2's
     // per-channel loop batches four BLOCKS' forward transforms into one
-    // iclforge::mdct512_forward_batch4 call, which needs all four to coexist.
+    // iclforge::ac3::mdct512_forward_batch4 call, which needs all four to coexist.
     // nblks is 1/2/3/6 (§E2.3.1), so only a six-block frame batches at all;
     // lane 0 doubles as the one-at-a-time path's own buffer.
     std::array<std::array<internal::encode_scalar_t, 512>, 4> windowed_scratch_{};
@@ -2803,7 +2803,7 @@ FrameEncoder::FrameEncoder(const FrameConfig& config) : impl_(std::make_unique<I
         impl_->range_.emplace(*impl_->config_.drc, impl_->config_.sample_rate);
     }
     // Ch2's controller is built from drc2/heavy2, never drc/heavy - see
-    // iclforge::FrameEncoder::FrameEncoder (the AC-3 sibling of this constructor)
+    // iclforge::ac3::FrameEncoder::FrameEncoder (the AC-3 sibling of this constructor)
     // for why.
     if (impl_->config_.acmod == Acmod::kDualMono && impl_->config_.drc2.has_value()) {
         impl_->range2_.emplace(*impl_->config_.drc2, impl_->config_.sample_rate);
@@ -2976,7 +2976,7 @@ double whole_programme_mono_peak_dbfs(std::span<const FrameEncoder> substreams,
     const Acmod folded = seat::reduced_acmod(has_centre, has_mains, has_surrounds);
 
     // Table 5.8 coded order for `folded` - the same sequence
-    // iclforge::OutputStage's own rendered-layout fold lends its seats in (see its
+    // iclforge::ac3::OutputStage's own rendered-layout fold lends its seats in (see its
     // apply() overload in decoder/output.cpp), minus the LFE seat it also
     // lends: mono_downmix_peak_dbfs has no LFE parameter at all, matching
     // §7.8's mono formula, which never mixes it in.
@@ -5870,7 +5870,7 @@ std::expected<AccessUnit, FrameError> build_silent_access_unit(
 }
 
 // Every private data member, following the same pimpl pattern as
-// iclforge::io::WavStreamReader/Writer and iclforge::FrameEncoder.
+// iclforge::ac3::io::WavStreamReader/Writer and iclforge::ac3::FrameEncoder.
 struct AccessUnitEncoder::Impl {
     // One programme's encoders and metadata state. There is one of these per
     // independent substream (§E2.3.1.2), because dialnorm, DRC and heavy
@@ -5955,7 +5955,7 @@ struct AccessUnitEncoder::Impl {
                 state.range.emplace(*lead.drc, lead.sample_rate);
             }
             // Ch2's controller is built from drc2/heavy2, never drc/heavy -
-            // see iclforge::FrameEncoder::FrameEncoder for why.
+            // see iclforge::ac3::FrameEncoder::FrameEncoder for why.
             if (dual_mono && lead.drc2.has_value()) {
                 state.range2.emplace(*lead.drc2, lead.sample_rate);
             }
@@ -6091,4 +6091,4 @@ std::expected<AccessUnit, FrameError> AccessUnitEncoder::encode_access_unit(
     return unit;
 }
 
-}  // namespace iclforge::eac3
+}  // namespace iclforge::ac3::eac3

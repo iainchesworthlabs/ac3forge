@@ -76,17 +76,17 @@ std::string Fmp4FolderWriter::start(std::span<const std::byte> first_frame) {
     // EncoderController::writeOutput and forge's own fmp4 already do before
     // wrapping frames they just encoded - done here on the first frame
     // instead, because a live session has no finished stream to scan.
-    const auto scanned = iclforge::io::scan(first_frame);
+    const auto scanned = iclforge::ac3::io::scan(first_frame);
     if (!scanned.has_value()) {
         return "Could not describe the encoded stream for the fragmented MP4 folder.";
     }
-    const bool eac3 = scanned->kind == iclforge::io::StreamKind::kEac3;
+    const bool eac3 = scanned->kind == iclforge::ac3::io::StreamKind::kEac3;
     track_ = iclforge::mp4::AudioTrack{
         .codec_id = std::string{eac3 ? iclforge::mp4::kCodecEac3 : iclforge::mp4::kCodecAc3},
-        .sample_rate = iclforge::sample_rate_hz(scanned->sample_rate),
+        .sample_rate = iclforge::ac3::sample_rate_hz(scanned->sample_rate),
         .channels = scanned->channels,
-        .samples_per_frame = iclforge::kSamplesPerFrame,
-        .codec_config = iclforge::io::build_codec_config_box(*scanned)};
+        .samples_per_frame = iclforge::ac3::kSamplesPerFrame,
+        .codec_config = iclforge::ac3::io::build_codec_config_box(*scanned)};
     // The Atmos/JOC signalling, identical to what
     // EncoderController::writeOutput's own fMP4 branch and forge's fmp4
     // build: CHANNELS="<N>/JOC" for HLS (mp4/hls.hpp), TS 103 420 §D.2's two
@@ -99,7 +99,7 @@ std::string Fmp4FolderWriter::start(std::span<const std::byte> first_frame) {
                                    : std::string{}};
     dash_ = iclforge::mp4::DashOptions{
         .joc_complexity_index = scanned->oba_complexity_index,
-        .dolby_channel_configuration = iclforge::io::dash_channel_configuration(*scanned)};
+        .dolby_channel_configuration = iclforge::ac3::io::dash_channel_configuration(*scanned)};
 
     auto writer = iclforge::mp4::FragmentWriter::create(
         track_, iclforge::mp4::FragmentOptions{

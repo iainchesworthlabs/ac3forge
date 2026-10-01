@@ -24,7 +24,7 @@
 // public ac3/ API, exactly like ac3/internal/profiling.hpp beside it.
 // ---------------------------------------------------------------------------
 
-namespace iclforge::internal::avx2 {
+namespace iclforge::ac3::internal::avx2 {
 
 // Computes a small, fixed result using real AVX2 intrinsics and compares it
 // against the same result computed by ordinary scalar arithmetic in the
@@ -36,4 +36,4 @@ namespace iclforge::internal::avx2 {
 // is exactly the illegal-instruction fault that check exists to prevent.
 [[nodiscard]] bool avx2_probe_matches_expected() noexcept;
 
-} // namespace iclforge::internal::avx2
+} // namespace iclforge::ac3::internal::avx2

@@ -184,7 +184,7 @@ def containers_in(frame: bytes):
 
 
 def syncframes(stream: bytes):
-    """Walks an E-AC-3 stream frame by frame, the way iclforge::split_frames does."""
+    """Walks an E-AC-3 stream frame by frame, the way iclforge::ac3::split_frames does."""
     offset = 0
     while offset + 6 <= len(stream):
         if stream[offset] != 0x0B or stream[offset + 1] != 0x77:

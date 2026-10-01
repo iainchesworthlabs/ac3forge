@@ -8,13 +8,14 @@ using iclforge_c::guard;
 using iclforge_c::to_cpp;
 
 namespace {
-iclforge::analysis::MeterBallistics ballistics_to_cpp(const iclforge_level_meter_ballistics_t* ballistics) {
+iclforge::ac3::analysis::MeterBallistics ballistics_to_cpp(const iclforge_level_meter_ballistics_t* ballistics) {
     if (ballistics == nullptr) {
-        return iclforge::analysis::MeterBallistics{};
+        return iclforge::ac3::analysis::MeterBallistics{};
     }
-    return iclforge::analysis::MeterBallistics{.rms_integration_ms = ballistics->rms_integration_ms,
-                                          .peak_decay_db_per_s = ballistics->peak_decay_db_per_s,
-                                          .peak_hold_ms = ballistics->peak_hold_ms};
+    return iclforge::ac3::analysis::MeterBallistics{
+        .rms_integration_ms = ballistics->rms_integration_ms,
+        .peak_decay_db_per_s = ballistics->peak_decay_db_per_s,
+        .peak_hold_ms = ballistics->peak_hold_ms};
 }
 }  // namespace
 
@@ -24,7 +25,7 @@ void iclforge_level_meter_ballistics_init(iclforge_level_meter_ballistics_t* bal
     if (ballistics == nullptr) {
         return;
     }
-    const iclforge::analysis::MeterBallistics defaults{};
+    const iclforge::ac3::analysis::MeterBallistics defaults{};
     *ballistics = iclforge_level_meter_ballistics_t{.rms_integration_ms = defaults.rms_integration_ms,
                                                      .peak_decay_db_per_s = defaults.peak_decay_db_per_s,
                                                      .peak_hold_ms = defaults.peak_hold_ms};
@@ -41,11 +42,11 @@ iclforge_status_t iclforge_level_meter_create(iclforge_acmod_t acmod, int lfe,
         const auto cpp_ballistics = ballistics_to_cpp(ballistics);
         auto owned = std::make_unique<iclforge_level_meter>();
         if (channels > 0) {
-            owned->impl = std::make_unique<iclforge::analysis::LevelMeter>(
+            owned->impl = std::make_unique<iclforge::ac3::analysis::LevelMeter>(
                 to_cpp(acmod), lfe != 0, sample_rate, channels, cpp_ballistics);
         } else {
-            owned->impl = std::make_unique<iclforge::analysis::LevelMeter>(to_cpp(acmod), lfe != 0,
-                                                                       sample_rate, cpp_ballistics);
+            owned->impl = std::make_unique<iclforge::ac3::analysis::LevelMeter>(
+                to_cpp(acmod), lfe != 0, sample_rate, cpp_ballistics);
         }
         *out_meter = owned.release();
         return ICLFORGE_OK;

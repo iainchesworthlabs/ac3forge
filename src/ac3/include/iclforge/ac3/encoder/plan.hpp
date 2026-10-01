@@ -34,7 +34,7 @@
 // AccessUnitConfig values and says how a source's channels reach them; the
 // encoders are unchanged and unaware of it.
 
-namespace iclforge::plan {
+namespace iclforge::ac3::plan {
 
 // --- codec ------------------------------------------------------------------
 //
@@ -186,7 +186,7 @@ inline constexpr std::array<LayoutInfo, 8> kLayouts{{
 // A LayoutId only ever names one of the combinations below. This is the
 // general form underneath: a bed acmod/lfe plus however many dependent
 // chanmaps it takes to render an arbitrary set of Table E2.5 locations
-// (iclforge::eac3::chanmap::allocate does the actual partitioning). Every function
+// (iclforge::ac3::eac3::chanmap::allocate does the actual partitioning). Every function
 // below that used to take only a LayoutId now also takes a ChannelPlan
 // directly, and the LayoutId overload is a one-line lookup into it - so a
 // named layout is a convenience shortcut for a specific plan, not a separate
@@ -512,7 +512,7 @@ struct Plan {
     LayoutId layout = LayoutId::kStereo;
     // A caller-built alternative to `layout`: when set, this OVERRIDES
     // `layout` entirely and the plan targets exactly these Table E2.5
-    // locations (iclforge::eac3::chanmap::allocate) instead of a named preset.
+    // locations (iclforge::ac3::eac3::chanmap::allocate) instead of a named preset.
     std::optional<std::uint16_t> custom_locations = std::nullopt;
     SampleRate sample_rate = SampleRate::k48000;
     std::uint32_t bitrate_kbps = 192;
@@ -639,4 +639,4 @@ struct ICLFORGE_AC3_EXPORT Routing {
 ICLFORGE_AC3_EXPORT void render(const Routing& routing, std::span<const std::span<const float>> source,
                             std::span<const std::span<float>> coded, std::size_t samples);
 
-}  // namespace iclforge::plan
+}  // namespace iclforge::ac3::plan

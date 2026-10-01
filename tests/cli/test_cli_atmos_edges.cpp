@@ -69,7 +69,7 @@ fs::path tone_wav(const fs::path& path, std::size_t channels) {
                                    static_cast<double>(n) / kRate));
             }
         }
-        REQUIRE(iclforge::io::write_wav_f32(path.string(), data, kRate).has_value());
+        REQUIRE(iclforge::ac3::io::write_wav_f32(path.string(), data, kRate).has_value());
     }
     return path;
 }

@@ -9,7 +9,7 @@
 // Every entry cites the section or table it comes from; nothing here is
 // derived from any third-party implementation.
 
-namespace iclforge {
+namespace iclforge::ac3 {
 
 // A/52 §5.4.1.1: every syncframe begins with this 16-bit sync word.
 inline constexpr std::uint16_t kSyncWord = 0x0B77;
@@ -241,4 +241,4 @@ static_assert(frame_table_matches_closed_form());
     return (frame_words >> 1) + (frame_words >> 3);
 }
 
-}  // namespace iclforge
+}  // namespace iclforge::ac3

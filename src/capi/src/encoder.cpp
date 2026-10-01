@@ -8,14 +8,14 @@ using iclforge_c::guard;
 using iclforge_c::to_cpp;
 
 // Kept outside extern "C" below: a C-linkage function returning a C++ class
-// by value (iclforge::EncoderConfig, here) is diagnosed by Clang
+// by value (iclforge::ac3::EncoderConfig, here) is diagnosed by Clang
 // (-Wreturn-type-c-linkage) as ABI-incompatible with C, which this helper
 // genuinely is not meant to be - it is a private implementation detail, never
 // declared in iclforge.h.
 namespace {
 
-iclforge::EncoderConfig encoder_config_to_cpp(const iclforge_encoder_config_t& config) {
-    iclforge::EncoderConfig out;
+iclforge::ac3::EncoderConfig encoder_config_to_cpp(const iclforge_encoder_config_t& config) {
+    iclforge::ac3::EncoderConfig out;
     out.sample_rate = to_cpp(config.sample_rate);
     out.bitrate_kbps = config.bitrate_kbps;
     out.dialnorm = config.dialnorm;
@@ -27,15 +27,16 @@ iclforge::EncoderConfig encoder_config_to_cpp(const iclforge_encoder_config_t& c
     out.cplbegf = config.cplbegf;
     out.cplendf = config.cplendf;
     out.fast_mdct = config.fast_mdct != 0;
-    out.drc = config.has_drc ? std::optional<iclforge::meta::Profile>(iclforge::meta::profile(to_cpp(config.drc_profile)))
+    out.drc = config.has_drc ? std::optional<iclforge::ac3::meta::Profile>(iclforge::ac3::meta::profile(to_cpp(config.drc_profile)))
                               : std::nullopt;
-    out.heavy = config.has_heavy ? std::optional<iclforge::meta::HeavyConfig>(to_cpp(config.heavy))
-                                  : std::nullopt;
+    out.heavy = config.has_heavy
+                    ? std::optional<iclforge::ac3::meta::HeavyConfig>(to_cpp(config.heavy))
+                    : std::nullopt;
     out.drc2 = config.has_drc2
-                   ? std::optional<iclforge::meta::Profile>(iclforge::meta::profile(to_cpp(config.drc2_profile)))
+                   ? std::optional<iclforge::ac3::meta::Profile>(iclforge::ac3::meta::profile(to_cpp(config.drc2_profile)))
                    : std::nullopt;
     out.heavy2 = config.has_heavy2
-                     ? std::optional<iclforge::meta::HeavyConfig>(to_cpp(config.heavy2))
+                     ? std::optional<iclforge::ac3::meta::HeavyConfig>(to_cpp(config.heavy2))
                      : std::nullopt;
     out.cmixlev = to_cpp(config.cmixlev);
     out.surmixlev = to_cpp(config.surmixlev);
@@ -50,7 +51,7 @@ void iclforge_encoder_config_init(iclforge_encoder_config_t* config) {
     if (config == nullptr) {
         return;
     }
-    const iclforge::EncoderConfig defaults{};
+    const iclforge::ac3::EncoderConfig defaults{};
     *config = iclforge_encoder_config_t{
         .sample_rate = iclforge_c::from_cpp(defaults.sample_rate),
         .bitrate_kbps = defaults.bitrate_kbps,
@@ -84,7 +85,7 @@ iclforge_status_t iclforge_encoder_create(const iclforge_encoder_config_t* confi
         return ICLFORGE_ERROR_INVALID_ARGUMENT;
     }
     // chbwcod's legal codes stop at 60 (§5.4.3.24: 61-63 fit its six bits but
-    // are reserved); any negative value means "auto". iclforge::FrameEncoder only
+    // are reserved); any negative value means "auto". iclforge::ac3::FrameEncoder only
     // asserts the range - it has no FrameError for it - so a code past 60
     // must be refused here, where the config is first seen, or it aborts the
     // caller's process at the first encode_frame().
@@ -127,7 +128,7 @@ iclforge_status_t iclforge_encoder_encode_frame(iclforge_encoder_t* encoder,
         return ICLFORGE_ERROR_INVALID_ARGUMENT;
     }
     if (channel_count != iclforge_encoder_channel_count(encoder) ||
-        samples_per_channel != iclforge::kSamplesPerFrame) {
+        samples_per_channel != iclforge::ac3::kSamplesPerFrame) {
         return ICLFORGE_ERROR_INVALID_ARGUMENT;
     }
     return guard([&encoder, &channels, &channel_count, &samples_per_channel,
@@ -168,7 +169,7 @@ int iclforge_decoder_latency_samples(const iclforge_decoder_t* decoder) {
     // AC-3 decoder's own contribution is structurally zero (see the header).
     // Taking the handle anyway keeps the call shape identical to the E-AC-3
     // form, whose answer really does depend on the instance.
-    return decoder == nullptr ? 0 : iclforge::FrameDecoder::latency_samples();
+    return decoder == nullptr ? 0 : iclforge::ac3::FrameDecoder::latency_samples();
 }
 
 }  // extern "C"

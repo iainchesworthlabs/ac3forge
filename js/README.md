@@ -10,11 +10,11 @@ decoder for it.
 
 Four pieces for AC-3 and E-AC-3:
 
-- **A push-frame decode API** (`PushDecoder`) over `iclforge::Eac3Decoder::decode_access_unit_into`'s
+- **A push-frame decode API** (`PushDecoder`) over `iclforge::ac3::Eac3Decoder::decode_access_unit_into`'s
   caller-buffer form - the hot path allocates nothing on the C++ side.
 - **An `IclForgeDecoderNode`**: an `AudioWorkletNode`. Decoding runs in a Worker (off the
   main thread); the audio-rendering thread itself only drains a `SharedArrayBuffer` ring buffer.
-- **Multichannel output, or the §7.8 downmix** (Lo/Ro, Lt/Rt, mono) - `iclforge::OutputStage`, the
+- **Multichannel output, or the §7.8 downmix** (Lo/Ro, Lt/Rt, mono) - `iclforge::ac3::OutputStage`, the
   library's own output stage, never a hand-rolled fold.
 - **An hls.js/MSE bridge** for playing EC-3 in browsers that cannot decode it natively.
 

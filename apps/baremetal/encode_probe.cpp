@@ -147,10 +147,10 @@ constexpr int kChannels = 6;
 //
 // It is also what an embedded integrator has: one block, sized once, reused
 // every frame. The encoders read through spans over it.
-std::array<std::array<float, iclforge::kSamplesPerFrame>, kChannels> g_pcm{};
+std::array<std::array<float, iclforge::ac3::kSamplesPerFrame>, kChannels> g_pcm{};
 std::array<std::span<const float>, kChannels> g_views{};
 
-void fill_signal(std::array<std::array<float, iclforge::kSamplesPerFrame>, kChannels>& pcm,
+void fill_signal(std::array<std::array<float, iclforge::ac3::kSamplesPerFrame>, kChannels>& pcm,
                  int frame) {
     for (std::size_t ch = 0; ch < kChannels; ++ch) {
         // 220, 337, 554, 881, 1409, 2273 Hz - each roughly 1.6x the last and
@@ -158,14 +158,15 @@ void fill_signal(std::array<std::array<float, iclforge::kSamplesPerFrame>, kChan
         constexpr std::array<double, kChannels> kHz{220.0, 337.0, 554.0,
                                                     881.0, 1409.0, 2273.0};
         const double hz = kHz[ch];
-        for (std::size_t n = 0; n < iclforge::kSamplesPerFrame; ++n) {
+        for (std::size_t n = 0; n < iclforge::ac3::kSamplesPerFrame; ++n) {
             // Sample index continues across frames, so successive frames are a
             // continuous signal rather than six copies of one - which is what
             // gives block switching and the exponent strategy something to
             // track.
-            const double t = static_cast<double>(
-                                 static_cast<std::size_t>(frame) * iclforge::kSamplesPerFrame + n) /
-                             48000.0;
+            const double t =
+                static_cast<double>(
+                    static_cast<std::size_t>(frame) * iclforge::ac3::kSamplesPerFrame + n) /
+                48000.0;
             pcm[ch][n] = static_cast<float>(0.25 * std::sin(2.0 * 3.14159265358979323846 * hz * t));
         }
     }
@@ -275,8 +276,9 @@ auto encode_one(Encoder& encoder, std::span<const std::span<const float>> views)
     return encoder.encode_frame(views);
 }
 
-[[maybe_unused]] std::expected<std::vector<std::byte>, iclforge::FrameError> encode_one(
-    iclforge::eac3::AccessUnitEncoder& encoder, std::span<const std::span<const float>> views) {
+[[maybe_unused]] std::expected<std::vector<std::byte>, iclforge::ac3::FrameError> encode_one(
+    iclforge::ac3::eac3::AccessUnitEncoder& encoder,
+    std::span<const std::span<const float>> views) {
     auto unit = encoder.encode_access_unit(views);
     if (!unit) {
         return std::unexpected(unit.error());
@@ -287,9 +289,10 @@ auto encode_one(Encoder& encoder, std::span<const std::span<const float>> views)
 // `views` is however many channels the encoder's own layout asks for, which is
 // not always the six the PCM block holds - see the 2/0 fixture below.
 template <typename Encoder>
-EncodeResult encode_all(Encoder& encoder,
-                        std::array<std::array<float, iclforge::kSamplesPerFrame>, kChannels>& pcm,
-                        std::span<const std::span<const float>> views) {
+EncodeResult encode_all(
+    Encoder& encoder,
+    std::array<std::array<float, iclforge::ac3::kSamplesPerFrame>, kChannels>& pcm,
+    std::span<const std::span<const float>> views) {
     EncodeResult result;
     // The fixture's peak starts from what is live now: this encoder, just
     // constructed, and nothing of the previous one, which its scope destroyed.
@@ -334,8 +337,8 @@ int iclforge_probe::run() {
     std::printf("static.pcm_bytes=%lu static.frame_encoder_bytes=%lu "
                 "static.eac3_frame_encoder_bytes=%lu\n",
                 static_cast<unsigned long>(sizeof(g_pcm)),
-                static_cast<unsigned long>(sizeof(iclforge::FrameEncoder)),
-                static_cast<unsigned long>(sizeof(iclforge::eac3::FrameEncoder)));
+                static_cast<unsigned long>(sizeof(iclforge::ac3::FrameEncoder)),
+                static_cast<unsigned long>(sizeof(iclforge::ac3::eac3::FrameEncoder)));
 
     for (std::size_t ch = 0; ch < kChannels; ++ch) {
         g_views[ch] = std::span<const float>(g_pcm[ch]);
@@ -352,8 +355,8 @@ int iclforge_probe::run() {
     // holding one peaks at 201,770 or 243,770. Sequential is what fits, so
     // sequential is what the probe measures.
     {
-        iclforge::FrameEncoder encoder{
-            {.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true}};
+        iclforge::ac3::FrameEncoder encoder{
+            {.bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true}};
         const auto r = encode_all(encoder, g_pcm, g_views);
         report("ac3", r, iclforge_probe::kAc3Bytes, iclforge_probe::kAc3Hash);
     }
@@ -363,20 +366,22 @@ int iclforge_probe::run() {
     // likely to be asked to encode, and each reads two of the block's six
     // channels - the encoder's layout decides how many spans it takes.
     {
-        iclforge::FrameEncoder encoder{{.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0}};
+        iclforge::ac3::FrameEncoder encoder{
+            {.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k2_0}};
         const auto r = encode_all(encoder, g_pcm, std::span{g_views}.first(2));
         report("ac3_stereo", r, iclforge_probe::kAc3StereoBytes, iclforge_probe::kAc3StereoHash);
     }
 
     {
-        iclforge::eac3::FrameEncoder encoder{
-            {.bitrate_kbps = 384, .acmod = iclforge::Acmod::k3_2, .lfe = true}};
+        iclforge::ac3::eac3::FrameEncoder encoder{
+            {.bitrate_kbps = 384, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true}};
         const auto r = encode_all(encoder, g_pcm, g_views);
         report("eac3", r, iclforge_probe::kEac3Bytes, iclforge_probe::kEac3Hash);
     }
 
     {
-        iclforge::eac3::FrameEncoder encoder{{.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0}};
+        iclforge::ac3::eac3::FrameEncoder encoder{
+            {.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k2_0}};
         const auto r = encode_all(encoder, g_pcm, std::span{g_views}.first(2));
         report("eac3_stereo", r, iclforge_probe::kEac3StereoBytes, iclforge_probe::kEac3StereoHash);
     }
@@ -387,8 +392,8 @@ int iclforge_probe::run() {
     // at once, at 2/0 with the band edges pinned; encode_fixture.hpp says why
     // not 5.1 and why pinned, with the numbers.
     {
-        iclforge::eac3::FrameEncoder encoder{{.bitrate_kbps = 192,
-                                         .acmod = iclforge::Acmod::k2_0,
+        iclforge::ac3::eac3::FrameEncoder encoder{{.bitrate_kbps = 192,
+                                         .acmod = iclforge::ac3::Acmod::k2_0,
                                          .coupling = true,
                                          .cplbegf = 0,
                                          .spx = true,
@@ -408,8 +413,8 @@ int iclforge_probe::run() {
     // `coupling` - §E3.5 is an alternate coupling mode, not an independent
     // tool.
     {
-        iclforge::eac3::FrameEncoder encoder{{.bitrate_kbps = 192,
-                                         .acmod = iclforge::Acmod::k2_0,
+        iclforge::ac3::eac3::FrameEncoder encoder{{.bitrate_kbps = 192,
+                                         .acmod = iclforge::ac3::Acmod::k2_0,
                                          .coupling = true,
                                          .enhanced = true}};
         const auto r = encode_all(encoder, g_pcm, std::span{g_views}.first(2));
@@ -437,11 +442,11 @@ int iclforge_probe::run() {
     // see the same samples, and widening g_pcm to ten channels would add
     // 24 KB of .bss to an image whose whole subject is footprint.
     if constexpr (kProbeSevenOne) {
-        iclforge::eac3::AccessUnitEncoder encoder{
-            {.independent = {.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true},
+        iclforge::ac3::eac3::AccessUnitEncoder encoder{
+            {.independent = {.bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true},
              .dependents = {{.bitrate_kbps = 224,
-                             .acmod = iclforge::Acmod::k2_2,
-                             .chanmap = iclforge::eac3::chanmap::k71Rear}}}};
+                             .acmod = iclforge::ac3::Acmod::k2_2,
+                             .chanmap = iclforge::ac3::eac3::chanmap::k71Rear}}}};
         const std::array<std::span<const float>, 10> views = {
             g_views[0], g_views[1], g_views[2], g_views[3], g_views[4], g_views[5],
             g_views[3], g_views[4], g_views[0], g_views[1]};
@@ -459,7 +464,7 @@ int iclforge_probe::run() {
     //
     // The ENCODER shares eac3_tools with the decoder, which is why this call
     // means anything in an encode-only profile at all.
-    iclforge::eac3::release_ecpl_scratch();
+    iclforge::ac3::eac3::release_ecpl_scratch();
 
     // Whether this build's library called the stage timers at all; a plain
     // build says "off" and prints no stage lines.

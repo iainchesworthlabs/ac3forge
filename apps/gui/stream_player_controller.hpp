@@ -38,9 +38,9 @@ namespace splayer_detail {
 
 struct RawResult {
     QString codec_label;              // "AC-3" or "E-AC-3"
-    QString layout_label;             // iclforge::analysis::layout_name(acmod, lfe)
+    QString layout_label;             // iclforge::ac3::analysis::layout_name(acmod, lfe)
     std::uint32_t sample_rate_hz = 0;
-    iclforge::Acmod acmod = iclforge::Acmod::k2_0;
+    iclforge::ac3::Acmod acmod = iclforge::ac3::Acmod::k2_0;
     bool lfe = false;
     std::uint64_t frame_count = 0;    // samples per channel, whole file
     std::uint64_t unit_count = 0;     // syncframes/access units decoded
@@ -48,13 +48,13 @@ struct RawResult {
     bool has_objects = false;
     int object_count = 0;
     // Planar bed audio, one vector per channel, already reordered to
-    // monitor/WAV playback order (iclforge::io::wav_channel_order /
-    // iclforge::plan::monitor_order) - channels[i] is playback position i's
+    // monitor/WAV playback order (iclforge::ac3::io::wav_channel_order /
+    // iclforge::ac3::plan::monitor_order) - channels[i] is playback position i's
     // whole-file audio, ready to hand straight to write_wav_f32 for export.
     std::vector<std::vector<float>> channels;
     // Location per channel, parallel to `channels` above - drives
     // channelMeta()/the soundfield ring's geometry.
-    std::vector<iclforge::eac3::chanmap::Location> locations;
+    std::vector<iclforge::ac3::eac3::chanmap::Location> locations;
     // One mono buffer per JOC-reconstructed object, present only for an
     // Atmos E-AC-3 stream - export only (exportObjects()), never shown as a
     // QVariantList property the way the bed's channels are.
@@ -196,7 +196,7 @@ class StreamPlayerController : public QObject {
     Q_INVOKABLE void clearClipLatch(int channel);
 
     // Writes the whole decoded bed to `url` as a float32 WAV
-    // (iclforge::io::write_wav_f32) - the GUI twin of `forge decode`'s primary
+    // (iclforge::ac3::io::write_wav_f32) - the GUI twin of `forge decode`'s primary
     // output, from data already resident rather than a second decode pass.
     Q_INVOKABLE void exportDecodedWav(const QUrl& url);
     // Writes one object_NN.wav per JOC-reconstructed object into the
@@ -226,7 +226,7 @@ class StreamPlayerController : public QObject {
     // while this one was still mid-flight) must never let its OWN geometry
     // leak into whatever result_ points to by the time this runs.
     void publishLevels(const splayer_detail::RawResult& source,
-                       std::span<const iclforge::analysis::ChannelLevel> levels);
+                       std::span<const iclforge::ac3::analysis::ChannelLevel> levels);
 
     QString file_path_;
     bool busy_ = false;

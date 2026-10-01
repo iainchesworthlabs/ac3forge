@@ -38,7 +38,7 @@ namespace iclforge::apps {
 // One tap is a plain `obj` row. Several are `objm`: a contiguous range of ONE
 // source's channels folded to a single mono object, each tap already scaled by
 // 1/n so several full-range channels summed together do not clip past what one
-// alone would (iclforge::plan::DestinationKind::kObjectMono's own contract). A slot
+// alone would (iclforge::ac3::plan::DestinationKind::kObjectMono's own contract). A slot
 // with no taps is allocated but unbound, and carried silent - the state
 // `live objects=<N>` leaves a slot in when nothing is mapped onto it.
 struct ObjectSlot {
@@ -56,8 +56,8 @@ struct ObjectSlot {
 // that the objects a given map= produces are the same objects every way - a
 // GUI assignment reproduced headlessly has to reproduce.
 [[nodiscard]] std::vector<ObjectSlot> object_slots_from_assignment(
-    const iclforge::plan::Assignment& assignment,
-    std::span<const iclforge::plan::SourceShape> shapes);
+    const iclforge::ac3::plan::Assignment& assignment,
+    std::span<const iclforge::ac3::plan::SourceShape> shapes);
 
 // Where a Table E2.5 location sits on the soundfield plans, degrees CCW from
 // the front: the ITU-R BS.775 ring's five positions (L +30, C 0, R -30, Ls +110,
@@ -65,7 +65,7 @@ struct ObjectSlot {
 // carry. Nothing for the LFEs, which have no direction. A convention the GUI's
 // soundfield ring and the AC-4 pins both read.
 [[nodiscard]] std::optional<double> location_azimuth_deg(
-    iclforge::eac3::chanmap::Location location);
+    iclforge::ac3::eac3::chanmap::Location location);
 
 // --- AC-4 objects -----------------------------------------------------------
 
@@ -105,8 +105,8 @@ struct Ac4ObjectSlot {
 // each (in source, channel order), then an LFE's. A row's trim is its tap's
 // gain.
 [[nodiscard]] std::vector<Ac4ObjectSlot> ac4_object_slots(
-    const iclforge::plan::Assignment& assignment,
-    std::span<const iclforge::plan::SourceShape> shapes);
+    const iclforge::ac3::plan::Assignment& assignment,
+    std::span<const iclforge::ac3::plan::SourceShape> shapes);
 
 // Where a channel pinned to a speaker sits: on the ring of radius 0.5 about the
 // room's centre, at the speaker's azimuth, the place ADM's polar coordinates

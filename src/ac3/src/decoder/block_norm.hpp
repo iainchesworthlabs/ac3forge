@@ -55,10 +55,10 @@
 // exponent one too small costs a bit of precision, one too large costs the
 // block.
 
-namespace iclforge::internal {
+namespace iclforge::ac3::internal {
 
 template <typename Scalar>
-inline constexpr bool kNormalisedStore = std::is_same_v<Scalar, Fixed32>;
+inline constexpr bool kNormalisedStore = std::is_same_v<Scalar, iclforge::internal::Fixed32>;
 
 // One bit below one half: the transform's precondition (mdct_fixed.hpp).
 inline constexpr int kNormGuardBits = 1;
@@ -144,7 +144,7 @@ template <typename Scalar>
         if (peak == 0) {
             return kNoExponent;
         }
-        return exp - (raw_width(peak) - Fixed32::kFractionBits);
+        return exp - (raw_width(peak) - iclforge::internal::Fixed32::kFractionBits);
     } else {
         (void)blocks;
         return exp;
@@ -171,7 +171,8 @@ template <typename Scalar>
             return 0;
         }
         const int synthesis_width = raw_width(peak) + kSpxBlendGuardBits + 5 - min_coordinate_exp;
-        return std::max(0, synthesis_width - (Fixed32::kFractionBits - kNormGuardBits));
+        return std::max(
+            0, synthesis_width - (iclforge::internal::Fixed32::kFractionBits - kNormGuardBits));
     } else {
         (void)coeffs;
         (void)copystart;
@@ -315,7 +316,7 @@ inline void overlap_add_normalised(const std::array<Scalar, 512>& x,
         const int aligned = std::min(x_norm, delay_norm);
         const int x_shift = x_norm - aligned;
         const int delay_shift = delay_norm - aligned;
-        const int power = -(Fixed32::kFractionBits - 1) - aligned;
+        const int power = -(iclforge::internal::Fixed32::kFractionBits - 1) - aligned;
         if (x_shift < 32 && delay_shift < 32 && power >= kExponentStepPowerMin &&
             power <= kExponentStepPowerMax) {
             // Every block a stream's exponents produce: the loop below's
@@ -355,4 +356,4 @@ inline void overlap_add_normalised(const std::array<Scalar, 512>& x,
     }
 }
 
-}  // namespace iclforge::internal
+}  // namespace iclforge::ac3::internal

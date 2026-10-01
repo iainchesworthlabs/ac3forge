@@ -5,9 +5,11 @@
 
 using iclforge_c::guard;
 
-static_assert(static_cast<int>(iclforge::eac3::chanmap::Location::kLeft) == ICLFORGE_LOCATION_L);
-static_assert(static_cast<int>(iclforge::eac3::chanmap::Location::kLfe) == ICLFORGE_LOCATION_LFE);
-static_assert(static_cast<int>(iclforge::eac3::chanmap::kMaxChannels) == 22);
+static_assert(static_cast<int>(iclforge::ac3::eac3::chanmap::Location::kLeft) ==
+              ICLFORGE_LOCATION_L);
+static_assert(static_cast<int>(iclforge::ac3::eac3::chanmap::Location::kLfe) ==
+              ICLFORGE_LOCATION_LFE);
+static_assert(static_cast<int>(iclforge::ac3::eac3::chanmap::kMaxChannels) == 22);
 
 static_assert(iclforge::oba::bed::kLR == ICLFORGE_BED_LR);
 static_assert(iclforge::oba::bed::kLfe2 == ICLFORGE_BED_LFE2);
@@ -21,7 +23,7 @@ iclforge_status_t iclforge_eac3_decoder_create(const iclforge_decoder_config_t* 
     }
     return guard([&config, &out_decoder] {
         *out_decoder = new iclforge_eac3_decoder(
-            iclforge::DecoderConfig{.drc_scale = config->drc_scale,
+            iclforge::ac3::DecoderConfig{.drc_scale = config->drc_scale,
                                .heavy_compression = config->heavy_compression != 0});
         return ICLFORGE_OK;
     });
@@ -119,7 +121,7 @@ iclforge_status_t iclforge_eac3_decoder_flush(iclforge_eac3_decoder_t* decoder,
         return ICLFORGE_ERROR_INVALID_ARGUMENT;
     }
     return guard([&decoder, &out_substreams, &out_count] {
-        std::vector<iclforge::DecodedSubstream> flushed = decoder->impl.flush();
+        std::vector<iclforge::ac3::DecodedSubstream> flushed = decoder->impl.flush();
         if (flushed.empty()) {
             *out_substreams = nullptr;
             *out_count = 0;
@@ -154,7 +156,8 @@ int iclforge_decoded_substream_is_independent(const iclforge_decoded_substream_t
     // kIndependent and kConvertible both begin an access unit and decode
     // alone; only kDependent extends a preceding one (see StreamType's own
     // comment, ac3/core/eac3_tables.hpp).
-    return substream != nullptr && substream->data.strmtyp != iclforge::eac3::StreamType::kDependent
+    return substream != nullptr &&
+                   substream->data.strmtyp != iclforge::ac3::eac3::StreamType::kDependent
                ? 1
                : 0;
 }
@@ -191,7 +194,7 @@ uint8_t iclforge_decoded_substream_compr(const iclforge_decoded_substream_t* sub
 
 uint8_t iclforge_decoded_substream_dynrng(const iclforge_decoded_substream_t* substream,
                                            int block_index) {
-    if (substream == nullptr || block_index < 0 || block_index >= iclforge::kBlocksPerFrame) {
+    if (substream == nullptr || block_index < 0 || block_index >= iclforge::ac3::kBlocksPerFrame) {
         return 0;
     }
     return substream->data.dynrng[static_cast<size_t>(block_index)];
@@ -216,7 +219,7 @@ uint8_t iclforge_decoded_substream_compr2(const iclforge_decoded_substream_t* su
 
 uint8_t iclforge_decoded_substream_dynrng2(const iclforge_decoded_substream_t* substream,
                                             int block_index) {
-    if (substream == nullptr || block_index < 0 || block_index >= iclforge::kBlocksPerFrame) {
+    if (substream == nullptr || block_index < 0 || block_index >= iclforge::ac3::kBlocksPerFrame) {
         return 0;
     }
     return substream->data.dynrng2[static_cast<size_t>(block_index)];
@@ -248,7 +251,7 @@ size_t iclforge_decoded_substream_channel_count(const iclforge_decoded_substream
 }
 
 size_t iclforge_decoded_substream_samples_per_channel(const iclforge_decoded_substream_t*) {
-    return iclforge::kSamplesPerFrame;
+    return iclforge::ac3::kSamplesPerFrame;
 }
 
 const float* iclforge_decoded_substream_channel_samples(
@@ -262,7 +265,7 @@ const float* iclforge_decoded_substream_channel_samples(
 int iclforge_decoded_substream_block_switched(const iclforge_decoded_substream_t* substream,
                                                size_t channel_index, int block_index) {
     if (substream == nullptr || channel_index >= substream->data.blksw.size() || block_index < 0 ||
-        block_index >= iclforge::kBlocksPerFrame) {
+        block_index >= iclforge::ac3::kBlocksPerFrame) {
         return 0;
     }
     return substream->data.blksw[channel_index][static_cast<size_t>(block_index)] ? 1 : 0;
@@ -361,7 +364,7 @@ uint8_t iclforge_decoded_access_unit_compr(const iclforge_decoded_access_unit_t*
 
 uint8_t iclforge_decoded_access_unit_dynrng(const iclforge_decoded_access_unit_t* unit,
                                              int block_index) {
-    if (unit == nullptr || block_index < 0 || block_index >= iclforge::kBlocksPerFrame) {
+    if (unit == nullptr || block_index < 0 || block_index >= iclforge::ac3::kBlocksPerFrame) {
         return 0;
     }
     return unit->data.dynrng[static_cast<size_t>(block_index)];
@@ -388,7 +391,7 @@ size_t iclforge_decoded_access_unit_channel_count(const iclforge_decoded_access_
 }
 
 size_t iclforge_decoded_access_unit_samples_per_channel(const iclforge_decoded_access_unit_t*) {
-    return iclforge::kSamplesPerFrame;
+    return iclforge::ac3::kSamplesPerFrame;
 }
 
 const float* iclforge_decoded_access_unit_channel_samples(const iclforge_decoded_access_unit_t* unit,
@@ -501,8 +504,8 @@ iclforge_status_t split_into_spans(const uint8_t* stream, size_t stream_size,
     }
     return guard([&stream, &stream_size, &out_spans, &access_units]() -> iclforge_status_t {
         const auto bytes = std::as_bytes(std::span<const uint8_t>(stream, stream_size));
-        auto result =
-            access_units ? iclforge::split_access_units(bytes) : iclforge::split_frames(bytes);
+        auto result = access_units ? iclforge::ac3::split_access_units(bytes)
+                                   : iclforge::ac3::split_frames(bytes);
         if (!result.has_value()) {
             return iclforge_c::from_cpp(result.error());
         }
@@ -536,7 +539,7 @@ iclforge_status_t iclforge_stream_bsid(const uint8_t* frame, size_t frame_size, 
     }
     return guard([&frame, &frame_size, &out_bsid]() -> iclforge_status_t {
         auto result =
-            iclforge::stream_bsid(std::as_bytes(std::span<const uint8_t>(frame, frame_size)));
+            iclforge::ac3::stream_bsid(std::as_bytes(std::span<const uint8_t>(frame, frame_size)));
         if (!result.has_value()) {
             return iclforge_c::from_cpp(result.error());
         }

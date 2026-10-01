@@ -55,7 +55,7 @@ struct SyntaxRecord {
 using SyntaxTrace = std::function<void(const SyntaxRecord&)>;
 
 // A non-owning reference to any callable taking a const SyntaxRecord&, in the
-// shape of iclforge::BlockSink: what the readers and writers inside the libraries
+// shape of iclforge::ac3::BlockSink: what the readers and writers inside the libraries
 // hold while they run. It refers to a named callable only; a temporary would be
 // gone before the first record, so binding one does not compile.
 class SyntaxSink {

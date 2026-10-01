@@ -7,7 +7,7 @@ carry, and that Netflix's IMF pipeline (SMPTE ST 2067-201) delivers inside MXF t
 `iclforge::ac3` — it has no idea AC-3, E-AC-3 or the JOC/Atmos object layer exist.
 
 The bitstream reader is `ac3iab.hpp` and the MXF Track File extraction is `mxf.hpp`, both covered
-here. Mapping the parsed bed/object graph onto `iclforge::oba::AtmosEncoder` is a separate module,
+here. Mapping the parsed bed/object graph onto `iclforge::ac3::oba::AtmosEncoder` is a separate module,
 `iclforge::admbridge`'s `build_iab()` — see [ADM → Atmos bridging](adm-bridge.md#bridging-iab) — driven
 end to end by `forge atmos-iab` (see [Commands](../forge/cli/commands.md)).
 
@@ -120,7 +120,7 @@ once they have stripped their own respective framing away.
 
 ## Bridging to Atmos
 
-`iclforge::admbridge`'s `build_iab()` maps this module's parsed graph onto `iclforge::oba::AtmosEncoder`'s
+`iclforge::admbridge`'s `build_iab()` maps this module's parsed graph onto `iclforge::ac3::oba::AtmosEncoder`'s
 input shape — one `iclforge::oba::ObjectPath` plus one mono PCM buffer per Bed channel or Object, ready
 to drive `encode_frame()` in a loop, the same destination shape `iclforge::admbridge::build()` produces
 for ADM. See [ADM → Atmos bridging](adm-bridge.md#bridging-iab) for what gets
@@ -133,5 +133,5 @@ the command line.
 ---
 
 See also: [ADM → Atmos bridging](adm-bridge.md) — `iclforge::admbridge`, which maps this graph onto
-`iclforge::oba::AtmosEncoder`; [ADM / BW64 reading](adm.md) — the sibling codec-blind reader this
+`iclforge::ac3::oba::AtmosEncoder`; [ADM / BW64 reading](adm.md) — the sibling codec-blind reader this
 module's shape and documentation follow.

@@ -163,8 +163,8 @@ line doubles that, to sixteen 16-bit slots ([Slot widths](../../hearth/sink-esp3
 The example decodes AC-3 and E-AC-3 here; its AC-4 decoder is a `CONFIG_ICLFORGE_AC4` build that
 only the [ESP32-P4](esp32-p4.md#ac-4) has run.
 
-It exists to exercise the incremental input path. `iclforge::split_frames` takes a span over a whole
-stream, which nothing streaming can produce; `iclforge::io::AccessUnitAccumulator` applies the same
+It exists to exercise the incremental input path. `iclforge::ac3::split_frames` takes a span over a whole
+stream, which nothing streaming can produce; `iclforge::ac3::io::AccessUnitAccumulator` applies the same
 boundary rule over a caller-owned buffer, allocating nothing. It hands the decoder access units
 rather than syncframes, because `decode_access_unit_by_block` wants an independent substream together
 with the dependents that extend it (§E3.8.2).
@@ -461,7 +461,7 @@ software floating point alike. It was visible only here.
 ### What changed
 
 The arithmetic between bitstream and coefficient store now runs in the store's
-own type, `iclforge::internal::decode_scalar_t`: `float` under this profile, `double`
+own type, `iclforge::ac3::internal::decode_scalar_t`: `float` under this profile, `double`
 in every other build, which is why no gold reference, bitstream hash or test
 moved (the full Windows suite passes as before, 1,345 tests). The exported
 `double` functions - `dequantize_mantissa`, `decode_coordinate`,
@@ -1041,7 +1041,7 @@ own cold start, and its 32 ms is the allocation and the mantissa counts.
 
 **The first effort level.** The search is where a platform can be given a
 choice, and the choice this branch adds is `delta_allocation`
-(`iclforge::EncoderConfig` and `iclforge::eac3::FrameConfig`, on by default; the CLI
+(`iclforge::ac3::EncoderConfig` and `iclforge::ac3::eac3::FrameConfig`, on by default; the CLI
 spells it `delta=off`, or `nodelta` in `eac3-encode`'s tools string). Off, the
 encoder chooses no §7.2.2.6 segments and runs no second search to weigh
 them; the stream is a legal one with `dbaflde` clear. What that removes on
@@ -1181,7 +1181,7 @@ failed with `out_of_memory bytes=6144`, while objects on a clean heap passed. Th
 `eac3_tools.cpp`'s 32,768-byte spectrum scratch and 1,440-byte bin-angle vector, both
 `thread_local` so §E3.5 neither allocates per call nor puts 32 KB on the stack. On a hosted
 platform they are released at thread exit; here the only thread never exits.
-`iclforge::eac3::release_ecpl_scratch()` hands them back, and the probe calls it between fixtures.
+`iclforge::ac3::eac3::release_ecpl_scratch()` hands them back, and the probe calls it between fixtures.
 Retained at exit went from 34,232 bytes to 24, and to 12 once the bin-angle vector became a
 stack array and the scratch took its float form, 23,552 bytes.
 

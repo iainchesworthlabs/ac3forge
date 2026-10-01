@@ -166,13 +166,13 @@ std::unique_ptr<testsink::Sink> start_sink(const fs::path& directory, std::strin
 // `frames` E-AC-3 access units of a 440 Hz tone - test_engine.cpp's own eac3_stream(): each unit
 // is a full six-block (1,536-sample, 32 ms) burst on its own.
 std::vector<std::byte> eac3_stream(int frames) {
-    iclforge::eac3::FrameConfig config;
+    iclforge::ac3::eac3::FrameConfig config;
     config.bitrate_kbps = 192;
-    config.acmod = iclforge::Acmod::k2_0;
-    iclforge::eac3::FrameEncoder encoder{config};
+    config.acmod = iclforge::ac3::Acmod::k2_0;
+    iclforge::ac3::eac3::FrameEncoder encoder{config};
     std::vector<std::byte> out;
     for (int f = 0; f < frames; ++f) {
-        std::vector<float> samples(iclforge::kSamplesPerFrame);
+        std::vector<float> samples(iclforge::ac3::kSamplesPerFrame);
         for (std::size_t n = 0; n < samples.size(); ++n) {
             samples[n] = static_cast<float>(
                 0.3 * std::sin(2.0 * std::numbers::pi * 440.0 *
@@ -208,29 +208,29 @@ std::vector<std::byte> eac3_stream(int frames) {
 // DecoderSettings{} default stereo_fold) - the point of this function is to match that, not to
 // assert it away.
 template <class Consume>
-void decode_and_render(const iclforge::io::ScannedStream& stream, int passes, const iclforge::render::OutputLayout& layout,
+void decode_and_render(const iclforge::ac3::io::ScannedStream& stream, int passes, const iclforge::render::OutputLayout& layout,
                        Consume&& consume) {
-    const iclforge::render::Serving serving = iclforge::render::serve(
-        layout, iclforge::DownmixTarget::kLoRo, iclforge::render::ObjectsPolicy::kAuto);
-    iclforge::DecoderConfig config;
-    config.output.mode = iclforge::OperatingMode::kLine;
-    iclforge::render::configure_decoder(serving, config);
-    iclforge::Eac3Decoder decoder(config);
+    const iclforge::ac3::render::Serving serving = iclforge::ac3::render::serve(
+        layout, iclforge::ac3::DownmixTarget::kLoRo, iclforge::ac3::render::ObjectsPolicy::kAuto);
+    iclforge::ac3::DecoderConfig config;
+    config.output.mode = iclforge::ac3::OperatingMode::kLine;
+    iclforge::ac3::render::configure_decoder(serving, config);
+    iclforge::ac3::Eac3Decoder decoder(config);
     iclforge::render::LayoutRenderer renderer(layout);
     const std::size_t slots = layout.slots();
-    std::vector<std::array<float, iclforge::kSamplesPerBlock>> block(slots);
+    std::vector<std::array<float, iclforge::ac3::kSamplesPerBlock>> block(slots);
     std::vector<std::span<float>> spans;
-    for (std::array<float, iclforge::kSamplesPerBlock>& slot : block) {
+    for (std::array<float, iclforge::ac3::kSamplesPerBlock>& slot : block) {
         spans.emplace_back(slot);
     }
     // Each unit's bed, taken by its first block whichever call delivers it.
-    std::deque<iclforge::eac3::chanmap::Layout> beds;
+    std::deque<iclforge::ac3::eac3::chanmap::Layout> beds;
     for (int pass = 0; pass < passes; ++pass) {
         for (const std::span<const std::byte> unit : stream.access_units) {
-            const std::expected<iclforge::io::ScannedStream, iclforge::io::ScanError> scanned = iclforge::io::scan(unit);
+            const std::expected<iclforge::ac3::io::ScannedStream, iclforge::ac3::io::ScanError> scanned = iclforge::ac3::io::scan(unit);
             REQUIRE(scanned.has_value());
-            beds.push_back(iclforge::eac3::chanmap::expand(scanned->channel_map));
-            const auto decoded = decoder.decode_access_unit_by_block(unit, [&](const iclforge::PcmBlock& pcm) {
+            beds.push_back(iclforge::ac3::eac3::chanmap::expand(scanned->channel_map));
+            const auto decoded = decoder.decode_access_unit_by_block(unit, [&](const iclforge::ac3::PcmBlock& pcm) {
                 if (pcm.index == 0) {
                     renderer.set_bed(beds.front());
                     beds.pop_front();
@@ -239,7 +239,7 @@ void decode_and_render(const iclforge::io::ScannedStream& stream, int passes, co
                     }
                 }
                 renderer.render(pcm, serving.reconstruct, 1.0F, spans);
-                consume(std::span<const std::array<float, iclforge::kSamplesPerBlock>>(block),
+                consume(std::span<const std::array<float, iclforge::ac3::kSamplesPerBlock>>(block),
                         pcm.channels.empty() ? std::size_t{0} : pcm.channels.front().size());
             });
             REQUIRE(decoded.has_value());
@@ -380,11 +380,11 @@ TEST_CASE("aiosendspin: a group of two test sinks and the scripted aiosendspin p
     // than a copy of the pushed samples, is the reference here), carried through the same
     // float-to-int32-to-16-bit chain NetworkGroupSink::submit_pcm() and Group::rescaled() apply
     // before a PCM member's encoder ever sees a sample.
-    const std::expected<iclforge::io::ScannedStream, iclforge::io::ScanError> stream = iclforge::io::scan(programme);
+    const std::expected<iclforge::ac3::io::ScannedStream, iclforge::ac3::io::ScanError> stream = iclforge::ac3::io::scan(programme);
     REQUIRE(stream.has_value());
     std::vector<std::byte> reference_bytes;
     decode_and_render(*stream, /*passes=*/1, *layout,
-                      [&](std::span<const std::array<float, iclforge::kSamplesPerBlock>> block, std::size_t n) {
+                      [&](std::span<const std::array<float, iclforge::ac3::kSamplesPerBlock>> block, std::size_t n) {
                           for (std::size_t t = 0; t < n; ++t) {
                               for (std::size_t slot = 0; slot < block.size(); ++slot) {
                                   // network_group_sink.cpp's kBitDepth (32) down to
@@ -398,7 +398,7 @@ TEST_CASE("aiosendspin: a group of two test sinks and the scripted aiosendspin p
                               }
                           }
                       });
-    REQUIRE(iclforge::io::write_wav_pcm16_raw((directory / "programme.wav").string(), reference_bytes, 48000,
+    REQUIRE(iclforge::ac3::io::write_wav_pcm16_raw((directory / "programme.wav").string(), reference_bytes, 48000,
                                          static_cast<std::uint16_t>(layout->slots()))
                .has_value());
 

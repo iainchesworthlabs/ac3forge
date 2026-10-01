@@ -468,7 +468,7 @@ endif()
 # ac3/core/test_crc_mutator.cpp includes fuzz/crc_mutator.hpp - the re-stamping
 # half of the libFuzzer custom mutator (signing-verify fuzz walk). The mutator itself only
 # builds under Clang with -fsanitize=fuzzer, but the header's
-# restamp_syncframe_crcs is ordinary portable C++ over iclforge::crc16 and the
+# restamp_syncframe_crcs is ordinary portable C++ over iclforge::ac3::crc16 and the
 # frame-size tables, and whether it produces a crc1 the decoder accepts is
 # exactly the kind of thing that should be checked on every platform rather
 # than inferred from a coverage number on one. Same shape as the signing/src
@@ -477,7 +477,7 @@ endif()
 target_include_directories(iclforge-tests PRIVATE "${CMAKE_SOURCE_DIR}/fuzz")
 
 # test_selfcheck.cpp and test_eac3_selfcheck.cpp run the encoder/decoder mirror check
-# (iclforge::verify) over the committed programme-material fixtures rather than a synthetic
+# (iclforge::ac3::verify) over the committed programme-material fixtures rather than a synthetic
 # signal - the delta bit allocation state it compares only ends part-way through a frame on
 # material that really does change character mid-frame, which is what made those files the
 # reproduction for the bug this check exists to catch, and the Annex E tools it also

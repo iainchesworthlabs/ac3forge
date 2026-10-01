@@ -74,12 +74,12 @@ constexpr int kDecodeSourceFrames = 40;
 constexpr int kObjects = 4;
 
 double real_time_budget_seconds(int frames) {
-    return static_cast<double>(frames) * iclforge::kSamplesPerFrame / kSampleRate;
+    return static_cast<double>(frames) * iclforge::ac3::kSamplesPerFrame / kSampleRate;
 }
 
-const iclforge::io::WavData& fixture() {
-    static const iclforge::io::WavData audio = perf::load_real_audio(
-        perf::kReference51Wav, 6, static_cast<std::size_t>(iclforge::kSamplesPerFrame));
+const iclforge::ac3::io::WavData& fixture() {
+    static const iclforge::ac3::io::WavData audio = perf::load_real_audio(
+        perf::kReference51Wav, 6, static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame));
     return audio;
 }
 
@@ -95,8 +95,8 @@ std::vector<iclforge::oba::ObjectPlacement> object_placement(int objects) {
 // One AC-3 stream to decode, built outside any timed section.
 std::vector<std::byte> ac3_source_stream() {
     perf::FrameSource source{fixture(), perf::kFiveOneChannels};
-    iclforge::FrameEncoder encoder{
-        {.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true, .fast_mdct = true}};
+    iclforge::ac3::FrameEncoder encoder{
+        {.bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true, .fast_mdct = true}};
     std::vector<std::byte> stream;
     for (int frame = 0; frame < kDecodeSourceFrames; ++frame) {
         const auto result = encoder.encode_frame(source.frame(static_cast<std::size_t>(frame)));
@@ -108,8 +108,10 @@ std::vector<std::byte> ac3_source_stream() {
 
 std::vector<std::byte> eac3_source_stream() {
     perf::FrameSource source{fixture(), perf::kFiveOneChannels};
-    iclforge::eac3::FrameEncoder encoder{
-        {.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true, .auto_tools = true}};
+    iclforge::ac3::eac3::FrameEncoder encoder{{.bitrate_kbps = 448,
+                                               .acmod = iclforge::ac3::Acmod::k3_2,
+                                               .lfe = true,
+                                               .auto_tools = true}};
     std::vector<std::byte> stream;
     for (int frame = 0; frame < kDecodeSourceFrames; ++frame) {
         const auto result = encoder.encode_frame(source.frame(static_cast<std::size_t>(frame)));
@@ -121,7 +123,7 @@ std::vector<std::byte> eac3_source_stream() {
 
 std::vector<std::byte> atmos_source_stream() {
     perf::FrameSource source{fixture(), perf::kFourObjectChannels};
-    iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, kObjects};
+    iclforge::ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, kObjects};
     const auto placement = object_placement(kObjects);
     std::vector<std::byte> stream;
     for (int frame = 0; frame < kDecodeSourceFrames; ++frame) {
@@ -193,8 +195,8 @@ void check_ac4_decode(const std::string& what, const iclforge::ac4::EncoderConfi
 
 TEST_CASE("the plain 5.1 encoder stays faster than real time") {
     perf::FrameSource source{fixture(), perf::kFiveOneChannels};
-    iclforge::FrameEncoder encoder{
-        {.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true}};
+    iclforge::ac3::FrameEncoder encoder{
+        {.bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true}};
 
     const auto start = std::chrono::steady_clock::now();
     for (int frame = 0; frame < kFrames; ++frame) {
@@ -212,8 +214,10 @@ TEST_CASE("the plain 5.1 encoder stays faster than real time") {
 // rate-crossover heuristic changes.
 TEST_CASE("the E-AC-3 5.1 encoder stays faster than real time") {
     perf::FrameSource source{fixture(), perf::kFiveOneChannels};
-    iclforge::eac3::FrameEncoder encoder{
-        {.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true, .auto_tools = true}};
+    iclforge::ac3::eac3::FrameEncoder encoder{{.bitrate_kbps = 448,
+                                               .acmod = iclforge::ac3::Acmod::k3_2,
+                                               .lfe = true,
+                                               .auto_tools = true}};
 
     const auto start = std::chrono::steady_clock::now();
     for (int frame = 0; frame < kFrames; ++frame) {
@@ -226,7 +230,7 @@ TEST_CASE("the E-AC-3 5.1 encoder stays faster than real time") {
 
 TEST_CASE("the Atmos/JOC encoder stays faster than real time") {
     perf::FrameSource source{fixture(), perf::kFourObjectChannels};
-    iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, kObjects};
+    iclforge::ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, kObjects};
     const auto placement = object_placement(kObjects);
 
     const auto start = std::chrono::steady_clock::now();
@@ -241,10 +245,10 @@ TEST_CASE("the Atmos/JOC encoder stays faster than real time") {
 
 TEST_CASE("the AC-3 decoder stays faster than real time") {
     const auto stream = ac3_source_stream();
-    const auto frames = iclforge::split_frames(stream);
+    const auto frames = iclforge::ac3::split_frames(stream);
     REQUIRE(frames.has_value());
     REQUIRE_FALSE(frames->empty());
-    iclforge::FrameDecoder decoder{};
+    iclforge::ac3::FrameDecoder decoder{};
 
     const auto start = std::chrono::steady_clock::now();
     for (const auto& frame : *frames) {
@@ -258,10 +262,10 @@ TEST_CASE("the AC-3 decoder stays faster than real time") {
 
 TEST_CASE("the E-AC-3 decoder stays faster than real time") {
     const auto stream = eac3_source_stream();
-    const auto units = iclforge::split_access_units(stream);
+    const auto units = iclforge::ac3::split_access_units(stream);
     REQUIRE(units.has_value());
     REQUIRE_FALSE(units->empty());
-    iclforge::Eac3Decoder decoder{};
+    iclforge::ac3::Eac3Decoder decoder{};
 
     const auto start = std::chrono::steady_clock::now();
     for (const auto& unit : *units) {
@@ -279,10 +283,10 @@ TEST_CASE("the E-AC-3 decoder stays faster than real time") {
 // object layer and reconstructs every object from it.
 TEST_CASE("the Atmos/JOC decoder stays faster than real time") {
     const auto stream = atmos_source_stream();
-    const auto units = iclforge::split_access_units(stream);
+    const auto units = iclforge::ac3::split_access_units(stream);
     REQUIRE(units.has_value());
     REQUIRE_FALSE(units->empty());
-    iclforge::Eac3Decoder decoder{};
+    iclforge::ac3::Eac3Decoder decoder{};
 
     const auto start = std::chrono::steady_clock::now();
     for (const auto& unit : *units) {

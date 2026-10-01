@@ -67,12 +67,12 @@ public:
     // What the link carries: 3/2 with LFE, at the most AC-3 allows for it.
     static constexpr std::uint32_t kBitrateKbps = 448;
     static constexpr std::size_t kChannels = 6;
-    static constexpr std::uint64_t kDelay = kTransformDelaySamples;
+    static constexpr std::uint64_t kDelay = ac3::kTransformDelaySamples;
 
     // The two downmix levels AC-3's bsi carries.
     struct FoldLevels {
-        meta::CentreMixLevel centre = meta::CentreMixLevel::kMinus4_5dB;
-        meta::SurroundMixLevel surround = meta::SurroundMixLevel::kMinus6dB;
+        ac3::meta::CentreMixLevel centre = ac3::meta::CentreMixLevel::kMinus4_5dB;
+        ac3::meta::SurroundMixLevel surround = ac3::meta::SurroundMixLevel::kMinus6dB;
 
         friend bool operator==(const FoldLevels&, const FoldLevels&) = default;
     };
@@ -149,8 +149,8 @@ private:
 
     std::uint32_t sample_rate_;
     FoldLevels fold_;
-    std::unique_ptr<FrameEncoder> encoder_;
-    std::optional<meta::HeavyCompressor> heavy_;
+    std::unique_ptr<ac3::FrameEncoder> encoder_;
+    std::optional<ac3::meta::HeavyCompressor> heavy_;
     // Per channel, the samples taken; the first `head_` have been encoded.
     std::array<std::vector<float>, kChannels> queue_{};
     std::size_t head_ = 0;
@@ -168,10 +168,10 @@ private:
     std::uint64_t encoded_ = 0;
     // Each channel's last sample taken, which padding repeats.
     std::array<float, kChannels> hold_{};
-    std::array<std::array<float, kSamplesPerFrame>, kChannels> frame_{};
+    std::array<std::array<float, ac3::kSamplesPerFrame>, kChannels> frame_{};
     // The last block of the frame before, per full-bandwidth channel: the
     // encoder's first block of a frame overlaps it, and so does the metering.
-    std::array<std::array<float, kSamplesPerBlock>, kChannels - 1> history_{};
+    std::array<std::array<float, ac3::kSamplesPerBlock>, kChannels - 1> history_{};
 };
 
 }  // namespace iclforge::hearth

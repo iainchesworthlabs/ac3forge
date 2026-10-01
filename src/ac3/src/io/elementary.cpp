@@ -17,7 +17,7 @@
 #include "iclforge/ac3/core/tables.hpp"
 #include "iclforge/ac3/meta/mixing.hpp"
 
-namespace iclforge::io {
+namespace iclforge::ac3::io {
 
 namespace {
 
@@ -552,7 +552,7 @@ std::expected<ScannedStream, ScanError> scan_eac3(std::span<const std::byte> str
         } else if (current == nullptr) {
             // A dependent ahead of any independent substream has no parent to
             // extend, so there is nothing to attribute it to - the same
-            // constraint iclforge::split_access_units enforces on the decode side.
+            // constraint iclforge::ac3::split_access_units enforces on the decode side.
             return std::unexpected(ScanError::kUnsupportedStructure);
         } else if (current->first_unit) {
             // §E3.8.2: a dependent's channels overwrite the bed's where they
@@ -904,4 +904,4 @@ std::optional<std::uint32_t> uniform_access_unit_samples(const ScannedStream& st
     return first;
 }
 
-}  // namespace iclforge::io
+}  // namespace iclforge::ac3::io

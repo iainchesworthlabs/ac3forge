@@ -67,7 +67,7 @@
 // leaves the decoder, and the best case (the last sample of a frame) is
 // transform_samples + holdback_samples.
 
-namespace iclforge {
+namespace iclforge::ac3 {
 
 // The MDCT/IMDCT overlap, §7.9.4/§8.2.3.2: one audio block. Named separately
 // from kSamplesPerBlock because it is the transform's property, not the
@@ -98,4 +98,4 @@ struct LatencyBudget {
     return latency_ms(budget.total_samples(), sample_rate);
 }
 
-}  // namespace iclforge
+}  // namespace iclforge::ac3

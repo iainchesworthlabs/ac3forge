@@ -14,7 +14,7 @@
 // MDCT and §7.9.4.2 step 3's inverse sums need. See the header for the
 // per-table byte counts and how they were measured.
 //
-// None of these bodies can run. iclforge::internal::kReferenceTransformAvailable
+// None of these bodies can run. iclforge::ac3::internal::kReferenceTransformAvailable
 // is false in this profile, every call site checks it before dispatching, and
 // the public API refuses the configuration that would need the direct form
 // (DecoderConfig::fast_imdct == false yields DecodeError::kNoReferenceTransform) rather
@@ -26,7 +26,7 @@
 // one, so such a bug shows up immediately in a round trip rather than as a
 // slight quality change nobody attributes.
 
-namespace iclforge::internal {
+namespace iclforge::ac3::internal {
 
 static_assert(!kReferenceTransformAvailable,
               "this translation unit is only for the profile that declares the direct-form "
@@ -83,4 +83,4 @@ void reference_inner_sum_64(std::span<const double, 64> /*z_re*/,
     unreachable_fill(t_re, t_im);
 }
 
-}  // namespace iclforge::internal
+}  // namespace iclforge::ac3::internal

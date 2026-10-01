@@ -271,8 +271,8 @@ the carriage specs wired in-tree). Open gaps against those texts are collected a
 | | Minimum-footprint AC-4 decoder (`iclforge::ac4dec` in `float`) | 🟡 | Medium | Important | The decode profile carries the decoder, its inspector and core, static and without exceptions (`ICLFORGE_MINIMAL_AC4` with `ICLFORGE_MINIMAL_DECODER`); the Cortex-M3 probe decodes six committed streams (2.0, 5.1 and 5.1.4, one with companding) with the PCM bit-identical to the x86-64 host's, 432 KB to 1.93 MB of heap and 54.5 M to 205.8 M instructions a frame. The ESP32-P4 runs it on a board (D14b, the row of that name under the decoder); the S3 and the C6 follow (D14c, D14d) |
 | | C API (`iclforge::c`) | 🟢 | Medium | Important | Stable minimal surface; AC-4 added (phase I4), with the encoder's objects (phase I4b) |
 | | Python / Rust / WASM bindings | 🟢 | Medium | Important | AC-4 added to the C API, Python, Rust and WASM (phase I4), with the encoder's objects and the decoder's update ramps (phase I4b) and typed AC-4 exceptions in Python. The wheels on PyPI (0.10.0b1 and earlier) predate the AC-4 module, and the WASM package is not on npm |
-| **Verify** | Encoder/decoder mirror traces | 🟢 | High | Essential | AC-3 and E-AC-3 (`iclforge::verify`); AC-4 has a syntax trace of both directions (`iclforge/ac4/syntax.hpp`) |
-| | Research trace export (CSV / JSONL) | 🟢 | Low | Optional | `iclforge::verify` |
+| **Verify** | Encoder/decoder mirror traces | 🟢 | High | Essential | AC-3 and E-AC-3 (`iclforge::ac3::verify`); AC-4 has a syntax trace of both directions (`iclforge/ac4/syntax.hpp`) |
+| | Research trace export (CSV / JSONL) | 🟢 | Low | Optional | `iclforge::ac3::verify` |
 | | Conformance / fuzz / quality gates | 🟢 | High | Essential | See [Validation](../verification.md) |
 | | Cross-toolchain encoder bit-identical output | 🟡 | Medium | Important | Audit + `ilogb` fix done; FP thresholds / cross-leg gate still open (VX12) |
 | | Listening-test apparatus (MUSHRA/ABX) | 🟡 | Low | Optional | Tools under `tools/listening/`; no human session run (VX9) |

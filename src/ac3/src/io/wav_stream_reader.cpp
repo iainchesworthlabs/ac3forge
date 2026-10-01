@@ -21,7 +21,7 @@
 // are shared with wav.cpp (src/io/wav_format.hpp), so a block-at-a-time
 // consumer sees exactly the samples read_wav produces.
 
-namespace iclforge::io {
+namespace iclforge::ac3::io {
 
 namespace {
 
@@ -185,4 +185,4 @@ void WavStreamReader::close() noexcept {
     im.format = detail::SampleFormat::kPcm16;
 }
 
-}  // namespace iclforge::io
+}  // namespace iclforge::ac3::io

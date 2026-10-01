@@ -31,24 +31,24 @@ TEST_CASE("decoder settings: the defaults are line mode, a Lo/Ro fold for two sp
           "and concealment",
           "[hearth][decoder-settings]") {
     const auto stereo = decoder_setup(DecoderSettings{}, layout("2.0"));
-    CHECK(stereo.config.output.mode == iclforge::OperatingMode::kLine);
+    CHECK(stereo.config.output.mode == iclforge::ac3::OperatingMode::kLine);
     CHECK(stereo.config.output.rf_ceiling == 1.0);
-    CHECK(stereo.serving.fold == iclforge::DownmixTarget::kLoRo);
-    CHECK(stereo.config.output.target == iclforge::DownmixTarget::kLoRo);
+    CHECK(stereo.serving.fold == iclforge::ac3::DownmixTarget::kLoRo);
+    CHECK(stereo.config.output.target == iclforge::ac3::DownmixTarget::kLoRo);
     CHECK(stereo.config.output.ltrt_phase_shift);
     CHECK_FALSE(stereo.config.output.mix_lfe);
-    CHECK(stereo.config.output.mix_override == iclforge::MixLevelOverride{});
+    CHECK(stereo.config.output.mix_override == iclforge::ac3::MixLevelOverride{});
     CHECK(stereo.config.skip_object_reconstruction);
     CHECK_FALSE(stereo.config.programme.has_value());
     CHECK(stereo.config.joc_domain == iclforge::oba::joc::Domain::kQmf);
-    CHECK(stereo.config.concealment == iclforge::ConcealmentPolicy::kRepeatFade);
+    CHECK(stereo.config.concealment == iclforge::ac3::ConcealmentPolicy::kRepeatFade);
     CHECK(stereo.config.fast_imdct);
 
     // A wider layout is rendered, not folded; objects are reconstructed only
     // where there is height to place them in.
     const auto wide = decoder_setup(DecoderSettings{}, layout("5.1"));
     CHECK_FALSE(wide.serving.fold.has_value());
-    CHECK(wide.config.output.target == iclforge::DownmixTarget::kAsCoded);
+    CHECK(wide.config.output.target == iclforge::ac3::DownmixTarget::kAsCoded);
     CHECK(wide.config.skip_object_reconstruction);
     const auto height = decoder_setup(DecoderSettings{}, layout("5.1.2"));
     CHECK_FALSE(height.config.skip_object_reconstruction);
@@ -56,26 +56,26 @@ TEST_CASE("decoder settings: the defaults are line mode, a Lo/Ro fold for two sp
 
 TEST_CASE("decoder settings: every control reaches the configuration", "[hearth][decoder-settings]") {
     DecoderSettings settings;
-    settings.mode = iclforge::OperatingMode::kCustom;
+    settings.mode = iclforge::ac3::OperatingMode::kCustom;
     settings.rf_ceiling_db = -20.0;
     settings.drc_cut = 0.25;
     settings.drc_boost = 0.75;
     settings.heavy_compression = true;
     settings.normalise_dialogue = false;
-    settings.stereo_fold = iclforge::DownmixTarget::kLtRt;
+    settings.stereo_fold = iclforge::ac3::DownmixTarget::kLtRt;
     settings.ltrt_phase_shift = false;
     settings.mix_lfe = true;
     settings.mix_levels.loro_clev = 0.5;
     settings.mix_levels.lfe_mix_level_db = 3.0;
     settings.programme = 2;
-    settings.objects = iclforge::render::ObjectsPolicy::kNever;
+    settings.objects = iclforge::ac3::render::ObjectsPolicy::kNever;
     settings.joc_domain = iclforge::oba::joc::Domain::kMdctBand;
-    settings.concealment = iclforge::ConcealmentPolicy::kMute;
+    settings.concealment = iclforge::ac3::ConcealmentPolicy::kMute;
     settings.fast_inverse_transform = false;
 
     const auto setup = decoder_setup(settings, layout("2.0"));
-    const iclforge::DecoderConfig& config = setup.config;
-    CHECK(config.output.mode == iclforge::OperatingMode::kCustom);
+    const iclforge::ac3::DecoderConfig& config = setup.config;
+    CHECK(config.output.mode == iclforge::ac3::OperatingMode::kCustom);
     // Reaches OutputConfig whatever the mode - it just has no effect outside
     // kRf, the same as every other custom-only field has no effect here.
     CHECK(config.output.rf_ceiling == Catch::Approx(0.1).margin(1e-9));
@@ -84,7 +84,7 @@ TEST_CASE("decoder settings: every control reaches the configuration", "[hearth]
     CHECK(*config.drc_boost_scale == 0.75);
     CHECK(config.heavy_compression);
     CHECK_FALSE(config.output.apply_dialnorm);
-    CHECK(config.output.target == iclforge::DownmixTarget::kLtRt);
+    CHECK(config.output.target == iclforge::ac3::DownmixTarget::kLtRt);
     CHECK_FALSE(config.output.ltrt_phase_shift);
     CHECK(config.output.mix_lfe);
     CHECK(config.output.mix_override.loro_clev == std::optional<double>{0.5});
@@ -94,7 +94,7 @@ TEST_CASE("decoder settings: every control reaches the configuration", "[hearth]
     // a decoder told to skip other programmes would skip an item still
     // playing the old one when the setting changes.
     CHECK_FALSE(config.programme.has_value());
-    CHECK(config.concealment == iclforge::ConcealmentPolicy::kMute);
+    CHECK(config.concealment == iclforge::ac3::ConcealmentPolicy::kMute);
     CHECK(config.skip_object_reconstruction);
     CHECK(config.joc_domain == iclforge::oba::joc::Domain::kMdctBand);
     CHECK_FALSE(config.fast_imdct);
@@ -115,7 +115,7 @@ TEST_CASE(
     // A stereo/mono fold always wins: there is no such output as "fold to
     // 5.1.4 and also to stereo".
     DecoderSettings folded = settings;
-    folded.stereo_fold = iclforge::DownmixTarget::kLtRt;
+    folded.stereo_fold = iclforge::ac3::DownmixTarget::kLtRt;
     const auto folded_setup = decoder_setup(folded, layout("2.0"));
     CHECK(folded_setup.ac4.output.downmix == iclforge::ac4::DownmixTarget::kLtRt);
 
@@ -128,7 +128,7 @@ TEST_CASE(
 
 TEST_CASE("decoder settings: shares outside 0 to 1 are held to it", "[hearth][decoder-settings]") {
     DecoderSettings settings;
-    settings.mode = iclforge::OperatingMode::kCustom;
+    settings.mode = iclforge::ac3::OperatingMode::kCustom;
     settings.drc_cut = -0.5;
     settings.drc_boost = 4.0;
     const auto setup = decoder_setup(settings, layout("5.1"));
@@ -139,7 +139,7 @@ TEST_CASE("decoder settings: shares outside 0 to 1 are held to it", "[hearth][de
 
 TEST_CASE("decoder settings: the RF ceiling never exceeds full scale", "[hearth][decoder-settings]") {
     DecoderSettings settings;
-    settings.mode = iclforge::OperatingMode::kRf;
+    settings.mode = iclforge::ac3::OperatingMode::kRf;
     settings.rf_ceiling_db = 6.0;  // above full scale - held to it instead
     CHECK(decoder_setup(settings, layout("5.1")).config.output.rf_ceiling == 1.0);
     // Below full scale is not held to anything: more headroom than asked
@@ -153,29 +153,29 @@ TEST_CASE("decoder settings: the fold follows the layout, and only the two stere
           "a stereo fold",
           "[hearth][decoder-settings]") {
     DecoderSettings settings;
-    settings.stereo_fold = iclforge::DownmixTarget::kLtRt;
+    settings.stereo_fold = iclforge::ac3::DownmixTarget::kLtRt;
     // One speaker folds to mono whatever the stereo fold says.
     CHECK(decoder_setup(settings, layout("1.0")).config.output.target ==
-          iclforge::DownmixTarget::kMono);
+          iclforge::ac3::DownmixTarget::kMono);
     CHECK(decoder_setup(settings, layout("2.0")).config.output.target ==
-          iclforge::DownmixTarget::kLtRt);
+          iclforge::ac3::DownmixTarget::kLtRt);
     // Mono and "as coded" are not stereo folds; two speakers get Lo/Ro.
-    settings.stereo_fold = iclforge::DownmixTarget::kMono;
+    settings.stereo_fold = iclforge::ac3::DownmixTarget::kMono;
     CHECK(decoder_setup(settings, layout("2.0")).config.output.target ==
-          iclforge::DownmixTarget::kLoRo);
-    settings.stereo_fold = iclforge::DownmixTarget::kAsCoded;
+          iclforge::ac3::DownmixTarget::kLoRo);
+    settings.stereo_fold = iclforge::ac3::DownmixTarget::kAsCoded;
     CHECK(decoder_setup(settings, layout("2.0")).config.output.target ==
-          iclforge::DownmixTarget::kLoRo);
+          iclforge::ac3::DownmixTarget::kLoRo);
 }
 
 TEST_CASE("decoder settings: the object policy decides reconstruction for rendered layouts",
           "[hearth][decoder-settings]") {
     DecoderSettings settings;
-    settings.objects = iclforge::render::ObjectsPolicy::kAlways;
+    settings.objects = iclforge::ac3::render::ObjectsPolicy::kAlways;
     CHECK_FALSE(decoder_setup(settings, layout("5.1")).config.skip_object_reconstruction);
     // A folded layout never reconstructs, whatever the policy.
     CHECK(decoder_setup(settings, layout("2.0")).config.skip_object_reconstruction);
-    settings.objects = iclforge::render::ObjectsPolicy::kNever;
+    settings.objects = iclforge::ac3::render::ObjectsPolicy::kNever;
     CHECK(decoder_setup(settings, layout("7.1.4")).config.skip_object_reconstruction);
 }
 
@@ -198,27 +198,27 @@ TEST_CASE("decoder settings: a transcode decodes the programme as coded, whateve
           "chose",
           "[hearth][decoder-settings][transcode]") {
     DecoderSettings listener;
-    listener.mode = iclforge::OperatingMode::kRf;
+    listener.mode = iclforge::ac3::OperatingMode::kRf;
     listener.rf_ceiling_db = -6.0;
     listener.drc_cut = 0.5;
     listener.heavy_compression = true;
-    listener.stereo_fold = iclforge::DownmixTarget::kLtRt;
+    listener.stereo_fold = iclforge::ac3::DownmixTarget::kLtRt;
     listener.mix_lfe = true;
     listener.mix_levels.loro_clev = 0.5;
-    listener.objects = iclforge::render::ObjectsPolicy::kAlways;
+    listener.objects = iclforge::ac3::render::ObjectsPolicy::kAlways;
     listener.joc_domain = iclforge::oba::joc::Domain::kMdctBand;
     // What a receiver cannot choose for itself is kept.
     listener.dual_mono = iclforge::hearth::DualMonoChoice::kSecond;
-    listener.concealment = iclforge::ConcealmentPolicy::kMute;
+    listener.concealment = iclforge::ac3::ConcealmentPolicy::kMute;
     listener.programme = 3;
     listener.fast_inverse_transform = false;
 
     const DecoderSettings neutral = iclforge::hearth::transcode_settings(listener);
     CHECK(neutral.rf_ceiling_db == 0.0);
     CHECK(neutral.dual_mono == iclforge::hearth::DualMonoChoice::kSecond);
-    CHECK(neutral.concealment == iclforge::ConcealmentPolicy::kMute);
+    CHECK(neutral.concealment == iclforge::ac3::ConcealmentPolicy::kMute);
     CHECK(neutral.programme == std::optional<int>{3});
-    CHECK(neutral.mix_levels == iclforge::MixLevelOverride{});
+    CHECK(neutral.mix_levels == iclforge::ac3::MixLevelOverride{});
     CHECK_FALSE(neutral.mix_lfe);
     // Objects are off in a transcode, so the domain choice would reach
     // nothing; it resets with the rest of the object controls rather than
@@ -230,16 +230,16 @@ TEST_CASE("decoder settings: a transcode decodes the programme as coded, whateve
     CHECK(neutral.fast_inverse_transform);
 
     const auto setup = decoder_setup(neutral, layout("5.1"));
-    const iclforge::DecoderConfig& config = setup.config;
-    CHECK(config.output.mode == iclforge::OperatingMode::kCustom);
+    const iclforge::ac3::DecoderConfig& config = setup.config;
+    CHECK(config.output.mode == iclforge::ac3::OperatingMode::kCustom);
     CHECK(config.drc_scale == 0.0);
     REQUIRE(config.drc_boost_scale.has_value());
     CHECK(*config.drc_boost_scale == 0.0);
     CHECK_FALSE(config.heavy_compression);
     CHECK_FALSE(config.output.apply_dialnorm);
-    CHECK(config.output.target == iclforge::DownmixTarget::kAsCoded);
+    CHECK(config.output.target == iclforge::ac3::DownmixTarget::kAsCoded);
     CHECK_FALSE(setup.serving.fold.has_value());
     CHECK(config.skip_object_reconstruction);
-    CHECK(config.concealment == iclforge::ConcealmentPolicy::kMute);
+    CHECK(config.concealment == iclforge::ac3::ConcealmentPolicy::kMute);
     CHECK(config.fast_imdct);
 }

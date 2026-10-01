@@ -1,15 +1,16 @@
 # The layout of `src/` (N1B): a study
 
-!!! note "Status as of 2026-10-01: carried out as L2, in the stages below, except S6 and the owner's renames"
+!!! note "Status as of 2026-10-01: carried out as L2, in the stages below, except the owner's renames"
     Asked for by the user on 2026-09-29 ("it's kind of weird ... the old stuff is over here in forge and
     the new AC4 stuff's over here which is two folders higher, not as a sibling"). This page and its
     appendix, [layout-inventory.md](layout-inventory.md), read the tree as it stood on `main` at
     `4ca84d66d` and propose a layout that puts the codecs side by side over a base that knows none of
     them. The user took its recommendation on each of [the decisions](#i-decisions) on 2026-09-30, and
     the stages ran as one freeze, 2026-09-30 to 2026-10-01: S0 and S1 (#1153 to #1155, #1158, #1159),
-    S2 (#1160), S3 (#1161), S4 (#1162), N1A (#1164) and S5 (the pages, the addresses and the build
-    and tool text). Left: S6, and the owner's renames of the repository, the tap and the SonarCloud
-    project key before the first release under the new names ([N1](ac4.md#n1-the-names)).
+    S2 (#1160), S3 (#1161), S4 (#1162), N1A (#1164), S5 (#1165: the pages, the addresses and the build
+    and tool text) and S6 (the AC-3 codec's names under `iclforge::ac3`). Left: the owner's renames of
+    the repository, the tap and the SonarCloud project key before the first release under the new
+    names ([N1](ac4.md#n1-the-names)).
     The text below is the study as it was written, with the names of its time (`ac3::forge`,
     `ac3cli`) and the counts of `4ca84d66d`; [what the runs
     found](#what-the-runs-found-that-the-plan-did-not) gives the counts that differed and the hazards
@@ -493,8 +494,8 @@ What a reader might not expect:
 | pinned bitstream hashes unchanged | x | x | x | x | | x |
 | CLI bytes on the fixed corpus | x | x | x | x | | x |
 | exported symbols per library against the baseline | | x | x | x | | x |
-| ESP-IDF pack `--verify` (about half an hour) | | x | x | x | | |
-| Python, Rust, WASM tests on the branch (`ci.yml` dispatch) | | | | x | x | |
+| ESP-IDF pack `--verify` (about half an hour) | | x | x | x | | x |
+| Python, Rust, WASM tests on the branch (`ci.yml` dispatch) | | | | x | x | x |
 | `check_doc_paths.py`, `mkdocs build --strict`, `precheck.py` | | | | | x | |
 | `check_layering.py` finds no violation | x | x | x | x | | x |
 
@@ -665,8 +666,8 @@ them. Three statements are affected:
 
 ## What the runs found that the plan did not
 
-The stages ran on 2026-09-30 and 2026-10-01 as #1160 (S2), #1161 (S3), #1162 (S4), #1164 (N1A) and the S5
-pull request; S0 and S1 were #1153 to #1155, #1158 and #1159. Each pull request's description holds its
+The stages ran on 2026-09-30 and 2026-10-01 as #1160 (S2), #1161 (S3), #1162 (S4), #1164 (N1A), #1165 (S5) and
+the S6 pull request; S0 and S1 were #1153 to #1155, #1158 and #1159. Each pull request's description holds its
 proof and its own list of what differed from this page. The counts changed:
 
 | | the study | the run |
@@ -678,6 +679,8 @@ proof and its own list of what differed from this page. The counts changed:
 | S4, package files moved | 201 | 211 |
 | N1A, files that carry a program name | 603 | 671, and 3 pages |
 | S5, documents that carry a name | 128 | 256 files by the text phase, 121 by the address phase, 20 by the words phase, and a hand-written commit |
+| S6, files that carry a name of the codec | about 480 | 133 open the library's namespaces, 449 carry a qualified name (9,796 places), the compiler's loop edits 41 more (414 edits) |
+| S6, lines pushed past 100 columns | not counted | 735 in 157 files, and 1 more after the anchors |
 
 The reflow is about twice the count because the study counted `ac3::` alone: `ac4::`, `mp4::` and the
 others gain ten columns where `ac3::` gains five. The ten package files S4 moved beyond the 201 are the
@@ -715,3 +718,26 @@ Hazards the study did not name:
   from the address they are served under.
 - **A code span over two lines** was cut in two by the text phase, which reads a line at a time; two
   such spans were put right by hand.
+- **A name that still builds.** S6 moved the library out of the namespaces it shared with the objects,
+  render, arithmetic and base libraries (`emdf`, `oba`, `render`, `internal`, `detail` and the root), and
+  what an unqualified name finds from inside the library changed with it. A name that is not found is a
+  compile error, which the compiler's loop turns into an edit; a name that is found somewhere else is
+  not. `frame_layout.cpp` looked for `kSyncWord` in `iclforge::emdf`, the objects library's 0x5838, and
+  found the AC-3 sync word 0x0B77 in `iclforge::ac3`: it built, no frame had a container, nothing was
+  signed, and nine tests failed. `n1b_ac3ns.py --phase shadows` lists such names from the table (four on
+  this tree) and the spellings whose meaning depends on what a file includes first (18), and
+  `ir_compare.py` compares the LLVM IR of every unit of the old tree with the new tree's (693 units,
+  tests included: 679 are the same, 13 differ in the white space of an assertion's text only, and one
+  has a `call` where the other has an `invoke`).
+- **Asserts.** A Release build compiles nothing inside `assert(...)`. The loop's builds were Release, and
+  `assert(domain != Domain::kQmf ...)` in `joc.cpp` named a name the library no longer found until the
+  Debug build of another job failed on it. The tree the loop builds has asserts on
+  (`ir_compare.py compile --asserts` is that, without a build).
+- **Variants.** The fixed-point scalar's header (`using decode_scalar_t = Fixed32;`) is compiled only by
+  `ICLFORGE_DECODE_SCALAR=fixed`, the build of the ESP32-C3 and C6, so the default builds never see it;
+  and CMake comments, generators and Rust doc comments name C++ symbols in places no pass of a build
+  reads.
+- **Namespaces that hide each other.** `iclforge::ac3::internal` hides `iclforge::internal` (arithmetic's
+  `Fixed32`, the DSP kernels, base's `cpu` and `profiling`) and `iclforge::ac3::oba` hides the objects
+  library's: 132 of the compiler's edits in the library are anchors, `iclforge::` and the part of the
+  path the chain does not name.

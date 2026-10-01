@@ -90,7 +90,7 @@ enum class WrapError : std::uint8_t {
     std::span<const std::byte> frame);
 
 // Accumulates E-AC-3 access units into IEC 61937 bursts. Feed it whole access
-// units (iclforge::split_access_units's granularity — the independent substream's
+// units (iclforge::ac3::split_access_units's granularity — the independent substream's
 // syncframe plus every dependent's, concatenated exactly as split_access_units
 // returns them) rather than lone syncframes: a dependent's channels only
 // reach the burst if its bytes are included, and a decoder finds them by the
@@ -98,7 +98,7 @@ enum class WrapError : std::uint8_t {
 class ICLFORGE_IEC61937_EXPORT Eac3BurstPacker {
    public:
     // Real work, not =default, because Impl below is incomplete here - same
-    // reason iclforge::io::WavStreamReader's default ctor gives.
+    // reason iclforge::ac3::io::WavStreamReader's default ctor gives.
     Eac3BurstPacker();
     // Declared (and defined in iec61937.cpp, where Impl below is complete)
     // rather than implicit: a dllexport class generates every implicit
@@ -125,9 +125,9 @@ class ICLFORGE_IEC61937_EXPORT Eac3BurstPacker {
 };
 
 // Wrap a whole stream's worth of ALREADY-SPLIT units into one concatenated
-// IEC 61937 payload - one AC-3 frame per unit (iclforge::split_frames's
+// IEC 61937 payload - one AC-3 frame per unit (iclforge::ac3::split_frames's
 // granularity), or one whole E-AC-3 access unit per unit
-// (iclforge::split_access_units's granularity), matching `eac3`. For a caller
+// (iclforge::ac3::split_access_units's granularity), matching `eac3`. For a caller
 // that already has its frames/access units in hand - e.g. a GUI's freshly
 // encoded output - rather than a raw elementary-stream buffer it would
 // otherwise have to split itself first. forge's own `spdif`/`play` commands

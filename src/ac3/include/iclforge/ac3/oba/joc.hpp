@@ -30,7 +30,7 @@
 // separation, and its quality depends entirely on how well-separated the
 // objects were in the downmix.
 
-namespace iclforge::oba::joc {
+namespace iclforge::ac3::oba::joc {
 
 // Table 47 / Table 48. This encoder only ever writes 5.X - 7.X needs Lb/Rb in
 // the downmix, which costs a dependent substream - but a decoder meets all
@@ -354,14 +354,14 @@ struct ReconstructionState {
     std::array<recon_scalar_t, 512> time_scratch{};
     // Four windowed blocks, not one (batched MDCT (four blocks)): the bed
     // analysis batches four CHANNELS' forward transforms into one
-    // iclforge::mdct512_forward_batch4 call, which needs all four windowed
+    // iclforge::ac3::mdct512_forward_batch4 call, which needs all four windowed
     // blocks to coexist. kNumChannels5X is 5, so a block runs one batch of
     // four plus one ordinary call; lane 0 doubles as the scalar path's own
     // buffer, so this costs 3 x 512 scalars over the previous single one.
     std::array<std::array<recon_scalar_t, 512>, 4> windowed_scratch{};
     // Per-object (batched SIMD kernels): every present
     // object's spectrum/synthesis output now coexists, so the imdct pass
-    // can batch four objects at a time (iclforge::imdct512_windowed_batch4)
+    // can batch four objects at a time (iclforge::ac3::imdct512_windowed_batch4)
     // instead of running strictly one object at a time - see
     // reconstruct_mdct_band's own object loop (joc.cpp).
     //
@@ -494,6 +494,6 @@ struct ReconstructionState {
 [[nodiscard]] ICLFORGE_AC3_EXPORT std::vector<std::vector<float>> reconstruct(
     std::span<const std::span<const float>> bed, const FrameParameters& params,
     ReconstructionState& state, bool fast_mdct = false, bool fast_imdct = false,
-    Domain domain = Domain::kQmf);
+    iclforge::oba::joc::Domain domain = iclforge::oba::joc::Domain::kQmf);
 
-}  // namespace iclforge::oba::joc
+}  // namespace iclforge::ac3::oba::joc

@@ -56,7 +56,7 @@ namespace forge_cli::commands {
 using iclforge::apps::ac4_order;
 using iclforge::apps::ac4_wav_rank;
 
-namespace plan = iclforge::plan;
+namespace plan = iclforge::ac3::plan;
 
 namespace {
 
@@ -242,7 +242,7 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
     if (!apply_object_verification(stream, meta, status_stream())) {
         return kExitInput;
     }
-    if (!iclforge::stream_bsid(stream).has_value()) {
+    if (!iclforge::ac3::stream_bsid(stream).has_value()) {
         fmt::println(stderr, "error: {} is too short to hold a syncframe", in_path);
         return kExitInput;
     }
@@ -274,16 +274,16 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
     // beforehand: RenderDeviceInfo::channels is 0 on any backend that cannot
     // say, and 0 leaves the audio alone. downmix=auto counts as explicit, and
     // is settled from the stream here first.
-    iclforge::OutputConfig output = resolve_output(meta, stream, status_stream());
-    if (output.target == iclforge::DownmixTarget::kAsCoded && device_channels > 0) {
-        const auto scanned = iclforge::io::scan(stream);
+    iclforge::ac3::OutputConfig output = resolve_output(meta, stream, status_stream());
+    if (output.target == iclforge::ac3::DownmixTarget::kAsCoded && device_channels > 0) {
+        const auto scanned = iclforge::ac3::io::scan(stream);
         if (scanned && scanned->channels > static_cast<int>(device_channels)) {
-            output.target = device_channels == 1 ? iclforge::DownmixTarget::kMono
-                                                 : iclforge::DownmixTarget::kLoRo;
+            output.target = device_channels == 1 ? iclforge::ac3::DownmixTarget::kMono
+                                                 : iclforge::ac3::DownmixTarget::kLoRo;
             status_println(
                 status_stream(), "  {} channels on a {}-channel output: folding to {} (§7.8)",
                 scanned->channels, device_channels,
-                output.target == iclforge::DownmixTarget::kMono ? "mono" : "Lo/Ro stereo");
+                output.target == iclforge::ac3::DownmixTarget::kMono ? "mono" : "Lo/Ro stereo");
         }
     }
 
@@ -302,7 +302,7 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
     };
 
     if (access_units) {
-        const auto units = iclforge::split_access_units(stream);
+        const auto units = iclforge::ac3::split_access_units(stream);
         if (!units || units->empty()) {
             fmt::println(stderr, "error: {} is not a valid E-AC-3 stream", in_path);
             return kExitInput;
@@ -311,22 +311,22 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
         // several KB of per-block scratch members (alert #63's fix), which
         // pushed this one-shot stack declaration over the threshold - same
         // pattern as PR #50.
-        auto decoder = std::make_unique<iclforge::Eac3Decoder>(
-            iclforge::DecoderConfig{.drc_scale = meta.drc_scale,
+        auto decoder = std::make_unique<iclforge::ac3::Eac3Decoder>(
+            iclforge::ac3::DecoderConfig{.drc_scale = meta.drc_scale,
                                .fast_imdct = meta.fast_imdct,
                                .heavy_compression = meta.p.heavy.has_value(),
                                .output = output,
                                .concealment = meta.concealment,
                                .fast_mdct = meta.fast_mdct});
-        const bool folded = output.target != iclforge::DownmixTarget::kAsCoded;
+        const bool folded = output.target != iclforge::ac3::DownmixTarget::kAsCoded;
         std::vector<std::size_t> order;
         // The programme's layout, from the first unit played. The held-back
         // unit after the loop is laid out against it.
-        std::optional<iclforge::eac3::chanmap::Layout> programme;
+        std::optional<iclforge::ac3::eac3::chanmap::Layout> programme;
         // Plays one unit, opening the device on the first. kExitOk to carry
         // on; otherwise the code to end with, the reason printed: the device
         // refused to open, or went away.
-        const auto monitor_unit = [&](const iclforge::DecodedAccessUnit& out) -> int {
+        const auto monitor_unit = [&](const iclforge::ac3::DecodedAccessUnit& out) -> int {
             if (order.empty()) {
                 programme = out.layout;
                 // Dual mono has no Table E2.5 location to order by - `layout`
@@ -338,7 +338,7 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
                 // layout - monitor_order alone would size the permutation off
                 // that unfolded layout rather than the folded channel count,
                 // so the fold case stays identity here too.
-                if (out.acmod == iclforge::Acmod::kDualMono || folded) {
+                if (out.acmod == iclforge::ac3::Acmod::kDualMono || folded) {
                     order.resize(out.channels.size());
                     for (std::size_t i = 0; i < order.size(); ++i) {
                         order[i] = i;
@@ -379,7 +379,7 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
             const auto decoded = decoder->decode_access_unit(unit);
             if (!decoded.has_value()) {
                 fmt::println(stderr, "error: decode failed: {}",
-                             iclforge::describe(decoded.error()));
+                             iclforge::ac3::describe(decoded.error()));
                 return kExitInput;
             }
             if (!decoded->has_value()) {
@@ -405,13 +405,13 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
             }
         }
     } else {
-        const auto frames = iclforge::split_frames(stream);
+        const auto frames = iclforge::ac3::split_frames(stream);
         if (!frames || frames->empty()) {
             fmt::println(stderr, "error: {} is not a valid AC-3 stream", in_path);
             return kExitInput;
         }
-        iclforge::FrameDecoder decoder{
-            iclforge::DecoderConfig{.drc_scale = meta.drc_scale,
+        iclforge::ac3::FrameDecoder decoder{
+            iclforge::ac3::DecoderConfig{.drc_scale = meta.drc_scale,
                                .fast_imdct = meta.fast_imdct,
                                .heavy_compression = meta.p.heavy.has_value(),
                                .output = output,
@@ -420,18 +420,19 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
         for (const auto& frame : *frames) {
             const auto decoded = decoder.decode_frame(frame);
             if (!decoded.has_value()) {
-                fmt::println(stderr, "error: {}: {}", in_path, iclforge::describe(decoded.error()));
+                fmt::println(stderr, "error: {}: {}", in_path,
+                             iclforge::ac3::describe(decoded.error()));
                 return kExitInput;
             }
             if (order.empty()) {
-                if (output.target != iclforge::DownmixTarget::kAsCoded &&
-                    decoded->acmod != iclforge::Acmod::kDualMono) {
+                if (output.target != iclforge::ac3::DownmixTarget::kAsCoded &&
+                    decoded->acmod != iclforge::ac3::Acmod::kDualMono) {
                     order.resize(decoded->channels.size());
                     for (std::size_t i = 0; i < order.size(); ++i) {
                         order[i] = i;
                     }
                 } else {
-                    order = iclforge::io::wav_channel_order(decoded->acmod, decoded->lfe);
+                    order = iclforge::ac3::io::wav_channel_order(decoded->acmod, decoded->lfe);
                 }
                 const auto started = sink.start(device_id, sample_rate_hz(decoded->sample_rate),
                                                 static_cast<std::uint16_t>(order.size()));
@@ -523,7 +524,7 @@ int run_spatial(std::string_view in_path, int device_index, const Options& meta)
     if (!apply_object_verification(stream, meta, status_stream())) {
         return kExitInput;
     }
-    if (!iclforge::stream_bsid(stream).has_value()) {
+    if (!iclforge::ac3::stream_bsid(stream).has_value()) {
         fmt::println(stderr, "error: {} is too short to hold a syncframe", in_path);
         return kExitInput;
     }
@@ -575,7 +576,7 @@ int run_spatial(std::string_view in_path, int device_index, const Options& meta)
         return kExitUnavailable;
     }
 
-    const auto units = iclforge::split_access_units(stream);
+    const auto units = iclforge::ac3::split_access_units(stream);
     if (!units || units->empty()) {
         fmt::println(stderr, "error: {} is not a valid E-AC-3 stream", in_path);
         return kExitInput;
@@ -583,12 +584,12 @@ int run_spatial(std::string_view in_path, int device_index, const Options& meta)
     // Named rather than a temporary passed straight to the decoder: lfe_delay
     // below reads .joc_domain back off it, so the two can never disagree on
     // which domain the reconstruction this session actually decodes with.
-    const iclforge::DecoderConfig decoder_config{.drc_scale = meta.drc_scale,
+    const iclforge::ac3::DecoderConfig decoder_config{.drc_scale = meta.drc_scale,
                                             .fast_imdct = meta.fast_imdct,
                                             .heavy_compression = meta.p.heavy.has_value(),
                                             .output = meta.output,
                                             .concealment = meta.concealment};
-    auto decoder = std::make_unique<iclforge::Eac3Decoder>(decoder_config);
+    auto decoder = std::make_unique<iclforge::ac3::Eac3Decoder>(decoder_config);
 
     iclforge::audio::SpatialObjectSink sink;
     bool started = false;
@@ -598,7 +599,7 @@ int run_spatial(std::string_view in_path, int device_index, const Options& meta)
     // unit with a different count is not this programme.
     std::size_t opened_objects = 0;
     std::uint64_t units_played = 0;
-    std::optional<iclforge::eac3::chanmap::Layout> programme;
+    std::optional<iclforge::ac3::eac3::chanmap::Layout> programme;
     std::vector<iclforge::audio::DynamicObjectUpdate> dynamic_updates;
     std::vector<iclforge::audio::StaticObjectUpdate> static_updates;
     LfeDelayLine lfe_delay{static_cast<std::size_t>(
@@ -608,7 +609,7 @@ int run_spatial(std::string_view in_path, int device_index, const Options& meta)
     // Plays one unit, opening the sink on the first. kExitOk to carry on;
     // otherwise the code to end with, the reason printed: the sink refused
     // to open, or went away.
-    const auto spatial_unit = [&](const iclforge::DecodedAccessUnit& out) -> int {
+    const auto spatial_unit = [&](const iclforge::ac3::DecodedAccessUnit& out) -> int {
         if (!started) {
             const bool has_lfe =
                 out.object_metadata && iclforge::oba::has_lfe(out.object_metadata->program);
@@ -648,7 +649,7 @@ int run_spatial(std::string_view in_path, int device_index, const Options& meta)
         if (out.object_metadata && iclforge::oba::has_lfe(out.object_metadata->program) &&
             !out.channels.empty()) {
             // Table 5.8's coded order puts the LFE last regardless of acmod
-            // (iclforge::DecodedAccessUnit::channels' own doc comment) - never a
+            // (iclforge::ac3::DecodedAccessUnit::channels' own doc comment) - never a
             // JOC output (§6.3.2.2), so it only ever exists here. Delayed to
             // arrive with the dynamic objects above, not ahead of them - see
             // LfeDelayLine's own comment.
@@ -675,7 +676,7 @@ int run_spatial(std::string_view in_path, int device_index, const Options& meta)
         const auto decoded = decoder->decode_access_unit(unit);
         if (!decoded.has_value()) {
             fmt::println(stderr, "error: decode failed: {}",
-                         iclforge::describe(decoded.error()));
+                         iclforge::ac3::describe(decoded.error()));
             return kExitInput;
         }
         if (!decoded->has_value()) {
@@ -693,7 +694,7 @@ int run_spatial(std::string_view in_path, int device_index, const Options& meta)
     // run_monitor (DecoderConfig::output is set from it either way), so the
     // same fold flag applies to what flush() already applied per substream.
     const auto held = iclforge::apps::held_back_unit(
-        decoder->flush(), programme, meta.output.target != iclforge::DownmixTarget::kAsCoded);
+        decoder->flush(), programme, meta.output.target != iclforge::ac3::DownmixTarget::kAsCoded);
     if (held.has_value()) {
         if (const int code = spatial_unit(*held); code != kExitOk) {
             return code;
@@ -843,11 +844,11 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
     const iclforge::audio::DeviceInfo* device2 =
         meta.capture2 ? &(*devices)[static_cast<std::size_t>(*meta.capture2)] : nullptr;
 
-    iclforge::SampleRate sr{};
+    iclforge::ac3::SampleRate sr{};
     switch (device.sample_rate) {
-        case 48000: sr = iclforge::SampleRate::k48000; break;
-        case 44100: sr = iclforge::SampleRate::k44100; break;
-        case 32000: sr = iclforge::SampleRate::k32000; break;
+        case 48000: sr = iclforge::ac3::SampleRate::k48000; break;
+        case 44100: sr = iclforge::ac3::SampleRate::k44100; break;
+        case 32000: sr = iclforge::ac3::SampleRate::k32000; break;
         default:
             fmt::println(stderr,
                          "error: \"{}\" runs at {} Hz; AC-3/E-AC-3 need 32, 44.1 or 48 kHz",
@@ -935,10 +936,12 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
         }
         capture2_channels = capture2.channels();
         slave_resampler.emplace(capture2_channels);
-        slave_drift.emplace(nominal_ratio, static_cast<std::size_t>(iclforge::kSamplesPerFrame));
-        slave_scratch.resize(4 * static_cast<std::size_t>(iclforge::kSamplesPerFrame) *
+        slave_drift.emplace(nominal_ratio,
+                            static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame));
+        slave_scratch.resize(4 * static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame) *
                              capture2_channels);
-        slave_out.resize(static_cast<std::size_t>(iclforge::kSamplesPerFrame) * capture2_channels);
+        slave_out.resize(static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame) *
+                         capture2_channels);
         slave_resampler->reset();
         status_println(status, "capture2: \"{}\", {} ch @ {} Hz (nominal ratio {:.6f})",
                        device2->name, device2->channels, device2->sample_rate, nominal_ratio);
@@ -1041,10 +1044,10 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
         atmos ? 6 : static_cast<std::size_t>(routing->coded_channels);
     const std::size_t rendered_channels = atmos ? 6 : static_cast<std::size_t>(
                                                           take->rendered_channels);
-    const auto bed_acmod = atmos ? iclforge::Acmod::k3_2 : channel_plan.bed_acmod;
+    const auto bed_acmod = atmos ? iclforge::ac3::Acmod::k3_2 : channel_plan.bed_acmod;
     const bool bed_lfe = atmos ? true : channel_plan.bed_lfe;
-    const std::size_t bed_channels =
-        static_cast<std::size_t>(iclforge::fullbw_channel_count(bed_acmod) + (bed_lfe ? 1 : 0));
+    const std::size_t bed_channels = static_cast<std::size_t>(
+        iclforge::ac3::fullbw_channel_count(bed_acmod) + (bed_lfe ? 1 : 0));
 
     auto resolve_render_device =
         [&](int index) -> std::optional<iclforge::audio::RenderDeviceInfo> {
@@ -1140,10 +1143,10 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
     // and this function only constructs them once, at session start, not per
     // audio frame (PREfast's C6262) - same pattern as EncoderController's
     // runLiveSession, the GUI's equivalent of this function.
-    std::unique_ptr<iclforge::oba::AtmosEncoder> atmos_encoder;
+    std::unique_ptr<iclforge::ac3::oba::AtmosEncoder> atmos_encoder;
     if (atmos) {
-        atmos_encoder = std::make_unique<iclforge::oba::AtmosEncoder>(
-            iclforge::oba::AtmosConfig{.sample_rate = sr, .bitrate_kbps = bitrate,
+        atmos_encoder = std::make_unique<iclforge::ac3::oba::AtmosEncoder>(
+            iclforge::ac3::oba::AtmosConfig{.sample_rate = sr, .bitrate_kbps = bitrate,
                                   .dialnorm = meta.p.dialnorm, .num_bands_idx = 4,
                                   .fast_mdct = meta.fast_mdct, .joc_domain = meta.joc_domain},
             static_cast<int>(nobjects));
@@ -1154,11 +1157,11 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
     // there is no separate 7.8 fold to compute here. Built only when the leg
     // is actually running, unlike the GUI's (whose receiver can be hot-swapped
     // mid-session; forge's cannot).
-    std::unique_ptr<iclforge::FrameEncoder> downmix_encoder;
+    std::unique_ptr<iclforge::ac3::FrameEncoder> downmix_encoder;
     if (downmix_leg) {
-        downmix_encoder = std::make_unique<iclforge::FrameEncoder>(
-            iclforge::EncoderConfig{.sample_rate = sr,
-                               .bitrate_kbps = iclforge::clamp_to_legal_ac3_bitrate(bitrate),
+        downmix_encoder = std::make_unique<iclforge::ac3::FrameEncoder>(
+            iclforge::ac3::EncoderConfig{.sample_rate = sr,
+                               .bitrate_kbps = iclforge::ac3::clamp_to_legal_ac3_bitrate(bitrate),
                                .dialnorm = meta.p.dialnorm,
                                .acmod = bed_acmod,
                                .lfe = bed_lfe,
@@ -1166,12 +1169,12 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
                                .cmixlev = meta.p.cmixlev,
                                .surmixlev = meta.p.surmixlev});
     }
-    auto ac3_monitor_decoder = std::make_unique<iclforge::FrameDecoder>();
+    auto ac3_monitor_decoder = std::make_unique<iclforge::ac3::FrameDecoder>();
     // Heap-allocated (PREfast's C6262, alert #89): Eac3Decoder's per-block
     // scratch members pushed this stack declaration over the threshold, same
     // as the two decoders just above - same pattern as
     // examples/atmos_objects.cpp (PR #295).
-    auto eac3_monitor_decoder = std::make_unique<iclforge::Eac3Decoder>();
+    auto eac3_monitor_decoder = std::make_unique<iclforge::ac3::Eac3Decoder>();
     // AC-4's, as decode reads a stream without asking anything of it.
     std::optional<iclforge::ac4::Decoder> ac4_monitor_decoder;
     if (ac4) {
@@ -1183,11 +1186,11 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
     // - what a legacy decoder hears); channel mode meters the routed coded
     // channels. Getting this wrong doesn't just mislabel a column - the wrong
     // acmod also changes how many channels the meter reports.
-    iclforge::analysis::LevelMeter meter{bed_acmod, bed_lfe, rate_hz,
+    iclforge::ac3::analysis::LevelMeter meter{bed_acmod, bed_lfe, rate_hz,
                                     static_cast<int>(coded_channels)};
     const std::uint64_t target_frames =
-        (static_cast<std::uint64_t>(seconds) * rate_hz + iclforge::kSamplesPerFrame - 1) /
-        iclforge::kSamplesPerFrame;
+        (static_cast<std::uint64_t>(seconds) * rate_hz + iclforge::ac3::kSamplesPerFrame - 1) /
+        iclforge::ac3::kSamplesPerFrame;
 
     RecordingSink sink;
     {
@@ -1202,14 +1205,15 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
         }
     }
 
-    std::vector<float> interleaved(static_cast<std::size_t>(iclforge::kSamplesPerFrame) * channels);
+    std::vector<float> interleaved(static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame) *
+                                   channels);
     // Object mode fills one block per SLOT; channel mode one per captured
     // channel, routed into `coded_block` below. Sized for whichever is
     // running, never both.
-    std::vector<std::vector<float>> block(atmos ? nobjects : channels,
-                                          std::vector<float>(iclforge::kSamplesPerFrame, 0.0F));
+    std::vector<std::vector<float>> block(
+        atmos ? nobjects : channels, std::vector<float>(iclforge::ac3::kSamplesPerFrame, 0.0F));
     std::vector<std::vector<float>> coded_block(
-        atmos ? 0 : coded_channels, std::vector<float>(iclforge::kSamplesPerFrame, 0.0F));
+        atmos ? 0 : coded_channels, std::vector<float>(iclforge::ac3::kSamplesPerFrame, 0.0F));
     std::vector<std::span<const float>> views(atmos ? nobjects : channels);
     std::vector<std::span<float>> coded_out(atmos ? 0 : coded_channels);
     std::vector<std::span<const float>> coded_views(atmos ? 0 : coded_channels);
@@ -1255,7 +1259,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
     std::uint64_t frames_written = 0;
     // How far into the take the session is, as the meter line counts it.
     const auto take_seconds = [&] {
-        return static_cast<double>(frames_written * iclforge::kSamplesPerFrame) / rate_hz;
+        return static_cast<double>(frames_written * iclforge::ac3::kSamplesPerFrame) / rate_hz;
     };
     // An output leg whose device goes away is dropped there and then, and the
     // take carries on: the file is still correct without it, which is why a
@@ -1338,7 +1342,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
             const auto consumed = slave_resampler->render(
                 std::span{slave_scratch}.first(slave_scratch_valid_frames * capture2_channels),
                 slave_scratch_valid_frames, std::span{slave_out},
-                static_cast<std::size_t>(iclforge::kSamplesPerFrame));
+                static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame));
             const std::size_t remaining_frames = slave_scratch_valid_frames - consumed;
             std::copy(slave_scratch.begin() + static_cast<std::ptrdiff_t>(
                                                    consumed * capture2_channels),
@@ -1365,7 +1369,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
         };
         if (atmos) {
             for (std::size_t slot = 0; slot < nobjects; ++slot) {
-                for (int i = 0; i < iclforge::kSamplesPerFrame; ++i) {
+                for (int i = 0; i < iclforge::ac3::kSamplesPerFrame; ++i) {
                     float sum = 0.0F;
                     for (const auto& [flat, gain] : slots[slot].taps) {
                         sum += tap_sample(flat, i) * static_cast<float>(gain);
@@ -1375,12 +1379,12 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
             }
         } else {
             for (std::size_t ch = 0; ch < channels; ++ch) {
-                for (int i = 0; i < iclforge::kSamplesPerFrame; ++i) {
+                for (int i = 0; i < iclforge::ac3::kSamplesPerFrame; ++i) {
                     block[ch][static_cast<std::size_t>(i)] = tap_sample(ch, i);
                 }
             }
         }
-        n0 += iclforge::kSamplesPerFrame;
+        n0 += iclforge::ac3::kSamplesPerFrame;
 
         // What this frame completes: one AC-3 frame or E-AC-3 access unit,
         // or the AC-4 frames it completes, none while its encoder's delay
@@ -1430,7 +1434,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
             meter.process(bed_views);
             units.push_back(TakeEncoder::Unit{.bytes = unit->bytes, .sync = true});
         } else {
-            plan::render(*routing, views, coded_out, iclforge::kSamplesPerFrame);
+            plan::render(*routing, views, coded_out, iclforge::ac3::kSamplesPerFrame);
             meter.process(coded_views);
             // The independent substream's channels come first in coded order
             // (plan::coded_channels' own contract), so the bed the receiver
@@ -1483,7 +1487,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
                 const auto decoded = ac3_monitor_decoder->decode_frame(unit_bytes);
                 if (decoded.has_value()) {
                     const auto order =
-                        iclforge::io::wav_channel_order(decoded->acmod, decoded->lfe);
+                        iclforge::ac3::io::wav_channel_order(decoded->acmod, decoded->lfe);
                     to_play = interleave_reordered(decoded->channels, order);
                 }
             }
@@ -1552,8 +1556,8 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
             }
         }
         ++frames_written;
-        print_live_meter(meter, static_cast<double>(frames_written * iclforge::kSamplesPerFrame) /
-                                    rate_hz);
+        print_live_meter(
+            meter, static_cast<double>(frames_written * iclforge::ac3::kSamplesPerFrame) / rate_hz);
     }
     status_println(status);
 

@@ -50,12 +50,12 @@ iclforge::mp4::ReadTrack track_with(std::vector<iclforge::mp4::EditListEntry> ed
 TEST_CASE("sniff_container does not mistake a repetitive elementary stream for MPEG-TS",
           "[containers][io2]") {
     // The smallest legal AC-3 frame at 48 kHz (Table 5.18's lowest rung,
-    // 32 kbit/s) is 64 words = 128 bytes - iclforge::io::read_frame_header only
+    // 32 kbit/s) is 64 words = 128 bytes - iclforge::ac3::io::read_frame_header only
     // ever reads the syncinfo/bsi header (well under 128 bytes for a plain
     // 2/0 layout), so everything past it is free to overwrite.
-    const auto frame = iclforge::build_silent_stereo_frame({.bitrate_kbps = 32});
+    const auto frame = iclforge::ac3::build_silent_stereo_frame({.bitrate_kbps = 32});
     REQUIRE(frame.has_value());
-    REQUIRE(iclforge::io::read_frame_header(*frame).has_value());
+    REQUIRE(iclforge::ac3::io::read_frame_header(*frame).has_value());
 
     constexpr std::size_t kStride = 192;    // one of the three grid strides
     constexpr int kRepeats = 8;             // past kTsSyncRuns's own 5
@@ -135,7 +135,7 @@ TEST_CASE("sniff_container wants the packet grid to start within its first strid
 
 TEST_CASE("elementary_stream_from_bytes leaves a bare elementary stream untouched",
           "[containers][io2]") {
-    const auto frame = iclforge::build_silent_stereo_frame({.bitrate_kbps = 192});
+    const auto frame = iclforge::ac3::build_silent_stereo_frame({.bitrate_kbps = 192});
     REQUIRE(frame.has_value());
 
     const auto result = iclforge::apps::elementary_stream_from_bytes(*frame);
@@ -153,13 +153,13 @@ TEST_CASE("elementary_stream_from_bytes leaves a bare elementary stream untouche
 TEST_CASE("elementary_stream_from_bytes reports what each container says about its track",
           "[containers][io2]") {
     using iclforge::apps::ContainerKind;
-    const auto frame = iclforge::build_silent_stereo_frame({.bitrate_kbps = 192});
+    const auto frame = iclforge::ac3::build_silent_stereo_frame({.bitrate_kbps = 192});
     REQUIRE(frame.has_value());
     Bytes stream;
     for (int i = 0; i < 4; ++i) {
         stream.insert(stream.end(), frame->begin(), frame->end());
     }
-    const auto scanned = iclforge::io::scan(stream);
+    const auto scanned = iclforge::ac3::io::scan(stream);
     REQUIRE(scanned.has_value());
     const std::span<const std::span<const std::byte>> units(scanned->access_units);
 
@@ -168,7 +168,7 @@ TEST_CASE("elementary_stream_from_bytes reports what each container says about i
         track.codec_id = std::string{iclforge::mp4::kCodecAc3};
         track.sample_rate = 48000;
         track.channels = 2;
-        track.codec_config = iclforge::io::build_codec_config_box(*scanned);
+        track.codec_config = iclforge::ac3::io::build_codec_config_box(*scanned);
         const auto file = iclforge::mp4::mux(track, units);
         REQUIRE(file.has_value());
         const auto result = iclforge::apps::elementary_stream_from_bytes(*file);
@@ -350,13 +350,13 @@ TEST_CASE("trim_from_edit_list reads the edit list an audio encoder writes",
 
 TEST_CASE("elementary_stream_from_bytes reports an MP4's edit list as a trim",
           "[containers][edit-list]") {
-    const auto frame = iclforge::build_silent_stereo_frame({.bitrate_kbps = 192});
+    const auto frame = iclforge::ac3::build_silent_stereo_frame({.bitrate_kbps = 192});
     REQUIRE(frame.has_value());
     Bytes stream;
     for (int i = 0; i < 3; ++i) {
         stream.insert(stream.end(), frame->begin(), frame->end());
     }
-    const auto scanned = iclforge::io::scan(stream);
+    const auto scanned = iclforge::ac3::io::scan(stream);
     REQUIRE(scanned.has_value());
     REQUIRE(scanned->access_units.size() == 3);
 
@@ -364,7 +364,7 @@ TEST_CASE("elementary_stream_from_bytes reports an MP4's edit list as a trim",
     track.codec_id = std::string{iclforge::mp4::kCodecAc3};
     track.sample_rate = 48000;
     track.channels = 2;
-    track.codec_config = iclforge::io::build_codec_config_box(*scanned);
+    track.codec_config = iclforge::ac3::io::build_codec_config_box(*scanned);
     const std::span<const std::span<const std::byte>> units(scanned->access_units);
 
     iclforge::mp4::MuxOptions edited;

@@ -32,7 +32,7 @@
 
 namespace {
 
-constexpr int kFrame = iclforge::kSamplesPerFrame;
+constexpr int kFrame = iclforge::ac3::kSamplesPerFrame;
 
 std::vector<float> tone(double hz, double amplitude, std::uint64_t start) {
     std::vector<float> out(kFrame);
@@ -80,8 +80,8 @@ constexpr std::uint16_t kBed514 = iclforge::oba::bed::kLR | iclforge::oba::bed::
 
 TEST_CASE("AtmosEncoder's BedProgram constructor writes a real bed programme, not objects",
           "[atmos][cbi]") {
-    iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 448},
-                                        iclforge::oba::BedProgram{.bed = kBed514}};
+    iclforge::ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448},
+                                        iclforge::ac3::oba::BedProgram{.bed = kBed514}};
     CHECK_FALSE(encoder.program().dynamic_only);
     CHECK(encoder.program().bed == kBed514);
     CHECK(encoder.program().dynamic_objects == 0);
@@ -92,10 +92,10 @@ TEST_CASE("AtmosEncoder's BedProgram constructor writes a real bed programme, no
 
 TEST_CASE("Eac3Decoder recovers program.bed != 0 with 0 dynamic objects from a CBI encode",
           "[atmos][cbi][decoder]") {
-    iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 448},
-                                        iclforge::oba::BedProgram{.bed = kBed514}};
+    iclforge::ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448},
+                                        iclforge::ac3::oba::BedProgram{.bed = kBed514}};
 
-    iclforge::eac3::AccessUnit unit;
+    iclforge::ac3::eac3::AccessUnit unit;
     std::vector<std::vector<float>> essences;
     std::vector<std::span<const float>> views(kInput.size());
     for (int frame = 0; frame < 3; ++frame) {
@@ -113,7 +113,7 @@ TEST_CASE("Eac3Decoder recovers program.bed != 0 with 0 dynamic objects from a C
     }
     REQUIRE(unit.substream_count() == 1);
 
-    iclforge::Eac3Decoder decoder;
+    iclforge::ac3::Eac3Decoder decoder;
     const auto decoded = decoder.decode_substream(unit.substream(0));
     REQUIRE(decoded.has_value());
     REQUIRE(decoded->has_value());
@@ -145,10 +145,10 @@ TEST_CASE("Eac3Decoder recovers program.bed != 0 with 0 dynamic objects from a C
 
 TEST_CASE("every JOC object a CBI encode reconstructs carries its own bed channel's tone",
           "[atmos][cbi][decoder][joc]") {
-    iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 448},
-                                        iclforge::oba::BedProgram{.bed = kBed514}};
+    iclforge::ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448},
+                                        iclforge::ac3::oba::BedProgram{.bed = kBed514}};
 
-    iclforge::Eac3Decoder decoder;
+    iclforge::ac3::Eac3Decoder decoder;
     std::vector<std::vector<float>> accumulated;
     std::vector<std::vector<float>> essences;
     std::vector<std::span<const float>> views(kInput.size());
@@ -220,14 +220,14 @@ TEST_CASE("a CBI encode with a 9.1.6 layout writes the wider bed and no dynamic 
         iclforge::oba::bed::kTflTfr | iclforge::oba::bed::kTslTsr | iclforge::oba::bed::kTblTbr;
     REQUIRE(iclforge::oba::bed::channel_count(kBed916) == 16);
 
-    iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 768},
-                                        iclforge::oba::BedProgram{.bed = kBed916}};
+    iclforge::ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 768},
+                                        iclforge::ac3::oba::BedProgram{.bed = kBed916}};
     CHECK(iclforge::oba::object_count(encoder.program()) == 16);
     CHECK(iclforge::oba::joc_object_count(encoder.program()) == 15);
 
     std::vector<std::vector<float>> essences(16);
     std::vector<std::span<const float>> views(16);
-    iclforge::eac3::AccessUnit unit;
+    iclforge::ac3::eac3::AccessUnit unit;
     for (int frame = 0; frame < 2; ++frame) {
         const auto start = static_cast<std::uint64_t>(frame) * kFrame;
         for (std::size_t i = 0; i < 16; ++i) {
@@ -239,7 +239,7 @@ TEST_CASE("a CBI encode with a 9.1.6 layout writes the wider bed and no dynamic 
         unit = *encoded;
     }
 
-    iclforge::Eac3Decoder decoder;
+    iclforge::ac3::Eac3Decoder decoder;
     const auto decoded = decoder.decode_substream(unit.substream(0));
     REQUIRE(decoded.has_value());
     REQUIRE(decoded->has_value());

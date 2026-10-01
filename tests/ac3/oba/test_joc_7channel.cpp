@@ -48,7 +48,7 @@
 
 namespace {
 
-using Location = iclforge::eac3::chanmap::Location;
+using Location = iclforge::ac3::eac3::chanmap::Location;
 
 struct PositionTone {
     Location location;
@@ -80,7 +80,7 @@ double tone_magnitude(std::span<const float> signal, double frequency, double sa
 // exactly what the codec's own encode/decode symmetry already trusts
 // elsewhere, not a second, independently-fallible implementation of it.
 std::vector<std::byte> identity_routing_joc(int dmx_config_idx, int channels) {
-    iclforge::oba::joc::FrameParameters params;
+    iclforge::ac3::oba::joc::FrameParameters params;
     params.objects = channels;
     params.channels = channels;
     params.dmx_config_idx = dmx_config_idx;
@@ -90,7 +90,7 @@ std::vector<std::byte> identity_routing_joc(int dmx_config_idx, int channels) {
             params.at(object, object, band) = 1.0;
         }
     }
-    return iclforge::oba::joc::build_payload(params);
+    return iclforge::ac3::oba::joc::build_payload(params);
 }
 
 std::vector<std::byte> emdf_container(int dmx_config_idx, int channels) {
@@ -121,16 +121,17 @@ std::vector<std::vector<float>> reconstruct_wide_bed(const std::array<PositionTo
                                                      int dmx_config_idx, int channels) {
     const auto container = emdf_container(dmx_config_idx, channels);
 
-    iclforge::eac3::FrameEncoder bed{
-        {.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true}};
+    iclforge::ac3::eac3::FrameEncoder bed{
+        {.bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true}};
     // The dependent's own acmod codes exactly channel_count(dependent_chanmap)
     // channels (k71Rear=4, Ls/Rs/Lrs/Rrs; k512Height=2, Vhl/Vhr only) - the
     // chanmap says which locations those coded channels occupy, not how many
     // of them there are.
-    iclforge::eac3::FrameEncoder dependent{
+    iclforge::ac3::eac3::FrameEncoder dependent{
         {.bitrate_kbps = 192,
-         .acmod = dependent_tones.size() == 4 ? iclforge::Acmod::k2_2 : iclforge::Acmod::k2_0,
-         .strmtyp = iclforge::eac3::StreamType::kDependent,
+         .acmod =
+             dependent_tones.size() == 4 ? iclforge::ac3::Acmod::k2_2 : iclforge::ac3::Acmod::k2_0,
+         .strmtyp = iclforge::ac3::eac3::StreamType::kDependent,
          .substreamid = 0,
          .chanmap = dependent_chanmap,
          .last_dependent = true}};
@@ -140,11 +141,11 @@ std::vector<std::vector<float>> reconstruct_wide_bed(const std::array<PositionTo
     std::vector<std::byte> stream;
     std::uint64_t n0 = 0;
     for (int f = 0; f < kFrames; ++f) {
-        std::vector<std::vector<float>> bed_block(6,
-                                                  std::vector<float>(iclforge::kSamplesPerFrame));
-        std::vector<std::vector<float>> dep_block(dependent_tones.size(),
-                                                   std::vector<float>(iclforge::kSamplesPerFrame));
-        for (int i = 0; i < iclforge::kSamplesPerFrame; ++i) {
+        std::vector<std::vector<float>> bed_block(
+            6, std::vector<float>(iclforge::ac3::kSamplesPerFrame));
+        std::vector<std::vector<float>> dep_block(
+            dependent_tones.size(), std::vector<float>(iclforge::ac3::kSamplesPerFrame));
+        for (int i = 0; i < iclforge::ac3::kSamplesPerFrame; ++i) {
             const double t = static_cast<double>(n0 + static_cast<std::uint64_t>(i)) / 48000.0;
             for (std::size_t ch = 0; ch < 6; ++ch) {
                 bed_block[ch][static_cast<std::size_t>(i)] = static_cast<float>(
@@ -156,7 +157,7 @@ std::vector<std::vector<float>> reconstruct_wide_bed(const std::array<PositionTo
                     std::sin(2.0 * std::numbers::pi * dependent_tones[ch].frequency * t));
             }
         }
-        n0 += static_cast<std::uint64_t>(iclforge::kSamplesPerFrame);
+        n0 += static_cast<std::uint64_t>(iclforge::ac3::kSamplesPerFrame);
 
         const std::vector<std::span<const float>> bed_views(bed_block.begin(), bed_block.end());
         const auto bed_frame = bed.encode_frame(bed_views, container);
@@ -169,11 +170,11 @@ std::vector<std::vector<float>> reconstruct_wide_bed(const std::array<PositionTo
         stream.insert(stream.end(), dep_frame->begin(), dep_frame->end());
     }
 
-    const auto units = iclforge::split_access_units(stream);
+    const auto units = iclforge::ac3::split_access_units(stream);
     REQUIRE(units.has_value());
     REQUIRE(units->size() == static_cast<std::size_t>(kFrames));
 
-    iclforge::Eac3Decoder decoder;
+    iclforge::ac3::Eac3Decoder decoder;
     std::vector<std::vector<float>> accumulated(static_cast<std::size_t>(channels));
     int frame_index = 0;
     for (const auto& unit : *units) {
@@ -226,7 +227,7 @@ void check_object_dominates(const std::vector<std::vector<float>>& accumulated,
 
 TEST_CASE("JOC reconstructs a kDmxConfig7X (Lb/Rb) downmix from the Annex E dependent",
           "[oba][joc]") {
-    namespace cm = iclforge::eac3::chanmap;
+    namespace cm = iclforge::ac3::eac3::chanmap;
     // AC-3 Table 5.8 coded order for acmod k3_2 + lfe: L, C, R, Ls, Rs, LFE.
     // Ls/Rs are deliberately given tones the dependent below will REPLACE
     // (not add to) - proving the override happens, not just that a channel
@@ -246,8 +247,8 @@ TEST_CASE("JOC reconstructs a kDmxConfig7X (Lb/Rb) downmix from the Annex E depe
                                                            {Location::kLrs, 463.0},
                                                            {Location::kRrs, 2089.0}}};
     const auto accumulated = reconstruct_wide_bed(bed_tones, cm::k71Rear, dependent_tones,
-                                                  iclforge::oba::joc::kDmxConfig7X,
-                                                  iclforge::oba::joc::kNumChannels5X + 2);
+                                                  iclforge::ac3::oba::joc::kDmxConfig7X,
+                                                  iclforge::ac3::oba::joc::kNumChannels5X + 2);
 
     // JOC channel order (Table 53), not AC-3's coded order: L, R, C, Ls, Rs,
     // Lb(=Lrs), Rb(=Rrs) - position i is object i's own "home" channel, per
@@ -262,7 +263,7 @@ TEST_CASE("JOC reconstructs a kDmxConfig7X (Lb/Rb) downmix from the Annex E depe
 TEST_CASE(
     "JOC reconstructs a kDmxConfig5XPlus2PhaseShift (Tfl/Tfr) downmix from the Annex E dependent",
     "[oba][joc]") {
-    namespace cm = iclforge::eac3::chanmap;
+    namespace cm = iclforge::ac3::eac3::chanmap;
     // k512Height is purely additive (kVhlVhrBit alone) - it does not touch
     // the bed's own Ls/Rs, unlike k71Rear above, so every bed tone here
     // survives the union unmodified.
@@ -274,9 +275,10 @@ TEST_CASE(
                                                      {Location::kLfe, 55.0}}};
     const std::array<PositionTone, 2> dependent_tones = {
         {{Location::kVhl, 463.0}, {Location::kVhr, 2089.0}}};
-    const auto accumulated = reconstruct_wide_bed(bed_tones, cm::k512Height, dependent_tones,
-                                                  iclforge::oba::joc::kDmxConfig5XPlus2PhaseShift,
-                                                  iclforge::oba::joc::kNumChannels5X + 2);
+    const auto accumulated =
+        reconstruct_wide_bed(bed_tones, cm::k512Height, dependent_tones,
+                             iclforge::ac3::oba::joc::kDmxConfig5XPlus2PhaseShift,
+                             iclforge::ac3::oba::joc::kNumChannels5X + 2);
 
     const std::array<double, 7> expected = {919.0, 1181.0, 647.0, 1523.0, 1847.0, 463.0, 2089.0};
     REQUIRE(accumulated.size() == 7);

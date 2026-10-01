@@ -38,10 +38,10 @@ int main() {
     constexpr int kObjects = 2;
     constexpr int kFrames = 31;  // one second
 
-    iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, kObjects};  // emit_object_metadata: default on
+    iclforge::ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, kObjects};  // emit_object_metadata: default on
 
     std::vector<std::vector<float>> sources(kObjects,
-                                            std::vector<float>(iclforge::kSamplesPerFrame));
+                                            std::vector<float>(iclforge::ac3::kSamplesPerFrame));
     std::vector<std::span<const float>> views;
     for (const auto& source : sources) {
         views.emplace_back(source);

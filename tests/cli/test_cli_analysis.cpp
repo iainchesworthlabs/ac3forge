@@ -85,7 +85,7 @@ fs::path write_tone_wav(const fs::path& path, std::size_t channels, std::uint32_
                                      static_cast<double>(rate)));
         }
     }
-    REQUIRE(iclforge::io::write_wav_f32(path.string(), data, rate).has_value());
+    REQUIRE(iclforge::ac3::io::write_wav_f32(path.string(), data, rate).has_value());
     return path;
 }
 

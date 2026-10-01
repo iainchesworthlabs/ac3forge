@@ -2,14 +2,15 @@
 // list is Opus, AAC-LC, FLAC and LPCM only), so the route to that ecosystem is decode -> rewrap,
 // not a new encoder output. This encodes a synthetic 7.1.4 E-AC-3 stream (an independent 3/2+LFE
 // bed plus two dependent substreams, exactly examples/encode_eac3.cpp's own encode_714()), decodes
-// each access unit back with iclforge::Eac3Decoder, permutes the result from Table E2.5's bit order
-// into iclforge::iamf::'s own L,C,R,Lss,Rss,Lrs,Rrs,Ltf,Rtf,Ltb,Rtb,LFE order (IAMF v1.1.0 §3.6.2,
-// loudspeaker_layout = 7), and writes it out as an IAMF ISOBMFF file with iclforge::iamf::mux().
+// each access unit back with iclforge::ac3::Eac3Decoder, permutes the result from Table E2.5's bit
+// order into iclforge::iamf::'s own L,C,R,Lss,Rss,Lrs,Rrs,Ltf,Rtf,Ltb,Rtb,LFE order (IAMF v1.1.0
+// §3.6.2, loudspeaker_layout = 7), and writes it out as an IAMF ISOBMFF file with
+// iclforge::iamf::mux().
 //
 // iclforge::iamf itself is codec-blind (see iamf/iamf.hpp) - the permutation below is what a caller
 // bridging a real decode into it looks like, kept here rather than inside the module for the same
 // reason iclforge::mp4::AudioTrack::codec_config's ETSI TS 102 366 payload is built by the CALLER
-// (iclforge::io::build_codec_config_box) rather than by iclforge::mp4:: itself.
+// (iclforge::ac3::io::build_codec_config_box) rather than by iclforge::mp4:: itself.
 
 #include <array>
 #include <cmath>
@@ -29,13 +30,13 @@
 
 namespace {
 
-using iclforge::eac3::chanmap::Location;
+using iclforge::ac3::eac3::chanmap::Location;
 
 void fill_tones(std::vector<std::vector<float>>& pcm, std::span<const double> tones, int frame,
                 double rate) {
     for (std::size_t ch = 0; ch < pcm.size(); ++ch) {
-        for (int n = 0; n < iclforge::kSamplesPerFrame; ++n) {
-            const double t = (frame * iclforge::kSamplesPerFrame + n) / rate;
+        for (int n = 0; n < iclforge::ac3::kSamplesPerFrame; ++n) {
+            const double t = (frame * iclforge::ac3::kSamplesPerFrame + n) / rate;
             pcm[ch][static_cast<std::size_t>(n)] =
                 static_cast<float>(0.3 * std::sin(2.0 * std::numbers::pi * tones[ch] * t));
         }
@@ -64,7 +65,7 @@ constexpr std::array<Location, 12> kIamf714Order{
     Location::kLfe,
 };
 
-iclforge::iamf::Frame to_iamf_frame(const iclforge::DecodedAccessUnit& decoded) {
+iclforge::iamf::Frame to_iamf_frame(const iclforge::ac3::DecodedAccessUnit& decoded) {
     iclforge::iamf::Frame frame;
     for (std::size_t i = 0; i < kIamf714Order.size(); ++i) {
         const int index = decoded.layout.index_of(kIamf714Order[i]);
@@ -79,27 +80,27 @@ int main() {
     // Same 7.1.4 access-unit shape as examples/encode_eac3.cpp's own encode_714(): a
     // self-sufficient 3/2+LFE bed plus two dependents (§E3.8.2's chanmap collisions with the bed
     // extend it to a full 7.1.4 render rather than replacing it outright).
-    iclforge::eac3::AccessUnitConfig config;
-    config.independent = {.bitrate_kbps = 384, .acmod = iclforge::Acmod::k3_2, .lfe = true};
+    iclforge::ac3::eac3::AccessUnitConfig config;
+    config.independent = {.bitrate_kbps = 384, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true};
     config.dependents.push_back({.bitrate_kbps = 192,
-                                 .acmod = iclforge::Acmod::k2_2,
-                                 .chanmap = iclforge::eac3::chanmap::k71Rear});
+                                 .acmod = iclforge::ac3::Acmod::k2_2,
+                                 .chanmap = iclforge::ac3::eac3::chanmap::k71Rear});
     config.dependents.push_back({.bitrate_kbps = 192,
-                                 .acmod = iclforge::Acmod::k2_2,
-                                 .chanmap = iclforge::eac3::chanmap::kTopQuad});
-    iclforge::eac3::AccessUnitEncoder encoder{config};
+                                 .acmod = iclforge::ac3::Acmod::k2_2,
+                                 .chanmap = iclforge::ac3::eac3::chanmap::kTopQuad});
+    iclforge::ac3::eac3::AccessUnitEncoder encoder{config};
 
     const auto channel_count = static_cast<std::size_t>(encoder.channel_count());
     std::vector<std::vector<float>> pcm(channel_count,
-                                        std::vector<float>(iclforge::kSamplesPerFrame));
+                                        std::vector<float>(iclforge::ac3::kSamplesPerFrame));
     const auto views = views_of(pcm);
     const std::vector<double> tones{1000.0, 800.0,  1200.0, 600.0,  1400.0, 60.0,
                                     500.0,  1600.0, 400.0,  1800.0, 2000.0, 2400.0,
                                     2800.0, 3200.0};
 
-    iclforge::Eac3Decoder decoder;
-    iclforge::iamf::AudioTrack track{.samples_per_frame =
-                                         static_cast<std::uint32_t>(iclforge::kSamplesPerFrame)};
+    iclforge::ac3::Eac3Decoder decoder;
+    iclforge::iamf::AudioTrack track{
+        .samples_per_frame = static_cast<std::uint32_t>(iclforge::ac3::kSamplesPerFrame)};
     std::vector<iclforge::iamf::Frame> frames;
 
     constexpr int kFrameCount = 8;  // several frames of real content, not silence - see

@@ -2,7 +2,7 @@
 
 // The FLOAT variant of src/ac4core's explicit-instantiation scalar. See the
 // double variant under src/internal/scalar/double/ for what this seam is and
-// why it is not iclforge::internal::decode_scalar_t's mechanism.
+// why it is not iclforge::ac3::internal::decode_scalar_t's mechanism.
 //
 // float: the ESP32-P4 and -S3, which have a single-precision FPU
 // (planning/ac4.md, "The ESP32"). ICLFORGE_DECODE_SCALAR=float's build compiles

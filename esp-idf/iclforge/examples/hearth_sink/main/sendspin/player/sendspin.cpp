@@ -69,14 +69,14 @@ constexpr bool kOfferPcm = CONFIG_ICLFORGE_EXAMPLE_SENDSPIN_PCM != 0;
 constexpr int kSuite = CONFIG_ICLFORGE_SENDSPIN_SUITE;
 constexpr BaseType_t kDecodeCore = CONFIG_ICLFORGE_EXAMPLE_DECODE_CORE < 0 ? tskNO_AFFINITY
                                                                            : CONFIG_ICLFORGE_EXAMPLE_DECODE_CORE;
-constexpr iclforge::OperatingMode kMode = CONFIG_ICLFORGE_EXAMPLE_DRC_MODE == 1   ? iclforge::OperatingMode::kRf
-                                     : CONFIG_ICLFORGE_EXAMPLE_DRC_MODE == 2 ? iclforge::OperatingMode::kCustom
-                                                                             : iclforge::OperatingMode::kLine;
-constexpr iclforge::DownmixTarget kStereoFold =
-    CONFIG_ICLFORGE_EXAMPLE_STEREO_FOLD != 0 ? iclforge::DownmixTarget::kLtRt : iclforge::DownmixTarget::kLoRo;
-constexpr iclforge::render::ObjectsPolicy kObjects = CONFIG_ICLFORGE_EXAMPLE_OBJECTS == 1   ? iclforge::render::ObjectsPolicy::kNever
-                                                : CONFIG_ICLFORGE_EXAMPLE_OBJECTS == 2 ? iclforge::render::ObjectsPolicy::kAlways
-                                                                                       : iclforge::render::ObjectsPolicy::kAuto;
+constexpr iclforge::ac3::OperatingMode kMode = CONFIG_ICLFORGE_EXAMPLE_DRC_MODE == 1   ? iclforge::ac3::OperatingMode::kRf
+                                     : CONFIG_ICLFORGE_EXAMPLE_DRC_MODE == 2 ? iclforge::ac3::OperatingMode::kCustom
+                                                                             : iclforge::ac3::OperatingMode::kLine;
+constexpr iclforge::ac3::DownmixTarget kStereoFold =
+    CONFIG_ICLFORGE_EXAMPLE_STEREO_FOLD != 0 ? iclforge::ac3::DownmixTarget::kLtRt : iclforge::ac3::DownmixTarget::kLoRo;
+constexpr iclforge::ac3::render::ObjectsPolicy kObjects = CONFIG_ICLFORGE_EXAMPLE_OBJECTS == 1   ? iclforge::ac3::render::ObjectsPolicy::kNever
+                                                : CONFIG_ICLFORGE_EXAMPLE_OBJECTS == 2 ? iclforge::ac3::render::ObjectsPolicy::kAlways
+                                                                                       : iclforge::ac3::render::ObjectsPolicy::kAuto;
 constexpr iclforge::oba::joc::Domain kJocDomain =
     CONFIG_ICLFORGE_EXAMPLE_JOC_DOMAIN != 0 ? iclforge::oba::joc::Domain::kMdctBand : iclforge::oba::joc::Domain::kQmf;
 

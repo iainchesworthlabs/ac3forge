@@ -20,7 +20,7 @@
 // and the decode_*_into spans were already float, so the boundary a caller sees
 // does not move whichever variant is compiled - only what happens behind it.
 
-namespace iclforge::internal {
+namespace iclforge::ac3::internal {
 
 // double: what every build outside the minimum-footprint profile has always
 // used. Nothing about such a build is memory- or FPU-constrained, and the gold
@@ -35,4 +35,4 @@ namespace iclforge::internal {
 // them.
 using decode_scalar_t = double;
 
-} // namespace iclforge::internal
+} // namespace iclforge::ac3::internal

@@ -33,7 +33,7 @@ namespace fs = std::filesystem;
 
 namespace {
 
-using iclforge::eac3::chanmap::Location;
+using iclforge::ac3::eac3::chanmap::Location;
 
 // See tests/cli/test_cli.cpp's own scratch_dir comment for why the scratch
 // path below folds this in, on top of ICLFORGE_TEST_SCRATCH_DIR's
@@ -59,7 +59,7 @@ struct AdmAccumulator {
     std::vector<iclforge::admbridge::WriteObjectUpdate> object_updates;
     std::vector<float> lfe_pcm;
 
-    void add(const iclforge::DecodedAccessUnit& unit) {
+    void add(const iclforge::ac3::DecodedAccessUnit& unit) {
         REQUIRE(unit.object_metadata.has_value());
         REQUIRE(unit.object_audio.size() == 1);
         object_pcm.insert(object_pcm.end(), unit.object_audio[0].begin(), unit.object_audio[0].end());
@@ -85,7 +85,7 @@ struct AdmAccumulator {
 TEST_CASE("a real decoded Atmos programme survives write_bw64 -> parse_bw64 -> build -> a fresh "
          "AtmosEncoder/Eac3Decoder round trip",
          "[admbridge][atmos][write]") {
-    constexpr int kFrame = iclforge::kSamplesPerFrame;
+    constexpr int kFrame = iclforge::ac3::kSamplesPerFrame;
     constexpr int kTotalFrames = 6;  // 3 frames holding right, 3 frames holding left
     constexpr double kSampleRate = 48000.0;
     // The instant-jump nudge this project's own read-direction bridge uses
@@ -104,8 +104,8 @@ TEST_CASE("a real decoded Atmos programme survives write_bw64 -> parse_bw64 -> b
 
     // --- Phase 1: encode + decode a real Atmos stream, accumulating exactly what decode.cpp's
     // own --adm output does. ---
-    iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, 1};
-    iclforge::Eac3Decoder decoder;
+    iclforge::ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, 1};
+    iclforge::ac3::Eac3Decoder decoder;
     AdmAccumulator accumulator;
 
     // A real, distinct, non-silent tone - never silence/frame-0 (this project's own standing
@@ -200,8 +200,8 @@ TEST_CASE("a real decoded Atmos programme survives write_bw64 -> parse_bw64 -> b
     // test_adm_bridge.cpp's own flagship test holds itself to - proving the position/audio the
     // written file carries is not just structurally present but actually reproduces the
     // original motion once re-encoded and re-decoded.
-    iclforge::oba::AtmosEncoder reencoder{{.bitrate_kbps = 448}, static_cast<int>(bridged->channel_count())};
-    iclforge::Eac3Decoder redecoder;
+    iclforge::ac3::oba::AtmosEncoder reencoder{{.bitrate_kbps = 448}, static_cast<int>(bridged->channel_count())};
+    iclforge::ac3::Eac3Decoder redecoder;
     std::vector<std::span<const float>> views(bridged->channel_count());
 
     // AC-3 3/2 coded order (Table 5.8): L, C, R, Ls, Rs.

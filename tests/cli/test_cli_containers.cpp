@@ -93,22 +93,23 @@ void append(std::vector<std::byte>& out, std::span<const std::byte> bytes) {
 // looks at StreamKind::kAc3CoreEac3Extension, and nothing before this file
 // built a stream that kind to hand it.
 std::vector<std::byte> legacy_core_stream() {
-    iclforge::FrameEncoder core{{.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true}};
+    iclforge::ac3::FrameEncoder core{
+        {.bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true}};
     std::vector<std::vector<float>> pcm(
-        6, std::vector<float>(static_cast<std::size_t>(iclforge::kSamplesPerFrame), 0.0F));
+        6, std::vector<float>(static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame), 0.0F));
     std::vector<std::span<const float>> views;
     for (const auto& channel : pcm) {
         views.emplace_back(channel);
     }
 
-    iclforge::eac3::AccessUnitConfig config{
-        .independent = {.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true}};
+    iclforge::ac3::eac3::AccessUnitConfig config{
+        .independent = {.bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true}};
     config.dependents.push_back({.bitrate_kbps = 224,
-                                 .acmod = iclforge::Acmod::k2_2,
-                                 .chanmap = iclforge::eac3::chanmap::k71Rear});
-    const auto unit = iclforge::eac3::build_silent_access_unit(config);
+                                 .acmod = iclforge::ac3::Acmod::k2_2,
+                                 .chanmap = iclforge::ac3::eac3::chanmap::k71Rear});
+    const auto unit = iclforge::ac3::eac3::build_silent_access_unit(config);
     REQUIRE(unit.has_value());
-    const auto frames = iclforge::split_frames(unit->bytes);
+    const auto frames = iclforge::ac3::split_frames(unit->bytes);
     REQUIRE(frames.has_value());
     REQUIRE(frames->size() == 2);
     const auto dependent = (*frames)[1];
@@ -130,9 +131,9 @@ std::vector<std::byte> legacy_core_stream() {
 // real per §E2.3.1.4, legal, and nothing this project's own encoders emit -
 // but nothing had built one to reach the refusal before this file.
 std::vector<std::byte> non_uniform_stream() {
-    iclforge::eac3::AccessUnitConfig config;
-    config.independent = {.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0};
-    const auto unit = iclforge::eac3::build_silent_access_unit(config);
+    iclforge::ac3::eac3::AccessUnitConfig config;
+    config.independent = {.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k2_0};
+    const auto unit = iclforge::ac3::eac3::build_silent_access_unit(config);
     REQUIRE(unit.has_value());
     const auto frame_bytes = unit->bytes.size();
 
@@ -147,7 +148,7 @@ std::vector<std::byte> non_uniform_stream() {
     auto byte4 = std::to_integer<std::uint8_t>(middle[4]);
     byte4 = static_cast<std::uint8_t>((byte4 & 0xCF) | (0x2u << 4));
     middle[4] = std::byte{byte4};
-    REQUIRE(iclforge::io::restamp_crc(middle).has_value());
+    REQUIRE(iclforge::ac3::io::restamp_crc(middle).has_value());
     return stream;
 }
 
@@ -194,7 +195,7 @@ TEST_CASE("mkv, mp4 and ts refuse an AC-3 core with E-AC-3 extension substreams"
     const auto source = dir / "legacy_core.ec3";
     write_bytes(source, legacy_core_stream());
 
-    // iclforge::io::scan reads this kind off the first two syncframes regardless
+    // iclforge::ac3::io::scan reads this kind off the first two syncframes regardless
     // of which command asks - one shared fixture, three refusals.
     CHECK(run_cli("mkv " + quoted(source) + " " + quoted(dir / "legacy_core.mkv"), log) == 2);
     CHECK(read_log(log).find("AC-3 core with E-AC-3 extension") != std::string::npos);
@@ -261,8 +262,8 @@ TEST_CASE("mkv warns and keeps only the first programme a stream carries", "[cli
     const auto commentary_wav = dir / "programme1.wav";
     const std::vector<std::vector<float>> primary(6, std::vector<float>(48000, 0.0F));
     const std::vector<float> commentary(48000, 0.0F);
-    REQUIRE(iclforge::io::write_wav_f32(primary_wav.string(), primary, 48000).has_value());
-    REQUIRE(iclforge::io::write_wav_f32(commentary_wav.string(),
+    REQUIRE(iclforge::ac3::io::write_wav_f32(primary_wav.string(), primary, 48000).has_value());
+    REQUIRE(iclforge::ac3::io::write_wav_f32(commentary_wav.string(),
                                    std::vector<std::vector<float>>{commentary}, 48000)
                 .has_value());
 
@@ -404,7 +405,7 @@ TEST_CASE("decode reads raw AC-4 and AC-4 in MP4 to the same PCM", "[cli][mp4][a
     const auto report = read_log(log);
     CHECK(report.find("decoded 120 AC-4 frames") != std::string::npos);
     CHECK(report.find("(L R, 48000 Hz)") != std::string::npos);
-    const auto raw = iclforge::io::read_wav(raw_wav.string());
+    const auto raw = iclforge::ac3::io::read_wav(raw_wav.string());
     REQUIRE(raw.has_value());
     CHECK(raw->sample_rate == 48000);
     REQUIRE(raw->channels.size() == 2);
@@ -415,7 +416,7 @@ TEST_CASE("decode reads raw AC-4 and AC-4 in MP4 to the same PCM", "[cli][mp4][a
     REQUIRE(run_cli("mp4 " + quoted(stream) + " " + quoted(mp4_out), log) == 0);
     const auto mp4_wav = dir / "ac4_mp4.wav";
     REQUIRE(run_cli("decode " + quoted(mp4_out) + " " + quoted(mp4_wav), log) == 0);
-    const auto from_mp4 = iclforge::io::read_wav(mp4_wav.string());
+    const auto from_mp4 = iclforge::ac3::io::read_wav(mp4_wav.string());
     REQUIRE(from_mp4.has_value());
     CHECK(from_mp4->channels == raw->channels);
 }
@@ -429,7 +430,7 @@ TEST_CASE(
     REQUIRE(run_cli("decode " + quoted(decoded_stream(ac4_fixture(), dir / "ac4_aspx_prefix.ac4")) +
                         " " + quoted(out),
                     log) == 0);
-    const auto decoded = iclforge::io::read_wav(out.string());
+    const auto decoded = iclforge::ac3::io::read_wav(out.string());
     REQUIRE(decoded.has_value());
     CHECK(decoded->channels.size() == 2);
     CHECK(decoded->frame_count() % 2048 == 0);
@@ -442,7 +443,7 @@ TEST_CASE(
         dir / "ac4_51_prefix.ac4");
     REQUIRE(run_cli("decode " + quoted(five_one) + " " + quoted(five_one_wav), five_one_log) == 0);
     CHECK(read_log(five_one_log).find("(L R C LFE Ls Rs, 48000 Hz)") != std::string::npos);
-    const auto decoded_51 = iclforge::io::read_wav(five_one_wav.string());
+    const auto decoded_51 = iclforge::ac3::io::read_wav(five_one_wav.string());
     REQUIRE(decoded_51.has_value());
     CHECK(decoded_51->channels.size() == 6);
 
@@ -453,7 +454,7 @@ TEST_CASE(
         fs::path{ICLFORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / "ac4-51-music-128" / "dee.ac4",
         dir / "ac4_acpl_prefix.ac4");
     REQUIRE(run_cli("decode " + quoted(acpl) + " " + quoted(acpl_wav), acpl_log) == 0);
-    const auto decoded_acpl = iclforge::io::read_wav(acpl_wav.string());
+    const auto decoded_acpl = iclforge::ac3::io::read_wav(acpl_wav.string());
     REQUIRE(decoded_acpl.has_value());
     CHECK(decoded_acpl->channels.size() == 6);
 
@@ -465,7 +466,7 @@ TEST_CASE(
         fs::path{ICLFORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / "ac4-ims-music-128-25" / "dee.ac4",
         dir / "ac4_ims_prefix.ac4");
     REQUIRE(run_cli("decode " + quoted(ims) + " " + quoted(ims_wav), ims_log) == 0);
-    const auto decoded_ims = iclforge::io::read_wav(ims_wav.string());
+    const auto decoded_ims = iclforge::ac3::io::read_wav(ims_wav.string());
     REQUIRE(decoded_ims.has_value());
     CHECK(decoded_ims->sample_rate == 48000);
     REQUIRE(decoded_ims->channels.size() == 2);
@@ -495,8 +496,8 @@ TEST_CASE("decode takes AC-4 to output-level= and compresses it in drcmode='s mo
     REQUIRE(run_cli("decode " + quoted(stream) + " " + quoted(high_wav) +
                         " output-level=-19 drcmode=off",
                     log) == 0);
-    const auto low = iclforge::io::read_wav(low_wav.string());
-    const auto high = iclforge::io::read_wav(high_wav.string());
+    const auto low = iclforge::ac3::io::read_wav(low_wav.string());
+    const auto high = iclforge::ac3::io::read_wav(high_wav.string());
     REQUIRE(low.has_value());
     REQUIRE(high.has_value());
     CHECK(std::abs(rms_db(high->channels[0]) - rms_db(low->channels[0]) - 20.0 * std::log10(4.0)) <
@@ -526,14 +527,14 @@ TEST_CASE("decode takes AC-4's presentation by presentation-id= and language=, m
     const auto mixed_wav = dir / "ac4_mixed.wav";
     REQUIRE(run_cli("decode " + quoted(stream) + " " + quoted(mixed_wav) + " presentation-id=1", log) == 0);
     CHECK(read_log(log).find("presentation 0 (presentation_id 1)") != std::string::npos);
-    const auto mixed = iclforge::io::read_wav(mixed_wav.string());
+    const auto mixed = iclforge::ac3::io::read_wav(mixed_wav.string());
     REQUIRE(mixed.has_value());
     CHECK(mixed->channels.size() == 6);
     const auto quiet_wav = dir / "ac4_mixed_quiet.wav";
     REQUIRE(run_cli("decode " + quoted(stream) + " " + quoted(quiet_wav) + " presentation-id=1 dialogue-gain=-130",
                     log) == 0);
     CHECK(read_log(log).find("dialogue substreams at -130 dB") != std::string::npos);
-    const auto quiet = iclforge::io::read_wav(quiet_wav.string());
+    const auto quiet = iclforge::ac3::io::read_wav(quiet_wav.string());
     REQUIRE(quiet.has_value());
     // The dialogue goes to L at 330 degrees: silenced, L loses energy; the
     // other channels are the music and effects alone either way.
@@ -551,7 +552,7 @@ TEST_CASE("decode takes AC-4's presentation by presentation-id= and language=, m
     CHECK(read_log(log).find("presentation 1 (presentation_id 2)") != std::string::npos);
     const auto alone_wav = dir / "ac4_dialogue_alone.wav";
     REQUIRE(run_cli("decode " + quoted(stream) + " " + quoted(alone_wav) + " presentation=11", log) == 0);
-    const auto alone = iclforge::io::read_wav(alone_wav.string());
+    const auto alone = iclforge::ac3::io::read_wav(alone_wav.string());
     REQUIRE(alone.has_value());
     CHECK(alone->channels.size() == 1);
 }
@@ -570,8 +571,8 @@ TEST_CASE("decode raises AC-4's dialogue by dialogue-enhancement=", "[cli][ac4]"
     REQUIRE(
         run_cli("decode " + quoted(stream) + " " + quoted(raised_wav) + " dialogue-enhancement=9",
                 log) == 0);
-    const auto plain = iclforge::io::read_wav(plain_wav.string());
-    const auto raised = iclforge::io::read_wav(raised_wav.string());
+    const auto plain = iclforge::ac3::io::read_wav(plain_wav.string());
+    const auto raised = iclforge::ac3::io::read_wav(raised_wav.string());
     REQUIRE(plain.has_value());
     REQUIRE(raised.has_value());
     const auto energy = [](const std::vector<float>& x) {
@@ -606,7 +607,7 @@ TEST_CASE("decode folds AC-4 5.1 to stereo and mono with channels= and downmix="
         REQUIRE(run_cli("decode " + quoted(stream) + " " + quoted(wav) + " " + c.options, log) ==
                 0);
         CHECK(read_log(log).find(c.layout) != std::string::npos);
-        const auto decoded = iclforge::io::read_wav(wav.string());
+        const auto decoded = iclforge::ac3::io::read_wav(wav.string());
         REQUIRE(decoded.has_value());
         CHECK(decoded->channels.size() == c.channels);
     }
@@ -641,7 +642,7 @@ TEST_CASE("decode stops on a damaged AC-4 frame and conceal= carries on through 
         REQUIRE(run_cli("decode " + quoted(damaged) + " " + quoted(wav) + " conceal=" + policy,
                         log) == 0);
         CHECK(read_log(log).find("1 of them concealed") != std::string::npos);
-        const auto decoded = iclforge::io::read_wav(wav.string());
+        const auto decoded = iclforge::ac3::io::read_wav(wav.string());
         REQUIRE(decoded.has_value());
         REQUIRE(decoded->channels.size() == 2);
         CHECK(decoded->channels[0].size() == 120 * 2048);
@@ -661,7 +662,7 @@ TEST_CASE("ac4-encode writes raw AC-4 and AC-4 in MP4 that decode reads back", "
         channels[1][i] = static_cast<float>(0.1 * std::sin(2.0 * std::numbers::pi * 3000.0 * t));
     }
     const auto wav_in = dir / "ac4_tones_in.wav";
-    REQUIRE(iclforge::io::write_wav_f32(wav_in.string(), channels, 48000).has_value());
+    REQUIRE(iclforge::ac3::io::write_wav_f32(wav_in.string(), channels, 48000).has_value());
 
     const auto raw_out = dir / "ac4_encoded.ac4";
     REQUIRE(run_cli("ac4-encode " + quoted(wav_in) + " " + quoted(raw_out) + " 192", log) == 0);
@@ -681,7 +682,7 @@ TEST_CASE("ac4-encode writes raw AC-4 and AC-4 in MP4 that decode reads back", "
     // banks' 577 and six QMF slots), well above the coding noise.
     const auto raw_wav = dir / "ac4_encoded_raw.wav";
     REQUIRE(run_cli("decode " + quoted(raw_out) + " " + quoted(raw_wav), log) == 0);
-    const auto decoded = iclforge::io::read_wav(raw_wav.string());
+    const auto decoded = iclforge::ac3::io::read_wav(raw_wav.string());
     REQUIRE(decoded.has_value());
     REQUIRE(decoded->channels.size() == 2);
     REQUIRE(decoded->frame_count() >= kLength + 4385);
@@ -704,7 +705,7 @@ TEST_CASE("ac4-encode writes raw AC-4 and AC-4 in MP4 that decode reads back", "
     CHECK(read_log(log).find("codecs ac-4.02.01.") != std::string::npos);
     const auto mp4_wav = dir / "ac4_encoded_mp4.wav";
     REQUIRE(run_cli("decode " + quoted(mp4_out) + " " + quoted(mp4_wav), log) == 0);
-    const auto from_mp4 = iclforge::io::read_wav(mp4_wav.string());
+    const auto from_mp4 = iclforge::ac3::io::read_wav(mp4_wav.string());
     REQUIRE(from_mp4.has_value());
     CHECK(from_mp4->channels == decoded->channels);
 }
@@ -722,7 +723,7 @@ TEST_CASE("ac4-encode codes the ASPX mode below 96 kbps a channel, or as codec-m
         channels[1][i] = channels[0][i];
     }
     const auto wav_in = dir / "ac4_aspx_in.wav";
-    REQUIRE(iclforge::io::write_wav_f32(wav_in.string(), channels, 48000).has_value());
+    REQUIRE(iclforge::ac3::io::write_wav_f32(wav_in.string(), channels, 48000).has_value());
     const auto out = dir / "ac4_aspx.ac4";
     struct Run {
         const char* args;
@@ -735,7 +736,7 @@ TEST_CASE("ac4-encode codes the ASPX mode below 96 kbps a channel, or as codec-m
         CHECK(read_log(log).find(run.mode) != std::string::npos);
         const auto wav_out = dir / "ac4_aspx_out.wav";
         REQUIRE(run_cli("decode " + quoted(out) + " " + quoted(wav_out), log) == 0);
-        const auto decoded = iclforge::io::read_wav(wav_out.string());
+        const auto decoded = iclforge::ac3::io::read_wav(wav_out.string());
         REQUIRE(decoded.has_value());
         double signal = 0.0;
         double noise = 0.0;
@@ -766,7 +767,7 @@ TEST_CASE("ac4-encode codes 5.1 in the A-CPL modes at DEE's rates, and the exper
                                    static_cast<double>(i) / 48000.0));
             }
         }
-        REQUIRE(iclforge::io::write_wav_f32(path.string(), channels, 48000).has_value());
+        REQUIRE(iclforge::ac3::io::write_wav_f32(path.string(), channels, 48000).has_value());
     };
     const auto five_one = dir / "ac4_acpl_51.wav";
     const auto stereo = dir / "ac4_acpl_20.wav";
@@ -836,13 +837,13 @@ TEST_CASE("ac4-encode takes 5.1 and 7.1 in the WAV order decode writes them in",
             }
         }
         const auto wav_in = dir / "ac4_multichannel_in.wav";
-        REQUIRE(iclforge::io::write_wav_f32(wav_in.string(), channels, 48000).has_value());
+        REQUIRE(iclforge::ac3::io::write_wav_f32(wav_in.string(), channels, 48000).has_value());
         const auto out = dir / "ac4_multichannel.ac4";
         REQUIRE(run_cli("ac4-encode " + quoted(wav_in) + " " + quoted(out) + run.args, log) == 0);
         CHECK(read_log(log).find(run.layout) != std::string::npos);
         const auto wav_out = dir / "ac4_multichannel_out.wav";
         REQUIRE(run_cli("decode " + quoted(out) + " " + quoted(wav_out), log) == 0);
-        const auto decoded = iclforge::io::read_wav(wav_out.string());
+        const auto decoded = iclforge::ac3::io::read_wav(wav_out.string());
         REQUIRE(decoded.has_value());
         REQUIRE(decoded->channels.size() == run.channels);
         // Each tone where it went in, 60 dB over every other there.
@@ -866,7 +867,7 @@ TEST_CASE("ac4-encode refuses what it does not write yet, naming it", "[cli][ac4
     const auto log = dir / "ac4_encode_refused.log";
     const std::vector<std::vector<float>> four(4, std::vector<float>(4800, 0.0F));
     const auto wav_four = dir / "ac4_four.wav";
-    REQUIRE(iclforge::io::write_wav_f32(wav_four.string(), four, 48000).has_value());
+    REQUIRE(iclforge::ac3::io::write_wav_f32(wav_four.string(), four, 48000).has_value());
     const auto out = dir / "ac4_refused.ac4";
     CHECK(run_cli("ac4-encode " + quoted(wav_four) + " " + quoted(out), log) == 2);  // kExitInput
     CHECK(read_log(log).find("mono, stereo, 5.0, 5.1, 5.0.4 and 5.1.4") != std::string::npos);
@@ -874,14 +875,14 @@ TEST_CASE("ac4-encode refuses what it does not write yet, naming it", "[cli][ac4
     // Seven or eight channels name the 7.X pair they carry.
     const std::vector<std::vector<float>> eight(8, std::vector<float>(4800, 0.0F));
     const auto wav_eight = dir / "ac4_eight.wav";
-    REQUIRE(iclforge::io::write_wav_f32(wav_eight.string(), eight, 48000).has_value());
+    REQUIRE(iclforge::ac3::io::write_wav_f32(wav_eight.string(), eight, 48000).has_value());
     CHECK(run_cli("ac4-encode " + quoted(wav_eight) + " " + quoted(out), log) == 2);
     CHECK(read_log(log).find("experimental=7x-back") != std::string::npos);
     CHECK_FALSE(fs::exists(out));
 
     const std::vector<std::vector<float>> stereo(2, std::vector<float>(4800, 0.0F));
     const auto wav_stereo = dir / "ac4_stereo_short.wav";
-    REQUIRE(iclforge::io::write_wav_f32(wav_stereo.string(), stereo, 48000).has_value());
+    REQUIRE(iclforge::ac3::io::write_wav_f32(wav_stereo.string(), stereo, 48000).has_value());
     // AC-3's and E-AC-3's own metadata, which AC-4 has nowhere to put.
     CHECK(run_cli("ac4-encode " + quoted(wav_stereo) + " " + quoted(out) + " heavy", log) == 1);
     CHECK(read_log(log).find("no AC-4 counterpart") != std::string::npos);
@@ -897,7 +898,7 @@ TEST_CASE("ac4-encode refuses what it does not write yet, naming it", "[cli][ac4
     CHECK(read_log(log).find("5.0, 5.1, 7.0, 7.1 and the immersive layouts") != std::string::npos);
     const std::vector<std::vector<float>> five(5, std::vector<float>(4800, 0.0F));
     const auto wav_five = dir / "ac4_five_short.wav";
-    REQUIRE(iclforge::io::write_wav_f32(wav_five.string(), five, 48000).has_value());
+    REQUIRE(iclforge::ac3::io::write_wav_f32(wav_five.string(), five, 48000).has_value());
     CHECK(run_cli("ac4-encode " + quoted(wav_five) + " " + quoted(out) + " lfemix=-4.5", log) == 1);
     CHECK(read_log(log).find("5.0 has no LFE") != std::string::npos);
     // The top channels' downmix, for a layout without them, and a gain with no
@@ -910,7 +911,7 @@ TEST_CASE("ac4-encode refuses what it does not write yet, naming it", "[cli][ac4
     CHECK(read_log(log).find("give height-downmix=") != std::string::npos);
     // 44.1 kHz has the 2 048-sample frame alone.
     const auto wav_44k = dir / "ac4_stereo_44k.wav";
-    REQUIRE(iclforge::io::write_wav_f32(wav_44k.string(), stereo, 44100).has_value());
+    REQUIRE(iclforge::ac3::io::write_wav_f32(wav_44k.string(), stereo, 44100).has_value());
     CHECK(run_cli("ac4-encode " + quoted(wav_44k) + " " + quoted(out) + " frame-rate=25", log) ==
           1);
     CHECK(read_log(log).find("44.1 kHz") != std::string::npos);
@@ -1017,7 +1018,7 @@ TEST_CASE("ac4-encode codes the frame rate and I-frames asked for and its MP4 li
         channels[1][i] = static_cast<float>(0.1 * std::sin(2.0 * std::numbers::pi * 660.0 * t));
     }
     const auto wav_in = dir / "ac4_rates_in.wav";
-    REQUIRE(iclforge::io::write_wav_f32(wav_in.string(), channels, 48000).has_value());
+    REQUIRE(iclforge::ac3::io::write_wav_f32(wav_in.string(), channels, 48000).has_value());
 
     // 29.97 fps, whose frames decode to 1 601 or 1 602 samples: Part 2
     // Table E.1 counts the track at 240 000 Hz, 8 008 a frame, and the
@@ -1050,7 +1051,7 @@ TEST_CASE("ac4-encode codes the frame rate and I-frames asked for and its MP4 li
     CHECK(sync == expected);
     const auto decoded_wav = dir / "ac4_rates_out.wav";
     REQUIRE(run_cli("decode " + quoted(mp4_out) + " " + quoted(decoded_wav), log) == 0);
-    const auto decoded = iclforge::io::read_wav(decoded_wav.string());
+    const auto decoded = iclforge::ac3::io::read_wav(decoded_wav.string());
     REQUIRE(decoded.has_value());
     CHECK(decoded->frame_count() > kLength);
 
@@ -1112,7 +1113,7 @@ TEST_CASE("ac4-encode writes the metadata its options set as its syntax trace sh
         }
     }
     const auto wav_in = dir / "ac4_metadata_in.wav";
-    REQUIRE(iclforge::io::write_wav_f32(wav_in.string(), channels, 48000).has_value());
+    REQUIRE(iclforge::ac3::io::write_wav_f32(wav_in.string(), channels, 48000).has_value());
     const auto out = dir / "ac4_metadata.ac4";
     const auto trace = dir / "ac4_metadata_trace.tsv";
     REQUIRE(
@@ -1180,13 +1181,13 @@ TEST_CASE("ac4-encode writes the metadata its options set as its syntax trace sh
                             channels[c].begin() + static_cast<std::ptrdiff_t>(stem_length));
         }
         programme = dir / "ac4_metadata_first.wav";
-        REQUIRE(iclforge::io::write_wav_f32(programme.string(), first, 48000).has_value());
+        REQUIRE(iclforge::ac3::io::write_wav_f32(programme.string(), first, 48000).has_value());
     }
     std::vector<std::vector<float>> dialogue(6, std::vector<float>(stem_length, 0.0F));
     dialogue[2].assign(channels[2].begin(),
                        channels[2].begin() + static_cast<std::ptrdiff_t>(stem_length));
     const auto stem = dir / "ac4_metadata_stem.wav";
-    REQUIRE(iclforge::io::write_wav_f32(stem.string(), dialogue, 48000).has_value());
+    REQUIRE(iclforge::ac3::io::write_wav_f32(stem.string(), dialogue, 48000).has_value());
     REQUIRE(run_cli("ac4-encode " + quoted(programme) + " " + quoted(out) +
                         " 256 dialnorm=24.5 dialogue-stem=" + quoted(stem) +
                         " dialogue-method=cross syntax-trace=" + quoted(trace),
@@ -1202,7 +1203,7 @@ TEST_CASE("ac4-encode writes the metadata its options set as its syntax trace sh
     for (auto& channel : dialogue) {
         channel.resize(stem_length - 1);
     }
-    REQUIRE(iclforge::io::write_wav_f32(stem.string(), dialogue, 48000).has_value());
+    REQUIRE(iclforge::ac3::io::write_wav_f32(stem.string(), dialogue, 48000).has_value());
     CHECK(run_cli("ac4-encode " + quoted(programme) + " " + quoted(out) +
                       " 256 dialogue-stem=" + quoted(stem),
                   log) == 2);

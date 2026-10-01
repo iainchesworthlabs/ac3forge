@@ -11,7 +11,7 @@
 #include "iclforge/ac3/core/exponents.hpp"
 #include "iclforge/ac3/core/tables.hpp"
 
-namespace iclforge::encoder {
+namespace iclforge::ac3::encoder {
 
 namespace {
 
@@ -117,4 +117,4 @@ int choose_chbwcod(std::uint32_t bitrate_kbps, int nfchans,
     return std::clamp(target, 0, ceiling);
 }
 
-}  // namespace iclforge::encoder
+}  // namespace iclforge::ac3::encoder

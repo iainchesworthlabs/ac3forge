@@ -38,16 +38,17 @@ constexpr std::uint64_t kSamplesPerBurst = 1536;
 // and a dependent's chanmap where it carries one, unioned in Table E2.5 order, as the decoder
 // assembles it (§E3.8.2). Needed before the decode, since the block form hands the samples over
 // during the call.
-[[nodiscard]] std::optional<eac3::chanmap::Layout> peek_layout(std::span<const std::byte> unit) {
+[[nodiscard]] std::optional<ac3::eac3::chanmap::Layout> peek_layout(
+    std::span<const std::byte> unit) {
     std::uint16_t map = 0;
     std::size_t offset = 0;
     while (offset < unit.size()) {
-        const auto header = io::read_frame_header(unit.subspan(offset));
+        const auto header = ac3::io::read_frame_header(unit.subspan(offset));
         if (!header || header->bytes == 0) {
             return std::nullopt;
         }
-        const std::uint16_t own = eac3::chanmap::acmod_map(header->acmod, header->lfe);
-        if (header->kind == io::StreamKind::kEac3 && header->strmtyp == eac3::StreamType::kDependent) {
+        const std::uint16_t own = ac3::eac3::chanmap::acmod_map(header->acmod, header->lfe);
+        if (header->kind == ac3::io::StreamKind::kEac3 && header->strmtyp == ac3::eac3::StreamType::kDependent) {
             map = static_cast<std::uint16_t>(map | header->chanmap.value_or(own));
         } else {
             map = static_cast<std::uint16_t>(map | own);
@@ -57,7 +58,7 @@ constexpr std::uint64_t kSamplesPerBurst = 1536;
     if (map == 0) {
         return std::nullopt;
     }
-    return eac3::chanmap::expand(map);
+    return ac3::eac3::chanmap::expand(map);
 }
 
 // The access units a burst's payload holds, whole, in order: each starts at an independent
@@ -67,11 +68,11 @@ constexpr std::uint64_t kSamplesPerBurst = 1536;
     std::size_t start = 0;
     std::size_t offset = 0;
     while (offset < payload.size()) {
-        const auto header = io::read_frame_header(payload.subspan(offset));
+        const auto header = ac3::io::read_frame_header(payload.subspan(offset));
         if (!header || header->bytes == 0 || header->bytes > payload.size() - offset) {
             return std::nullopt;
         }
-        const bool dependent = header->kind == io::StreamKind::kEac3 && header->strmtyp == eac3::StreamType::kDependent;
+        const bool dependent = header->kind == ac3::io::StreamKind::kEac3 && header->strmtyp == ac3::eac3::StreamType::kDependent;
         if (!dependent && offset > start) {
             units.push_back(payload.subspan(start, offset - start));
             start = offset;
@@ -84,7 +85,8 @@ constexpr std::uint64_t kSamplesPerBurst = 1536;
     return units;
 }
 
-[[nodiscard]] bool same_layout(const eac3::chanmap::Layout& a, const eac3::chanmap::Layout& b) {
+[[nodiscard]] bool same_layout(const ac3::eac3::chanmap::Layout& a,
+                               const ac3::eac3::chanmap::Layout& b) {
     if (a.count != b.count) {
         return false;
     }
@@ -96,10 +98,10 @@ constexpr std::uint64_t kSamplesPerBurst = 1536;
     return true;
 }
 
-[[nodiscard]] DecoderConfig configured(const render::Serving& serving) {
-    DecoderConfig config;
-    config.output.mode = OperatingMode::kLine;
-    render::configure_decoder(serving, config);
+[[nodiscard]] ac3::DecoderConfig configured(const ac3::render::Serving& serving) {
+    ac3::DecoderConfig config;
+    config.output.mode = ac3::OperatingMode::kLine;
+    ac3::render::configure_decoder(serving, config);
     return config;
 }
 
@@ -156,11 +158,11 @@ struct Ac4Payload {
 
 }  // namespace
 
-eac3::chanmap::Layout ac4_bed(std::span<const iclforge::ac4::Speaker> speakers) {
-    using eac3::chanmap::Location;
-    eac3::chanmap::Layout bed;
+ac3::eac3::chanmap::Layout ac4_bed(std::span<const iclforge::ac4::Speaker> speakers) {
+    using ac3::eac3::chanmap::Location;
+    ac3::eac3::chanmap::Layout bed;
     for (const iclforge::ac4::Speaker speaker : speakers) {
-        if (bed.count >= eac3::chanmap::kMaxChannels) {
+        if (bed.count >= ac3::eac3::chanmap::kMaxChannels) {
             break;
         }
         Location location = Location::kLeft;
@@ -190,11 +192,13 @@ eac3::chanmap::Layout ac4_bed(std::span<const iclforge::ac4::Speaker> speakers) 
     return bed;
 }
 
-BurstOutput::BurstOutput(std::filesystem::path directory, std::string prefix, const render::OutputLayout& layout)
+BurstOutput::BurstOutput(std::filesystem::path directory, std::string prefix,
+                         const render::OutputLayout& layout)
     : directory_(std::move(directory)),
       prefix_(std::move(prefix)),
       layout_(layout),
-      serving_(render::serve(layout, DownmixTarget::kLoRo, render::ObjectsPolicy::kAuto)),
+      serving_(
+          ac3::render::serve(layout, ac3::DownmixTarget::kLoRo, ac3::render::ObjectsPolicy::kAuto)),
       config_(configured(serving_)),
       renderer_(layout) {}
 
@@ -273,13 +277,13 @@ void BurstOutput::write(const sendspin::BurstChunk& chunk, std::int64_t local_ti
 }
 
 void BurstOutput::decode_unit(std::span<const std::byte> unit) {
-    const auto header = io::read_frame_header(unit);
+    const auto header = ac3::io::read_frame_header(unit);
     if (!header) {
         ++undecodable_;
         reset_decoding();
         return;
     }
-    if (header->kind == io::StreamKind::kEac3) {
+    if (header->kind == ac3::io::StreamKind::kEac3) {
         // One programme: the first unit's.
         if (!programme_) {
             programme_ = header->substreamid;
@@ -287,22 +291,22 @@ void BurstOutput::decode_unit(std::span<const std::byte> unit) {
             return;
         }
     }
-    const std::optional<eac3::chanmap::Layout> bed = peek_layout(unit);
+    const std::optional<ac3::eac3::chanmap::Layout> bed = peek_layout(unit);
     if (!bed) {
         ++undecodable_;
         reset_decoding();
         return;
     }
     beds_.push_back(*bed);
-    const auto deliver = [this](const PcmBlock& block) { place(block); };
+    const auto deliver = [this](const ac3::PcmBlock& block) { place(block); };
 
     // A unit that is one AC-3 syncframe goes to the AC-3 decoder, which a fold applies to as
     // well; anything else, an AC-3 core with E-AC-3 dependents included, to the E-AC-3 decoder.
-    if (header->kind == io::StreamKind::kAc3 && header->bytes == unit.size()) {
+    if (header->kind == ac3::io::StreamKind::kAc3 && header->bytes == unit.size()) {
         if (!ac3_decoder_) {
             ac3_decoder_.emplace(config_);
         }
-        const std::expected<DecodedFrame, DecodeError> decoded = ac3_decoder_->decode_frame_by_block(unit, deliver);
+        const std::expected<ac3::DecodedFrame, ac3::DecodeError> decoded = ac3_decoder_->decode_frame_by_block(unit, deliver);
         if (!decoded) {
             ++undecodable_;
             reset_decoding();
@@ -322,7 +326,7 @@ void BurstOutput::decode_unit(std::span<const std::byte> unit) {
     if (!eac3_decoder_) {
         eac3_decoder_.emplace(config_);
     }
-    const std::expected<std::optional<DecodedAccessUnit>, DecodeError> decoded =
+    const std::expected<std::optional<ac3::DecodedAccessUnit>, ac3::DecodeError> decoded =
         eac3_decoder_->decode_access_unit_by_block(unit, deliver);
     if (!decoded) {
         ++undecodable_;
@@ -334,19 +338,19 @@ void BurstOutput::decode_unit(std::span<const std::byte> unit) {
     if (!*decoded || (decoder_ && (decoder_->objects > 0 || !(*decoded)->object_metadata))) {
         return;
     }
-    const DecodedAccessUnit& au = **decoded;
+    const ac3::DecodedAccessUnit& au = **decoded;
     const std::int32_t objects =
         au.object_metadata ? static_cast<std::int32_t>(oba::describe_objects(*au.object_metadata).size()) : 0;
     decoder_ = ac::DecoderReport{.data_type = stream_->data_type,
                                  .acmod = static_cast<std::int32_t>(au.acmod),
-                                 .lfe = au.layout.index_of(eac3::chanmap::Location::kLfe) >= 0,
+                                 .lfe = au.layout.index_of(ac3::eac3::chanmap::Location::kLfe) >= 0,
                                  .substreams = au.substream_count,
                                  .objects = objects,
                                  .objects_placed = objects > 0 && serving_.reconstruct,
                                  .dialnorm = -static_cast<double>(au.dialnorm)};
 }
 
-void BurstOutput::place(const PcmBlock& block) {
+void BurstOutput::place(const ac3::PcmBlock& block) {
     const std::size_t slots = layout_.slots();
     std::array<std::span<float>, render::OutputLayout::kMaxSlots> spans{};
     for (std::size_t slot = 0; slot < slots; ++slot) {
@@ -355,7 +359,7 @@ void BurstOutput::place(const PcmBlock& block) {
     const std::span<const std::span<float>> out(spans.data(), slots);
     if (block.index == 0 && !beds_.empty()) {
         // A unit's first block: the bed of the oldest unit not yet placed.
-        const eac3::chanmap::Layout bed = beds_.front();
+        const ac3::eac3::chanmap::Layout bed = beds_.front();
         beds_.pop_front();
         if (!serving_.fold && (!renderer_bed_ || !same_layout(*renderer_bed_, bed))) {
             renderer_.set_bed(bed);
@@ -417,7 +421,7 @@ void BurstOutput::write_ac4(const sendspin::BurstChunk& chunk, std::int64_t loca
 }
 
 void BurstOutput::render_ac4(const iclforge::ac4::DecodedFrame& frame) {
-    const eac3::chanmap::Layout bed = ac4_bed(frame.speakers);
+    const ac3::eac3::chanmap::Layout bed = ac4_bed(frame.speakers);
     if (!renderer_bed_ || !same_layout(*renderer_bed_, bed)) {
         renderer_.set_bed(bed);
         renderer_bed_ = bed;
@@ -430,13 +434,13 @@ void BurstOutput::render_ac4(const iclforge::ac4::DecodedFrame& frame) {
     const std::span<const std::span<float>> out(spans.data(), slots);
     const std::size_t n = frame.channels.empty() ? 0 : frame.channels.front().size();
     ac4_block_.resize(frame.channels.size());
-    const auto blocks = static_cast<int>((n + kSamplesPerBlock - 1) / kSamplesPerBlock);
-    for (std::size_t at = 0; at < n; at += kSamplesPerBlock) {
-        const std::size_t m = std::min<std::size_t>(kSamplesPerBlock, n - at);
+    const auto blocks = static_cast<int>((n + ac3::kSamplesPerBlock - 1) / ac3::kSamplesPerBlock);
+    for (std::size_t at = 0; at < n; at += ac3::kSamplesPerBlock) {
+        const std::size_t m = std::min<std::size_t>(ac3::kSamplesPerBlock, n - at);
         for (std::size_t channel = 0; channel < frame.channels.size(); ++channel) {
             ac4_block_[channel] = std::span<const float>(frame.channels[channel]).subspan(at, m);
         }
-        const PcmBlock block{.index = static_cast<int>(at / kSamplesPerBlock),
+        const ac3::PcmBlock block{.index = static_cast<int>(at / ac3::kSamplesPerBlock),
                              .blocks = blocks,
                              .channels = ac4_block_,
                              .objects = {},

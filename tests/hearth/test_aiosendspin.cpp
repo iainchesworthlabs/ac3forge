@@ -177,7 +177,7 @@ TEST_CASE("aiosendspin: a host pairs with the scripted aiosendspin 9.1.1 player 
         bytes.push_back(static_cast<std::byte>(word & 0xFFU));
         bytes.push_back(static_cast<std::byte>(word >> 8U));
     }
-    REQUIRE(iclforge::io::write_wav_pcm16_raw((directory / "programme.wav").string(), bytes, kSampleRate, 2).has_value());
+    REQUIRE(iclforge::ac3::io::write_wav_pcm16_raw((directory / "programme.wav").string(), bytes, kSampleRate, 2).has_value());
     {
         std::ofstream start(directory / "start_time_us.txt");
         start << *start_time << '\n';

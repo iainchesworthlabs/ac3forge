@@ -1,6 +1,6 @@
 # ---------------------------------------------------------------------------
 # iclforge::admbridge - ADM BWF → JOC bridge, phase 2: maps the ADM object graph
-# iclforge::adm (src/adm) parses onto iclforge::oba::AtmosEncoder's input shape.
+# iclforge::adm (src/adm) parses onto iclforge::ac3::oba::AtmosEncoder's input shape.
 #
 # A NEW standalone module, not folded into either side it bridges, for two
 # reasons that are each independently sufficient:
@@ -9,7 +9,7 @@
 #     header comments) - it does not, and should not, gain a dependency on
 #     iclforge::ac3/iclforge::oba just to know what an "object" or "bed" means in
 #     JOC/Atmos terms.
-#   - src/ac3 (-> iclforge::ac3, iclforge::oba::AtmosEncoder) is always built,
+#   - src/ac3 (-> iclforge::ac3, iclforge::ac3::oba::AtmosEncoder) is always built,
 #     unconditionally, by every configuration of this project. It cannot
 #     gain a dependency on the opt-in, Boost-requiring iclforge::adm without
 #     breaking every default build - the exact reason iclforge::adm itself defaults

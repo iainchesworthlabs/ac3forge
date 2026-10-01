@@ -129,10 +129,10 @@ constexpr std::array<std::string_view, 13> kFrameRates = {
 // One input of the stream: a substream's WAV file, its channels in the
 // encoder's order, and its dialogue stem where it has one.
 struct Input {
-    iclforge::io::WavData wav;
+    iclforge::ac3::io::WavData wav;
     std::vector<iclforge::ac4::Speaker> speakers;
     std::vector<std::size_t> wav_index;  // the WAV file's channel of each encoder channel
-    iclforge::io::WavData stem;
+    iclforge::ac3::io::WavData stem;
     bool has_stem = false;
 };
 
@@ -145,7 +145,7 @@ struct Input {
                                               bool back_pair) {
     auto wav = read_wav_arg(path);
     if (!wav.has_value()) {
-        fmt::println(stderr, "error: {}: {}", path, iclforge::io::describe(wav.error()));
+        fmt::println(stderr, "error: {}: {}", path, iclforge::ac3::io::describe(wav.error()));
         return std::nullopt;
     }
     Input input;
@@ -172,7 +172,7 @@ struct Input {
         auto stem = read_wav_arg(dialogue.stem);
         if (!stem.has_value()) {
             fmt::println(stderr, "error: {}: {}", dialogue.stem,
-                         iclforge::io::describe(stem.error()));
+                         iclforge::ac3::io::describe(stem.error()));
             return std::nullopt;
         }
         if (stem->channels.size() != wav->channels.size() ||

@@ -44,7 +44,7 @@ TEST_CASE("ecpl_channel_spectrum_fixed of all-zero neighbors is all zero", "[fix
     real_out.fill(Fixed32{1});  // poison, so the function must actually write zero
     imag_out.fill(Fixed32{1});
     int out_norm = -1;
-    iclforge::eac3::ecpl_channel_spectrum_fixed(zero, 0, zero, 0, zero, 0, real_out, imag_out,
+    iclforge::ac3::eac3::ecpl_channel_spectrum_fixed(zero, 0, zero, 0, zero, 0, real_out, imag_out,
                                            out_norm);
     for (int k = 0; k < 256; ++k) {
         CAPTURE(k);
@@ -62,7 +62,7 @@ TEST_CASE("ecpl_channel_coefficients_fixed: zero amplitude silences a channel; "
     // function, at values Fixed32 holds exactly (5 and -3 are well inside
     // the format's +-127 range, and out_shift = 0 keeps the raw value as the
     // exact same fixed-point number the double form computes).
-    using iclforge::eac3::ecpl_channel_coefficients_fixed;
+    using iclforge::ac3::eac3::ecpl_channel_coefficients_fixed;
     std::array<Fixed32, 256> real_in{};
     std::array<Fixed32, 256> imag_in{};
     real_in[20] = Fixed32{5.0};
@@ -106,9 +106,9 @@ TEST_CASE("the tier's ecpl amplitudes and angles are the double ones", "[fixed32
     // later, transient and not, and both the direct and the interpolated
     // conversion.
     const int begin = 0;
-    const int end = iclforge::eac3::kEcplSubBands;
-    const auto layout =
-        iclforge::eac3::ecpl_group_bands(begin, end, iclforge::eac3::kDefaultEcplBandStructure);
+    const int end = iclforge::ac3::eac3::kEcplSubBands;
+    const auto layout = iclforge::ac3::eac3::ecpl_group_bands(
+        begin, end, iclforge::ac3::eac3::kDefaultEcplBandStructure);
     REQUIRE(layout.count > 1);
     const auto bands = static_cast<std::size_t>(layout.count);
     std::vector<int> amp_codes(bands);
@@ -121,19 +121,20 @@ TEST_CASE("the tier's ecpl amplitudes and angles are the double ones", "[fixed32
         chaos_codes[b] = static_cast<int>(rng() % 8);
     }
     const auto bins = static_cast<std::size_t>(
-        iclforge::eac3::kEcplSubBandTab[static_cast<std::size_t>(end)] -
-        iclforge::eac3::kEcplSubBandTab[static_cast<std::size_t>(begin)]);
+        iclforge::ac3::eac3::kEcplSubBandTab[static_cast<std::size_t>(end)] -
+        iclforge::ac3::eac3::kEcplSubBandTab[static_cast<std::size_t>(begin)]);
 
     for (const bool first : {true, false}) {
         for (const bool transient : {false, true}) {
             CAPTURE(first, transient);
             std::vector<double> amp(bins);
             std::vector<Fixed32> amp_fixed(bins);
-            iclforge::eac3::ecpl_amplitudes(amp_codes, chaos_codes, transient, first, begin, end,
-                                       iclforge::eac3::kDefaultEcplBandStructure, amp);
-            iclforge::eac3::ecpl_amplitudes_fixed(amp_codes, chaos_codes, transient, first, begin,
-                                             end, iclforge::eac3::kDefaultEcplBandStructure,
-                                             amp_fixed);
+            iclforge::ac3::eac3::ecpl_amplitudes(
+                amp_codes, chaos_codes, transient, first, begin, end,
+                iclforge::ac3::eac3::kDefaultEcplBandStructure, amp);
+            iclforge::ac3::eac3::ecpl_amplitudes_fixed(
+                amp_codes, chaos_codes, transient, first, begin, end,
+                iclforge::ac3::eac3::kDefaultEcplBandStructure, amp_fixed);
             for (std::size_t i = 0; i < bins; ++i) {
                 CAPTURE(i);
                 // One table read and at most one product and sum.
@@ -142,16 +143,16 @@ TEST_CASE("the tier's ecpl amplitudes and angles are the double ones", "[fixed32
 
             for (const bool interpolate : {false, true}) {
                 CAPTURE(interpolate);
-                iclforge::eac3::EcplNoise noise;
-                iclforge::eac3::EcplNoise noise_fixed;
+                iclforge::ac3::eac3::EcplNoise noise;
+                iclforge::ac3::eac3::EcplNoise noise_fixed;
                 std::vector<double> angle(bins);
                 std::vector<Fixed32> angle_fixed(bins);
-                iclforge::eac3::ecpl_angles(
+                iclforge::ac3::eac3::ecpl_angles(
                     /*channel=*/1, angle_codes, chaos_codes, transient, first, begin, end,
-                    iclforge::eac3::kDefaultEcplBandStructure, noise, angle, interpolate);
-                iclforge::eac3::ecpl_angles_fixed(/*channel=*/1, angle_codes, chaos_codes,
+                    iclforge::ac3::eac3::kDefaultEcplBandStructure, noise, angle, interpolate);
+                iclforge::ac3::eac3::ecpl_angles_fixed(/*channel=*/1, angle_codes, chaos_codes,
                                                   transient, first, begin, end,
-                                                  iclforge::eac3::kDefaultEcplBandStructure,
+                                                  iclforge::ac3::eac3::kDefaultEcplBandStructure,
                                                   noise_fixed, angle_fixed, interpolate);
                 // Through the rotation each names, not the number: a value at
                 // the wrap may land a whole turn apart between the two.
@@ -198,11 +199,12 @@ TEST_CASE("ecpl_channel_spectrum_fixed matches the double spectrum on real conte
     }
     std::array<double, 256> real_out{};
     std::array<double, 256> imag_out{};
-    iclforge::eac3::ecpl_channel_spectrum(prev, curr, next, real_out, imag_out, /*fast=*/false);
+    iclforge::ac3::eac3::ecpl_channel_spectrum(prev, curr, next, real_out, imag_out,
+                                               /*fast=*/false);
     std::array<Fixed32, 256> real_fixed{};
     std::array<Fixed32, 256> imag_fixed{};
     int out_norm = 0;
-    iclforge::eac3::ecpl_channel_spectrum_fixed(prev_fixed, 0, curr_fixed, 0, next_fixed, 0,
+    iclforge::ac3::eac3::ecpl_channel_spectrum_fixed(prev_fixed, 0, curr_fixed, 0, next_fixed, 0,
                                            real_fixed, imag_fixed, out_norm);
 
     double peak = 0.0;

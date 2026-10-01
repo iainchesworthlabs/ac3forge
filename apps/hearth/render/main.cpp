@@ -221,8 +221,8 @@ bool apply(std::string_view key, std::string_view value, DecoderSettings& settin
         if (value != "loro" && value != "ltrt") {
             return false;
         }
-        settings.stereo_fold =
-            value == "ltrt" ? iclforge::DownmixTarget::kLtRt : iclforge::DownmixTarget::kLoRo;
+        settings.stereo_fold = value == "ltrt" ? iclforge::ac3::DownmixTarget::kLtRt
+                                               : iclforge::ac3::DownmixTarget::kLoRo;
         return true;
     }
     if (key == "lfe") {
@@ -232,11 +232,11 @@ bool apply(std::string_view key, std::string_view value, DecoderSettings& settin
     }
     if (key == "concealment") {
         if (value == "stop") {
-            settings.concealment = iclforge::ConcealmentPolicy::kNone;
+            settings.concealment = iclforge::ac3::ConcealmentPolicy::kNone;
         } else if (value == "repeat-fade") {
-            settings.concealment = iclforge::ConcealmentPolicy::kRepeatFade;
+            settings.concealment = iclforge::ac3::ConcealmentPolicy::kRepeatFade;
         } else if (value == "mute") {
-            settings.concealment = iclforge::ConcealmentPolicy::kMute;
+            settings.concealment = iclforge::ac3::ConcealmentPolicy::kMute;
         } else {
             return false;
         }

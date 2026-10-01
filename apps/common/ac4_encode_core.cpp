@@ -127,17 +127,18 @@ std::optional<Ac4Measured> measure_ac4_programme(std::span<const std::span<const
     const bool lfe_after_five = count == 8 || count == 10 || count == 12;
     const std::size_t bed = count <= 6 ? count : (lfe_after_five ? 6 : 5);
     const bool lfe = bed == 6;
-    const auto acmod = bed == 1   ? iclforge::Acmod::k1_0
-                       : bed == 2 ? iclforge::Acmod::k2_0
-                                  : (bed == 3 ? iclforge::Acmod::k3_0 : iclforge::Acmod::k3_2);
-    const auto rate =
-        sample_rate == 48000 ? iclforge::SampleRate::k48000 : iclforge::SampleRate::k44100;
-    iclforge::meta::LoudnessMeter meter{rate, acmod, lfe};
+    const auto acmod = bed == 1 ? iclforge::ac3::Acmod::k1_0
+                       : bed == 2
+                           ? iclforge::ac3::Acmod::k2_0
+                           : (bed == 3 ? iclforge::ac3::Acmod::k3_0 : iclforge::ac3::Acmod::k3_2);
+    const auto rate = sample_rate == 48000 ? iclforge::ac3::SampleRate::k48000
+                                           : iclforge::ac3::SampleRate::k44100;
+    iclforge::ac3::meta::LoudnessMeter meter{rate, acmod, lfe};
     // The meter takes AC-3's coded order, L C R Ls Rs and the LFE last, and
     // the encoder's order for the bed is a 5.1 WAV file's, whose permutation
     // ac3_layout_for gives.
     std::vector<std::size_t> order(bed);
-    if (const auto layout = iclforge::io::ac3_layout_for(bed);
+    if (const auto layout = iclforge::ac3::io::ac3_layout_for(bed);
         layout && layout->wav_index.size() == bed) {
         order.assign(layout->wav_index.begin(), layout->wav_index.end());
     } else {
@@ -146,9 +147,9 @@ std::optional<Ac4Measured> measure_ac4_programme(std::span<const std::span<const
         }
     }
     // Each pair's true peak after the bed, from a stereo meter of its own.
-    std::vector<iclforge::meta::LoudnessMeter> pair_meters;
+    std::vector<iclforge::ac3::meta::LoudnessMeter> pair_meters;
     for (std::size_t k = bed; k + 1 < count; k += 2) {
-        pair_meters.emplace_back(rate, iclforge::Acmod::k2_0, false);
+        pair_meters.emplace_back(rate, iclforge::ac3::Acmod::k2_0, false);
     }
     Ac4Measured out;
     const std::size_t length = channels.empty() ? 0 : channels.front().size();
@@ -181,7 +182,7 @@ std::optional<Ac4Measured> measure_ac4_programme(std::span<const std::span<const
     out.integrated = *integrated;
     out.range = meter.loudness_range();
     out.true_peak = meter.true_peak_dbtp();
-    for (const iclforge::meta::LoudnessMeter& pair_meter : pair_meters) {
+    for (const iclforge::ac3::meta::LoudnessMeter& pair_meter : pair_meters) {
         if (const auto pair_peak = pair_meter.true_peak_dbtp();
             pair_peak && (!out.true_peak || *pair_peak > *out.true_peak)) {
             out.true_peak = pair_peak;

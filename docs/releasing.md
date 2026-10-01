@@ -105,7 +105,7 @@ Tags are strict SemVer 2.0.0: `vMAJOR.MINOR.PATCH[-(alpha|beta|rc).N]`, e.g. `v0
 marks the GitHub Release as a prerelease. The suffix also flows into the build: CMake's
 `project()` `VERSION` field can only hold the bare `X.Y.Z` (that's what `PROJECT_VERSION` and
 CPack's package version use), but the full tag - suffix included - is carried separately as
-`PROJECT_VERSION_FULL`. It is the `iclforge::version_full` string, the headline of `forge --version`
+`PROJECT_VERSION_FULL`. It is the `iclforge::ac3::version_full` string, the headline of `forge --version`
 (`iclforge 0.10.0-beta.1`, with `+N` after it for a build N commits past the tag, so a build from
 `main` is not mistaken for the release), and the `generator` field of `forge probe ... json=1`.
 

@@ -1,7 +1,7 @@
 """The exported-symbol allowlists of the old layout against the ones the moved layout writes.
 
     abi_compare.py <old allowlist dir> <new allowlist dir> [--map l2|identity]
-                   [--rewrite cuts,names,idents]
+                   [--rewrite cuts,names,idents,ac3ns]
 
 tools/ci/abi-allowlist holds one `<library>.so.txt` per shared library, the demangled names it
 exports (tools/ci/check_abi_symbols.py). Stage S2 renames every library (`libac3iab.so` becomes
@@ -21,6 +21,9 @@ which the split makes cross a library boundary (base to ac3) and so export.
   --rewrite idents the brand in the old names is rewritten the way n1b_idents.py rewrites an
                    identifier, so the C API's `ac3forge_*` names show no difference against
                    `iclforge_*` (S4); it combines with names (`--rewrite names,idents`)
+  --rewrite ac3ns  the AC-3 library's names nest under `iclforge::ac3`: the old names are
+                   rewritten the way n1b_ac3ns.py rewrites a qualified name (S6), so the allowlists
+                   `check_abi_symbols.py --update` writes from the new build show no difference
 """
 
 from __future__ import annotations
@@ -111,10 +114,10 @@ def main() -> None:
     ap.add_argument("old", type=Path)
     ap.add_argument("new", type=Path)
     ap.add_argument("--map", choices=["l2", "identity"], default="l2")
-    ap.add_argument("--rewrite", default="", help="comma-separated: cuts, names, idents")
+    ap.add_argument("--rewrite", default="", help="comma-separated: cuts, names, idents, ac3ns")
     a = ap.parse_args()
     kinds = {k for k in a.rewrite.split(",") if k}
-    unknown = kinds - {"cuts", "names", "idents"}
+    unknown = kinds - {"cuts", "names", "idents", "ac3ns"}
     if unknown:
         sys.exit(f"abi_compare: unknown --rewrite {sorted(unknown)}")
     mapping = identity(a.old) if a.map == "identity" else None

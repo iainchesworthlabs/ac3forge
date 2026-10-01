@@ -7,7 +7,7 @@
 // under src/internal/scalar/float64/ for what this seam is; the float variant
 // under src/internal/scalar/float32/ is the ESP32-S3's.
 
-namespace iclforge::internal {
+namespace iclforge::ac3::internal {
 
 // Fixed32 (src/forge/src/core/fixed32.hpp): Q7.24 in a 32-bit integer, for a
 // part with no floating-point unit at all - the ESP32-C3, a Cortex-M3 - where
@@ -20,6 +20,6 @@ namespace iclforge::internal {
 // it is measured: the same CLI, diffed against the double one by
 // tools/checks/check_decode_scalar_snr.py and run through the gold-reference
 // gate.
-using decode_scalar_t = Fixed32;
+using decode_scalar_t = iclforge::internal::Fixed32;
 
-}  // namespace iclforge::internal
+}  // namespace iclforge::ac3::internal

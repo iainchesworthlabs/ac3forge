@@ -233,7 +233,7 @@ std::vector<std::vector<float>> reference(const std::vector<std::byte>& bytes,
             continue;
         }
         for (std::size_t c = 0; c < frame.channels.size(); ++c) {
-            const iclforge::eac3::chanmap::Layout bed = iclforge::hearth::ac4_bed(
+            const iclforge::ac3::eac3::chanmap::Layout bed = iclforge::hearth::ac4_bed(
                 std::span<const iclforge::ac4::Speaker>(&frame.speakers[c], 1));
             const int slot = layout.index_of(bed[0]);
             REQUIRE(slot >= 0);
@@ -253,13 +253,13 @@ constexpr std::size_t kFrame = 2048;
 // under Table 173's last dialogue enhancement band, the LFE's under 140 Hz.
 constexpr std::array<double, 6> kTonesHz = {440.0, 620.0, 800.0, 90.0, 1030.0, 1270.0};
 // Where each is heard: a "5.1" layout's slots are in A/52's order, not this.
-constexpr std::array<iclforge::eac3::chanmap::Location, 6> kToneLocations = {
-    iclforge::eac3::chanmap::Location::kLeft,
-    iclforge::eac3::chanmap::Location::kRight,
-    iclforge::eac3::chanmap::Location::kCentre,
-    iclforge::eac3::chanmap::Location::kLfe,
-    iclforge::eac3::chanmap::Location::kLeftSurround,
-    iclforge::eac3::chanmap::Location::kRightSurround};
+constexpr std::array<iclforge::ac3::eac3::chanmap::Location, 6> kToneLocations = {
+    iclforge::ac3::eac3::chanmap::Location::kLeft,
+    iclforge::ac3::eac3::chanmap::Location::kRight,
+    iclforge::ac3::eac3::chanmap::Location::kCentre,
+    iclforge::ac3::eac3::chanmap::Location::kLfe,
+    iclforge::ac3::eac3::chanmap::Location::kLeftSurround,
+    iclforge::ac3::eac3::chanmap::Location::kRightSurround};
 constexpr double kAmplitude = 0.1;
 constexpr std::size_t kToneFrames = 32;
 // The analysis window: past the encoder's delay, the decoder's and the first
@@ -361,7 +361,7 @@ std::complex<double> component(std::span<const float> samples, double hz, std::s
 
 // A slot's tone, by the slot's name on `layout`.
 std::complex<double> tone_in(const Played& played, const iclforge::render::OutputLayout& layout,
-                             iclforge::eac3::chanmap::Location location, double hz) {
+                             iclforge::ac3::eac3::chanmap::Location location, double hz) {
     const int slot = layout.index_of(location);
     REQUIRE(slot >= 0);
     return component(played.slots[static_cast<std::size_t>(slot)], hz);
@@ -641,7 +641,8 @@ TEST_CASE("hearth ac4: dialogue enhancement raises the dialogue by its gain up t
             REQUIRE(std::abs(before) > kAmplitude / 2.0);
             const double change = db(std::abs(tone_in(on, layout, kToneLocations[c], kTonesHz[c])) /
                                      std::abs(before));
-            const bool centre = kToneLocations[c] == iclforge::eac3::chanmap::Location::kCentre;
+            const bool centre =
+                kToneLocations[c] == iclforge::ac3::eac3::chanmap::Location::kCentre;
             CHECK(std::abs(change - (centre ? std::min(gain, static_cast<double>(kDeCapDb))
                                             : 0.0)) < kToleranceDb);
         }
@@ -650,7 +651,7 @@ TEST_CASE("hearth ac4: dialogue enhancement raises the dialogue by its gain up t
 
 TEST_CASE("hearth ac4: a stereo or mono layout takes the downmix Part 1 clause 6.2.17 gives",
           "[hearth][ac4]") {
-    using iclforge::eac3::chanmap::Location;
+    using iclforge::ac3::eac3::chanmap::Location;
     const iclforge::render::OutputLayout wide = layout_of("5.1");
     const iclforge::render::OutputLayout stereo = layout_of("2.0");
     const iclforge::render::OutputLayout mono = layout_of("1.0");
@@ -698,7 +699,7 @@ TEST_CASE("hearth ac4: a stereo or mono layout takes the downmix Part 1 clause 6
     }
     SECTION("Lt/Rt") {
         DecoderSettings settings = as_coded();
-        settings.stereo_fold = iclforge::DownmixTarget::kLtRt;
+        settings.stereo_fold = iclforge::ac3::DownmixTarget::kLtRt;
         const Played played = play_item(tones(), stereo, settings);
         holds(played, stereo, Location::kLeft, {1.0, 0.0, ltrt_c, lfe, -ltrt_s, -ltrt_s});
         holds(played, stereo, Location::kRight, {0.0, 1.0, ltrt_c, lfe, ltrt_s, ltrt_s});
@@ -903,9 +904,9 @@ TEST_CASE("hearth ac4: a change of settings reaches the playing item at its next
     heard.slots = log->slots;
     const double expected = db(std::pow(2.0, (-17.0 - kDialnorm) / 6.0));
     const std::complex<double> was =
-        tone_in(unchanged, layout, iclforge::eac3::chanmap::Location::kLeft, kTonesHz[0]);
+        tone_in(unchanged, layout, iclforge::ac3::eac3::chanmap::Location::kLeft, kTonesHz[0]);
     const std::complex<double> is =
-        tone_in(heard, layout, iclforge::eac3::chanmap::Location::kLeft, kTonesHz[0]);
+        tone_in(heard, layout, iclforge::ac3::eac3::chanmap::Location::kLeft, kTonesHz[0]);
     CHECK(std::abs(db(std::abs(is) / std::abs(was)) - expected) < kToleranceDb);
 }
 
@@ -926,17 +927,17 @@ TEST_CASE("hearth ac4: an AC-4 decoder takes settings in place, and an E-AC-3 on
     changed.ac4.output_level_dbfs = -20.0;
     CHECK(decoder.apply(changed));
     // A concealment policy is fixed for an AC-4 decoder.
-    changed.concealment = iclforge::ConcealmentPolicy::kMute;
+    changed.concealment = iclforge::ac3::ConcealmentPolicy::kMute;
     CHECK_FALSE(decoder.apply(changed));
 
     // E-AC-3 in progress: a new decoder is the way.
     StreamDecoder eac3{layout, 48000};
-    iclforge::eac3::FrameConfig config;
+    iclforge::ac3::eac3::FrameConfig config;
     config.bitrate_kbps = 384;
-    config.acmod = iclforge::Acmod::k3_2;
+    config.acmod = iclforge::ac3::Acmod::k3_2;
     config.lfe = true;
-    iclforge::eac3::FrameEncoder encoder{config};
-    const std::vector<float> silence(iclforge::kSamplesPerFrame, 0.0F);
+    iclforge::ac3::eac3::FrameEncoder encoder{config};
+    const std::vector<float> silence(iclforge::ac3::kSamplesPerFrame, 0.0F);
     const std::vector<std::span<const float>> views(6, silence);
     const auto frame = encoder.encode_frame(views);
     REQUIRE(frame.has_value());
@@ -972,19 +973,19 @@ TEST_CASE("hearth ac4: a seek starts at an I-frame and plays on as an unbroken d
 }
 
 TEST_CASE("hearth ac4: an AC-4 item joins an E-AC-3 one in the same output", "[hearth][ac4]") {
-    iclforge::eac3::FrameConfig config;
+    iclforge::ac3::eac3::FrameConfig config;
     config.bitrate_kbps = 384;
-    config.acmod = iclforge::Acmod::k3_2;
+    config.acmod = iclforge::ac3::Acmod::k3_2;
     config.lfe = true;
-    iclforge::eac3::FrameEncoder encoder{config};
+    iclforge::ac3::eac3::FrameEncoder encoder{config};
     std::vector<std::byte> eac3;
     for (int f = 0; f < 12; ++f) {
-        std::vector<float> samples(iclforge::kSamplesPerFrame);
+        std::vector<float> samples(iclforge::ac3::kSamplesPerFrame);
         for (std::size_t n = 0; n < samples.size(); ++n) {
             samples[n] = static_cast<float>(
                 0.1 * std::sin(2.0 * std::numbers::pi * 440.0 *
-                               static_cast<double>(
-                                   n + (static_cast<std::size_t>(f) * iclforge::kSamplesPerFrame)) /
+                               static_cast<double>(n + (static_cast<std::size_t>(f) *
+                                                        iclforge::ac3::kSamplesPerFrame)) /
                                kRate));
         }
         const std::vector<std::span<const float>> views(6, samples);
@@ -1063,9 +1064,10 @@ TEST_CASE("hearth ac4: a presentation with objects is rendered through Ac4Object
     const iclforge::render::OutputLayout layout = layout_of(kEverySpeaker);
     const Played played = play_item(bytes, layout, as_coded());
 
-    const auto left = tone_in(played, layout, iclforge::eac3::chanmap::Location::kLeft, kObjectHz);
+    const auto left =
+        tone_in(played, layout, iclforge::ac3::eac3::chanmap::Location::kLeft, kObjectHz);
     const auto right =
-        tone_in(played, layout, iclforge::eac3::chanmap::Location::kRight, kObjectHz);
+        tone_in(played, layout, iclforge::ac3::eac3::chanmap::Location::kRight, kObjectHz);
     CHECK(std::abs(left) > 0.01);
     CHECK(std::abs(left) > std::abs(right) * 3.0);
 }
@@ -1120,11 +1122,11 @@ TEST_CASE("hearth ac4: the immersive layout control folds an object presentation
     const Played played = play_item(bytes, layout, settings);
 
     const auto centre =
-        tone_in(played, layout, iclforge::eac3::chanmap::Location::kCentre, kObjectHz);
+        tone_in(played, layout, iclforge::ac3::eac3::chanmap::Location::kCentre, kObjectHz);
     CHECK(std::abs(centre) > 0.01);
     // Table 44's 5.X.2 core/output layout has no top back pair; a centre-front,
     // ear-height object should not need one either.
     const auto top_back =
-        tone_in(played, layout, iclforge::eac3::chanmap::Location::kVhl, kObjectHz);
+        tone_in(played, layout, iclforge::ac3::eac3::chanmap::Location::kVhl, kObjectHz);
     CHECK(std::abs(top_back) < std::abs(centre));
 }

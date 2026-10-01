@@ -24,7 +24,7 @@
 #include "iclforge/ac3/meta/drc.hpp"
 #include "iclforge/objects/oamd.hpp"
 
-namespace iclforge::io {
+namespace iclforge::ac3::io {
 
 namespace {
 
@@ -126,8 +126,8 @@ struct Prober::Impl {
         if (at == ids.end() || *at != id) {
             ids.insert(at, id);
         }
-        report.oamd = report.oamd || id == emdf::kPayloadIdOamd;
-        report.joc = report.joc || id == emdf::kPayloadIdJoc;
+        report.oamd = report.oamd || id == iclforge::emdf::kPayloadIdOamd;
+        report.joc = report.joc || id == iclforge::emdf::kPayloadIdJoc;
     }
 
     void accumulate_syntax(const FrameSyntax& syn) {
@@ -521,4 +521,4 @@ std::expected<std::span<const std::byte>, ScanError> AccessUnitReader::next() {
     return std::span<const std::byte>{impl.unit};
 }
 
-}  // namespace iclforge::io
+}  // namespace iclforge::ac3::io

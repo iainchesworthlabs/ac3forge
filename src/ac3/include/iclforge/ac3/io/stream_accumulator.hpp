@@ -9,7 +9,7 @@
 
 // Turning a BYTE STREAM into whole access units, without owning any memory.
 //
-// iclforge::split_frames and iclforge::split_access_units both take a span over the
+// iclforge::ac3::split_frames and iclforge::ac3::split_access_units both take a span over the
 // entire stream and hand back every boundary in it at once. That is the right
 // shape for a file that is already in memory and the wrong one for anything
 // arriving over time: an HTTP body, an SD card read in blocks, a UART, a flash
@@ -21,7 +21,7 @@
 // storage and drives the loop:
 //
 //     std::array<std::byte, 16384> buf;
-//     iclforge::io::AccessUnitAccumulator acc{buf};
+//     iclforge::ac3::io::AccessUnitAccumulator acc{buf};
 //     for (;;) {
 //         auto unit = acc.next();
 //         if (unit.status == Status::kNeedMoreInput) {
@@ -48,7 +48,7 @@
 // unit in the stream, and the caller finds out it was not by getting
 // kBufferTooSmall rather than by silently reallocating. See kMinimumBuffer.
 
-namespace iclforge::io {
+namespace iclforge::ac3::io {
 
 // The largest a single syncframe can be: E-AC-3's frmsiz is 11 bits and the
 // frame is (frmsiz + 1) * 2 bytes, so 4,096. AC-3's worst case is smaller -
@@ -150,4 +150,4 @@ class ICLFORGE_AC3_EXPORT AccessUnitAccumulator {
     std::size_t resync_bytes_ = 0;
 };
 
-}  // namespace iclforge::io
+}  // namespace iclforge::ac3::io

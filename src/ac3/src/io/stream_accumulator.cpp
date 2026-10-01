@@ -9,7 +9,7 @@
 #include "iclforge/ac3/core/tables.hpp"
 #include "iclforge/ac3/io/elementary.hpp"
 
-namespace iclforge::io {
+namespace iclforge::ac3::io {
 
 namespace {
 
@@ -153,4 +153,4 @@ AccessUnitAccumulator::Result AccessUnitAccumulator::fail(ScanError error) {
     return {Status::kError, {}};
 }
 
-}  // namespace iclforge::io
+}  // namespace iclforge::ac3::io

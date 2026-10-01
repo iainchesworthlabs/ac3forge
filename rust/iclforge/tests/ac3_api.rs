@@ -57,7 +57,7 @@ fn encoder_config_default_mirrors_the_c_initializer() {
 
 /// `CentreMixLevel::default()`/`SurroundMixLevel::default()` are the library's own downmix
 /// defaults - -4.5 dB and -6 dB, what `iclforge_encoder_config_init()` (and so the C++
-/// `iclforge::EncoderConfig`, docs/library/encoding-ac3.md) sets - not merely the first variant.
+/// `iclforge::ac3::EncoderConfig`, docs/library/encoding-ac3.md) sets - not merely the first variant.
 /// They used to derive `Minus3Db` for both, so a config built field-by-field with
 /// `..Default::default()` on the enum disagreed with `EncoderConfig::default()`.
 #[test]

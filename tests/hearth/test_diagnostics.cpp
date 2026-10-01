@@ -351,12 +351,12 @@ TEST_CASE("diagnostics: decoder settings and items read as the pages name them",
           "no audio description, the stereo fold's downmix, the source's own immersive layout, "
           "full decoding");
     DecoderSettings custom;
-    custom.mode = iclforge::OperatingMode::kCustom;
+    custom.mode = iclforge::ac3::OperatingMode::kCustom;
     custom.drc_cut = 0.5;
     custom.drc_boost = 0.25;
     custom.heavy_compression = true;
     custom.normalise_dialogue = false;
-    custom.stereo_fold = iclforge::DownmixTarget::kLtRt;
+    custom.stereo_fold = iclforge::ac3::DownmixTarget::kLtRt;
     custom.ltrt_phase_shift = false;
     custom.mix_lfe = true;
     custom.mix_levels.loro_clev = 0.5;
@@ -364,8 +364,8 @@ TEST_CASE("diagnostics: decoder settings and items read as the pages name them",
     custom.mix_levels.lfe_mix_level_db = -3.0;
     custom.dual_mono = iclforge::hearth::DualMonoChoice::kSecond;
     custom.programme = 2;
-    custom.objects = iclforge::render::ObjectsPolicy::kNever;
-    custom.concealment = iclforge::ConcealmentPolicy::kNone;
+    custom.objects = iclforge::ac3::render::ObjectsPolicy::kNever;
+    custom.concealment = iclforge::ac3::ConcealmentPolicy::kNone;
     custom.fast_inverse_transform = false;
     custom.ac4.presentation_id = 7;
     custom.ac4.output_level_dbfs = -20.0;
@@ -386,12 +386,12 @@ TEST_CASE("diagnostics: decoder settings and items read as the pages name them",
           "audio description at -9.5 dB, the stream's preferred downmix, "
           "the source's own immersive layout, full decoding");
     DecoderSettings rf;
-    rf.mode = iclforge::OperatingMode::kRf;
+    rf.mode = iclforge::ac3::OperatingMode::kRf;
     rf.mix_levels.loro_slev = 0.0;
     rf.mix_levels.ltrt_clev = 1.0;
     rf.dual_mono = iclforge::hearth::DualMonoChoice::kFirst;
-    rf.objects = iclforge::render::ObjectsPolicy::kAlways;
-    rf.concealment = iclforge::ConcealmentPolicy::kMute;
+    rf.objects = iclforge::ac3::render::ObjectsPolicy::kAlways;
+    rf.concealment = iclforge::ac3::ConcealmentPolicy::kMute;
     rf.mix_lfe = false;
     rf.ac4.normalise = false;
     rf.ac4.language = "fr";

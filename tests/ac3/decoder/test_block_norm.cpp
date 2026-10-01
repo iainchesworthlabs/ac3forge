@@ -21,7 +21,7 @@
 #include "iclforge/arithmetic/fixed32.hpp"
 
 using iclforge::internal::Fixed32;
-namespace bn = iclforge::internal;
+namespace bn = iclforge::ac3::internal;
 
 TEST_CASE("the store exponent follows the smallest coded exponent, one bit down", "[fixed32]") {
     CHECK(bn::store_norm(bn::kNoExponent) == 0);

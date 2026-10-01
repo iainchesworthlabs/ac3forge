@@ -10,7 +10,7 @@
 // ICLFORGE_DECODE_SCALAR"), so no source file asks which it is with a
 // preprocessor conditional (tools/checks/check_platform_macros.ps1's rule).
 //
-// This is not the same mechanism as iclforge::internal::decode_scalar_t: that name
+// This is not the same mechanism as iclforge::ac3::internal::decode_scalar_t: that name
 // is used directly, as a concrete type, throughout iclforge::ac3's own decoder;
 // AC-4's kernels stay templated on `Real` (a template parameter, in scope
 // only inside each template's own definition) so that a future phase can

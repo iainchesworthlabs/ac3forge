@@ -19,7 +19,7 @@
 #include "bitalloc_internal.hpp"
 #include "iclforge/arithmetic/scalar_math.hpp"
 
-namespace iclforge {
+namespace iclforge::ac3 {
 
 namespace {
 
@@ -77,11 +77,11 @@ int calc_lowcomp(int a, int b0, int b1, int bin) {
 void exponents_to_psd(std::span<const std::uint8_t> exps, int start, int end,
                       std::span<std::int32_t> psd) {
     const auto stop = static_cast<std::size_t>(end);
-    const auto base = internal::arch::i32x4::broadcast(3072);
+    const auto base = iclforge::internal::arch::i32x4::broadcast(3072);
     std::size_t bin = static_cast<std::size_t>(start);
     for (; bin + 4 <= stop; bin += 4) {
-        const auto raw = internal::arch::i32x4::load_u8_widen(exps.data() + bin);
-        (base - internal::arch::shift_left<7>(raw)).store(psd.data() + bin);
+        const auto raw = iclforge::internal::arch::i32x4::load_u8_widen(exps.data() + bin);
+        (base - iclforge::internal::arch::shift_left<7>(raw)).store(psd.data() + bin);
     }
     // end is a mantissa count (37, 61, ... 253), never a multiple of four.
     for (; bin < stop; ++bin) {
@@ -167,8 +167,8 @@ std::array<int, 50> band_psd(std::span<const int> psd, int start, int end) {
     return bndpsd;
 }
 
-// Shared by the exported iclforge::compute_bit_allocation and
-// iclforge::internal::compute_bit_allocation_traced below - the same routine
+// Shared by the exported iclforge::ac3::compute_bit_allocation and
+// iclforge::ac3::internal::compute_bit_allocation_traced below - the same routine
 // either way, `mask_out` null on the public path (see bitalloc_internal.hpp
 // for why that one is not just an added parameter on the public signature).
 namespace {
@@ -507,11 +507,12 @@ DeltaSegments choose_delta_segments_over(std::span<const Scalar> coefficients,
     for (int bin = start; bin < end; ++bin) {
         const auto i = static_cast<std::size_t>(bin);
         const Scalar magnitude = std::abs(coefficients[i]);
-        real_psd[i] = magnitude > 0
-                          ? static_cast<int>(std::lround(
-                                static_cast<Scalar>(3200) +
-                                static_cast<Scalar>(128) * internal::scalar_log2(magnitude)))
-                          : psd[i];  // silence: nothing to correct
+        real_psd[i] =
+            magnitude > 0
+                ? static_cast<int>(std::lround(static_cast<Scalar>(3200) +
+                                               static_cast<Scalar>(128) *
+                                                   iclforge::internal::scalar_log2(magnitude)))
+                : psd[i];  // silence: nothing to correct
     }
 
     const std::array<int, 50> bndpsd = band_psd(psd, start, end);
@@ -614,9 +615,9 @@ DeltaSegments choose_delta_segments(std::span<const float> coefficients,
     return choose_delta_segments_over<float>(coefficients, exps, start);
 }
 
-}  // namespace iclforge
+}  // namespace iclforge::ac3
 
-namespace iclforge::internal {
+namespace iclforge::ac3::internal {
 
 void compute_bit_allocation_traced(std::span<const std::uint8_t> exps, SampleRate sample_rate,
                                    const BitAllocCodes& codes, int csnroffst, int fsnroffst,
@@ -625,4 +626,4 @@ void compute_bit_allocation_traced(std::span<const std::uint8_t> exps, SampleRat
     compute_bit_allocation_impl(exps, sample_rate, codes, csnroffst, fsnroffst, bap, region, &mask);
 }
 
-}  // namespace iclforge::internal
+}  // namespace iclforge::ac3::internal

@@ -82,7 +82,7 @@ QUALITY_CODECS = {"ac3": "AC-3", "eac3": "E-AC-3"}
 # (tests/performance/bench_encoder.cpp) and memory-*.jsonl (bench_memory.cpp).
 #
 # The names follow a convention: ac3_* and plain_* are AC-3 (plain_51 is the
-# AC-3 encoder, iclforge::FrameEncoder, at 5.1 and 448 kbps - "plain" against the
+# AC-3 encoder, iclforge::ac3::FrameEncoder, at 5.1 and 448 kbps - "plain" against the
 # E-AC-3 and Atmos rows beside it); eac3_*, ecpl_* and atmos_* are E-AC-3
 # (ecpl is its enhanced coupling, atmos is Dolby Atmos carried in E-AC-3 as
 # joint object coding); ac4_* are AC-4. The table, not the prefix, is what is

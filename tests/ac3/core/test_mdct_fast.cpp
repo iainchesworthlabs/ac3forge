@@ -56,8 +56,8 @@ constexpr double kFastTolerance = 1e-10;  // matches mdct.hpp's own documented b
 std::array<double, 256> forward512(const std::array<double, 512>& input, bool fast) {
     std::array<double, 512> windowed{};
     std::array<double, 256> coeffs{};
-    iclforge::apply_analysis_window(input, windowed);
-    iclforge::mdct512_forward(windowed, coeffs, fast);
+    iclforge::ac3::apply_analysis_window(input, windowed);
+    iclforge::ac3::mdct512_forward(windowed, coeffs, fast);
     return coeffs;
 }
 
@@ -68,11 +68,11 @@ struct ShortCoeffs {
 
 ShortCoeffs forward256_pair(const std::array<double, 512>& input, bool fast) {
     std::array<double, 512> windowed{};
-    iclforge::apply_analysis_window(input, windowed);
+    iclforge::ac3::apply_analysis_window(input, windowed);
     const std::span<const double, 512> full(windowed);
     ShortCoeffs out{};
-    iclforge::mdct256_forward_first(full.first<256>(), out.first, fast);
-    iclforge::mdct256_forward_second(full.last<256>(), out.second, fast);
+    iclforge::ac3::mdct256_forward_first(full.first<256>(), out.first, fast);
+    iclforge::ac3::mdct256_forward_second(full.last<256>(), out.second, fast);
     return out;
 }
 
@@ -184,8 +184,8 @@ TEST_CASE("fast imdct512_windowed agrees with the direct 7.9.4.1 evaluation",
     const auto check = [](const std::array<double, 256>& coeffs) {
         std::array<double, 512> direct{};
         std::array<double, 512> fast{};
-        iclforge::imdct512_windowed(coeffs, direct, false);
-        iclforge::imdct512_windowed(coeffs, fast, true);
+        iclforge::ac3::imdct512_windowed(coeffs, direct, false);
+        iclforge::ac3::imdct512_windowed(coeffs, fast, true);
         const double err = max_rel_error(fast, direct);
         CAPTURE(err);
         CHECK(err < kFastTolerance);
@@ -213,8 +213,8 @@ TEST_CASE("fast imdct256_pair_windowed agrees with the direct 7.9.4.2 evaluation
     const auto check = [](const std::array<double, 256>& coeffs) {
         std::array<double, 512> direct{};
         std::array<double, 512> fast{};
-        iclforge::imdct256_pair_windowed(coeffs, direct, false);
-        iclforge::imdct256_pair_windowed(coeffs, fast, true);
+        iclforge::ac3::imdct256_pair_windowed(coeffs, direct, false);
+        iclforge::ac3::imdct256_pair_windowed(coeffs, fast, true);
         const double err = max_rel_error(fast, direct);
         CAPTURE(err);
         CHECK(err < kFastTolerance);
@@ -284,8 +284,8 @@ TEST_CASE("float32 inverse transform agrees with the double one", "[mdct][float3
 
         std::array<double, 512> x_d{};
         std::array<float, 512> x_f{};
-        iclforge::imdct512_windowed(coeffs_d, x_d, /*fast=*/true);
-        iclforge::imdct512_windowed(coeffs_f, x_f);
+        iclforge::ac3::imdct512_windowed(coeffs_d, x_d, /*fast=*/true);
+        iclforge::ac3::imdct512_windowed(coeffs_f, x_f);
 
         std::array<double, 512> widened{};
         for (std::size_t i = 0; i < widened.size(); ++i) {
@@ -327,8 +327,8 @@ TEST_CASE("float32 forward transform agrees with the double one", "[mdct][float3
 
         std::array<double, 512> win_d{};
         std::array<float, 512> win_f{};
-        iclforge::apply_analysis_window(raw_d, win_d);
-        iclforge::apply_analysis_window(raw_f, win_f);
+        iclforge::ac3::apply_analysis_window(raw_d, win_d);
+        iclforge::ac3::apply_analysis_window(raw_f, win_f);
 
         std::array<double, 512> win_widened{};
         for (std::size_t i = 0; i < win_widened.size(); ++i) {
@@ -338,8 +338,8 @@ TEST_CASE("float32 forward transform agrees with the double one", "[mdct][float3
 
         std::array<double, 256> coeffs_d{};
         std::array<float, 256> coeffs_f{};
-        iclforge::mdct512_forward(win_d, coeffs_d, /*fast=*/true);
-        iclforge::mdct512_forward(win_f, coeffs_f);
+        iclforge::ac3::mdct512_forward(win_d, coeffs_d, /*fast=*/true);
+        iclforge::ac3::mdct512_forward(win_f, coeffs_f);
 
         std::array<double, 256> widened{};
         for (std::size_t i = 0; i < widened.size(); ++i) {
@@ -377,12 +377,12 @@ TEST_CASE("float32 batch transforms agree with their scalar float forms", "[mdct
     }
 
     std::array<std::array<float, 256>, 4> batched{};
-    iclforge::mdct512_forward_batch4(win[0], win[1], win[2], win[3], batched[0], batched[1],
+    iclforge::ac3::mdct512_forward_batch4(win[0], win[1], win[2], win[3], batched[0], batched[1],
                                 batched[2], batched[3]);
     for (std::size_t lane = 0; lane < win.size(); ++lane) {
         CAPTURE(lane);
         std::array<float, 256> one{};
-        iclforge::mdct512_forward(win[lane], one);
+        iclforge::ac3::mdct512_forward(win[lane], one);
         CHECK(std::ranges::equal(one, batched[lane]));
     }
 
@@ -394,12 +394,13 @@ TEST_CASE("float32 batch transforms agree with their scalar float forms", "[mdct
     }
 
     std::array<std::array<float, 512>, 4> batched_inv{};
-    iclforge::imdct512_windowed_batch4(coeffs[0], coeffs[1], coeffs[2], coeffs[3], batched_inv[0],
-                                  batched_inv[1], batched_inv[2], batched_inv[3]);
+    iclforge::ac3::imdct512_windowed_batch4(coeffs[0], coeffs[1], coeffs[2], coeffs[3],
+                                            batched_inv[0], batched_inv[1], batched_inv[2],
+                                            batched_inv[3]);
     for (std::size_t lane = 0; lane < coeffs.size(); ++lane) {
         CAPTURE(lane);
         std::array<float, 512> one{};
-        iclforge::imdct512_windowed(coeffs[lane], one);
+        iclforge::ac3::imdct512_windowed(coeffs[lane], one);
         CHECK(std::ranges::equal(one, batched_inv[lane]));
     }
 }
@@ -419,8 +420,8 @@ TEST_CASE("float32 short-block inverse agrees with the double one", "[mdct][floa
 
         std::array<double, 512> x_d{};
         std::array<float, 512> x_f{};
-        iclforge::imdct256_pair_windowed(coeffs_d, x_d, /*fast=*/true);
-        iclforge::imdct256_pair_windowed(coeffs_f, x_f);
+        iclforge::ac3::imdct256_pair_windowed(coeffs_d, x_d, /*fast=*/true);
+        iclforge::ac3::imdct256_pair_windowed(coeffs_f, x_f);
 
         std::array<double, 512> widened{};
         for (std::size_t i = 0; i < widened.size(); ++i) {
@@ -458,10 +459,10 @@ TEST_CASE("float32 short-block forward transforms agree with the double ones",
         std::array<double, 128> second_d{};
         std::array<float, 128> first_f{};
         std::array<float, 128> second_f{};
-        iclforge::mdct256_forward_first(full_d.first<256>(), first_d, /*fast=*/true);
-        iclforge::mdct256_forward_second(full_d.last<256>(), second_d, /*fast=*/true);
-        iclforge::mdct256_forward_first(full_f.first<256>(), first_f);
-        iclforge::mdct256_forward_second(full_f.last<256>(), second_f);
+        iclforge::ac3::mdct256_forward_first(full_d.first<256>(), first_d, /*fast=*/true);
+        iclforge::ac3::mdct256_forward_second(full_d.last<256>(), second_d, /*fast=*/true);
+        iclforge::ac3::mdct256_forward_first(full_f.first<256>(), first_f);
+        iclforge::ac3::mdct256_forward_second(full_f.last<256>(), second_f);
         std::array<double, 128> widened{};
         for (std::size_t i = 0; i < widened.size(); ++i) {
             widened[i] = static_cast<double>(first_f[i]);

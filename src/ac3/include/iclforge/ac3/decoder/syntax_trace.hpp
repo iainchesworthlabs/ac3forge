@@ -28,7 +28,7 @@
 //
 // `forge probe`'s per-block dump is built on this; see ac3/io/probe.hpp.
 
-namespace iclforge {
+namespace iclforge::ac3 {
 
 // Stream slots in a syntax trace, matching the numbering both decoders
 // already use internally: the full-bandwidth channels first (0 ..
@@ -160,4 +160,4 @@ struct FrameSyntax {
     [[nodiscard]] int lfe_stream() const { return fbw_channels; }
 };
 
-}  // namespace iclforge
+}  // namespace iclforge::ac3

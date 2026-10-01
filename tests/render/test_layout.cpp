@@ -34,7 +34,7 @@ namespace {
 using iclforge::render::LayoutRenderer;
 using iclforge::render::OutputLayout;
 using iclforge::render::Speaker;
-using Location = iclforge::eac3::chanmap::Location;
+using Location = iclforge::ac3::eac3::chanmap::Location;
 using Catch::Approx;
 
 std::vector<Location> locations_of(const OutputLayout& layout) {
@@ -46,12 +46,13 @@ std::vector<Location> locations_of(const OutputLayout& layout) {
     return out;
 }
 
-iclforge::eac3::chanmap::Layout coded(std::uint16_t map) {
-    return iclforge::eac3::chanmap::expand(map);
+iclforge::ac3::eac3::chanmap::Layout coded(std::uint16_t map) {
+    return iclforge::ac3::eac3::chanmap::expand(map);
 }
 
-constexpr std::uint16_t k51 = iclforge::eac3::chanmap::acmod_map(iclforge::Acmod::k3_2, true);
-constexpr std::uint16_t k71 = k51 | iclforge::eac3::chanmap::k71Rear;
+constexpr std::uint16_t k51 =
+    iclforge::ac3::eac3::chanmap::acmod_map(iclforge::ac3::Acmod::k3_2, true);
+constexpr std::uint16_t k71 = k51 | iclforge::ac3::eac3::chanmap::k71Rear;
 
 // A PcmBlock over constant-valued channels and objects, long enough to own
 // the storage the block's spans view.
@@ -77,8 +78,8 @@ struct Block {
         }
     }
 
-    [[nodiscard]] iclforge::PcmBlock block() const {
-        return iclforge::PcmBlock{.index = 0,
+    [[nodiscard]] iclforge::ac3::PcmBlock block() const {
+        return iclforge::ac3::PcmBlock{.index = 0,
                              .blocks = 6,
                              .channels = channels,
                              .objects = objects,
@@ -132,7 +133,7 @@ TEST_CASE("a named layout comes out ring, heights, LFE, in Table E2.5 order", "[
     REQUIRE(layout->index_of(Location::kLfe) == 11);
     REQUIRE(layout->text() == "7.1.4");
     // A name is the §7.8 stage's business only when it is 2.0 or 1.0.
-    REQUIRE_FALSE(layout->fold(iclforge::DownmixTarget::kLoRo).has_value());
+    REQUIRE_FALSE(layout->fold(iclforge::ac3::DownmixTarget::kLoRo).has_value());
 
     // With rears present the surrounds sit at the sides, as BS.2051 has 7.1.
     REQUIRE(layout->slot(3).direction.azimuth_deg == Approx(90.0));
@@ -161,7 +162,7 @@ TEST_CASE("the named layouts that exist, and the ones that do not", "[io][layout
     REQUIRE(mono.has_value());
     REQUIRE(mono->slots() == 1);
     REQUIRE(mono->slot(0).location == Location::kCentre);
-    REQUIRE(mono->fold(iclforge::DownmixTarget::kLoRo) == iclforge::DownmixTarget::kMono);
+    REQUIRE(mono->fold(iclforge::ac3::DownmixTarget::kLoRo) == iclforge::ac3::DownmixTarget::kMono);
 
     const auto six_heights = OutputLayout::parse("7.1.6");
     REQUIRE(six_heights.has_value());
@@ -179,8 +180,10 @@ TEST_CASE("the named layouts that exist, and the ones that do not", "[io][layout
 TEST_CASE("2.0 and 1.0 fold in the decoder; anything else is rendered", "[io][layout]") {
     const auto stereo = OutputLayout::stereo();
     REQUIRE(stereo.slots() == 2);
-    REQUIRE(stereo.fold(iclforge::DownmixTarget::kLoRo) == iclforge::DownmixTarget::kLoRo);
-    REQUIRE(stereo.fold(iclforge::DownmixTarget::kLtRt) == iclforge::DownmixTarget::kLtRt);
+    REQUIRE(stereo.fold(iclforge::ac3::DownmixTarget::kLoRo) ==
+            iclforge::ac3::DownmixTarget::kLoRo);
+    REQUIRE(stereo.fold(iclforge::ac3::DownmixTarget::kLtRt) ==
+            iclforge::ac3::DownmixTarget::kLtRt);
     REQUIRE(stereo.text() == "2.0");
 
     // §7.8 has no fold that keeps an LFE or places a height, so these render.
@@ -188,16 +191,18 @@ TEST_CASE("2.0 and 1.0 fold in the decoder; anything else is rendered", "[io][la
         CAPTURE(rendered);
         const auto layout = OutputLayout::parse(rendered);
         REQUIRE(layout.has_value());
-        REQUIRE_FALSE(layout->fold(iclforge::DownmixTarget::kLoRo).has_value());
+        REQUIRE_FALSE(layout->fold(iclforge::ac3::DownmixTarget::kLoRo).has_value());
     }
     // Two speakers by angle alone are still a stereo pair.
     const auto angled = OutputLayout::parse("30/0,-30/0");
     REQUIRE(angled.has_value());
-    REQUIRE(angled->fold(iclforge::DownmixTarget::kLoRo) == iclforge::DownmixTarget::kLoRo);
+    REQUIRE(angled->fold(iclforge::ac3::DownmixTarget::kLoRo) ==
+            iclforge::ac3::DownmixTarget::kLoRo);
     // And a stereo DAC wired the other way round is still stereo.
     const auto swapped = OutputLayout::parse("R,L");
     REQUIRE(swapped.has_value());
-    REQUIRE(swapped->fold(iclforge::DownmixTarget::kLoRo) == iclforge::DownmixTarget::kLoRo);
+    REQUIRE(swapped->fold(iclforge::ac3::DownmixTarget::kLoRo) ==
+            iclforge::ac3::DownmixTarget::kLoRo);
 }
 
 TEST_CASE("a speaker list is one token per slot, in slot order", "[io][layout]") {
@@ -317,7 +322,8 @@ TEST_CASE("the LFE feeds", "[io][layout][render]") {
     REQUIRE(two_feeds.bed_gain(5, 14) == 0.0F);
 
     // Two coded, two feeds: each to its own.
-    two_feeds.set_bed(coded(static_cast<std::uint16_t>(k51 | iclforge::eac3::chanmap::kLfe2Bit)));
+    two_feeds.set_bed(
+        coded(static_cast<std::uint16_t>(k51 | iclforge::ac3::eac3::chanmap::kLfe2Bit)));
     const int lfe2 = two_feeds.layout().index_of(Location::kLfe2);
     REQUIRE(lfe2 == 14);
     // Coded order puts LFE2 before LFE (bits 14 and 15).
@@ -328,7 +334,8 @@ TEST_CASE("the LFE feeds", "[io][layout][render]") {
 
     // Two coded, one feed: both arrive on it.
     LayoutRenderer one_feed{*OutputLayout::parse("5.1")};
-    one_feed.set_bed(coded(static_cast<std::uint16_t>(k51 | iclforge::eac3::chanmap::kLfe2Bit)));
+    one_feed.set_bed(
+        coded(static_cast<std::uint16_t>(k51 | iclforge::ac3::eac3::chanmap::kLfe2Bit)));
     REQUIRE(one_feed.bed_gain(5, 5) == 1.0F);
     REQUIRE(one_feed.bed_gain(6, 5) == 1.0F);
 
@@ -430,7 +437,8 @@ TEST_CASE("every slot is written, including the ones nothing reaches", "[io][lay
     // A bus with an unconnected slot in the middle: the prefill must not
     // survive, or the DAC clocks out whatever the last block left there.
     LayoutRenderer renderer{*OutputLayout::parse("L,-,R,LFE")};
-    renderer.set_bed(coded(iclforge::eac3::chanmap::acmod_map(iclforge::Acmod::k2_0, false)));
+    renderer.set_bed(
+        coded(iclforge::ac3::eac3::chanmap::acmod_map(iclforge::ac3::Acmod::k2_0, false)));
     const Block stereo({0.4F, 0.6F}, {});
     Out out(4);
     renderer.render(stereo.block(), false, 1.0F, out.spans);
@@ -734,7 +742,7 @@ TEST_CASE("bass management: a small speaker's bass moves to the LFE feed",
     // LFE) still lights the LFE slot's bit, because the small L slot it
     // reaches has its bass sent there regardless.
     const std::uint16_t no_lfe_acmod =
-        iclforge::eac3::chanmap::acmod_map(iclforge::Acmod::k3_2, false);
+        iclforge::ac3::eac3::chanmap::acmod_map(iclforge::ac3::Acmod::k3_2, false);
     LayoutRenderer no_lfe{*layout};
     no_lfe.set_bed(coded(no_lfe_acmod));
     REQUIRE((no_lfe.bed_slots() & (1U << 5)) != 0);
@@ -804,7 +812,7 @@ TEST_CASE("moving the crossover moves a small speaker's bass", "[render][layout]
             }
             const std::array<std::span<const float>, 6> channels = {tone, silence, silence,
                                                                      silence, silence, silence};
-            const iclforge::PcmBlock pcm{.index = 0,
+            const iclforge::ac3::PcmBlock pcm{.index = 0,
                                     .blocks = 6,
                                     .channels = channels,
                                     .objects = {},

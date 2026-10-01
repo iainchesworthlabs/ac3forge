@@ -22,18 +22,18 @@ std::vector<std::byte> to_bytes(const char* text) {
 TEST_CASE("known check value (CRC-16/UMTS)", "[crc16]") {
     // Standard catalogue check string for poly 0x8005, init 0, unreflected.
     const auto msg = to_bytes("123456789");
-    CHECK(iclforge::crc16(msg) == 0xFEE8);
+    CHECK(iclforge::ac3::crc16(msg) == 0xFEE8);
 }
 
 TEST_CASE("empty input yields the initial register", "[crc16]") {
-    CHECK(iclforge::crc16({}) == 0x0000);
-    CHECK(iclforge::crc16({}, 0xABCD) == 0xABCD);
+    CHECK(iclforge::ac3::crc16({}) == 0x0000);
+    CHECK(iclforge::ac3::crc16({}, 0xABCD) == 0xABCD);
 }
 
 TEST_CASE("crc16 is usable at compile time", "[crc16]") {
     constexpr std::array<std::byte, 2> data{std::byte{0x0B}, std::byte{0x77}};
-    constexpr auto value = iclforge::crc16(data);
-    STATIC_CHECK(value == iclforge::crc16(data));
+    constexpr auto value = iclforge::ac3::crc16(data);
+    STATIC_CHECK(value == iclforge::ac3::crc16(data));
 }
 
 TEST_CASE("appending the CRC drives the register to zero", "[crc16]") {
@@ -48,11 +48,11 @@ TEST_CASE("appending the CRC drives the register to zero", "[crc16]") {
         for (auto& b : msg) {
             b = static_cast<std::byte>(byte_dist(rng));
         }
-        const std::uint16_t crc = iclforge::crc16(msg);
+        const std::uint16_t crc = iclforge::ac3::crc16(msg);
         auto with_crc = msg;
         with_crc.push_back(static_cast<std::byte>(crc >> 8));
         with_crc.push_back(static_cast<std::byte>(crc & 0xFF));
-        CHECK(iclforge::crc16(with_crc) == 0x0000);
+        CHECK(iclforge::ac3::crc16(with_crc) == 0x0000);
     }
 }
 
@@ -61,6 +61,6 @@ TEST_CASE("incremental computation matches one-shot", "[crc16]") {
     const std::span<const std::byte> all{msg};
     const auto split = msg.size() / 2;
     const std::uint16_t incremental =
-        iclforge::crc16(all.subspan(split), iclforge::crc16(all.first(split)));
-    CHECK(incremental == iclforge::crc16(all));
+        iclforge::ac3::crc16(all.subspan(split), iclforge::ac3::crc16(all.first(split)));
+    CHECK(incremental == iclforge::ac3::crc16(all));
 }

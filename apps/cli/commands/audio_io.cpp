@@ -50,7 +50,7 @@
 
 namespace forge_cli::commands {
 
-namespace plan = iclforge::plan;
+namespace plan = iclforge::ac3::plan;
 
 int run_devices() {
     const auto devices = iclforge::audio::enumerate_devices();
@@ -154,7 +154,8 @@ int record_passthrough(std::string_view out_path, std::uint32_t seconds,
     const auto rate = capture.sample_rate();
     const std::uint64_t target_frames = static_cast<std::uint64_t>(seconds) * rate;
     std::uint64_t captured = 0;
-    std::vector<float> interleaved(static_cast<std::size_t>(iclforge::kSamplesPerFrame) * channels);
+    std::vector<float> interleaved(static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame) *
+                                   channels);
     std::vector<std::byte> carrier;
     iclforge::audio::SilenceWatchdog watchdog{meta.watchdog};
     watchdog.reset(std::chrono::steady_clock::now());
@@ -179,7 +180,7 @@ int record_passthrough(std::string_view out_path, std::uint32_t seconds,
         if (device_lost) {
             break;
         }
-        captured += static_cast<std::uint64_t>(iclforge::kSamplesPerFrame);
+        captured += static_cast<std::uint64_t>(iclforge::ac3::kSamplesPerFrame);
         carrier.clear();
         iclforge::iec61937::carrier_from_capture(interleaved, channels, carrier);
         if (!drain(carrier)) {
@@ -245,12 +246,12 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
     }
     const auto& device = (*devices)[static_cast<std::size_t>(device_index)];
 
-    iclforge::SampleRate sr{};
+    iclforge::ac3::SampleRate sr{};
     bool encodable_rate = true;
     switch (device.sample_rate) {
-        case 48000: sr = iclforge::SampleRate::k48000; break;
-        case 44100: sr = iclforge::SampleRate::k44100; break;
-        case 32000: sr = iclforge::SampleRate::k32000; break;
+        case 48000: sr = iclforge::ac3::SampleRate::k48000; break;
+        case 44100: sr = iclforge::ac3::SampleRate::k44100; break;
+        case 32000: sr = iclforge::ac3::SampleRate::k32000; break;
         // Not an error on its own: a bitstreaming endpoint routinely runs at a
         // rate AC-3 cannot encode at - 192 kHz is exactly the E-AC-3 carrier's
         // 4x - so the rate gate below is the PCM path's own, applied only
@@ -325,7 +326,8 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
     // for how that briefer, opportunistic check works.
     if (!encodable_rate) {
         iclforge::iec61937::PassthroughDetector detector;
-        std::vector<float> probe(static_cast<std::size_t>(iclforge::kSamplesPerFrame) * channels);
+        std::vector<float> probe(static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame) *
+                                 channels);
         while (!detector.decided() && !device_lost) {
             read_frame(probe);
             if (device_lost) {
@@ -374,11 +376,11 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
     // that moves on a channel the stream never carries would be a lie. The
     // bed's own acmod/lfe, widened to the coded count where a dependent adds
     // channels past it - the same meter shape the GUI's live session builds.
-    iclforge::analysis::LevelMeter meter{channel_plan.bed_acmod, channel_plan.bed_lfe, rate_hz,
+    iclforge::ac3::analysis::LevelMeter meter{channel_plan.bed_acmod, channel_plan.bed_lfe, rate_hz,
                                     routing->coded_channels};
     const std::uint64_t target_frames =
-        (static_cast<std::uint64_t>(seconds) * rate_hz + iclforge::kSamplesPerFrame - 1) /
-        iclforge::kSamplesPerFrame;
+        (static_cast<std::uint64_t>(seconds) * rate_hz + iclforge::ac3::kSamplesPerFrame - 1) /
+        iclforge::ac3::kSamplesPerFrame;
 
     // Streamed to its container as it is produced (wide-layout record/live paths), through the
     // same RecordingSink the GUI's own takes go through - so a take of any
@@ -411,11 +413,12 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
     };
 
     const auto nchans = static_cast<std::size_t>(routing->coded_channels);
-    std::vector<float> interleaved(static_cast<std::size_t>(iclforge::kSamplesPerFrame) * channels);
-    std::vector<std::vector<float>> source(channels,
-                                           std::vector<float>(iclforge::kSamplesPerFrame, 0.0F));
-    std::vector<std::vector<float>> block(nchans,
-                                          std::vector<float>(iclforge::kSamplesPerFrame, 0.0F));
+    std::vector<float> interleaved(static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame) *
+                                   channels);
+    std::vector<std::vector<float>> source(
+        channels, std::vector<float>(iclforge::ac3::kSamplesPerFrame, 0.0F));
+    std::vector<std::vector<float>> block(
+        nchans, std::vector<float>(iclforge::ac3::kSamplesPerFrame, 0.0F));
     std::vector<std::span<const float>> in(channels);
     std::vector<std::span<float>> out(nchans);
     std::vector<std::span<const float>> views(nchans);
@@ -459,13 +462,13 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
                 return kExitOutput;
             }
         }
-        for (int i = 0; i < iclforge::kSamplesPerFrame; ++i) {
+        for (int i = 0; i < iclforge::ac3::kSamplesPerFrame; ++i) {
             const std::size_t base = static_cast<std::size_t>(i) * channels;
             for (std::size_t ch = 0; ch < channels; ++ch) {
                 source[ch][static_cast<std::size_t>(i)] = interleaved[base + ch];
             }
         }
-        plan::render(*routing, in, out, iclforge::kSamplesPerFrame);
+        plan::render(*routing, in, out, iclforge::ac3::kSamplesPerFrame);
         meter.process(views);
 
         // One unit for AC-3 and E-AC-3; for AC-4 the frames this one
@@ -489,8 +492,8 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
         ++frames_written;
         // One frame is 32 ms at 48 kHz, so the meter redraws about 30 times a
         // second without any throttling of its own.
-        print_live_meter(meter, static_cast<double>(frames_written * iclforge::kSamplesPerFrame) /
-                                    rate_hz);
+        print_live_meter(
+            meter, static_cast<double>(frames_written * iclforge::ac3::kSamplesPerFrame) / rate_hz);
     }
     status_println(status);
 
@@ -745,7 +748,7 @@ int run_identify(int device_index, std::string_view layout_text, std::uint32_t s
         const auto& speaker = layout->slot(slot);
         const int patched = output.routing().output_of(slot);
         const std::string_view name =
-            speaker.location ? iclforge::eac3::chanmap::name(*speaker.location) : "by angle";
+            speaker.location ? iclforge::ac3::eac3::chanmap::name(*speaker.location) : "by angle";
         if (patched == iclforge::render::Routing::kUnassigned) {
             fmt::println("slot {:>2} {:<4} not patched - skipped", slot, name);
             continue;
@@ -823,22 +826,22 @@ struct SplitStream {
         return std::nullopt;
     }
     if (eac3) {
-        const auto split = iclforge::split_access_units(result.bytes);
+        const auto split = iclforge::ac3::split_access_units(result.bytes);
         if (!split.has_value() || split->empty()) {
             fmt::println(stderr, "error: {} is not a valid E-AC-3 stream", path);
             return std::nullopt;
         }
         result.units = *split;
     } else {
-        const auto split = iclforge::split_frames(result.bytes);
+        const auto split = iclforge::ac3::split_frames(result.bytes);
         if (!split.has_value() || split->empty()) {
             fmt::println(stderr, "error: {} is not a valid AC-3 stream", path);
             return std::nullopt;
         }
         result.units = *split;
     }
-    result.content_rate = sample_rate_hz(
-        static_cast<iclforge::SampleRate>(std::to_integer<std::uint32_t>(result.units[0][4]) >> 6));
+    result.content_rate = sample_rate_hz(static_cast<iclforge::ac3::SampleRate>(
+        std::to_integer<std::uint32_t>(result.units[0][4]) >> 6));
     return result;
 }
 
@@ -994,7 +997,7 @@ int run_play(std::string_view in_path, int device_index, const Options& meta) {
                        in_path);
         return run_monitor(in_path, device_index, meta);
     }
-    const auto bsid = iclforge::stream_bsid(stream);
+    const auto bsid = iclforge::ac3::stream_bsid(stream);
     if (!bsid.has_value()) {
         fmt::println(stderr, "error: {} is too short to hold a syncframe", in_path);
         return kExitInput;
@@ -1004,22 +1007,22 @@ int run_play(std::string_view in_path, int device_index, const Options& meta) {
     std::vector<std::span<const std::byte>> units;
     std::uint32_t content_rate = 0;
     if (eac3) {
-        const auto split = iclforge::split_access_units(stream);
+        const auto split = iclforge::ac3::split_access_units(stream);
         if (!split.has_value() || split->empty()) {
             fmt::println(stderr, "error: {} is not a valid E-AC-3 stream", in_path);
             return kExitInput;        }
         units = *split;
         content_rate =
-            sample_rate_hz(static_cast<iclforge::SampleRate>(
+            sample_rate_hz(static_cast<iclforge::ac3::SampleRate>(
                 std::to_integer<std::uint32_t>(units[0][4]) >> 6));
     } else {
-        const auto split = iclforge::split_frames(stream);
+        const auto split = iclforge::ac3::split_frames(stream);
         if (!split.has_value() || split->empty()) {
             fmt::println(stderr, "error: {} is not a valid AC-3 stream", in_path);
             return kExitInput;        }
         units = *split;
         content_rate =
-            sample_rate_hz(static_cast<iclforge::SampleRate>(
+            sample_rate_hz(static_cast<iclforge::ac3::SampleRate>(
                 std::to_integer<std::uint32_t>(units[0][4]) >> 6));
     }
 

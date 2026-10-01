@@ -12,7 +12,7 @@
 // this project's exponent/bit-allocation/mantissa layers nor the decoder need
 // to know how blksw was chosen, only what it says.
 
-namespace iclforge {
+namespace iclforge::ac3 {
 
 // One instance per full-bandwidth channel of a continuous encode: both the
 // cascaded biquad's filter memory and the hierarchical peak tree's P[j][0]
@@ -100,4 +100,4 @@ extern template class ICLFORGE_AC3_TEMPLATE_IMPORT BasicTransientDetector<float>
 
 using TransientDetector = BasicTransientDetector<double>;
 
-}  // namespace iclforge
+}  // namespace iclforge::ac3

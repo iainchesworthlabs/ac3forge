@@ -113,7 +113,7 @@ In rough order of strength:
    job of the Fuzz workflow. See
    [fuzz/README.md](https://github.com/iainchesworthlabs/iclforge/blob/main/fuzz/README.md).
 
-6. **The encoder/decoder mirror self-check** (`iclforge::verify`, opt-in). Not an oracle: it compares
+6. **The encoder/decoder mirror self-check** (`iclforge::ac3::verify`, opt-in). Not an oracle: it compares
    this project against itself. What it compares is the *model* rather than the audio. An encoder
    carries a picture of the decoder it is writing for — the exponents that decoder will
    reconstruct, the bit allocation it will derive, the delta correction it is holding, the AHT
@@ -357,7 +357,7 @@ was the same dither-dominated surround every single run.
 2. **Spec-permitted dither divergence is still inside the measurement.** The surrounds
    score ~22 dB not because either decoder is wrong but because §7.3.4 lets them differ
    in the zero-bit bins. A comparison that excluded those bins — masking on the `bap`
-   values the decoder already records in `iclforge::verify::FrameTrace` (`DecoderConfig::trace`,
+   values the decoder already records in `iclforge::ac3::verify::FrameTrace` (`DecoderConfig::trace`,
    exported by `iclforge/ac3/verify/trace_export.hpp`) — would measure only the bins that were
    actually coded, and the surrounds would be expected to join the front channels in the
    50–90 dB band. That needs the comparison moved into the MDCT domain, with block
@@ -534,19 +534,19 @@ dependents "shall immediately follow the independent substream with which they a
 and agree with it on sample rate and block count, both of which this arrangement satisfies (an
 AC-3 syncframe is always six audblks, matching Annex E's `numblkscod` 3).
 
-Before this, `iclforge::io::scan()` and `forge decode` both dispatched on the first frame's bsid
+Before this, `iclforge::ac3::io::scan()` and `forge decode` both dispatched on the first frame's bsid
 alone: an AC-3 frame sent the stream down the AC-3 path, which read the core cleanly and then
 refused the following bsid-16 dependent as "valid AC-3 this decoder does not implement (bsid >
-8)". `iclforge::split_access_units` had the same gap from the other direction - it read `strmtyp`
+8)". `iclforge::ac3::split_access_units` had the same gap from the other direction - it read `strmtyp`
 out of byte 2's top two bits unconditionally, which in an AC-3 syncframe are crc1's, not a
 stream-type field, so a core's own checksum could accidentally look like `kIndependent` or
 `kDependent` regardless of what actually followed it.
 
-Both are fixed: `iclforge::io::StreamKind` gained `kAc3CoreEac3Extension`, `iclforge::io::scan()`
+Both are fixed: `iclforge::ac3::io::StreamKind` gained `kAc3CoreEac3Extension`, `iclforge::ac3::io::scan()`
 recognises the alternating bsid pattern as one access unit per core-plus-dependents group, and
-`iclforge::has_eac3_extension_substreams()` lets `forge decode` route such a stream to
+`iclforge::ac3::has_eac3_extension_substreams()` lets `forge decode` route such a stream to
 `Eac3Decoder` even though its first frame is AC-3. There, `Eac3Decoder::decode_substream` reads
-an AC-3 frame through a private `iclforge::FrameDecoder` and presents the result as substream
+an AC-3 frame through a private `iclforge::ac3::FrameDecoder` and presents the result as substream
 (independent, 0), and `decode_access_unit_core`'s existing §E3.8.2 combining - unchanged - lays
 the dependent's channels over it exactly as it would a normal Annex E bed. Measured against
 FFmpeg's own decode of the real FATE sample: 41.69 dB on the worst of the eight rendered
@@ -674,7 +674,7 @@ packets carry a main programme FFmpeg reads perfectly well on its own — splitt
 programme first and handing FFmpeg only I0's access units strict-decodes clean, while I1's alone
 give `invalid frame type` / `unable to determine channel mode`. So FFmpeg remains usable as an
 oracle on each programme's frames, but only after the stream has been demultiplexed by programme,
-which is what `iclforge::split_access_units(stream, programme)` does.
+which is what `iclforge::ac3::split_access_units(stream, programme)` does.
 
 That demultiplexing is what the container path already performs — a track carries one programme,
 so `forge mkv`/`mp4` write the first programme's access units (and warn about the rest) — and

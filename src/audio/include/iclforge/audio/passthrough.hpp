@@ -165,7 +165,7 @@ struct RenderDeviceInfo {
     // say. 0 means it cannot - not "no channels" - and a caller must treat
     // the two differently: the only safe reading of "unknown" is to leave
     // the audio alone. It exists so a decoded programme wider than the
-    // endpoint can be folded (§7.8, iclforge::OutputStage) before it is played,
+    // endpoint can be folded (§7.8, iclforge::ac3::OutputStage) before it is played,
     // rather than handed to a shared-mode mixer to average down however it
     // sees fit. MonitorSink opens in SHARED mode, so a wider programme is
     // not refused - which is exactly why the narrowing has to be noticed

@@ -14,7 +14,7 @@
 // qc_preset()'s own comment on each case for the exact wording cited; every
 // number here was read out of the primary document, not recalled from memory.
 //
-// Deliberately the same shape iclforge::meta::Profile/ProfileId (drc.hpp) uses for
+// Deliberately the same shape iclforge::ac3::meta::Profile/ProfileId (drc.hpp) uses for
 // the §7.7.1 DRC profile table: a small enum naming the presets, a constexpr
 // accessor returning the numbers, and a name<->id parser - so a caller
 // (forge qc, and the GUI's own QC panel) reads one table instead of
@@ -49,7 +49,7 @@
 //     row is absent rather than guessed - and -24/+/-2/-2 would in any case
 //     restate kAtscA85.
 
-namespace iclforge::meta {
+namespace iclforge::ac3::meta {
 
 // How a preset enforces its loudness target. Most delivery specs state a
 // target to hit and a symmetric tolerance around it; a distribution platform
@@ -237,4 +237,4 @@ struct QcVerdict {
                                                          std::optional<double> integrated_lkfs,
                                                          std::optional<double> true_peak_dbtp);
 
-}  // namespace iclforge::meta
+}  // namespace iclforge::ac3::meta

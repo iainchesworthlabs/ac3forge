@@ -4343,17 +4343,17 @@ Drop AC-3, E-AC-3 or AC-4 files or a folder here.</source>
 <context>
     <name>iclforge::hearth::ui::HearthController</name>
     <message>
-        <location filename="../hearth_controller.cpp" line="1172"/>
+        <location filename="../hearth_controller.cpp" line="1175"/>
         <source>This build carries no embedded notices file (:/notices/NOTICES.txt was not compiled in); the NOTICES.txt beside the application and the repository&apos;s LICENSE say what it ships.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../hearth_controller.cpp" line="2210"/>
+        <location filename="../hearth_controller.cpp" line="2213"/>
         <source>saved to %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../hearth_controller.cpp" line="2213"/>
+        <location filename="../hearth_controller.cpp" line="2216"/>
         <source>could not write %1: %2</source>
         <translation type="unfinished"></translation>
     </message>

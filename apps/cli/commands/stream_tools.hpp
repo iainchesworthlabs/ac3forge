@@ -16,7 +16,7 @@
 // AC-3/E-AC-3 elementary stream rather than on PCM.
 //
 // Two of the three never touch the audio at all. 'metadata' and 'normalize'
-// rewrite bsi fields in place and re-stamp the CRCs (iclforge::io::metadata_edit),
+// rewrite bsi fields in place and re-stamp the CRCs (iclforge::ac3::io::metadata_edit),
 // so a delivery correction costs no coding generation; 'cut' and 'cat' work
 // on whole access units, so the bytes they keep are byte-for-byte the bytes
 // that went in. 'transcode' is the one that does re-encode, because DD+ and
@@ -37,7 +37,7 @@ namespace forge_cli::commands {
 // shares it too, for its sink-following fallback - see decode_and_render.
 struct LoadedStream {
     std::vector<std::byte> bytes;
-    iclforge::io::ScannedStream scan;
+    iclforge::ac3::io::ScannedStream scan;
 };
 
 // Reads the whole file at `path` and scans it, reporting either failure
@@ -58,7 +58,7 @@ struct DecodeRenderStats {
 };
 
 // Decodes the whole of `loaded` and renders it through `routing` into
-// complete iclforge::kSamplesPerFrame blocks (the last one held-sample-padded, not
+// complete iclforge::ac3::kSamplesPerFrame blocks (the last one held-sample-padded, not
 // silence-dropped - see SampleQueue::take in the .cpp), calling `on_frame`
 // for each one with how many of its samples are the programme's: all of them
 // but in the last. `coded_channels` sizes the buffers `on_frame` receives -
@@ -80,8 +80,9 @@ struct DecodeRenderStats {
 using RenderedFrame = std::function<bool(std::span<const std::span<const float>>, std::size_t)>;
 
 [[nodiscard]] std::optional<DecodeRenderStats> decode_and_render(
-    std::string_view in_path, const LoadedStream& loaded, const iclforge::plan::Routing& routing,
-    std::size_t coded_channels, const RenderedFrame& on_frame,
+    std::string_view in_path, const LoadedStream& loaded,
+    const iclforge::ac3::plan::Routing& routing, std::size_t coded_channels,
+    const RenderedFrame& on_frame,
     const std::function<void()>& on_abort = [] { /* default: nothing to clean up */ });
 
 // Decode and re-encode, preserving dialnorm, DRC and the mix metadata the

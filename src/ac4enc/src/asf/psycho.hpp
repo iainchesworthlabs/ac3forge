@@ -10,7 +10,7 @@
 // psychoacoustic model"; decision 17): per scale factor band of each window
 // group, the noise energy the band can carry unheard.
 //
-// Written for AC-4's bands from the published sources iclforge::quality's model
+// Written for AC-4's bands from the published sources iclforge::ac3::quality's model
 // cites, not linked to it:
 //
 //   - the masking threshold from the band's energy, lowered by an offset
@@ -30,7 +30,7 @@
 // octave of the speech and music that DEE's streams keep: with it the race's
 // log-spectral distance at 192 kbps was 4.3 dB on music and 2.9 on speech,
 // against DEE's 2.4 and 0.4, and without it 2.2 and 0.1 (planning/ac4.md, the
-// encoder's ladder, item 5). iclforge::quality's model makes the same curve
+// encoder's ladder, item 5). iclforge::ac3::quality's model makes the same curve
 // optional for the same reason.
 
 namespace iclforge::ac4::detail {

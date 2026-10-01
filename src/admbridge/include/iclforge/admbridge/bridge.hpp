@@ -15,8 +15,8 @@
 
 // Roadmap item B1 phase 2 of 3 ("ADM BWF reader feeding the JOC encoder"): maps
 // the object graph iclforge::adm (phase 1) parses from a BW64/ADM master onto
-// iclforge::oba::AtmosEncoder's input shape - one iclforge::oba::ObjectPath plus one mono PCM span
-// per channel, ready to drive encode_frame() in a loop. Phase 3 (a CLI/GUI-facing end-to-end
+// iclforge::ac3::oba::AtmosEncoder's input shape - one iclforge::oba::ObjectPath plus one mono PCM
+// span per channel, ready to drive encode_frame() in a loop. Phase 3 (a CLI/GUI-facing end-to-end
 // command) is a separate, later task; this module is the mapping/bridge library only.
 //
 // iclforge::admbridge sits between two modules that otherwise know nothing about each other:
@@ -156,9 +156,9 @@ build_channel_path(const iclforge::adm::AudioChannelFormat& channel, double obje
                     bool force_lfe);
 
 // The result of bridging one iclforge::adm::AdmDocument: everything needed to construct and drive
-// an iclforge::oba::AtmosEncoder, one entry per channel (bed speaker feed or dynamic object), all
-// vectors indexed identically - entry i of every vector describes the same channel. Channels appear
-// in programme -> audioContent -> audioObject (including nested audioObjects, depth-first)
+// an iclforge::ac3::oba::AtmosEncoder, one entry per channel (bed speaker feed or dynamic object),
+// all vectors indexed identically - entry i of every vector describes the same channel. Channels
+// appear in programme -> audioContent -> audioObject (including nested audioObjects, depth-first)
 // traversal order; that order has no significance to AtmosEncoder itself (see this header's own
 // top comment - every channel becomes one of its `objects_` slots identically, bed-pinned or
 // not), it exists only so BridgeResult is deterministic and its diagnostics read sensibly.
@@ -175,7 +175,7 @@ struct BridgeResult {
                                     // keep that document (and its iclforge::adm::PcmAudio)
                                     // alive for as long as these spans are used
     std::uint32_t sample_rate = 0;  // iclforge::adm::PcmAudio::sample_rate, unconverted - the
-                                    // caller maps this to iclforge::SampleRate (and rejects
+                                    // caller maps this to iclforge::ac3::SampleRate (and rejects
                                     // an unsupported rate) the same way every existing
                                     // WAV-reading entry point already does; not
                                     // duplicated here

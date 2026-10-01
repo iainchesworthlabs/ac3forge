@@ -10,8 +10,8 @@
 namespace iclforge::apps {
 
 std::vector<ObjectSlot> object_slots_from_assignment(
-    const iclforge::plan::Assignment& assignment,
-    std::span<const iclforge::plan::SourceShape> shapes) {
+    const iclforge::ac3::plan::Assignment& assignment,
+    std::span<const iclforge::ac3::plan::SourceShape> shapes) {
     // Where source `s`'s channel `c` lands in the flattened space.
     const auto flat = [&](std::size_t source, std::size_t channel) {
         std::size_t base = 0;
@@ -22,7 +22,7 @@ std::vector<ObjectSlot> object_slots_from_assignment(
     };
     std::vector<ObjectSlot> slots;
     for (const auto& [source, channel] :
-         assignment.rows_of(iclforge::plan::DestinationKind::kObject)) {
+         assignment.rows_of(iclforge::ac3::plan::DestinationKind::kObject)) {
         const auto dest = assignment.at(source, channel);
         slots.push_back({.taps = {{flat(source, channel), std::pow(10.0, dest.trim_db / 20.0)}}});
     }
@@ -30,7 +30,7 @@ std::vector<ObjectSlot> object_slots_from_assignment(
     // makes "the maximal contiguous run within one source" a well-defined
     // grouping - see DestinationKind::kObjectMono's own comment on why the
     // grouping is by adjacency rather than a stored group id.
-    const auto mono_rows = assignment.rows_of(iclforge::plan::DestinationKind::kObjectMono);
+    const auto mono_rows = assignment.rows_of(iclforge::ac3::plan::DestinationKind::kObjectMono);
     for (std::size_t i = 0; i < mono_rows.size();) {
         std::size_t j = i + 1;
         while (j < mono_rows.size() && mono_rows[j].first == mono_rows[i].first &&
@@ -50,8 +50,8 @@ std::vector<ObjectSlot> object_slots_from_assignment(
     return slots;
 }
 
-std::optional<double> location_azimuth_deg(iclforge::eac3::chanmap::Location location) {
-    using iclforge::eac3::chanmap::Location;
+std::optional<double> location_azimuth_deg(iclforge::ac3::eac3::chanmap::Location location) {
+    using iclforge::ac3::eac3::chanmap::Location;
     // clang-format off
     switch (location) {
         case Location::kLeft: return 30.0;
@@ -86,8 +86,9 @@ bool ac4_objects_take_rate(std::uint32_t sample_rate_hz) {
     return sample_rate_hz == 48000 || sample_rate_hz == 44100;
 }
 
-std::vector<Ac4ObjectSlot> ac4_object_slots(const iclforge::plan::Assignment& assignment,
-                                            std::span<const iclforge::plan::SourceShape> shapes) {
+std::vector<Ac4ObjectSlot> ac4_object_slots(
+    const iclforge::ac3::plan::Assignment& assignment,
+    std::span<const iclforge::ac3::plan::SourceShape> shapes) {
     const auto flat = [&](std::size_t source, std::size_t channel) {
         std::size_t base = 0;
         for (std::size_t i = 0; i < source && i < shapes.size(); ++i) {
@@ -101,8 +102,8 @@ std::vector<Ac4ObjectSlot> ac4_object_slots(const iclforge::plan::Assignment& as
     }
     std::vector<Ac4ObjectSlot> lfes;
     for (const auto& [source, channel] :
-         assignment.rows_of(iclforge::plan::DestinationKind::kLocation)) {
-        const iclforge::plan::Destination dest = assignment.at(source, channel);
+         assignment.rows_of(iclforge::ac3::plan::DestinationKind::kLocation)) {
+        const iclforge::ac3::plan::Destination dest = assignment.at(source, channel);
         Ac4ObjectSlot slot;
         slot.taps = {{flat(source, channel), std::pow(10.0, dest.trim_db / 20.0)}};
         if (const auto azimuth = location_azimuth_deg(dest.location)) {

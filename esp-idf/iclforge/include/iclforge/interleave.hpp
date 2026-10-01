@@ -18,7 +18,7 @@
 // are. tests/ac3/io/test_interleave.cpp builds it on the host.
 //
 // It is library code with a temporary home: planning/esp32-player.md hands it
-// over to src/ac3 as iclforge::io::interleave, and this copy goes when that lands.
+// over to src/ac3 as iclforge::ac3::io::interleave, and this copy goes when that lands.
 //
 // SLOTS ARE FIXED WIDTH AND MUST ALL BE WRITTEN. A TDM frame carries `slots`
 // samples whatever the programme has, so a 5.1 stream on an 8-slot bus has two

@@ -452,12 +452,12 @@ TEST_CASE("probe names a reserved dmixmod in both output forms, for both codecs"
             merged[i] = static_cast<std::byte>(static_cast<unsigned char>(first[i]) |
                                                static_cast<unsigned char>(second[i]));
         }
-        const auto frames = iclforge::split_frames(merged);
+        const auto frames = iclforge::ac3::split_frames(merged);
         REQUIRE(frames.has_value());
         for (const auto frame : *frames) {
             const auto at = static_cast<std::size_t>(frame.data() - merged.data());
-            REQUIRE(
-                iclforge::io::restamp_crc(std::span{merged}.subspan(at, frame.size())).has_value());
+            REQUIRE(iclforge::ac3::io::restamp_crc(std::span{merged}.subspan(at, frame.size()))
+                        .has_value());
         }
         const auto out = scratch_dir() / name;
         std::ofstream file{out, std::ios::binary};

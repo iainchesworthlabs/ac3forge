@@ -220,7 +220,7 @@ struct AudioObject {
 
 // BS.2076-2 §5.7: describes what an audioObject (or set of them) contains -
 // language, dialogue/music/effect classification, loudness. Loudness
-// metadata sub-elements (§5.7.4) are not carried here: iclforge::meta::loudness
+// metadata sub-elements (§5.7.4) are not carried here: iclforge::ac3::meta::loudness
 // already measures loudness independently, and this phase has no consumer
 // for a second, file-supplied copy of the same numbers.
 struct AudioContent {
@@ -277,7 +277,7 @@ struct ChnaEntry {
 };
 
 // The <data> chunk's decoded PCM, one vector per physical track in file
-// order - the same shape iclforge::io::WavData uses (see ac3/io/wav.hpp), so a
+// order - the same shape iclforge::ac3::io::WavData uses (see ac3/io/wav.hpp), so a
 // caller already familiar with that convention needs nothing new here.
 // Samples are normalized to [-1, 1). Integer PCM (8/16/24/32-bit) and
 // IEEE float (32/64-bit) both read, through the vendored libbw64 directly -

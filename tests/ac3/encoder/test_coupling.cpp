@@ -8,19 +8,19 @@
 #include "iclforge/ac3/core/coupling.hpp"
 #include "iclforge/ac3/core/exponents.hpp"
 
-using iclforge::coupling::choose_master;
-using iclforge::coupling::decode_coordinate;
-using iclforge::coupling::quantize_coordinate;
+using iclforge::ac3::coupling::choose_master;
+using iclforge::ac3::coupling::decode_coordinate;
+using iclforge::ac3::coupling::quantize_coordinate;
 
 TEST_CASE("coupling sub-band geometry matches A/52 Table 7.24", "[coupling]") {
     // Sub-band 0 spans coefficients 37..48, sub-band 17 spans 241..252.
-    STATIC_CHECK(iclforge::coupling::start_mant(0) == 37);
-    STATIC_CHECK(iclforge::coupling::end_mant(15) == 253);
-    STATIC_CHECK(iclforge::coupling::start_mant(6) == 109);
+    STATIC_CHECK(iclforge::ac3::coupling::start_mant(0) == 37);
+    STATIC_CHECK(iclforge::ac3::coupling::end_mant(15) == 253);
+    STATIC_CHECK(iclforge::ac3::coupling::start_mant(6) == 109);
     // cplendf is read by adding 3, so cplendf=12 ends at sub-band 15.
-    STATIC_CHECK(iclforge::coupling::end_mant(12) == 217);
-    STATIC_CHECK(iclforge::coupling::sub_band_count(6, 12) == 9);
-    STATIC_CHECK(iclforge::coupling::sub_band_count(0, 15) == 18);
+    STATIC_CHECK(iclforge::ac3::coupling::end_mant(12) == 217);
+    STATIC_CHECK(iclforge::ac3::coupling::sub_band_count(6, 12) == 9);
+    STATIC_CHECK(iclforge::ac3::coupling::sub_band_count(0, 15) == 18);
 }
 
 TEST_CASE("decode_coordinate follows the spec's two mantissa forms", "[coupling]") {
@@ -79,13 +79,14 @@ TEST_CASE("coupling exponent set round-trips through the normative decode", "[co
     // that is NOT itself a coefficient exponent, so encode/decode must agree
     // on the off-by-one or every coupled bin lands on the wrong scale.
     for (const int nsubbands : {1, 4, 9, 18}) {
-        const int count = nsubbands * iclforge::coupling::kBinsPerSubBand;
+        const int count = nsubbands * iclforge::ac3::coupling::kBinsPerSubBand;
         std::vector<std::uint8_t> raw(static_cast<std::size_t>(count));
         for (int i = 0; i < count; ++i) {
             raw[static_cast<std::size_t>(i)] =
                 static_cast<std::uint8_t>(3 + (i * 7) % 20);
         }
-        const auto encoded = iclforge::encode_coupling_exponents(raw, iclforge::ExpStrategy::kD15);
+        const auto encoded =
+            iclforge::ac3::encode_coupling_exponents(raw, iclforge::ac3::ExpStrategy::kD15);
         CAPTURE(nsubbands, count, encoded.cplabsexp, encoded.groups.size());
         REQUIRE(encoded.cplabsexp <= 12);  // absexp is even and at most 24
         REQUIRE(static_cast<int>(encoded.groups.size()) == count / 3);
@@ -94,15 +95,15 @@ TEST_CASE("coupling exponent set round-trips through the normative decode", "[co
         }
 
         std::vector<std::uint8_t> decoded(static_cast<std::size_t>(count));
-        iclforge::decode_coupling_exponents(encoded.cplabsexp, encoded.groups,
-                                       iclforge::ExpStrategy::kD15, decoded);
+        iclforge::ac3::decode_coupling_exponents(encoded.cplabsexp, encoded.groups,
+                                       iclforge::ac3::ExpStrategy::kD15, decoded);
         for (int i = 0; i < count; ++i) {
             CAPTURE(i);
             // Same safety invariant as fbw exponents: never larger than the
             // raw value, or the true mantissa becomes unrepresentable.
             REQUIRE(decoded[static_cast<std::size_t>(i)] <=
                     raw[static_cast<std::size_t>(i)]);
-            REQUIRE(decoded[static_cast<std::size_t>(i)] <= iclforge::kMaxExponent);
+            REQUIRE(decoded[static_cast<std::size_t>(i)] <= iclforge::ac3::kMaxExponent);
         }
     }
 }
@@ -115,13 +116,13 @@ TEST_CASE("coupling bands tile the coupled region exactly once", "[coupling]") {
     // it shifts every field after it in the block.
     for (int begf = 0; begf <= 15; ++begf) {
         for (int endf = 0; endf <= 15; ++endf) {
-            const int subbands = iclforge::coupling::sub_band_count(begf, endf);
-            if (subbands < 1 || subbands > iclforge::coupling::kSubBands) {
+            const int subbands = iclforge::ac3::coupling::sub_band_count(begf, endf);
+            if (subbands < 1 || subbands > iclforge::ac3::coupling::kSubBands) {
                 continue;
             }
             CAPTURE(begf, endf, subbands);
-            const auto structure = iclforge::coupling::band_structure(begf, subbands);
-            const auto bands = iclforge::coupling::group_bands(begf, subbands, structure);
+            const auto structure = iclforge::ac3::coupling::band_structure(begf, subbands);
+            const auto bands = iclforge::ac3::coupling::group_bands(begf, subbands, structure);
 
             // §5.4.3.13 numbers cplbndstrc from the first coupled sub-band,
             // and its first entry is never sent because sub-band 0 always
@@ -136,20 +137,20 @@ TEST_CASE("coupling bands tile the coupled region exactly once", "[coupling]") {
             REQUIRE(bands.count >= 1);
             REQUIRE(bands.count <= subbands);
 
-            int bin = iclforge::coupling::start_mant(begf);
+            int bin = iclforge::ac3::coupling::start_mant(begf);
             for (int bnd = 0; bnd < bands.count; ++bnd) {
                 CAPTURE(bnd);
                 CHECK(bands.start[static_cast<std::size_t>(bnd)] == bin);
                 CHECK(bands.size[static_cast<std::size_t>(bnd)] %
-                          iclforge::coupling::kBinsPerSubBand ==
+                          iclforge::ac3::coupling::kBinsPerSubBand ==
                       0);
                 CHECK(bands.size[static_cast<std::size_t>(bnd)] >=
-                      iclforge::coupling::kBinsPerSubBand);
+                      iclforge::ac3::coupling::kBinsPerSubBand);
                 bin += bands.size[static_cast<std::size_t>(bnd)];
             }
             // And they finish exactly where the sub-bands do.
-            CHECK(bin == iclforge::coupling::start_mant(begf) +
-                             subbands * iclforge::coupling::kBinsPerSubBand);
+            CHECK(bin == iclforge::ac3::coupling::start_mant(begf) +
+                             subbands * iclforge::ac3::coupling::kBinsPerSubBand);
         }
     }
 }
@@ -160,9 +161,9 @@ TEST_CASE("coupling bands widen with frequency", "[coupling]") {
     // three times a frame per channel. Bands therefore grow towards the top
     // of the spectrum - and never shrink going up, or the shape is not
     // tracking anything.
-    const int subbands = iclforge::coupling::sub_band_count(0, 15);  // the whole range
-    const auto structure = iclforge::coupling::band_structure(0, subbands);
-    const auto bands = iclforge::coupling::group_bands(0, subbands, structure);
+    const int subbands = iclforge::ac3::coupling::sub_band_count(0, 15);  // the whole range
+    const auto structure = iclforge::ac3::coupling::band_structure(0, subbands);
+    const auto bands = iclforge::ac3::coupling::group_bands(0, subbands, structure);
     CAPTURE(subbands, bands.count);
     CHECK(bands.count < subbands);  // something was actually joined
 
@@ -179,8 +180,8 @@ TEST_CASE("coupling bands widen with frequency", "[coupling]") {
 
     // Below ~11 kHz a sub-band is already coarser than a critical band, so
     // nothing is joined down there; by the top of the spectrum three are.
-    CHECK(bands.size[0] == iclforge::coupling::kBinsPerSubBand);
-    CHECK(previous == 3 * iclforge::coupling::kBinsPerSubBand);
+    CHECK(bands.size[0] == iclforge::ac3::coupling::kBinsPerSubBand);
+    CHECK(previous == 3 * iclforge::ac3::coupling::kBinsPerSubBand);
 }
 
 TEST_CASE("the mean coupling divisor keeps coordinates representable",
@@ -198,7 +199,7 @@ TEST_CASE("the mean coupling divisor keeps coordinates representable",
     // "coupling must not cost more bits" test.
     std::mt19937 rng(0x0C0F);
     std::uniform_real_distribution<double> dist(-1.0, 1.0);
-    constexpr int kBins = iclforge::coupling::kBinsPerSubBand;
+    constexpr int kBins = iclforge::ac3::coupling::kBinsPerSubBand;
     constexpr double kCeiling = 31.0 / 32.0;
 
     for (int trial = 0; trial < 500; ++trial) {

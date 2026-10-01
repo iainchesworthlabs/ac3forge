@@ -59,7 +59,7 @@ The AC-3, E-AC-3 and Atmos encoders are `plain_51` and `plain_51_fast_mdct`,
 `ac4_stereo_decode` and `ac4_51_decode`, which read those encoders' streams. The decode series
 are timed against streams encoded in the same run: a decode number only means something against
 a stream whose rate and tool set are known. By name, `plain_*` and `ac3_*` are AC-3 (`plain_51`
-is `iclforge::FrameEncoder` at 5.1, 448 kbit/s), `eac3_*`, `ecpl_*` and `atmos_*` are E-AC-3 (Atmos is
+is `iclforge::ac3::FrameEncoder` at 5.1, 448 kbit/s), `eac3_*`, `ecpl_*` and `atmos_*` are E-AC-3 (Atmos is
 joint object coding carried in E-AC-3) and `ac4_*` is AC-4. The memory series name their
 workloads `<codec>_<layout>_encode` and `_decode` (`ac3_51_encode`, `ecpl_51_encode`,
 `atmos_4obj_decode`), with one for enhanced coupling that the timing series lack.
@@ -697,7 +697,7 @@ exponent runs through its own encoder.
 The extra churn was a defect rather than the planner's intended cost, and was
 tracked as [#544](https://github.com/iainchesworthlabs/iclforge/issues/544).
 `encode_run` in `src/ac3/src/encoder/eac3_frame.cpp` assigned the by-value
-return of `iclforge::encode_exponents`, which owns a `std::vector`, so each run
+return of `iclforge::ac3::encode_exponents`, which owns a `std::vector`, so each run
 reallocated that buffer on every frame; the planner multiplied the number of
 runs from one per channel to one per run per channel. The bench's own columns
 carried the signature. Before the step each encode workload's steady-state
@@ -770,8 +770,8 @@ or the ceiling before merging. The image had already reached 412,516 bytes by th
 The same thing happened a second time. The largest movement in that re-measurement was a
 relocation rather than growth. The Pimpl sweep (`ee5ff91e`) gave both decoders a
 `struct Impl; std::unique_ptr<Impl> impl_;`
-(both in `src/ac3/include/iclforge/ac3/decoder/decoder.hpp`), so `sizeof(iclforge::FrameDecoder)` and
-`sizeof(iclforge::Eac3Decoder)` fell from 12,952 and 27,408 bytes to a single 4-byte pointer each, and
+(both in `src/ac3/include/iclforge/ac3/decoder/decoder.hpp`), so `sizeof(iclforge::ac3::FrameDecoder)` and
+`sizeof(iclforge::ac3::Eac3Decoder)` fell from 12,952 and 27,408 bytes to a single 4-byte pointer each, and
 the state they used to hold in place now lives on the heap. That state came out of automatic
 storage: both decoders are locals in `decode_ac3()` and `decode_eac3()`, and `.bss` was unchanged
 at 237,592 bytes across those two measurements. It has moved since, for unrelated reasons the
@@ -914,8 +914,8 @@ a silent fast-path substitution — see the building doc for why.
 |---|---|
 | Peak heap | 237,206 bytes (231.6 KiB), the 7.1.4 fixture folded to stereo; 230,798 as coded, 211,371 with Atmos objects |
 | Retained after teardown | 12 bytes |
-| `sizeof(iclforge::FrameDecoder)` | 4 bytes (one `unique_ptr` — see above) |
-| `sizeof(iclforge::Eac3Decoder)` | 4 bytes (one `unique_ptr` — see above) |
+| `sizeof(iclforge::ac3::FrameDecoder)` | 4 bytes (one `unique_ptr` — see above) |
+| `sizeof(iclforge::ac3::Eac3Decoder)` | 4 bytes (one `unique_ptr` — see above) |
 | Caller-owned PCM buffer | none: the probe decodes through the `_by_block` forms and reads the decoders' blocks in place |
 | AC-3 allocations per frame, steady state | 3 |
 | AC-3 2/0 and 1/0 allocations per frame, steady state | 1 |
@@ -1000,7 +1000,7 @@ made has been destroyed — so not per-frame growth and not a leak. It is 12 byt
 `__cxa_thread_atexit` registration record, for the pointer to enhanced coupling's spectrum scratch,
 the one `thread_local` the library still declares.
 
-It was 34,232 until the probe began calling `iclforge::eac3::release_ecpl_scratch()` between fixtures,
+It was 34,232 until the probe began calling `iclforge::ac3::eac3::release_ecpl_scratch()` between fixtures,
 and 24 until the per-bin angle buffer stopped being a second `thread_local`. The 34,232 was
 enhanced coupling's 32,768-byte spectrum scratch and its 1,440-byte bin-angle vector, both
 `thread_local` so §E3.5 neither allocates per call nor puts 32 KB on the stack, and therefore

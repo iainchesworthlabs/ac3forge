@@ -55,8 +55,8 @@
 // write_wav_f32_arg) stay out of this header entirely and live in an anonymous namespace inside
 // support.cpp instead, preserving the original "internal unless something else needs it" default.
 //
-// Everything about layouts, coding tools and metadata itself lives in iclforge::plan, so the GUI
-// cannot mean something different by "514" or by "all" than this does. What is here is argument
+// Everything about layouts, coding tools and metadata itself lives in iclforge::ac3::plan, so the
+// GUI cannot mean something different by "514" or by "all" than this does. What is here is argument
 // shape, validation and printing - Options carries plan::Metadata verbatim rather than a second,
 // CLI-specific copy of the same fields.
 namespace forge_cli {
@@ -108,7 +108,7 @@ struct PositionSourceSpec {
 };
 
 // Everything a command accepts after its positional arguments, in any order.
-// The metadata group is iclforge::plan::Metadata verbatim; drc_scale is decode-
+// The metadata group is iclforge::ac3::plan::Metadata verbatim; drc_scale is decode-
 // side local, because nothing an encoder is configured with corresponds to
 // it; sources/map_spec describe routing rather than metadata, but share this
 // same trailing-options surface (parse_options) the way dialnorm2= already
@@ -307,7 +307,7 @@ struct Options {
     // Every field defaults off, so a plain invocation still writes the coded
     // channels untouched - see channels=/downmix=/drcmode= in
     // print_meta_usage. Set straight into DecoderConfig::output.
-    iclforge::OutputConfig output{};
+    iclforge::ac3::OutputConfig output{};
     // Each src= occurrence, in order given - additional input sources beyond
     // the primary positional argument. encode/eac3-encode only; empty unless
     // multi-source input is in play.
@@ -338,11 +338,11 @@ struct Options {
     // mean.
     std::optional<std::string> detail;
     // 'qc' only: which delivery gate(s) to check the measurement against -
-    // one of iclforge::meta::kQcPresetNames, or "all" to check every preset.
+    // one of iclforge::ac3::meta::kQcPresetNames, or "all" to check every preset.
     // Unset (measure-only, no gate) is the default - a plain
     // 'forge qc <file>' just reports the numbers, no pass/fail verdict.
     std::optional<std::string> qc_preset;
-    iclforge::plan::Metadata p{};
+    iclforge::ac3::plan::Metadata p{};
     // Atmos object signing (atmos/atmos-path/atmos-encode). Off unless the
     // operator both asks (sign-objects) and provides a key - either
     // signing-key=<path> here, or the ICLFORGE_SIGNING_KEY[_FILE] env vars
@@ -370,7 +370,7 @@ struct Options {
     // iclforge::mpegts::ServiceInfo::mainid.
     std::optional<int> mainid = std::nullopt;
     std::optional<int> asvc = std::nullopt;
-    // 'eac3-encode' only: run iclforge::verify's E-AC-3 encoder/decoder mirror
+    // 'eac3-encode' only: run iclforge::ac3::verify's E-AC-3 encoder/decoder mirror
     // self-check (ac3/verify/eac3_selfcheck.hpp) over every access unit this
     // command emits, and refuse the run on the first disagreement. Off by
     // default like every bare token here, and deliberately so: it decodes
@@ -410,7 +410,7 @@ struct Options {
     // answer. Wide layouts on record/live are wide-layout record/live paths - the GUI has
     // always done them.
     std::string take_layout;
-    std::optional<iclforge::plan::Codec> take_codec;
+    std::optional<iclforge::ac3::plan::Codec> take_codec;
     // 'record'/'live' only: how long the capture device may deliver nothing
     // before the session stops as a failure rather than sitting there
     // reading "running" (iclforge::audio::SilenceWatchdog, the same class and the
@@ -520,14 +520,14 @@ struct Options {
     // by a tonality/masking model first. Off by default, like the library
     // config it feeds - it costs encode time, and this project does not turn
     // a decision knob on without the numbers. AC-3 encodes only.
-    iclforge::quality::Criterion search = iclforge::quality::Criterion::kNone;
+    iclforge::ac3::quality::Criterion search = iclforge::ac3::quality::Criterion::kNone;
     // §7.2.2.4 fast gain, Table 7.11 - the OTHER axis search= moves, offered
     // here as a pin for the runs that want one code held across a whole
     // encode rather than chosen per frame (plan::Tools::fgaincod, reaching
     // EncoderConfig::fgaincod and eac3::FrameConfig::fgaincod). -1 is
     // 'auto', which means different things to the two codecs and
     // deliberately so: AC-3 hangs fgaincod off an element it already sends
-    // every block, so auto follows iclforge::rate_adaptive_fgaincod()'s measured
+    // every block, so auto follows iclforge::ac3::rate_adaptive_fgaincod()'s measured
     // curve for free; E-AC-3's baie does not carry fgaincod at all, so auto
     // leaves Table E1.4's implied 0x4 and writes no element. Pinning 0..7
     // makes E-AC-3 pay for the per-block fgaincode element in all six
@@ -571,12 +571,12 @@ struct Options {
     bool downmix_auto = false;
     // 'decode'/'monitor' only: §7.10 error concealment. Off by default, so a
     // damaged frame is still reported rather than papered over.
-    iclforge::ConcealmentPolicy concealment = iclforge::ConcealmentPolicy::kNone;
+    iclforge::ac3::ConcealmentPolicy concealment = iclforge::ac3::ConcealmentPolicy::kNone;
     // 'transcode' only: the OUTPUT codec, when out_path's own suffix cannot
     // say (stdout, or a file named something other than .ac3/.ec3). Unset
     // means "take it from the suffix", which is what every ordinary
     // invocation does.
-    std::optional<iclforge::plan::Codec> codec = std::nullopt;
+    std::optional<iclforge::ac3::plan::Codec> codec = std::nullopt;
     // Whether dialnorm=/dialnorm2= appeared on the command line at all, as
     // opposed to `p.dialnorm` merely holding its default of 31. Only
     // 'transcode' reads these, and only because its default is to PRESERVE
@@ -608,7 +608,7 @@ struct Options {
     std::optional<int> programme;
     // 'eac3-encode': further programmes to author into the same stream, each
     // its own independent substream (§E2.3.1.2's I1-I7) - up to
-    // iclforge::eac3::kMaxProgrammes - 1 of them, so index 0 is I1 (the CLI's
+    // iclforge::ac3::eac3::kMaxProgrammes - 1 of them, so index 0 is I1 (the CLI's
     // programme2=) and the last is I7 (programme8=). An entry with no `path`
     // is unused. §E2.3.1.2 assigns substreamid sequentially with no gaps, so
     // neither can the CLI: run_eac3_encode refuses a later slot with a path
@@ -637,9 +637,9 @@ struct Options {
         // support.cpp for exactly which of the primary's keys generalize
         // here and which do not (the five 1+1-only fields and AC-3's own
         // Annex D fields - an extra programme is always E-AC-3).
-        iclforge::plan::Metadata meta{};
+        iclforge::ac3::plan::Metadata meta{};
     };
-    std::array<ExtraProgramme, iclforge::eac3::kMaxProgrammes - 1> extra_programmes{};
+    std::array<ExtraProgramme, iclforge::ac3::eac3::kMaxProgrammes - 1> extra_programmes{};
     // 'qc' only: which soundfield to meter. false (layout=bed, the default)
     // measures the independent substream's own Table 5.8 bed through
     // BS.1770 Annex 1's basic algorithm - what this command has always
@@ -652,7 +652,7 @@ struct Options {
     // the named advanced sound system layout and metered through BS.1770-5
     // Annex 4, instead of (or as well as - the two are independent switches)
     // the channel-based measurement layout= above selects. See run_qc.
-    std::optional<iclforge::plan::LayoutId> qc_objects_layout;
+    std::optional<iclforge::ac3::plan::LayoutId> qc_objects_layout;
 };
 
 // Returns false and prints the offending token on anything unrecognised: a
@@ -690,7 +690,7 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
 // standalone loudness command); every dialnorm=auto/dialnorm2=auto encode
 // path passes status_stream(out) instead, the same convention
 // print_channel_summary and print_routing use.
-std::optional<int> finish_measurement(const iclforge::meta::LoudnessMeter& meter,
+std::optional<int> finish_measurement(const iclforge::ac3::meta::LoudnessMeter& meter,
                                       std::string_view programme, std::string_view field,
                                       FILE* out = stdout);
 
@@ -701,8 +701,9 @@ std::optional<int> finish_measurement(const iclforge::meta::LoudnessMeter& meter
 // blend of two different things rather than either programme's own level;
 // callers route dual mono through measured_dialnorm_channel on each
 // programme's own channel alone instead.
-std::optional<int> measured_dialnorm(const iclforge::io::WavData& wav, iclforge::SampleRate rate,
-                                     iclforge::Acmod acmod, bool lfe, FILE* out = stdout);
+std::optional<int> measured_dialnorm(const iclforge::ac3::io::WavData& wav,
+                                     iclforge::ac3::SampleRate rate, iclforge::ac3::Acmod acmod,
+                                     bool lfe, FILE* out = stdout);
 
 // Same measurement, for one dual-mono programme's own channel alone - never a
 // programme's worth of BS.1770 surround weighting, since a 1+1 channel is not
@@ -710,15 +711,16 @@ std::optional<int> measured_dialnorm(const iclforge::io::WavData& wav, iclforge:
 // labels above - "Ch1"/"dialnorm" or "Ch2"/"dialnorm2", the two programmes
 // sharing this one function since the measurement itself does not differ.
 std::optional<int> measured_dialnorm_channel(std::span<const float> channel,
-                                             iclforge::SampleRate rate, std::string_view programme,
-                                             std::string_view field, FILE* out = stdout);
+                                             iclforge::ac3::SampleRate rate,
+                                             std::string_view programme, std::string_view field,
+                                             FILE* out = stdout);
 
 // Dual mono's Ch1/Ch2 arrive as either one two-channel file or two mono ones;
 // this settles which shape `wav` is in and merges a second file's channel in
 // when there is one, so everything downstream sees a plain two-channel source
 // the same way it always has - `plan::route`'s own 1+1 handling only ever
 // looks at the channel count, never how many files it came from.
-bool prepare_dual_mono_source(iclforge::io::WavData& wav, std::string_view layout,
+bool prepare_dual_mono_source(iclforge::ac3::io::WavData& wav, std::string_view layout,
                               std::string_view in2_path);
 
 // The conventional Unix "-" file argument: a lone dash means stdin for an
@@ -752,7 +754,7 @@ FILE* status_stream(std::string_view out_path);
 // or nowhere under quiet.
 FILE* status_stream();
 
-// The programme ids iclforge::programme_ids() found, as "0, 1" - what every
+// The programme ids iclforge::ac3::programme_ids() found, as "0, 1" - what every
 // command that takes programme= prints when a stream turns out to carry more
 // than one, and what it lists back when the id asked for is not among them.
 std::string format_programme_ids(std::span<const int> ids);
@@ -760,7 +762,7 @@ std::string format_programme_ids(std::span<const int> ids);
 // The programme a command should work on: `wanted` when the stream carries it,
 // else the first one it does carry; a message on stderr and std::nullopt when
 // `wanted` names a programme that is not there. `ids` is what
-// iclforge::programme_ids() returned and must not be empty. Shared by decode, qc
+// iclforge::ac3::programme_ids() returned and must not be empty. Shared by decode, qc
 // and levels so all three answer a bad programme= the same way.
 std::optional<int> choose_programme(std::span<const int> ids, std::optional<int> wanted);
 
@@ -768,11 +770,11 @@ std::optional<int> choose_programme(std::span<const int> ids, std::optional<int>
 // downmix=auto settled into a concrete fold. §D3.1.1's automatic Lt/Rt-or-
 // Lo/Ro choice is made once, from the first dmixmod (and its acmod) the
 // programme's independent substream sends (`meta.programme`'s, or the
-// stream's first programme's) - iclforge::automatic_stereo_target() holds the
+// stream's first programme's) - iclforge::ac3::automatic_stereo_target() holds the
 // rule, including what a reserved or absent dmixmod gets and which acmods
 // Table D2.2 leaves the field meaning nothing at - and the choice is reported
 // on `status`. Without downmix=auto this returns `meta.output` untouched.
-[[nodiscard]] iclforge::OutputConfig resolve_output(const Options& meta,
+[[nodiscard]] iclforge::ac3::OutputConfig resolve_output(const Options& meta,
                                                std::span<const std::byte> stream, FILE* status);
 
 // fmt::println with a "nowhere" destination: a no-op when `out` is nullptr
@@ -914,7 +916,7 @@ class EncodedStreamSink {
 // Interleaves `channels` (one vector per decoded channel, AC-3/E-AC-3 coded
 // order) into WAV/Windows speaker order for playback, reading order[i] as
 // which channels[] entry belongs at interleaved position i - the same
-// permutation iclforge::io::write_wav_f32 and plan::wav_order/wav_channel_order
+// permutation iclforge::ac3::io::write_wav_f32 and plan::wav_order/wav_channel_order
 // already produce for exactly this AC-3-order-vs-WAV-order reconciliation
 // (see ac3/io/wav.hpp).
 std::vector<float> interleave_reordered(std::span<const std::vector<float>> channels,
@@ -941,10 +943,11 @@ std::vector<std::byte> read_all(std::string_view path);
 // was.
 [[nodiscard]] std::vector<std::byte> read_elementary_stream(std::string_view in_path);
 
-// Wraps iclforge::io::read_wav to honor the "-" stdin convention (is_stdio_path
+// Wraps iclforge::ac3::io::read_wav to honor the "-" stdin convention (is_stdio_path
 // above): "-" reads the WAV from stdin, binary mode set first, instead of
 // opening a file with that literal name.
-std::expected<iclforge::io::WavData, iclforge::io::WavError> read_wav_arg(std::string_view path);
+std::expected<iclforge::ac3::io::WavData, iclforge::ac3::io::WavError> read_wav_arg(
+    std::string_view path);
 
 // Streams planar float channels into a WAV as they decode, so the decoded
 // programme never sits in memory whole (it used to: ~69 MB per minute of
@@ -970,7 +973,7 @@ class PlanarWavSink {
 
     // Finalize; reports whether the write side stayed healthy. Unequal
     // residue across slots (never produced by a healthy stream) is dropped.
-    [[nodiscard]] std::expected<void, iclforge::io::WavError> close();
+    [[nodiscard]] std::expected<void, iclforge::ac3::io::WavError> close();
 
     // The decode failed part-way: close and remove whatever was written, so
     // a failed run leaves no output file - exactly like the whole-buffer
@@ -984,7 +987,7 @@ class PlanarWavSink {
     bool stdio_ = false;
     bool open_ = false;
     std::uint32_t sample_rate_ = 0;
-    iclforge::io::WavStreamWriter writer_;
+    iclforge::ac3::io::WavStreamWriter writer_;
     std::vector<std::vector<float>> slots_;
     std::vector<std::size_t> consumed_;
     std::vector<std::size_t> order_;
@@ -1023,7 +1026,7 @@ class Pcm16RawWavSink {
 };
 
 // ---------------------------------------------------------------------------
-// Level reporting. Every number comes from iclforge::analysis, so a level reads
+// Level reporting. Every number comes from iclforge::ac3::analysis, so a level reads
 // the same here as on the GUI's meters; only the drawing is local.
 // ---------------------------------------------------------------------------
 
@@ -1040,13 +1043,13 @@ std::string meter_bar(double db, int width);
 // atmos-encode/decode), which redirect it to stderr so this human-readable
 // report doesn't land in the middle of the binary stream those commands may
 // be writing to the very same stdout - see status_stream()'s own comment.
-void print_channel_summary(const iclforge::analysis::LevelMeter& meter, FILE* out = stdout);
+void print_channel_summary(const iclforge::ac3::analysis::LevelMeter& meter, FILE* out = stdout);
 
 // One line, rewritten in place. A carriage return rather than ANSI cursor
 // moves, so it behaves the same in a bare console as in a terminal that
 // speaks escape sequences. Every field is fixed width, so the line never
 // leaves fragments of a longer previous line behind.
-void print_live_meter(const iclforge::analysis::LevelMeter& meter, double seconds);
+void print_live_meter(const iclforge::ac3::analysis::LevelMeter& meter, double seconds);
 
 // Sets `plan`'s channels from `name` and writes a human-readable label for
 // it into `label`, reporting a bad token against the set the codec can
@@ -1054,8 +1057,8 @@ void print_live_meter(const iclforge::analysis::LevelMeter& meter, double second
 // wrong) or false on anything neither a named layout nor a channel list
 // accepts. Tried in that order: a name recognised by parse_layout wins, so a
 // custom list can never shadow one of the seven presets.
-bool resolve_layout(std::string_view name, iclforge::plan::Codec codec, iclforge::plan::Plan& plan,
-                    std::string& label);
+bool resolve_layout(std::string_view name, iclforge::ac3::plan::Codec codec,
+                    iclforge::ac3::plan::Plan& plan, std::string& label);
 
 // The bed's LFE is not an object, so it never goes through JOC reconstruction
 // - but a decoded programme's dynamic objects did, and that costs
@@ -1065,7 +1068,7 @@ bool resolve_layout(std::string_view name, iclforge::plan::Codec codec, iclforge
 // undelayed bed LFE - 'spatial', 'qc objects=' - has to hold the LFE back by
 // that many samples first, or it reaches the room/meter that far ahead of the
 // objects beside it. A plain FIFO rather than a fixed-size ring: a decoded
-// access unit's sample count is not always iclforge::kSamplesPerFrame (a short
+// access unit's sample count is not always iclforge::ac3::kSamplesPerFrame (a short
 // E-AC-3 frame, or the last, partial one).
 class LfeDelayLine {
 public:
@@ -1100,7 +1103,7 @@ private:
 // layout needs the dependent substreams only E-AC-3 has, the same
 // plan::carries() answer plan::derive_codec would give for a file encode.
 struct TakePlan {
-    iclforge::plan::Plan plan;
+    iclforge::ac3::plan::Plan plan;
     std::string label;
     bool eac3 = false;
     // What the encoder is fed: bed plus every dependent substream's channels.
@@ -1108,7 +1111,7 @@ struct TakePlan {
     // What a decoder renders from them - fewer than coded_channels wherever a
     // dependent REPLACES a bed channel (7.1 renders 8 speakers from 10 coded).
     // The container and the monitor both want this one: 'mkv'/'ts' scanning
-    // the same finished stream count the channels it renders (iclforge::io::scan),
+    // the same finished stream count the channels it renders (iclforge::ac3::io::scan),
     // so a streamed take must declare the same number the after-the-fact wrap
     // would, and MonitorSink is fed the decoder's own rendered channels.
     int rendered_channels = 0;
@@ -1117,7 +1120,7 @@ struct TakePlan {
 // nullopt with the reason already printed: a bad layout name, a layout the
 // forced codec cannot carry, or a bitrate that codec has no frame size for.
 std::optional<TakePlan> resolve_take_plan(const Options& meta, std::uint32_t bitrate,
-                                          iclforge::SampleRate rate);
+                                          iclforge::ac3::SampleRate rate);
 
 class TakeEncoder;
 
@@ -1133,15 +1136,15 @@ RecordingSink::Config take_sink_config(const Options& meta, const TakePlan& take
 
 // Which of Table 162's profiles a drc= curve is: plan::Metadata keeps the
 // curve (meta::profile()), where AC-4 names the profile (drc_eac3_profile).
-[[nodiscard]] std::optional<iclforge::meta::ProfileId> profile_id_of(
-    const iclforge::meta::Profile& profile);
-[[nodiscard]] iclforge::ac4::DrcProfile ac4_profile_of(iclforge::meta::ProfileId id);
+[[nodiscard]] std::optional<iclforge::ac3::meta::ProfileId> profile_id_of(
+    const iclforge::ac3::meta::Profile& profile);
+[[nodiscard]] iclforge::ac4::DrcProfile ac4_profile_of(iclforge::ac3::meta::ProfileId id);
 
 // The AC-4 encoder configuration a plan asks for: its coded channels, rate
 // and bitrate, its dialnorm in whole dB, and the DRC profile drc= names as
 // drc_eac3_profile; AC-4's defaults for the rest (frame rate index 13, an
 // I-frame every 24 frames, the codec mode the rate selects).
-[[nodiscard]] iclforge::ac4::EncoderConfig ac4_config_for(const iclforge::plan::Plan& plan);
+[[nodiscard]] iclforge::ac4::EncoderConfig ac4_config_for(const iclforge::ac3::plan::Plan& plan);
 
 // The encode half of a record or live take, and of a transcode: the plan's
 // encoder, AC-3, E-AC-3 or AC-4, a frame of its coded channels in, what that
@@ -1169,12 +1172,12 @@ class TakeEncoder {
     // The encoder `plan` asks for, and for AC-4 `ac4` in place of
     // ac4_config_for(plan) where given (its channels, rate and bitrate taken
     // from the plan all the same). Empty where it opens, else why not.
-    [[nodiscard]] std::string open(const iclforge::plan::Plan& plan,
+    [[nodiscard]] std::string open(const iclforge::ac3::plan::Plan& plan,
                                    std::optional<iclforge::ac4::EncoderConfig> ac4 = std::nullopt);
     [[nodiscard]] std::size_t coded_channels() const { return coded_channels_; }
 
     // A frame of the plan's coded channels (plan::coded_channels' order),
-    // each iclforge::kSamplesPerFrame long, `samples` of them the programme's: AC-4
+    // each iclforge::ac3::kSamplesPerFrame long, `samples` of them the programme's: AC-4
     // codes those alone, AC-3 and E-AC-3 the frame whole. The units it
     // completes, or why the encoder refused it.
     [[nodiscard]] std::expected<std::vector<Unit>, std::string> encode(
@@ -1194,8 +1197,8 @@ class TakeEncoder {
     [[nodiscard]] std::vector<Unit> ac4_units(
         const std::vector<iclforge::ac4::EncodedFrame>& frames) const;
 
-    std::unique_ptr<iclforge::FrameEncoder> ac3_;
-    std::unique_ptr<iclforge::eac3::AccessUnitEncoder> eac3_;
+    std::unique_ptr<iclforge::ac3::FrameEncoder> ac3_;
+    std::unique_ptr<iclforge::ac3::eac3::AccessUnitEncoder> eac3_;
     std::unique_ptr<iclforge::ac4::Encoder> ac4_;
     // The coded channel each of the AC-4 encoder's inputs takes, and the
     // views handed to it.
@@ -1223,11 +1226,11 @@ std::string_view container_note(RecordingSink::Container container);
 // because every encode path asks the same question. Classic AC-3 has only
 // A/52 Table 5.6's three rates; E-AC-3 additionally accepts the three Annex E
 // fscod2 half rates (24/22.05/16 kHz), which have no AC-3 counterpart at all.
-std::optional<iclforge::SampleRate> wav_sample_rate(std::uint32_t hz, std::string_view codec,
+std::optional<iclforge::ac3::SampleRate> wav_sample_rate(std::uint32_t hz, std::string_view codec,
                                                     bool eac3);
 
 // A source's channels routed onto a plan's coded channels, or a diagnosis.
-std::optional<iclforge::plan::Routing> routing_or_error(const iclforge::plan::Plan& p,
+std::optional<iclforge::ac3::plan::Routing> routing_or_error(const iclforge::ac3::plan::Plan& p,
                                                         std::size_t channels);
 
 // --- AC-4 ----------------------------------------------------------------------

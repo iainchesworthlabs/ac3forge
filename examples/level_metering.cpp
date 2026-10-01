@@ -1,7 +1,7 @@
 // Decode a stream and report what it measures: peak/RMS per channel, and
 // where the soundfield's energy sits on the speaker ring.
 //
-// iclforge::analysis is what forge and forge-gui share so their meters never
+// iclforge::ac3::analysis is what forge and forge-gui share so their meters never
 // disagree about a signal - one LevelMeter instance serves both the moving
 // display (levels(), ballistic) and the exact end-of-run report (summary()),
 // fed by the same pass over the samples.
@@ -23,7 +23,7 @@
 #include "iclforge/ac3/encoder/encoder.hpp"
 
 int main() {
-    constexpr iclforge::Acmod kAcmod = iclforge::Acmod::k3_2;
+    constexpr iclforge::ac3::Acmod kAcmod = iclforge::ac3::Acmod::k3_2;
     constexpr bool kLfe = true;
     constexpr int kFrames = 62;  // two seconds
     constexpr std::array<double, 6> kTones{1000.0, 800.0, 1200.0, 600.0, 1400.0, 60.0};
@@ -32,16 +32,16 @@ int main() {
 
     // Heap-allocated: FrameEncoder carries several KB of MDCT scratch/history
     // state (PREfast's C6262).
-    auto encoder = std::make_unique<iclforge::FrameEncoder>(
-        iclforge::EncoderConfig{.bitrate_kbps = 448, .acmod = kAcmod, .lfe = kLfe});
-    iclforge::FrameDecoder decoder;
-    iclforge::analysis::LevelMeter meter{kAcmod, kLfe, 48000};
+    auto encoder = std::make_unique<iclforge::ac3::FrameEncoder>(
+        iclforge::ac3::EncoderConfig{.bitrate_kbps = 448, .acmod = kAcmod, .lfe = kLfe});
+    iclforge::ac3::FrameDecoder decoder;
+    iclforge::ac3::analysis::LevelMeter meter{kAcmod, kLfe, 48000};
 
-    std::vector<std::vector<float>> pcm(6, std::vector<float>(iclforge::kSamplesPerFrame));
+    std::vector<std::vector<float>> pcm(6, std::vector<float>(iclforge::ac3::kSamplesPerFrame));
     for (int frame = 0; frame < kFrames; ++frame) {
         for (std::size_t ch = 0; ch < pcm.size(); ++ch) {
-            for (int n = 0; n < iclforge::kSamplesPerFrame; ++n) {
-                const double t = (frame * iclforge::kSamplesPerFrame + n) / 48000.0;
+            for (int n = 0; n < iclforge::ac3::kSamplesPerFrame; ++n) {
+                const double t = (frame * iclforge::ac3::kSamplesPerFrame + n) / 48000.0;
                 pcm[ch][static_cast<std::size_t>(n)] = static_cast<float>(
                     kAmplitudes[ch] * std::sin(2.0 * std::numbers::pi * kTones[ch] * t));
             }
@@ -59,8 +59,8 @@ int main() {
         const auto decoded = decoder.decode_frame(*encoded);
         if (!decoded) {
             fmt::printf("decode failed: %.*s\n",
-                        static_cast<int>(iclforge::describe(decoded.error()).size()),
-                        iclforge::describe(decoded.error()).data());
+                        static_cast<int>(iclforge::ac3::describe(decoded.error()).size()),
+                        iclforge::ac3::describe(decoded.error()).data());
             return 1;
         }
 
@@ -72,13 +72,13 @@ int main() {
     }
 
     for (int ch = 0; ch < meter.channel_count(); ++ch) {
-        const auto name = iclforge::analysis::channel_name(kAcmod, kLfe, ch);
+        const auto name = iclforge::ac3::analysis::channel_name(kAcmod, kLfe, ch);
         const auto& stats = meter.summary()[static_cast<std::size_t>(ch)];
         fmt::printf("%-3.*s peak %6.1f dBFS  rms %6.1f dBFS%s\n", static_cast<int>(name.size()),
                     name.data(), stats.peak_db(), stats.rms_db(), stats.clipped_samples > 0 ? "  CLIPPED" : "");
     }
 
-    const auto energy = iclforge::analysis::energy_vector(meter.levels(), kAcmod);
+    const auto energy = iclforge::ac3::analysis::energy_vector(meter.levels(), kAcmod);
     fmt::printf("soundfield: %.1f degrees, magnitude %.2f, %.1f dBFS\n", energy.azimuth_deg,
                 energy.magnitude, energy.level_db);
     return 0;

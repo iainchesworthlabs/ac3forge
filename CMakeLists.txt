@@ -569,7 +569,7 @@ if(ICLFORGE_BUILD_ADM)
     add_subdirectory(src/adm)
 
     # iclforge::admbridge - ADM BWF → JOC bridge, phase 2: maps iclforge::adm's parsed ADM graph onto
-    # iclforge::oba::AtmosEncoder. Depends on iclforge::ac3 (added above), iclforge::adm (just added) and
+    # iclforge::ac3::oba::AtmosEncoder. Depends on iclforge::ac3 (added above), iclforge::adm (just added) and
     # (IAB reader phase 3) iclforge::iab (added earlier, guarded above), so it is meaningless
     # without ICLFORGE_BUILD_ADM - gated by the same flag rather than a new option of its own; see
     # src/admbridge/CMakeLists.txt's own header comment for the full reasoning, including why this

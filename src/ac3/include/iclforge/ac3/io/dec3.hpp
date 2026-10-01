@@ -13,7 +13,7 @@
 // extension TS 103 420 §8.3.1/§8.3.2.2 defines for the bitstream's own addbsi
 // and this box is documented to echo verbatim.
 //
-// Built here, in iclforge::io beside the scanner that already reads every one of
+// Built here, in iclforge::ac3::io beside the scanner that already reads every one of
 // these values off the bitstream, rather than by a container muxer: fscod,
 // bsid, bsmod, acmod, lfeon and the object-audio marker are all AC-3 syntax,
 // not container concepts, and a general-purpose ISOBMFF writer (iclforge::mp4) has
@@ -22,7 +22,7 @@
 // the same way it treats every access unit as opaque bytes - see
 // iclforge::mp4::AudioTrack::codec_config and examples/mux_mp4.cpp.
 
-namespace iclforge::io {
+namespace iclforge::ac3::io {
 
 // Returns the box's PAYLOAD only - everything after its own 8-byte
 // size+FourCC header, which is the container muxer's job to write (it is the
@@ -52,4 +52,4 @@ namespace iclforge::io {
 // dac3/dec3 payload above already draws.
 [[nodiscard]] ICLFORGE_AC3_EXPORT std::string dash_channel_configuration(const ScannedStream& stream);
 
-}  // namespace iclforge::io
+}  // namespace iclforge::ac3::io

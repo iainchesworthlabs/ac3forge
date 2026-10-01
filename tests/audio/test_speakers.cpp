@@ -19,7 +19,7 @@
 
 namespace {
 
-using iclforge::eac3::chanmap::Location;
+using iclforge::ac3::eac3::chanmap::Location;
 
 std::vector<Location> locations(std::uint32_t mask) {
     return iclforge::audio::locations_of(mask);

@@ -172,7 +172,7 @@ function(iclforge_add_container_fuzzer name library)
     add_dependencies(iclforge_fuzzers ${name})
 endfunction()
 
-# iclforge::io::scan: format-sniffing over an unidentified byte stream, before any
+# iclforge::ac3::io::scan: format-sniffing over an unidentified byte stream, before any
 # decoder commits to a layout (src/ac3/src/io/elementary.cpp).
 iclforge_add_fuzzer(fuzz_scan)
 
@@ -246,7 +246,7 @@ iclforge_add_fuzzer(fuzz_ac3_decode)
 # for E-AC-3 (src/ac3/src/decoder/eac3_decoder.cpp).
 iclforge_add_fuzzer(fuzz_eac3_decode)
 
-# iclforge::io::read_wav: a realistic input too, not only an adversarial one - a
+# iclforge::ac3::io::read_wav: a realistic input too, not only an adversarial one - a
 # truncated or hand-edited WAV is exactly what a user hands the CLI
 # (src/ac3/src/io/wav.cpp).
 iclforge_add_fuzzer(fuzz_wav_read)
@@ -288,7 +288,7 @@ iclforge_add_fuzzer(fuzz_emdf_parse)
 # (src/objects/src/oamd.cpp).
 iclforge_add_fuzzer(fuzz_oamd_parse)
 
-# iclforge::oba::joc::parse_payload: TS 103 420 §6's joc() payload, the one metadata
+# iclforge::ac3::oba::joc::parse_payload: TS 103 420 §6's joc() payload, the one metadata
 # parser here that Huffman-decodes and that sizes a matrix from the stream's
 # own numbers (src/ac3/src/oba/joc.cpp).
 iclforge_add_fuzzer(fuzz_joc_parse)

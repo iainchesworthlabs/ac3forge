@@ -13,7 +13,7 @@ std::string ac4_speaker_names(std::span<const iclforge::ac4::Speaker> speakers) 
         if (!out.empty()) {
             out += ' ';
         }
-        out += iclforge::eac3::chanmap::name(iclforge::apps::ac4_location(speaker));
+        out += iclforge::ac3::eac3::chanmap::name(iclforge::apps::ac4_location(speaker));
     }
     return out;
 }

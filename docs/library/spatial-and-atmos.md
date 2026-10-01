@@ -44,7 +44,7 @@ There is no `z`. A 5.1 ring has no height speakers, so a raised source folds ont
 its azimuth, at full level. Objects never reach the LFE by panning — `lfe_send` is the only
 route.
 
-## Objects with metadata: `iclforge::oba::AtmosEncoder`
+## Objects with metadata: `iclforge::ac3::oba::AtmosEncoder`
 
 `iclforge/ac3/oba/atmos.hpp`. The same objects, but their positions survive: the output is one ordinary
 5.1 E-AC-3 stream with OAMD and JOC payloads riding beside it in an EMDF container
@@ -55,7 +55,7 @@ the bed unchanged, at full level — that is the design target, not a fallback.
 constexpr int kObjects = 3;
 // Object metadata competes with the mantissas for the same frame, so an
 // object stream wants more headroom than a plain 5.1 one.
-iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, kObjects};
+iclforge::ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, kObjects};
 ```
 
 ```cpp
@@ -148,7 +148,7 @@ assignment) instead of an object count:
 using iclforge::oba::bed;
 const std::uint16_t layout = bed::kLR | bed::kC | bed::kLfe | bed::kLsRs |
                              bed::kTflTfr | bed::kTblTbr;  // 5.1.4
-iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, iclforge::oba::BedProgram{.bed = layout}};
+iclforge::ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, iclforge::ac3::oba::BedProgram{.bed = layout}};
 ```
 
 `encode_bed_frame` replaces `encode_frame`: no `ObjectPlacement` to supply, because a bed
@@ -473,14 +473,14 @@ no sync word to find, so it decodes the bed as ordinary 5.1. The choice is objec
 never both.
 
 ```cpp
-iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 448, .emit_object_metadata = false}, kObjects};
+iclforge::ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448, .emit_object_metadata = false}, kObjects};
 ```
 
 Turning it off drops TS 103 420 §8.3.1's `addbsi` object marker along with the container, so the
 stream doesn't *advertise* an object layer either. That marker (`flag_ec3_extension_type_a` plus
 §8.3.2.2's `complexity_index_type_a`) is the only thing a reader has to go on: it is what
-`iclforge::io::scan` reports as `ScannedStream::oba_complexity_index`, what
-`iclforge::io::build_codec_config_box` turns into the `dec3` box's Dolby Atmos extension, what
+`iclforge::ac3::io::scan` reports as `ScannedStream::oba_complexity_index`, what
+`iclforge::ac3::io::build_codec_config_box` turns into the `dec3` box's Dolby Atmos extension, what
 `forge fmp4` writes as an HLS `CHANNELS="<N>/JOC"` attribute, and what FFmpeg keys its
 "Dolby Digital Plus + Dolby Atmos" profile off. Left in, all four would claim objects that were
 never encoded — the same empty-promise this mode exists to avoid.

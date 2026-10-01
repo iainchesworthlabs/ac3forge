@@ -82,14 +82,14 @@ with the error handling elided:
 #include "iclforge/ac3/encoder/encoder.hpp"
 
 // Heap-allocated: FrameEncoder carries several KB of MDCT scratch/history state.
-auto encoder = std::make_unique<iclforge::FrameEncoder>(iclforge::EncoderConfig{
+auto encoder = std::make_unique<iclforge::ac3::FrameEncoder>(iclforge::ac3::EncoderConfig{
     .bitrate_kbps = 448,
-    .acmod = iclforge::Acmod::k3_2,  // L, C, R, SL, SR
+    .acmod = iclforge::ac3::Acmod::k3_2,  // L, C, R, SL, SR
     .lfe = true,
 });
 
 // Table 5.8 order, LFE last, exactly kSamplesPerFrame (1536) samples each.
-std::vector<std::vector<float>> pcm(6, std::vector<float>(iclforge::kSamplesPerFrame));
+std::vector<std::vector<float>> pcm(6, std::vector<float>(iclforge::ac3::kSamplesPerFrame));
 // encode_frame takes a span of spans, so the views must outlive the call.
 const std::vector<std::span<const float>> views{pcm.begin(), pcm.end()};
 

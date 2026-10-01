@@ -421,14 +421,14 @@ TEST_CASE("i32x4 widening, shift and subtract match the scalar form", "[simd]") 
 TEST_CASE("to_fixed25_block agrees with to_fixed25 element by element", "[simd]") {
     const auto values = adversarial_doubles();
     std::vector<std::int32_t> batched(values.size());
-    iclforge::to_fixed25_block(values, batched);
+    iclforge::ac3::to_fixed25_block(values, batched);
     std::size_t mismatches = 0;
     for (std::size_t i = 0; i < values.size(); ++i) {
         // to_fixed25 narrows with a C++ cast, which is undefined for a NaN
         // or an out-of-range value; the clamp rules those out for everything
         // except a NaN, which nothing in the codec produces and which
         // adversarial_doubles() therefore does not include.
-        if (batched[i] != iclforge::to_fixed25(values[i])) {
+        if (batched[i] != iclforge::ac3::to_fixed25(values[i])) {
             ++mismatches;
         }
     }
@@ -439,9 +439,9 @@ TEST_CASE("to_fixed25_block agrees with to_fixed25 element by element", "[simd]"
     for (const std::size_t n : {std::size_t{0}, std::size_t{1}, std::size_t{37},
                                 std::size_t{253}}) {
         std::vector<std::int32_t> tail(n);
-        iclforge::to_fixed25_block(std::span{values}.first(n), tail);
+        iclforge::ac3::to_fixed25_block(std::span{values}.first(n), tail);
         for (std::size_t i = 0; i < n; ++i) {
-            CHECK(tail[i] == iclforge::to_fixed25(values[i]));
+            CHECK(tail[i] == iclforge::ac3::to_fixed25(values[i]));
         }
     }
 }
@@ -485,7 +485,7 @@ TEST_CASE("AVX2 probe executes correctly where the CPU actually supports it",
     // self-hosted CPU features are not documented anywhere in this repo,
     // so this must never assume the current host qualifies.
     require_runnable_avx2();
-    CHECK(iclforge::internal::avx2::avx2_probe_matches_expected());
+    CHECK(iclforge::ac3::internal::avx2::avx2_probe_matches_expected());
 }
 
 TEST_CASE("AVX2 apply_analysis_window agrees with the scalar form bit-for-bit",
@@ -507,11 +507,11 @@ TEST_CASE("AVX2 apply_analysis_window agrees with the scalar form bit-for-bit",
 
     std::array<double, 512> scalar{};
     for (std::size_t n = 0; n < x.size(); ++n) {
-        scalar[n] = x[n] * iclforge::kAnalysisWindow[n];
+        scalar[n] = x[n] * iclforge::ac3::kAnalysisWindow[n];
     }
 
     std::array<double, 512> avx2_result{};
-    iclforge::internal::avx2::apply_analysis_window(x, avx2_result);
+    iclforge::ac3::internal::avx2::apply_analysis_window(x, avx2_result);
 
     std::size_t mismatches = 0;
     for (std::size_t n = 0; n < x.size(); ++n) {
@@ -584,7 +584,7 @@ TEST_CASE("AVX2 dct4_pre_twiddle agrees with the scalar form bit-for-bit", "[sim
     }
 
     std::vector<double> avx2_re(kTestP), avx2_im(kTestP);
-    iclforge::internal::avx2::dct4_pre_twiddle(u, pre_re, pre_im, bitrev, avx2_re, avx2_im);
+    iclforge::ac3::internal::avx2::dct4_pre_twiddle(u, pre_re, pre_im, bitrev, avx2_re, avx2_im);
 
     CHECK(all_bits_equal(avx2_re, scalar_re));
     CHECK(all_bits_equal(avx2_im, scalar_im));
@@ -609,7 +609,7 @@ TEST_CASE("AVX2 dct4_post_twiddle agrees with the scalar form bit-for-bit", "[si
     }
 
     std::vector<double> avx2_out(m_len);
-    iclforge::internal::avx2::dct4_post_twiddle(z_re, z_im, post_re, post_im, scale, avx2_out);
+    iclforge::ac3::internal::avx2::dct4_post_twiddle(z_re, z_im, post_re, post_im, scale, avx2_out);
 
     CHECK(all_bits_equal(avx2_out, scalar_out));
 }
@@ -632,7 +632,8 @@ TEST_CASE("AVX2 imdct512_pre_twiddle agrees with the scalar form bit-for-bit", "
     }
 
     std::vector<double> avx2_re(kTestP), avx2_im(kTestP);
-    iclforge::internal::avx2::imdct512_pre_twiddle(coeffs, cos1, sin1, bitrev, avx2_re, avx2_im);
+    iclforge::ac3::internal::avx2::imdct512_pre_twiddle(coeffs, cos1, sin1, bitrev, avx2_re,
+                                                        avx2_im);
 
     CHECK(all_bits_equal(avx2_re, scalar_re));
     CHECK(all_bits_equal(avx2_im, scalar_im));
@@ -651,7 +652,7 @@ TEST_CASE("AVX2 imdct512_negate_copy agrees with the scalar form bit-for-bit", "
     }
 
     std::vector<double> avx2_re(kTestP), avx2_im(kTestP);
-    iclforge::internal::avx2::imdct512_negate_copy(z_re, z_im, avx2_re, avx2_im);
+    iclforge::ac3::internal::avx2::imdct512_negate_copy(z_re, z_im, avx2_re, avx2_im);
 
     CHECK(all_bits_equal(avx2_re, scalar_re));
     CHECK(all_bits_equal(avx2_im, scalar_im));
@@ -672,7 +673,7 @@ TEST_CASE("AVX2 imdct512_post_twiddle agrees with the scalar form bit-for-bit", 
     }
 
     std::vector<double> avx2_re(kTestP), avx2_im(kTestP);
-    iclforge::internal::avx2::imdct512_post_twiddle(cos1, sin1, t_re, t_im, avx2_re, avx2_im);
+    iclforge::ac3::internal::avx2::imdct512_post_twiddle(cos1, sin1, t_re, t_im, avx2_re, avx2_im);
 
     CHECK(all_bits_equal(avx2_re, scalar_re));
     CHECK(all_bits_equal(avx2_im, scalar_im));
@@ -702,7 +703,7 @@ TEST_CASE("AVX2 imdct256_post_twiddle agrees with the scalar form bit-for-bit", 
 
     std::vector<double> avx2_y1_re(kEighth), avx2_y1_im(kEighth);
     std::vector<double> avx2_y2_re(kEighth), avx2_y2_im(kEighth);
-    iclforge::internal::avx2::imdct256_post_twiddle(cos2, sin2, t1_re, t1_im, t2_re, t2_im,
+    iclforge::ac3::internal::avx2::imdct256_post_twiddle(cos2, sin2, t1_re, t1_im, t2_re, t2_im,
                                                     avx2_y1_re, avx2_y1_im, avx2_y2_re, avx2_y2_im);
 
     CHECK(all_bits_equal(avx2_y1_re, scalar_y1_re));
@@ -715,7 +716,7 @@ TEST_CASE("AVX2 mdct512_forward_batch4 agrees with four scalar calls bit-for-bit
          "[simd][avx2]") {
     // Same shape, and for the same reason, as the inverse case below: the
     // low-level AVX2 body needs FastMdctTables<512>, private to mdct.cpp,
-    // so this goes through the PUBLIC iclforge::mdct512_forward_batch4, which
+    // so this goes through the PUBLIC iclforge::ac3::mdct512_forward_batch4, which
     // only takes the AVX2 path when has_avx2() is true - guarded here
     // exactly like every other [avx2] case in this file.
     require_runnable_avx2();
@@ -731,12 +732,12 @@ TEST_CASE("AVX2 mdct512_forward_batch4 agrees with four scalar calls bit-for-bit
 
     std::array<std::array<double, 256>, 4> scalar_c{};
     for (std::size_t i = 0; i < 4; ++i) {
-        iclforge::mdct512_forward(windowed[i], scalar_c[i], /*fast=*/true);
+        iclforge::ac3::mdct512_forward(windowed[i], scalar_c[i], /*fast=*/true);
     }
 
     std::array<std::array<double, 256>, 4> batch_c{};
-    iclforge::mdct512_forward_batch4(windowed[0], windowed[1], windowed[2], windowed[3], batch_c[0],
-                                batch_c[1], batch_c[2], batch_c[3]);
+    iclforge::ac3::mdct512_forward_batch4(windowed[0], windowed[1], windowed[2], windowed[3],
+                                          batch_c[0], batch_c[1], batch_c[2], batch_c[3]);
 
     std::size_t mismatches = 0;
     for (std::size_t i = 0; i < 4; ++i) {
@@ -750,8 +751,8 @@ TEST_CASE("AVX2 mdct512_forward_batch4 agrees with four scalar calls bit-for-bit
 TEST_CASE("AVX2 imdct512_windowed_batch4 agrees with four scalar calls bit-for-bit",
          "[simd][avx2]") {
     // Unlike the kernels above, this one is tested through the PUBLIC
-    // iclforge::imdct512_windowed_batch4 (mdct.hpp) rather than
-    // iclforge::internal::avx2:: directly: the low-level AVX2 body needs the
+    // iclforge::ac3::imdct512_windowed_batch4 (mdct.hpp) rather than
+    // iclforge::ac3::internal::avx2:: directly: the low-level AVX2 body needs the
     // twiddle/FFT tables mdct.cpp's own anonymous namespace holds
     // (twiddles(), fast_mdct_tables<512>()), which are not visible outside
     // that translation unit, so there is no way for a test to call it
@@ -774,11 +775,11 @@ TEST_CASE("AVX2 imdct512_windowed_batch4 agrees with four scalar calls bit-for-b
 
     std::array<std::array<double, 512>, 4> scalar_x{};
     for (std::size_t i = 0; i < 4; ++i) {
-        iclforge::imdct512_windowed(coeffs[i], scalar_x[i], /*fast=*/true);
+        iclforge::ac3::imdct512_windowed(coeffs[i], scalar_x[i], /*fast=*/true);
     }
 
     std::array<std::array<double, 512>, 4> batch_x{};
-    iclforge::imdct512_windowed_batch4(coeffs[0], coeffs[1], coeffs[2], coeffs[3], batch_x[0],
+    iclforge::ac3::imdct512_windowed_batch4(coeffs[0], coeffs[1], coeffs[2], coeffs[3], batch_x[0],
                                   batch_x[1], batch_x[2], batch_x[3]);
 
     std::size_t mismatches = 0;

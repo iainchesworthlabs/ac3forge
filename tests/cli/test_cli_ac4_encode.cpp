@@ -84,7 +84,7 @@ std::vector<float> tone(double hz, std::size_t count, double amplitude = 0.1) {
 // A WAV file of `channels`, written to `name` in the scratch directory.
 fs::path wav_of(const std::string& name, const std::vector<std::vector<float>>& channels) {
     const fs::path path = scratch_dir() / name;
-    REQUIRE(iclforge::io::write_wav_f32(path.string(), channels, kRate).has_value());
+    REQUIRE(iclforge::ac3::io::write_wav_f32(path.string(), channels, kRate).has_value());
     return path;
 }
 

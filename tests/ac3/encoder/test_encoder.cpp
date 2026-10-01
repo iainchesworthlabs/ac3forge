@@ -19,7 +19,7 @@
 namespace {
 
 std::vector<float> sine_frame(std::uint64_t& n, double freq, double amplitude) {
-    std::vector<float> samples(iclforge::kSamplesPerFrame);
+    std::vector<float> samples(iclforge::ac3::kSamplesPerFrame);
     for (auto& s : samples) {
         s = static_cast<float>(amplitude *
                                std::sin(2.0 * std::numbers::pi * freq * static_cast<double>(n) / 48000.0));
@@ -28,8 +28,8 @@ std::vector<float> sine_frame(std::uint64_t& n, double freq, double amplitude) {
     return samples;
 }
 
-std::expected<std::vector<std::byte>, iclforge::FrameError> encode_same(
-    iclforge::FrameEncoder& encoder, const std::vector<float>& samples) {
+std::expected<std::vector<std::byte>, iclforge::ac3::FrameError> encode_same(
+    iclforge::ac3::FrameEncoder& encoder, const std::vector<float>& samples) {
     std::vector<std::span<const float>> views(
         static_cast<std::size_t>(encoder.channel_count()), samples);
     return encoder.encode_frame(views);
@@ -41,7 +41,8 @@ std::expected<std::vector<std::byte>, iclforge::FrameError> encode_same(
 // when those defaults move.
 constexpr int kProbeCplBegf = 6;
 constexpr int kProbeCplEndf = 12;
-constexpr int kProbeCplSubBands = iclforge::coupling::sub_band_count(kProbeCplBegf, kProbeCplEndf);
+constexpr int kProbeCplSubBands =
+    iclforge::ac3::coupling::sub_band_count(kProbeCplBegf, kProbeCplEndf);
 // The bandwidth code whose last mantissa is the last coupled bin, so an
 // uncoupled frame can be compared with a coupled one over the same spectrum.
 constexpr int kProbeChbwcod = 48;
@@ -69,7 +70,7 @@ std::vector<std::vector<float>> wideband_frame(int channels, std::uint64_t start
     std::vector<double> tones = {310.0, 1450.0, 5200.0, 8100.0};  // the baseband's share
     std::vector<double> tilt(tones.size(), 1.0);
     for (int b = 0; b < kProbeCplSubBands; ++b) {
-        tones.push_back((iclforge::coupling::start_mant(kProbeCplBegf) + 12 * b + 6) * kBinHz);
+        tones.push_back((iclforge::ac3::coupling::start_mant(kProbeCplBegf) + 12 * b + 6) * kBinHz);
         // Real program rolls off across the coupled region, and a flat one
         // would hide the very thing coupling is judged on: what an encoder
         // does with the QUIET top bands. -2 dB a band, applied to both
@@ -78,9 +79,9 @@ std::vector<std::vector<float>> wideband_frame(int channels, std::uint64_t start
     }
     std::vector<std::vector<float>> pcm(
         static_cast<std::size_t>(channels),
-        std::vector<float>(static_cast<std::size_t>(iclforge::kSamplesPerFrame)));
+        std::vector<float>(static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame)));
     for (std::size_t ch = 0; ch < pcm.size(); ++ch) {
-        for (int i = 0; i < iclforge::kSamplesPerFrame; ++i) {
+        for (int i = 0; i < iclforge::ac3::kSamplesPerFrame; ++i) {
             const auto n = static_cast<double>(start + static_cast<std::uint64_t>(i));
             double value = 0.0;
             for (std::size_t t = 0; t < tones.size(); ++t) {
@@ -93,7 +94,7 @@ std::vector<std::vector<float>> wideband_frame(int channels, std::uint64_t start
             }
             const double envelope =
                 1.0 + tremolo * std::sin(2.0 * std::numbers::pi * n /
-                                         static_cast<double>(iclforge::kSamplesPerFrame));
+                                         static_cast<double>(iclforge::ac3::kSamplesPerFrame));
             pcm[ch][static_cast<std::size_t>(i)] = static_cast<float>(gain * envelope * value);
         }
     }
@@ -102,14 +103,14 @@ std::vector<std::vector<float>> wideband_frame(int channels, std::uint64_t start
 
 // Encode `count` frames and hand back the last, so the MDCT history is real
 // rather than the half-empty window the first frame sees.
-std::vector<std::byte> steady_state_frame(const iclforge::EncoderConfig& config, int channels,
+std::vector<std::byte> steady_state_frame(const iclforge::ac3::EncoderConfig& config, int channels,
                                           double gain = 1.0, double tremolo = 0.0, int count = 3) {
-    iclforge::FrameEncoder encoder{config};
+    iclforge::ac3::FrameEncoder encoder{config};
     std::vector<std::byte> last;
     std::uint64_t n = 0;
     for (int f = 0; f < count; ++f) {
         const auto pcm = wideband_frame(channels, n, gain, tremolo);
-        n += iclforge::kSamplesPerFrame;
+        n += iclforge::ac3::kSamplesPerFrame;
         std::vector<std::span<const float>> views;
         for (const auto& channel : pcm) {
             views.emplace_back(channel);
@@ -133,9 +134,9 @@ struct BlockZero {
     int cplstrtmant = 0;                            // 0 when not coupling
     int cplendmant = 0;                             // 0 when not coupling
     int chbw_endmant = 0;                           // 0 when coupling
-    iclforge::coupling::BandLayout bands{};              // as cplbndstrc describes it
+    iclforge::ac3::coupling::BandLayout bands{};              // as cplbndstrc describes it
     std::vector<int> master;                        // one per fbw channel
-    std::vector<iclforge::coupling::Coordinate> coords;  // [ch][bnd]
+    std::vector<iclforge::ac3::coupling::Coordinate> coords;  // [ch][bnd]
     int snroffst = 0;                               // (csnroffst << 4) | fsnroffst
     // §5.4.3.47-49: Table 5.16 codes (0 reuse, 1 new info, 2 no delta alloc).
     // cpldeltbae is only meaningful when cplinu && deltbaie; deltbae[ch] one
@@ -171,18 +172,18 @@ BlockZero parse_block_zero(std::span<const std::byte> frame) {
         r.skip(1);         // phsflginu, 2/0 only
         cplbegf = static_cast<int>(r.read(4));
         const int cplendf = static_cast<int>(r.read(4));
-        cplstrtmant = iclforge::coupling::start_mant(cplbegf);
-        cplendmant = std::min(iclforge::coupling::end_mant(cplendf), 253);
+        cplstrtmant = iclforge::ac3::coupling::start_mant(cplbegf);
+        cplendmant = std::min(iclforge::ac3::coupling::end_mant(cplendf), 253);
         out.cplstrtmant = cplstrtmant;
         out.cplendmant = cplendmant;
-        out.ncplsubnd = (cplendmant - cplstrtmant) / iclforge::coupling::kBinsPerSubBand;
+        out.ncplsubnd = (cplendmant - cplstrtmant) / iclforge::ac3::coupling::kBinsPerSubBand;
         // cplbndstrc: a set bit joins that sub-band to the band before it, so
         // the coordinate count is the number of CLEAR bits plus one.
-        std::array<bool, iclforge::coupling::kSubBands> structure{};
+        std::array<bool, iclforge::ac3::coupling::kSubBands> structure{};
         for (int bnd = 1; bnd < out.ncplsubnd; ++bnd) {
             structure[static_cast<std::size_t>(bnd)] = r.read(1) != 0;
         }
-        out.bands = iclforge::coupling::group_bands(cplbegf, out.ncplsubnd, structure);
+        out.bands = iclforge::ac3::coupling::group_bands(cplbegf, out.ncplsubnd, structure);
         for (int ch = 0; ch < kNfchans; ++ch) {
             REQUIRE(r.read(1) == 1);  // cplcoe: block 0 always sends coordinates
             out.master.push_back(static_cast<int>(r.read(2)));
@@ -202,9 +203,9 @@ BlockZero parse_block_zero(std::span<const std::byte> frame) {
     if (out.cplinu) {
         r.skip(2);  // cplexpstr
     }
-    std::array<iclforge::ExpStrategy, kNfchans> strategy{};
+    std::array<iclforge::ac3::ExpStrategy, kNfchans> strategy{};
     for (int ch = 0; ch < kNfchans; ++ch) {
-        strategy[static_cast<std::size_t>(ch)] = static_cast<iclforge::ExpStrategy>(r.read(2));
+        strategy[static_cast<std::size_t>(ch)] = static_cast<iclforge::ac3::ExpStrategy>(r.read(2));
     }
     // chbwcod exists only for channels NOT in coupling; block 0 always starts
     // a fresh exponent set, so every uncoupled channel carries one.
@@ -225,7 +226,7 @@ BlockZero parse_block_zero(std::span<const std::byte> frame) {
     }
     for (int ch = 0; ch < kNfchans; ++ch) {
         r.skip(4);  // exps[ch][0]
-        r.skip(static_cast<std::size_t>(iclforge::exponent_group_count(
+        r.skip(static_cast<std::size_t>(iclforge::ac3::exponent_group_count(
                    strategy[static_cast<std::size_t>(ch)], endmant[static_cast<std::size_t>(ch)])) *
                7);
         r.skip(2);  // gainrng
@@ -288,14 +289,14 @@ BlockZero parse_block_zero(std::span<const std::byte> frame) {
     return out;
 }
 
-void check_frame_invariants(const std::vector<std::byte>& frame, iclforge::SampleRate sr,
+void check_frame_invariants(const std::vector<std::byte>& frame, iclforge::ac3::SampleRate sr,
                             std::uint32_t kbps) {
-    CHECK(frame.size() == iclforge::frame_size_bytes(sr, kbps).value());
+    CHECK(frame.size() == iclforge::ac3::frame_size_bytes(sr, kbps).value());
     const std::span<const std::byte> bytes{frame};
     const auto words = static_cast<std::uint32_t>(frame.size()) / 2;
-    const std::uint32_t words58 = iclforge::frame_size_58_words(words);
-    CHECK(iclforge::crc16(bytes.subspan(2, 2 * words58 - 2)) == 0x0000);
-    CHECK(iclforge::crc16(bytes.subspan(2)) == 0x0000);
+    const std::uint32_t words58 = iclforge::ac3::frame_size_58_words(words);
+    CHECK(iclforge::ac3::crc16(bytes.subspan(2, 2 * words58 - 2)) == 0x0000);
+    CHECK(iclforge::ac3::crc16(bytes.subspan(2)) == 0x0000);
     CHECK(std::to_integer<std::uint8_t>(bytes[0]) == 0x0B);
     CHECK(std::to_integer<std::uint8_t>(bytes[1]) == 0x77);
 }
@@ -305,36 +306,36 @@ void check_frame_invariants(const std::vector<std::byte>& frame, iclforge::Sampl
 TEST_CASE("encoded sine frames satisfy the frame invariants at every bitrate", "[encoder]") {
     for (const std::uint32_t kbps : {96u, 192u, 448u, 640u}) {
         CAPTURE(kbps);
-        iclforge::FrameEncoder encoder{{.bitrate_kbps = kbps}};
+        iclforge::ac3::FrameEncoder encoder{{.bitrate_kbps = kbps}};
         std::uint64_t n = 0;
         for (int f = 0; f < 3; ++f) {
             const auto frame = encode_same(encoder, sine_frame(n, 1000.0, 0.5));
             REQUIRE(frame.has_value());
-            check_frame_invariants(*frame, iclforge::SampleRate::k48000, kbps);
+            check_frame_invariants(*frame, iclforge::ac3::SampleRate::k48000, kbps);
         }
     }
 }
 
 TEST_CASE("every acmod with and without LFE produces valid frames", "[encoder]") {
-    using iclforge::Acmod;
+    using iclforge::ac3::Acmod;
     for (const auto acmod : {Acmod::k1_0, Acmod::k2_0, Acmod::k3_0, Acmod::k2_1, Acmod::k3_1,
                              Acmod::k2_2, Acmod::k3_2}) {
         for (const bool lfe : {false, true}) {
             CAPTURE(static_cast<int>(acmod), lfe);
-            iclforge::FrameEncoder encoder{{.bitrate_kbps = 448, .acmod = acmod, .lfe = lfe}};
+            iclforge::ac3::FrameEncoder encoder{{.bitrate_kbps = 448, .acmod = acmod, .lfe = lfe}};
             std::uint64_t n = 0;
             const auto frame = encode_same(encoder, sine_frame(n, 500.0, 0.4));
             REQUIRE(frame.has_value());
-            check_frame_invariants(*frame, iclforge::SampleRate::k48000, 448);
+            check_frame_invariants(*frame, iclforge::ac3::SampleRate::k48000, 448);
         }
     }
 }
 
 TEST_CASE("44.1 kHz CBR alternates frame sizes to the exact long-run rate", "[encoder]") {
     // 448 kbps @ 44.1 kHz: ideal 975.238 words/frame -> mix of 975 and 976.
-    iclforge::FrameEncoder encoder{
-        {.sample_rate = iclforge::SampleRate::k44100, .bitrate_kbps = 448}};
-    const std::vector<float> silence(iclforge::kSamplesPerFrame, 0.0f);
+    iclforge::ac3::FrameEncoder encoder{
+        {.sample_rate = iclforge::ac3::SampleRate::k44100, .bitrate_kbps = 448}};
+    const std::vector<float> silence(iclforge::ac3::kSamplesPerFrame, 0.0f);
     std::uint64_t total_bytes = 0;
     int padded = 0;
     constexpr int kFrames = 84;  // one full alternation cycle (975.238... has period 21)
@@ -353,14 +354,14 @@ TEST_CASE("44.1 kHz CBR alternates frame sizes to the exact long-run rate", "[en
 }
 
 TEST_CASE("coupling produces valid frames across configurations", "[encoder][coupling]") {
-    using iclforge::Acmod;
+    using iclforge::ac3::Acmod;
     // Coupling needs >= 2 fbw channels; sweep the sub-band range including
     // the extremes, where the coded region is widest and narrowest.
     for (const auto acmod : {Acmod::k2_0, Acmod::k3_2}) {
         for (const auto& [begf, endf] : {std::pair{6, 12}, std::pair{0, 15}, std::pair{12, 2}}) {
             for (const std::uint32_t kbps : {192u, 384u}) {
                 CAPTURE(static_cast<int>(acmod), begf, endf, kbps);
-                iclforge::FrameEncoder encoder{{.bitrate_kbps = kbps,
+                iclforge::ac3::FrameEncoder encoder{{.bitrate_kbps = kbps,
                                            .acmod = acmod,
                                            .lfe = acmod == Acmod::k3_2,
                                            .coupling = true,
@@ -370,7 +371,7 @@ TEST_CASE("coupling produces valid frames across configurations", "[encoder][cou
                 for (int f = 0; f < 2; ++f) {
                     const auto frame = encode_same(encoder, sine_frame(n, 2200.0, 0.5));
                     REQUIRE(frame.has_value());
-                    check_frame_invariants(*frame, iclforge::SampleRate::k48000, kbps);
+                    check_frame_invariants(*frame, iclforge::ac3::SampleRate::k48000, kbps);
                 }
             }
         }
@@ -436,10 +437,10 @@ TEST_CASE("the coupling band follows the bit rate", "[encoder][coupling]") {
         // Never wider than the uncoupled bandwidth, and within one sub-band
         // of it - cplendf can only land on a sub-band edge.
         CHECK(coupled.cplendmant <= plain.chbw_endmant);
-        CHECK(plain.chbw_endmant - coupled.cplendmant < iclforge::coupling::kBinsPerSubBand);
+        CHECK(plain.chbw_endmant - coupled.cplendmant < iclforge::ac3::coupling::kBinsPerSubBand);
         // Sub-band 4, bin 85, is the floor: below it coupling is trading away
         // more waveform detail than the saving is worth.
-        CHECK(coupled.cplstrtmant >= iclforge::coupling::start_mant(4));
+        CHECK(coupled.cplstrtmant >= iclforge::ac3::coupling::start_mant(4));
         CHECK(coupled.cplstrtmant >= previous_start);  // monotone in the rate
         CHECK(coupled.ncplsubnd >= 1);
         previous_start = coupled.cplstrtmant;
@@ -484,7 +485,7 @@ TEST_CASE("a coupling coordinate carries a ratio, not a level", "[encoder][coupl
     //
     // Both halves below hold the inter-channel ratios fixed and move only the
     // level, so a coordinate that moves with them is carrying a level.
-    const iclforge::EncoderConfig config{.bitrate_kbps = 192,
+    const iclforge::ac3::EncoderConfig config{.bitrate_kbps = 192,
                                     .coupling = true,
                                     .cplbegf = kProbeCplBegf,
                                     .cplendf = kProbeCplEndf};
@@ -520,9 +521,9 @@ TEST_CASE("a coupling coordinate carries a ratio, not a level", "[encoder][coupl
         const int bands = steady.bands.count;
         for (std::size_t i = 0; i < steady.coords.size(); ++i) {
             const int ch = static_cast<int>(i) / bands;
-            const double a = iclforge::coupling::decode_coordinate(
+            const double a = iclforge::ac3::coupling::decode_coordinate(
                 steady.coords[i], steady.master[static_cast<std::size_t>(ch)]);
-            const double b = iclforge::coupling::decode_coordinate(
+            const double b = iclforge::ac3::coupling::decode_coordinate(
                 pulsing.coords[i], pulsing.master[static_cast<std::size_t>(ch)]);
             const double db = 20.0 * std::log10(std::max(b, 1e-12) / std::max(a, 1e-12));
             CAPTURE(i, ch, a, b, db);
@@ -558,9 +559,9 @@ std::vector<std::vector<float>> noisy_frame(int channels, std::uint64_t start, d
     }
     std::vector<std::vector<float>> pcm(
         static_cast<std::size_t>(channels),
-        std::vector<float>(static_cast<std::size_t>(iclforge::kSamplesPerFrame)));
+        std::vector<float>(static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame)));
     for (std::size_t ch = 0; ch < pcm.size(); ++ch) {
-        for (int i = 0; i < iclforge::kSamplesPerFrame; ++i) {
+        for (int i = 0; i < iclforge::ac3::kSamplesPerFrame; ++i) {
             const auto n = static_cast<double>(start + static_cast<std::uint64_t>(i));
             double value = 0.0;
             for (const auto& c : components) {
@@ -573,15 +574,15 @@ std::vector<std::vector<float>> noisy_frame(int channels, std::uint64_t start, d
     return pcm;
 }
 
-std::vector<std::byte> steady_state_noise(const iclforge::EncoderConfig& config, int channels,
+std::vector<std::byte> steady_state_noise(const iclforge::ac3::EncoderConfig& config, int channels,
                                           double lo_hz, double hi_hz, double amplitude,
                                           std::uint32_t seed, int count = 3) {
-    iclforge::FrameEncoder encoder{config};
+    iclforge::ac3::FrameEncoder encoder{config};
     std::vector<std::byte> last;
     std::uint64_t n = 0;
     for (int f = 0; f < count; ++f) {
         const auto pcm = noisy_frame(channels, n, lo_hz, hi_hz, amplitude, seed);
-        n += iclforge::kSamplesPerFrame;
+        n += iclforge::ac3::kSamplesPerFrame;
         std::vector<std::span<const float>> views;
         for (const auto& channel : pcm) {
             views.emplace_back(channel);
@@ -606,8 +607,8 @@ TEST_CASE("delta bit allocation reaches fbw channels while coupling is active",
     // bitstream itself for it, rather than trusting the encoder's internal
     // bookkeeping.
     constexpr double kBinHz = 48000.0 / 512.0;
-    const double cpl_lo = iclforge::coupling::start_mant(kProbeCplBegf) * kBinHz;
-    const double cpl_hi = iclforge::coupling::end_mant(kProbeCplEndf) * kBinHz;
+    const double cpl_lo = iclforge::ac3::coupling::start_mant(kProbeCplBegf) * kBinHz;
+    const double cpl_hi = iclforge::ac3::coupling::end_mant(kProbeCplEndf) * kBinHz;
     for (const std::uint32_t kbps : {384u, 448u}) {
         CAPTURE(kbps);
         const auto frame = steady_state_noise({.bitrate_kbps = kbps,
@@ -615,7 +616,7 @@ TEST_CASE("delta bit allocation reaches fbw channels while coupling is active",
                                                .cplbegf = kProbeCplBegf,
                                                .cplendf = kProbeCplEndf},
                                               2, cpl_lo, cpl_hi, 0.7, 12345);
-        check_frame_invariants(frame, iclforge::SampleRate::k48000, kbps);
+        check_frame_invariants(frame, iclforge::ac3::SampleRate::k48000, kbps);
         const auto block0 = parse_block_zero(frame);
         REQUIRE(block0.cplinu);
         REQUIRE(block0.deltbaie);
@@ -630,7 +631,7 @@ TEST_CASE("delta bit allocation reaches fbw channels while coupling is active",
         // actually chose to send here - delta included - so round-tripping
         // the frame is the real proof this is wired correctly end to end,
         // not just that the right bits went out.
-        iclforge::FrameDecoder decoder;
+        iclforge::ac3::FrameDecoder decoder;
         const auto decoded = decoder.decode_frame(frame);
         REQUIRE(decoded.has_value());
     }
@@ -648,12 +649,13 @@ TEST_CASE("dithflag follows the content, and never covers digital silence",
     // Frame 3, not frame 0: the first frame's analysis window is half MDCT
     // history that does not exist yet, so its allocation is not the
     // steady-state one this is about.
-    const iclforge::EncoderConfig config{.bitrate_kbps = 192};
+    const iclforge::ac3::EncoderConfig config{.bitrate_kbps = 192};
 
-    iclforge::FrameEncoder silent{config};
+    iclforge::ac3::FrameEncoder silent{config};
     std::vector<std::byte> silent_frame;
     for (int f = 0; f < 3; ++f) {
-        const std::vector<float> zeros(static_cast<std::size_t>(iclforge::kSamplesPerFrame), 0.0F);
+        const std::vector<float> zeros(static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame),
+                                       0.0F);
         const std::vector<std::span<const float>> views{zeros, zeros};
         auto encoded = silent.encode_frame(views);
         REQUIRE(encoded.has_value());
@@ -671,7 +673,7 @@ TEST_CASE("dithflag follows the content, and never covers digital silence",
     // content these tests already generate and across the rate range.
     bool dithered_somewhere = false;
     for (const std::uint32_t kbps : {96u, 192u, 448u}) {
-        const iclforge::EncoderConfig at{.bitrate_kbps = kbps};
+        const iclforge::ac3::EncoderConfig at{.bitrate_kbps = kbps};
         for (const auto& block0 :
              {parse_block_zero(steady_state_noise(at, 2, 200.0, 16000.0, 0.5, 0x51EED)),
               parse_block_zero(steady_state_frame(at, 2, 1.0, 0.4))}) {
@@ -693,12 +695,12 @@ TEST_CASE("a block-switched channel never dithers", "[encoder][dither]") {
     //
     // A hard onset in the middle of the frame is what trips the §8.2.2
     // detector: silence, then full-scale wideband noise.
-    iclforge::FrameEncoder encoder{{.bitrate_kbps = 192}};
+    iclforge::ac3::FrameEncoder encoder{{.bitrate_kbps = 192}};
     std::uint64_t n = 0;
     bool saw_switch = false;
     for (int f = 0; f < 4; ++f) {
         auto pcm = wideband_frame(2, n, f == 2 ? 1.0 : 0.0);
-        n += iclforge::kSamplesPerFrame;
+        n += iclforge::ac3::kSamplesPerFrame;
         const std::vector<std::span<const float>> views{pcm[0], pcm[1]};
         auto frame = encoder.encode_frame(views);
         REQUIRE(frame.has_value());
@@ -720,17 +722,17 @@ TEST_CASE("a block-switched channel never dithers", "[encoder][dither]") {
 TEST_CASE("coupling below two channels is silently inactive", "[encoder][coupling]") {
     // 1/0 has nothing to couple; the encoder must fall back rather than emit
     // a coupling strategy no decoder could use.
-    iclforge::FrameEncoder encoder{
-        {.bitrate_kbps = 192, .acmod = iclforge::Acmod::k1_0, .coupling = true}};
+    iclforge::ac3::FrameEncoder encoder{
+        {.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k1_0, .coupling = true}};
     std::uint64_t n = 0;
     const auto frame = encode_same(encoder, sine_frame(n, 1000.0, 0.5));
     REQUIRE(frame.has_value());
-    check_frame_invariants(*frame, iclforge::SampleRate::k48000, 192);
+    check_frame_invariants(*frame, iclforge::ac3::SampleRate::k48000, 192);
 }
 
 TEST_CASE("encoding is deterministic", "[encoder]") {
-    iclforge::FrameEncoder a{{.bitrate_kbps = 256}};
-    iclforge::FrameEncoder b{{.bitrate_kbps = 256}};
+    iclforge::ac3::FrameEncoder a{{.bitrate_kbps = 256}};
+    iclforge::ac3::FrameEncoder b{{.bitrate_kbps = 256}};
     std::uint64_t n1 = 0;
     std::uint64_t n2 = 0;
     for (int f = 0; f < 2; ++f) {
@@ -743,25 +745,27 @@ TEST_CASE("encoding is deterministic", "[encoder]") {
 }
 
 TEST_CASE("invalid encoder configs are rejected", "[encoder]") {
-    const std::vector<float> silence(iclforge::kSamplesPerFrame, 0.0f);
-    iclforge::FrameEncoder bad_rate{{.bitrate_kbps = 100}};
-    CHECK(encode_same(bad_rate, silence).error() == iclforge::FrameError::kInvalidBitrate);
-    iclforge::FrameEncoder bad_dialnorm{{.bitrate_kbps = 192, .dialnorm = 0}};
-    CHECK(encode_same(bad_dialnorm, silence).error() == iclforge::FrameError::kInvalidDialnorm);
+    const std::vector<float> silence(iclforge::ac3::kSamplesPerFrame, 0.0f);
+    iclforge::ac3::FrameEncoder bad_rate{{.bitrate_kbps = 100}};
+    CHECK(encode_same(bad_rate, silence).error() == iclforge::ac3::FrameError::kInvalidBitrate);
+    iclforge::ac3::FrameEncoder bad_dialnorm{{.bitrate_kbps = 192, .dialnorm = 0}};
+    CHECK(encode_same(bad_dialnorm, silence).error() ==
+          iclforge::ac3::FrameError::kInvalidDialnorm);
     // 1+1 needs Ch2's own dialnorm; missing or out of range is exactly as
     // invalid as Ch1's own would be.
-    iclforge::FrameEncoder missing_dialnorm2{
-        {.bitrate_kbps = 192, .acmod = iclforge::Acmod::kDualMono}};
+    iclforge::ac3::FrameEncoder missing_dialnorm2{
+        {.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::kDualMono}};
     CHECK(encode_same(missing_dialnorm2, silence).error() ==
-          iclforge::FrameError::kInvalidDialnorm);
-    iclforge::FrameEncoder bad_dialnorm2{
-        {.bitrate_kbps = 192, .dialnorm2 = 0, .acmod = iclforge::Acmod::kDualMono}};
-    CHECK(encode_same(bad_dialnorm2, silence).error() == iclforge::FrameError::kInvalidDialnorm);
+          iclforge::ac3::FrameError::kInvalidDialnorm);
+    iclforge::ac3::FrameEncoder bad_dialnorm2{
+        {.bitrate_kbps = 192, .dialnorm2 = 0, .acmod = iclforge::ac3::Acmod::kDualMono}};
+    CHECK(encode_same(bad_dialnorm2, silence).error() ==
+          iclforge::ac3::FrameError::kInvalidDialnorm);
 }
 
 TEST_CASE("dual mono codes two independent programmes, never one into the other",
          "[encoder][dual-mono]") {
-    using iclforge::Acmod;
+    using iclforge::ac3::Acmod;
     // Ch1 carries a loud, genuinely wideband tone; Ch2 is silent. Any
     // cross-talk between the two - coupling turned on by mistake, a shared
     // downmix measurement, a swapped channel - shows up as either Ch1 losing
@@ -771,21 +775,21 @@ TEST_CASE("dual mono codes two independent programmes, never one into the other"
     // heavy2 is set explicitly alongside heavy - compr2e is Ch2's own flag,
     // not inherited from Ch1's, so leaving it unset here would (correctly)
     // silence compr2 and defeat the compr2.has_value() check below.
-    const iclforge::EncoderConfig config{
+    const iclforge::ac3::EncoderConfig config{
         .bitrate_kbps = 192,
         .dialnorm = 27,
         .dialnorm2 = 18,
         .acmod = Acmod::kDualMono,
-        .drc = iclforge::meta::profile(iclforge::meta::ProfileId::kFilmStandard),
-        .heavy = iclforge::meta::HeavyConfig{},
-        .heavy2 = iclforge::meta::HeavyConfig{}};
-    iclforge::FrameEncoder encoder{config};
-    iclforge::FrameDecoder decoder;
+        .drc = iclforge::ac3::meta::profile(iclforge::ac3::meta::ProfileId::kFilmStandard),
+        .heavy = iclforge::ac3::meta::HeavyConfig{},
+        .heavy2 = iclforge::ac3::meta::HeavyConfig{}};
+    iclforge::ac3::FrameEncoder encoder{config};
+    iclforge::ac3::FrameDecoder decoder;
     std::uint64_t n = 0;
     std::vector<std::byte> last_frame;
     for (int f = 0; f < 3; ++f) {
         const auto ch1 = sine_frame(n, 1200.0, 0.8);
-        std::uint64_t n2 = n - static_cast<std::uint64_t>(iclforge::kSamplesPerFrame);
+        std::uint64_t n2 = n - static_cast<std::uint64_t>(iclforge::ac3::kSamplesPerFrame);
         const auto ch2 = sine_frame(n2, 1200.0, 0.0);  // silence, same length
         const std::vector<std::span<const float>> views{ch1, ch2};
         const auto frame = encoder.encode_frame(views);
@@ -853,21 +857,22 @@ TEST_CASE("fast_mdct changes output only at the quantization-decision level",
     // direct-vs-fast comparison, so neither leg may drift with the config
     // default (which flipped to fast once the owner accepted the evidence -
     // an unpinned "direct" leg would silently compare fast against fast).
-    iclforge::EncoderConfig direct_config{.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0};
+    iclforge::ac3::EncoderConfig direct_config{.bitrate_kbps = 192,
+                                               .acmod = iclforge::ac3::Acmod::k2_0};
     direct_config.fast_mdct = false;
-    iclforge::EncoderConfig fast_config = direct_config;
+    iclforge::ac3::EncoderConfig fast_config = direct_config;
     fast_config.fast_mdct = true;
 
-    iclforge::FrameEncoder direct_encoder{direct_config};
-    iclforge::FrameEncoder fast_encoder{fast_config};
-    iclforge::FrameDecoder direct_decoder;
-    iclforge::FrameDecoder fast_decoder;
+    iclforge::ac3::FrameEncoder direct_encoder{direct_config};
+    iclforge::ac3::FrameEncoder fast_encoder{fast_config};
+    iclforge::ac3::FrameDecoder direct_decoder;
+    iclforge::ac3::FrameDecoder fast_decoder;
 
     std::uint64_t n_left = 0;
     std::uint64_t n_right = 0;
     std::vector<float> direct_pcm;
     std::vector<float> fast_pcm;
-    direct_pcm.reserve(static_cast<std::size_t>(iclforge::kSamplesPerFrame) * 8);
+    direct_pcm.reserve(static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame) * 8);
     fast_pcm.reserve(direct_pcm.capacity());
 
     for (int f = 0; f < 8; ++f) {
@@ -876,14 +881,14 @@ TEST_CASE("fast_mdct changes output only at the quantization-decision level",
         // than a pure tone does. Both encoders below see the SAME left/right
         // PCM - only fast_mdct differs between them.
         auto l1 = sine_frame(n_left, 440.0, 0.3);
-        auto n_left_r = n_left - static_cast<std::uint64_t>(iclforge::kSamplesPerFrame);
+        auto n_left_r = n_left - static_cast<std::uint64_t>(iclforge::ac3::kSamplesPerFrame);
         auto l2 = sine_frame(n_left_r, 2500.0, 0.15);
         std::vector<float> left(l1.size());
         for (std::size_t i = 0; i < left.size(); ++i) {
             left[i] = l1[i] + l2[i];
         }
         auto r1 = sine_frame(n_right, 660.0, 0.3);
-        auto n_right_r = n_right - static_cast<std::uint64_t>(iclforge::kSamplesPerFrame);
+        auto n_right_r = n_right - static_cast<std::uint64_t>(iclforge::ac3::kSamplesPerFrame);
         auto r2 = sine_frame(n_right_r, 3100.0, 0.15);
         std::vector<float> right(r1.size());
         for (std::size_t i = 0; i < right.size(); ++i) {
@@ -942,10 +947,10 @@ TEST_CASE("a delta correction that ends mid-frame is cleared explicitly", "[enco
     // That is exactly the mid-frame "had a delta, now has none" transition
     // the defect mishandles.
     auto split_frame = [](std::uint64_t start, int head_blocks, double head_gain) {
-        std::vector<float> pcm(static_cast<std::size_t>(iclforge::kSamplesPerFrame));
+        std::vector<float> pcm(static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame));
         for (int block = 0; block < head_blocks; ++block) {
-            for (int i = 0; i < iclforge::kSamplesPerBlock; ++i) {
-                const int idx = block * iclforge::kSamplesPerBlock + i;
+            for (int i = 0; i < iclforge::ac3::kSamplesPerBlock; ++i) {
+                const int idx = block * iclforge::ac3::kSamplesPerBlock + i;
                 const double t =
                     static_cast<double>(start + static_cast<std::uint64_t>(idx)) / 48000.0;
                 double v = 0.0;
@@ -961,10 +966,10 @@ TEST_CASE("a delta correction that ends mid-frame is cleared explicitly", "[enco
     // Low rates are where the allocator is tightest and the correction is
     // most often worth its bits, but the defect is not rate-specific.
     for (const std::uint32_t kbps : {64u, 96u, 128u, 192u}) {
-        for (const auto acmod : {iclforge::Acmod::k1_0, iclforge::Acmod::k2_0}) {
+        for (const auto acmod : {iclforge::ac3::Acmod::k1_0, iclforge::ac3::Acmod::k2_0}) {
             CAPTURE(kbps, static_cast<int>(acmod));
-            iclforge::FrameEncoder encoder{{.bitrate_kbps = kbps, .acmod = acmod}};
-            iclforge::FrameDecoder decoder;
+            iclforge::ac3::FrameEncoder encoder{{.bitrate_kbps = kbps, .acmod = acmod}};
+            iclforge::ac3::FrameDecoder decoder;
             std::uint64_t n = 0;
             for (int frame = 0; frame < 24; ++frame) {
                 CAPTURE(frame);
@@ -974,7 +979,7 @@ TEST_CASE("a delta correction that ends mid-frame is cleared explicitly", "[enco
                 const int head_blocks = 1 + frame % 5;
                 const double head_gain = 0.25 + 0.12 * static_cast<double>(frame % 4);
                 const auto pcm = split_frame(n, head_blocks, head_gain);
-                n += static_cast<std::uint64_t>(iclforge::kSamplesPerFrame);
+                n += static_cast<std::uint64_t>(iclforge::ac3::kSamplesPerFrame);
                 const auto encoded = encode_same(encoder, pcm);
                 REQUIRE(encoded.has_value());
                 const auto decoded = decoder.decode_frame(*encoded);

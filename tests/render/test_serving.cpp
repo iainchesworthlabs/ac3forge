@@ -12,10 +12,10 @@
 
 namespace {
 
-using iclforge::DownmixTarget;
-using iclforge::render::ObjectsPolicy;
+using iclforge::ac3::DownmixTarget;
+using iclforge::ac3::render::ObjectsPolicy;
 using iclforge::render::OutputLayout;
-using iclforge::render::serve;
+using iclforge::ac3::render::serve;
 
 }  // namespace
 
@@ -57,21 +57,21 @@ TEST_CASE("a rendered room reconstructs objects by its policy", "[render][servin
 }
 
 TEST_CASE("the serving decision sets the decoder's target and object switch", "[render][serving]") {
-    iclforge::DecoderConfig config;
-    config.output.mode = iclforge::OperatingMode::kLine;
+    iclforge::ac3::DecoderConfig config;
+    config.output.mode = iclforge::ac3::OperatingMode::kLine;
     config.drc_scale = 0.5;
 
-    iclforge::render::configure_decoder(
+    iclforge::ac3::render::configure_decoder(
         serve(OutputLayout::stereo(), DownmixTarget::kLtRt, ObjectsPolicy::kAuto), config);
     REQUIRE(config.output.target == DownmixTarget::kLtRt);
     REQUIRE(config.skip_object_reconstruction);
 
-    iclforge::render::configure_decoder(
+    iclforge::ac3::render::configure_decoder(
         serve(*OutputLayout::parse("7.1.4"), DownmixTarget::kLoRo, ObjectsPolicy::kAuto), config);
     REQUIRE(config.output.target == DownmixTarget::kAsCoded);
     REQUIRE_FALSE(config.skip_object_reconstruction);
 
     // Everything else is the caller's.
-    REQUIRE(config.output.mode == iclforge::OperatingMode::kLine);
+    REQUIRE(config.output.mode == iclforge::ac3::OperatingMode::kLine);
     REQUIRE(config.drc_scale == 0.5);
 }

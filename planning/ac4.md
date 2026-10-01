@@ -102,7 +102,7 @@ checked. The table is of `main` at `5ef9eeafc`.
 | I5 | immersive and object content in the applications | #1100, 2026-09-29 | merged; exit met, apart from two failures in suites it did not touch (fixed since) |
 | I5b | the encoder page's AC-4 objects | #1117, 2026-09-29 | merged; exit met, with the ADM master's audio as the page's source and its scene authored there: the page has no ADM or IAB reader |
 | I6 | the ESP32 sinks | | not built |
-| N1 | the program names and the layout of `src/` | study #1122; S2 #1160; S3 #1161; S4 #1162; N1A #1164; S5 | built in the repository, 2026-09-30 and 2026-10-01; the owner's renames, S6 and U1 are left (see N1); the PyPI project and the Homebrew names are decided (40, 41) and the open vcpkg pull request is not |
+| N1 | the program names and the layout of `src/` | study #1122; S2 #1160; S3 #1161; S4 #1162; N1A #1164; S5; S6 | built in the repository, 2026-09-30 and 2026-10-01; the owner's renames and U1 are left (see N1); the PyPI project and the Homebrew names are decided (40, 41) and the open vcpkg pull request is not |
 
 Not built, beside those: a quality series for the encoder (the decoder's has one, `ac4-quality-main.jsonl`;
 the encoder's scores and the race against DEE are held to pinned floors and keep no history), Pro
@@ -1316,7 +1316,7 @@ and, in the last column, where it stands; [State on 2026-09-30](#state-on-2026-0
 | 22 | [D14](#d14-ac-4-on-the-esp32s) | AC-4 on the ESP32s: the P4 first, then the S3 and the C6 | D10 | D14a and D14b merged (#1096, #1102, #1123, #1118); D14c and D14d not built |
 | | [D14a4](#d14a4-libm-parity-and-the-converter-at-float) | libm parity and the frame-rate converter at `float`: what D14b's board work left in D14a's build | D14a, D14b | open |
 | 23 | [I6](#i6-the-esp32-sinks) | the ESP32 sinks | each part's D14 figures | not built |
-| 24 | [N1](#n1-the-names) | the names | I5 | built in the repository, 2026-09-30 and 2026-10-01 (#1160 to #1164 and S5); the owner's renames and S6 are left |
+| 24 | [N1](#n1-the-names) | the names | I5 | built in the repository, 2026-09-30 and 2026-10-01 (#1160 to #1164, S5 and S6); the owner's renames are left |
 | | [G1](#g0-the-gold-set) | the golden masters, extending G0's set | any time before DEE's licence ends on 2026-11-06 | merged, #1051 |
 | | [D11](#d11-ac-4-over-iec-61937) | AC-4 over IEC 61937 | D1; any time | merged, #1052 |
 | | [E10](#e10-a-spx-noise-floors-on-sweeps) | A-SPX noise floors on sweeps: the gap E8 left to DEE | E2, E8 | merged, #1113 |
@@ -3177,13 +3177,13 @@ request of its own with its scripts under `tools/n1b/`:
 | N1A | #1164 | `ac3cli`, `ac3gui`, `ac3hearth` and `ac3crucible` became `forge`, `forge-gui`, `hearth` and `crucible`, with what they register |
 | S5 | #1165 | the pages, the addresses, the build and tool text and the install routes follow the names; [Renamed](../docs/renamed.md) is the page that puts each old name beside its new one |
 | N1D | the pull request that carries this text | the Windows null-sink driver became `IclForgeNullSink` and its endpoint "Crucible Silent Output", on the owner's decision of 2026-10-01 (the driver had never been signed or installed outside the test guest); [the driver's page](../docs/platforms/windows-driver-acx.md#the-rename-2026-10-01) has the record |
+| S6 | the pull request that carries this text | the AC-3 codec's C++ names are in `iclforge::ac3`, a peer of `iclforge::ac4`, and the root `iclforge` holds one namespace per library; [the library index](../docs/library/index.md) and [Renamed](../docs/renamed.md) say how, and `tools/n1b/README.md` has the recipe |
 
 [What the runs found](layout.md#what-the-runs-found-that-the-plan-did-not) gives the counts that
 differed from the study's and the hazards it did not name. **Left:** the owner renames the
 repository, the Homebrew tap and the SonarCloud project key, creates the pending publisher of the
-PyPI project `iclforge` and publishes the first release under the new names; S6 nests the AC-3
-codec's own symbols under `iclforge::ac3`; and U1 revises wording that is not a name. What follows
-is the plan as it was written.
+PyPI project `iclforge` and publishes the first release under the new names; and U1 revises
+wording that is not a name. What follows is the plan as it was written.
 
 Asked by the user on 2026-09-25, since libraries and programs named `ac3` now do AC-4. A survey of
 the tree found `ac3forge` already the family's name for parts with no AC-3 in them (Hearth,

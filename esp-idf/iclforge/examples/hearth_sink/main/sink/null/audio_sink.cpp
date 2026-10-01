@@ -50,7 +50,7 @@ double g_checksum = 0.0;
 // here would just move the obstacle.
 bool sink_open(std::uint32_t sample_rate, int channels) {
     g_channels = channels;
-    g_dac.open(kVirtualDescriptors, iclforge::kSamplesPerBlock, sample_rate);
+    g_dac.open(kVirtualDescriptors, iclforge::ac3::kSamplesPerBlock, sample_rate);
     std::printf("sink: null %lu Hz x%d (no peripheral; timed writes paced as a DAC would)\n",
                 static_cast<unsigned long>(sample_rate), channels);
     return true;

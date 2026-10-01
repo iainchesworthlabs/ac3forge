@@ -22,7 +22,7 @@
 // nothing from iclforge::ac3. The one place MP4 forces a codec-shaped decision on
 // this module is the same place the writer already had one - the sample
 // entry's dac3/dec3 configuration box - and CodecConfig below is where that
-// lands: the read twin of iclforge::io::build_codec_config_box (ac3/io/dec3.hpp),
+// lands: the read twin of iclforge::ac3::io::build_codec_config_box (ac3/io/dec3.hpp),
 // parsed here because the box is an ISOBMFF structure the walk is already
 // standing on, and reported as plain numbers for a caller that knows what
 // they mean.
@@ -67,7 +67,7 @@ enum class DemuxError : std::uint8_t {
 [[nodiscard]] ICLFORGE_MP4_EXPORT std::string_view describe(DemuxError error);
 
 // The parsed dac3/dec3 sample-entry configuration box - the read twin of
-// iclforge::io::build_codec_config_box, whose own comments carry the field
+// iclforge::ac3::io::build_codec_config_box, whose own comments carry the field
 // derivations and the primary sources (ETSI TS 102 366 Annex F §F.4/§F.6,
 // TS 103 420 §8.3.1/§8.3.2.2 for the Atmos extension).
 //

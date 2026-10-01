@@ -80,7 +80,7 @@ FRAMES = 6
 # number.
 #
 # `wav_position[i]` is the WAV position holding coded channel i - the inverse of
-# iclforge::plan::wav_order()'s own mapping for that layout. Written out per layout
+# iclforge::ac3::plan::wav_order()'s own mapping for that layout. Written out per layout
 # rather than derived, because deriving it means reimplementing wav_order() and
 # kWavSpeakerOrder in Python and then keeping two statements of the same
 # permutation agreeing. One row is checked here (it must be a permutation) and

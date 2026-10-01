@@ -103,6 +103,30 @@ class Compare(unittest.TestCase):
         changed, _ = self.run_identity({"names"})
         self.assertEqual(changed, 1)
 
+    def test_the_librarys_names_nest_under_the_new_namespace_and_the_others_do_not(self) -> None:
+        old = [
+            "iclforge::FrameEncoder::encode(iclforge::Acmod, std::span<float const>)",
+            "iclforge::meta::dialnorm_from_lkfs(double)",
+            "iclforge::oba::Position::Position(float)",
+            "iclforge::oba::AtmosEncoder::encode_frame()",
+            "iclforge::BitReader::read(int)",
+            "iclforge::mp4::write()",
+        ]
+        new = [
+            "iclforge::ac3::FrameEncoder::encode(iclforge::ac3::Acmod, std::span<float const>)",
+            "iclforge::ac3::meta::dialnorm_from_lkfs(double)",
+            "iclforge::oba::Position::Position(float)",
+            "iclforge::ac3::oba::AtmosEncoder::encode_frame()",
+            "iclforge::BitReader::read(int)",
+            "iclforge::mp4::write()",
+        ]
+        self.write(self.old, "libiclforge_ac3.so", old)
+        self.write(self.new, "libiclforge_ac3.so", new)
+        changed, text = self.run_identity({"ac3ns"})
+        self.assertEqual(changed, 0, text)
+        changed, _ = self.run_identity(set())
+        self.assertEqual(changed, 1)
+
     def test_the_same_rename_is_listed_without_the_rewrite(self) -> None:
         self.write(self.old, "libiclforge_mp4.so", ["mp4::write()"])
         self.write(self.new, "libiclforge_mp4.so", ["iclforge::mp4::write()"])

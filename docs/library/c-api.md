@@ -60,7 +60,7 @@ caller-supplied buffer, so nothing here requires the caller to predict a size up
 pointee is left untouched on failure. Read it through the type's accessor functions, then destroy
 it.
 
-**No exception ever crosses this boundary.** `iclforge::FrameError`/`iclforge::DecodeError` map one-for-one
+**No exception ever crosses this boundary.** `iclforge::ac3::FrameError`/`iclforge::ac3::DecodeError` map one-for-one
 onto `iclforge_status_t` codes (`ICLFORGE_ERROR_ENCODE_*`/`ICLFORGE_ERROR_DECODE_*`), and
 `iclforge::ac4::DecodeError`/`iclforge::ac4::EncodeError` onto `ICLFORGE_ERROR_AC4_DECODE_*`/`ICLFORGE_ERROR_AC4_ENCODE_*`; an actual
 C++ exception — realistically only `std::bad_alloc` for a codec core that never throws on its own
@@ -111,7 +111,7 @@ filled by `iclforge_heavy_config_init()`), and dual mono's second channel has it
 ## E-AC-3 encoding (multiple substreams, Annex E tools)
 
 `iclforge_eac3_encoder_t` and `iclforge_eac3_access_unit_encoder_t` are the C counterparts to
-`iclforge::eac3::FrameEncoder` and `AccessUnitEncoder` — see [Encoding E-AC-3](encoding-eac3.md) for what
+`iclforge::ac3::eac3::FrameEncoder` and `AccessUnitEncoder` — see [Encoding E-AC-3](encoding-eac3.md) for what
 each field actually does. `iclforge_eac3_frame_config_t` mirrors `FrameConfig`'s core surface —
 sample rate (including the three `fscod2` reduced rates), bitrate, `acmod`/`lfe`, the Annex E tools
 (`auto_tools` and the individual `coupling`/`spx`/`aht` flags it overrides), and substream identity
@@ -221,7 +221,7 @@ iclforge_decoded_frame_destroy(decoded);
 iclforge_decoder_destroy(decoder);
 ```
 
-`iclforge_decoder_config_t` mirrors `iclforge::DecoderConfig`'s two fields, `drc_scale` (0.0 to 1.0, §7.7.1's
+`iclforge_decoder_config_t` mirrors `iclforge::ac3::DecoderConfig`'s two fields, `drc_scale` (0.0 to 1.0, §7.7.1's
 partial compression) and `heavy_compression`, and `iclforge_eac3_decoder_create` takes the same
 struct. A decoded frame also reports its sample rate, bit rate, `acmod`, `lfe`, `dialnorm`, the
 `compr` and `dynrng` words (`has_compr` says whether `compr` was sent), a second set for 1+1 (the
@@ -279,7 +279,7 @@ dynamic objects for the dynamic-object-only programme this project's own encoder
 bed programme they are its bed channels instead, and the C++ surface
 (`DecodedSubstream::object_indices`, `iclforge::oba::joc_object_indices`) is what says which. See
 [Spatial & Atmos objects](spatial-and-atmos.md) for what the position/gain values mean and how
-`iclforge_atmos_encoder_t` (the C counterpart to `iclforge::oba::AtmosEncoder`) produces them.
+`iclforge_atmos_encoder_t` (the C counterpart to `iclforge::ac3::oba::AtmosEncoder`) produces them.
 
 ## Latency
 
@@ -308,7 +308,7 @@ from then on. The AC-4 encoder and decoder report theirs through
 offset/length pairs into the caller's buffer and destroyed with `iclforge_spans_destroy`;
 `iclforge_stream_bsid` reads the `bsid` of one frame without committing to either generation. They
 only delimit a
-stream. `iclforge_scan` — the C mirror of `iclforge::io::scan`/`ScannedStream` — actually reads what
+stream. `iclforge_scan` — the C mirror of `iclforge::ac3::io::scan`/`ScannedStream` — actually reads what
 it contains: sample rate, layout, every programme it carries (§E2.3.1.2 allows up to eight for
 E-AC-3), and the raw bsid/bsmod/bit-rate and DVB/ATSC service fields a container muxer's own
 descriptors want, all without decoding any audio:
@@ -332,10 +332,10 @@ convention as `iclforge_split_frames`'s result, and the same lifetime requiremen
 buffer alive and unmodified for as long as the scan result is in use). A second programme's own
 access units, and per-programme detail (substream id, folded channel count, its own bsmod), are
 reached through the `iclforge_scanned_stream_programme_*` accessors rather than the top-level
-ones, which always describe the first (or only) programme — see `iclforge::io::ScannedStream`'s own
+ones, which always describe the first (or only) programme — see `iclforge::ac3::io::ScannedStream`'s own
 comment on why a second programme's units are never appended to the first's list.
 
-Timing helpers mirror `iclforge::io::access_unit_timing`/`stream_duration_samples`/
+Timing helpers mirror `iclforge::ac3::io::access_unit_timing`/`stream_duration_samples`/
 `access_unit_at_sample`/`uniform_access_unit_samples` — the access unit covering a given sample
 or second, the stream's total duration, and whether every access unit shares one length (E-AC-3's
 `numblkscod` lets it vary; every AC-3 stream trivially agrees). Not mirrored: `AccessUnitTiming`'s
@@ -349,7 +349,7 @@ Three independent handle families mirror the library's own independent measureme
 is no single bundled "QC report" struct in `iclforge::ac3` itself to mirror, only in the CLI/GUI
 application layer, which composes the same three the way a caller of this API would:
 
-- **`iclforge_loudness_meter_t`** mirrors `iclforge::meta::LoudnessMeter` — BS.1770-4/5 integrated,
+- **`iclforge_loudness_meter_t`** mirrors `iclforge::ac3::meta::LoudnessMeter` — BS.1770-4/5 integrated,
   momentary and short-term loudness, EBU Tech 3342 loudness range, and true peak.
   `iclforge_loudness_meter_create` takes the same `acmod`/`lfe` weighting Annex 1 uses;
   `iclforge_loudness_meter_create_for_chanmap` takes a Table E2.5 chanmap word instead, for
@@ -358,7 +358,7 @@ application layer, which composes the same three the way a caller of this API wo
   fixed frame size); every measurement is a `has_*`/value accessor pair, `std::optional`'s usual
   C mirror, since each has its own "not enough audio yet" threshold. `iclforge_dialnorm_from_lkfs`
   is the §5.4.2.8 conversion the encoder's own dialnorm field needs from a measured result.
-- **`iclforge_level_meter_t`** mirrors `iclforge::analysis::LevelMeter` — unweighted peak/RMS/clip
+- **`iclforge_level_meter_t`** mirrors `iclforge::ac3::analysis::LevelMeter` — unweighted peak/RMS/clip
   ballistics per channel, the front-end meter both `forge`/`forge-gui` already share one
   implementation for. `iclforge_level_meter_create` takes `acmod`, `lfe`, the sample rate, a channel
   count (0 for exactly the `acmod`'s, more for a wider layout) and an optional
@@ -373,13 +373,13 @@ application layer, which composes the same three the way a caller of this API wo
   `channel_name`/`layout_name`/`channel_azimuth_deg`/`energy_vector` helpers — string/geometry
   convenience over the same acmod a caller already has on hand.
 - **`iclforge_qc_preset`/`iclforge_qc_preset_name`/`iclforge_parse_qc_preset`/
-  `iclforge_evaluate_qc_gate`** mirror `iclforge::meta::qc` — the five named delivery-loudness gates
+  `iclforge_evaluate_qc_gate`** mirror `iclforge::ac3::meta::qc` — the five named delivery-loudness gates
   (`ebu-r128-s2`, `atsc-a85`, `atsc-a85-streaming`, `netflix`, `apple-music-atmos`) `forge qc`
   already checks a measurement against, each citing the document/clause/date its numbers were
   read out of. `iclforge_evaluate_qc_gate` takes a loudness meter's own `has_integrated_lkfs`/
   `integrated_lkfs`/`has_true_peak_dbtp`/`true_peak_dbtp` straight through; a measurement that was
   itself unavailable leaves that half of the verdict at its not-passing default rather than a
-  false pass, matching `iclforge::meta::QcVerdict`'s own convention. `iclforge_qc_preset_count` is the
+  false pass, matching `iclforge::ac3::meta::QcVerdict`'s own convention. `iclforge_qc_preset_count` is the
   number of preset ids (each valid in `[0, count)`); an `iclforge_qc_preset_t` holds `target_lkfs`,
   `tolerance_lu`, `max_true_peak_dbtp`, a `loudness_limit` (a band around the target, or a ceiling)
   and the `source` string; and `iclforge_qc_verdict_pass` is 1 when both halves of an
@@ -589,14 +589,14 @@ mirror.
 
 ## What is deliberately out of scope
 
-The self-check/mirror tracing (`iclforge::verify::FrameTrace`) is a C++-oriented encoder-implementer
+The self-check/mirror tracing (`iclforge::ac3::verify::FrameTrace`) is a C++-oriented encoder-implementer
 diagnostic, not part of this consumer-facing surface — see [Header map](header-map.md). The full
-custom `iclforge::meta::Profile` DRC curve (attack/release timing, boost ratios) is likewise a C++-only
+custom `iclforge::ac3::meta::Profile` DRC curve (attack/release timing, boost ratios) is likewise a C++-only
 tuning knob; the C API exposes only the five named presets (above). Internal kernel-level
-benchmarking entry points such as `iclforge::oba::band_energy` are excluded outright — their own C++
+benchmarking entry points such as `iclforge::ac3::oba::band_energy` are excluded outright — their own C++
 doc comments already say no caller outside the library should need them directly.
 
-`iclforge_eac3_frame_config_t` likewise trims `iclforge::eac3::FrameConfig`: the `mixmdate`/`infomdat`
+`iclforge_eac3_frame_config_t` likewise trims `iclforge::ac3::eac3::FrameConfig`: the `mixmdate`/`infomdat`
 metadata groups, `dialnorm2`/`drc`/`heavy` (dual mono and DRC would reuse the same presets the AC-3
 encoder already exposes, but the broader Table E1.2 metadata surface those two groups sit inside is
 deferred), `vbr` (CBR only), `numblkscod` (six-block syncframes only), `search`/`dither` (both

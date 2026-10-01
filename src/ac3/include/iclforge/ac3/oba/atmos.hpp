@@ -35,7 +35,7 @@
 // only split their shared energy in proportion to how loud each one is. That
 // is not a defect of this encoder; it is what a parametric object coder is.
 
-namespace iclforge::oba {
+namespace iclforge::ac3::oba {
 
 struct AtmosConfig {
     SampleRate sample_rate = SampleRate::k48000;
@@ -67,7 +67,7 @@ struct AtmosConfig {
     // never both - which is why turning this off also drops TS 103 420 §8.3.1's
     // addbsi object marker (flag_ec3_extension_type_a and §8.3.2.2's complexity
     // index): that marker is what every reader keys an object layer off
-    // (iclforge::io::scan, the dec3 box's Atmos extension, an HLS CHANNELS=.../JOC
+    // (iclforge::ac3::io::scan, the dec3 box's Atmos extension, an HLS CHANNELS=.../JOC
     // attribute, FFmpeg's "Dolby Digital Plus + Dolby Atmos" profile), and a
     // stream with no container has no object layer to advertise. The 5.1 MIX is
     // the same either way (the same float bed is encoded); the decoded samples
@@ -97,7 +97,7 @@ struct AtmosConfig {
     // Default kQmf since the evidence was measured: +5.1 dB mean per-object
     // SNR through a QMF reconstruction, for +0.26 ms/frame of encode
     // (0.55 -> 0.80 ms of a 32 ms budget, four objects).
-    joc::Domain joc_domain = joc::Domain::kQmf;
+    iclforge::oba::joc::Domain joc_domain = iclforge::oba::joc::Domain::kQmf;
     // §E2.3.1.4 short syncframes, same field and same meaning as
     // eac3::FrameConfig::numblkscod (default 3 = six blocks; 0/1/2 shorten
     // the frame to 1/2/3 blocks - 256/512/768 samples). The object layer
@@ -151,7 +151,7 @@ class ICLFORGE_AC3_EXPORT AtmosEncoder {
     // its aux data.
     [[nodiscard]] std::expected<eac3::AccessUnit, FrameError> encode_frame(
         std::span<const std::span<const float>> objects,
-        std::span<const ObjectPlacement> placement);
+        std::span<const iclforge::oba::ObjectPlacement> placement);
 
     // One frame of a CBI bed's audio - only on an encoder built with the
     // BedProgram constructor. `channels` is exactly bed_channel_count(program())
@@ -216,7 +216,7 @@ class ICLFORGE_AC3_EXPORT AtmosEncoder {
     // Dynamic objects only. The program has one more - the bed's LFE - which
     // is what the free object_count(Program) counts.
     [[nodiscard]] int dynamic_object_count() const;
-    [[nodiscard]] const Program& program() const;
+    [[nodiscard]] const iclforge::oba::Program& program() const;
 
     // The 5.1 bed the last frame encoded, in AC-3 coded order (L, C, R, Ls,
     // Rs, LFE). Exposed because it is what a legacy decoder hears, and that
@@ -230,7 +230,7 @@ class ICLFORGE_AC3_EXPORT AtmosEncoder {
     // Every private data member - config, the bed encoder, the per-object
     // gain ramps, the QMF analysis filterbanks, all of it - lives behind
     // this one pimpl, following the same pattern as
-    // iclforge::io::WavStreamReader/Writer and iclforge::FrameEncoder. Impl is defined
+    // iclforge::ac3::io::WavStreamReader/Writer and iclforge::ac3::FrameEncoder. Impl is defined
     // in atmos.cpp.
     struct Impl;
     std::unique_ptr<Impl> impl_;
@@ -274,4 +274,4 @@ ICLFORGE_AC3_EXPORT void qmf_band_energy(std::span<const float> signal,
                                      std::span<const std::uint8_t, 64> mapping,
                                      std::span<double> out, dsp::QmfAnalysis& analysis);
 
-}  // namespace iclforge::oba
+}  // namespace iclforge::ac3::oba

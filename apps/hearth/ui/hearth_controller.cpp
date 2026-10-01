@@ -159,8 +159,8 @@ constexpr int kPollMs = 60;
             QVariantMap codec_box;
             codec_box[QStringLiteral("bsid")] = box.bsid;
             codec_box[QStringLiteral("bsmod")] = box.bsmod;
-            codec_box[QStringLiteral("bsmodLabel")] =
-                to_qstring(apps::probe_json::bsmod_label(box.bsmod, static_cast<Acmod>(box.acmod)));
+            codec_box[QStringLiteral("bsmodLabel")] = to_qstring(
+                apps::probe_json::bsmod_label(box.bsmod, static_cast<ac3::Acmod>(box.acmod)));
             codec_box[QStringLiteral("lfeon")] = box.lfeon;
             codec_box[QStringLiteral("dataRateKbps")] = box.data_rate_kbps;
             codec_box[QStringLiteral("independentSubstreams")] = box.independent_substreams;
@@ -187,7 +187,7 @@ constexpr int kPollMs = 60;
         QVariantMap row;
         row[QStringLiteral("substreamId")] = programme.substreamid;
         row[QStringLiteral("layoutLabel")] =
-            to_qstring(analysis::layout_name(programme.acmod, programme.lfe));
+            to_qstring(ac3::analysis::layout_name(programme.acmod, programme.lfe));
         row[QStringLiteral("channels")] = programme.channels;
         row[QStringLiteral("bsid")] = programme.bsid;
         row[QStringLiteral("bsmodLabel")] =
@@ -224,18 +224,20 @@ constexpr int kPollMs = 60;
 [[nodiscard]] QVariantMap media_bitstream_to_map(const iclforge::hearth::MediaBitstream& bits) {
     QVariantMap map;
     if (bits.info) {
-        const meta::BsiInfo& info = *bits.info;
+        const ac3::meta::BsiInfo& info = *bits.info;
         map[QStringLiteral("bsmodLabel")] =
             to_qstring(apps::probe_json::bsmod_label(static_cast<int>(info.bsmod), bits.acmod));
-        map[QStringLiteral("dsurmodLabel")] = to_qstring(meta::describe(info.dsurmod));
+        map[QStringLiteral("dsurmodLabel")] = to_qstring(ac3::meta::describe(info.dsurmod));
         map[QStringLiteral("copyright")] = info.copyrightb;
         map[QStringLiteral("original")] = info.origbs;
         if (info.audprod) {
-            map[QStringLiteral("mixLevelDbSpl")] = meta::mix_level_db_spl(info.audprod->mixlevel);
-            map[QStringLiteral("roomTypeLabel")] = to_qstring(meta::describe(info.audprod->roomtyp));
+            map[QStringLiteral("mixLevelDbSpl")] =
+                ac3::meta::mix_level_db_spl(info.audprod->mixlevel);
+            map[QStringLiteral("roomTypeLabel")] =
+                to_qstring(ac3::meta::describe(info.audprod->roomtyp));
         }
     }
-    const MixLevels& levels = bits.levels;
+    const ac3::MixLevels& levels = bits.levels;
     QVariantMap mix;
     // centreDb/surroundDb (Lo/Ro) are read by DecoderEac3.qml's own "This
     // stream" card too, unlabelled there as well - kept as-is rather than
@@ -248,12 +250,13 @@ constexpr int kPollMs = 60;
     if (levels.lfe_mix_level_db) {
         mix[QStringLiteral("lfeDb")] = *levels.lfe_mix_level_db;
     }
-    mix[QStringLiteral("preferredDownmixLabel")] = to_qstring(meta::describe(levels.preferred));
+    mix[QStringLiteral("preferredDownmixLabel")] =
+        to_qstring(ac3::meta::describe(levels.preferred));
     map[QStringLiteral("mixLevels")] = mix;
     return map;
 }
 
-[[nodiscard]] QVariantMap media_probe_to_map(const io::ProbeReport& report) {
+[[nodiscard]] QVariantMap media_probe_to_map(const ac3::io::ProbeReport& report) {
     QVariantMap map;
     map[QStringLiteral("measuredBitrateKbps")] = report.bitrate_kbps;
     if (report.nominal_bitrate_kbps) {
@@ -286,14 +289,14 @@ constexpr int kPollMs = 60;
     // full per-frame history) has no way to catch that, and neither does
     // this.
     if (report.compr.seen) {
-        const double at_min = 20.0 * std::log10(meta::compr_gain(static_cast<std::uint8_t>(report.compr.min)));
-        const double at_max = 20.0 * std::log10(meta::compr_gain(static_cast<std::uint8_t>(report.compr.max)));
+        const double at_min = 20.0 * std::log10(ac3::meta::compr_gain(static_cast<std::uint8_t>(report.compr.min)));
+        const double at_max = 20.0 * std::log10(ac3::meta::compr_gain(static_cast<std::uint8_t>(report.compr.max)));
         map[QStringLiteral("comprMinDb")] = std::min(at_min, at_max);
         map[QStringLiteral("comprMaxDb")] = std::max(at_min, at_max);
     }
     if (report.dynrng.seen) {
-        const double at_min = 20.0 * std::log10(meta::dynrng_gain(static_cast<std::uint8_t>(report.dynrng.min)));
-        const double at_max = 20.0 * std::log10(meta::dynrng_gain(static_cast<std::uint8_t>(report.dynrng.max)));
+        const double at_min = 20.0 * std::log10(ac3::meta::dynrng_gain(static_cast<std::uint8_t>(report.dynrng.min)));
+        const double at_max = 20.0 * std::log10(ac3::meta::dynrng_gain(static_cast<std::uint8_t>(report.dynrng.max)));
         map[QStringLiteral("dynrngMinDb")] = std::min(at_min, at_max);
         map[QStringLiteral("dynrngMaxDb")] = std::max(at_min, at_max);
     }
@@ -626,36 +629,36 @@ constexpr int kPollMs = 60;
 // DecoderSettings at all). AC-4's presentation is set by its id or place,
 // which the page reads from the playing item's media information; -1 is none.
 
-[[nodiscard]] QString mode_name(iclforge::OperatingMode mode) {
+[[nodiscard]] QString mode_name(iclforge::ac3::OperatingMode mode) {
     switch (mode) {
-        case iclforge::OperatingMode::kLine:
+        case iclforge::ac3::OperatingMode::kLine:
             return QStringLiteral("line");
-        case iclforge::OperatingMode::kRf:
+        case iclforge::ac3::OperatingMode::kRf:
             return QStringLiteral("rf");
-        case iclforge::OperatingMode::kCustom:
+        case iclforge::ac3::OperatingMode::kCustom:
         default:
             return QStringLiteral("custom");
     }
 }
 
-[[nodiscard]] iclforge::OperatingMode mode_from_name(const QString& name) {
+[[nodiscard]] iclforge::ac3::OperatingMode mode_from_name(const QString& name) {
     if (name == QLatin1String("line")) {
-        return iclforge::OperatingMode::kLine;
+        return iclforge::ac3::OperatingMode::kLine;
     }
     if (name == QLatin1String("rf")) {
-        return iclforge::OperatingMode::kRf;
+        return iclforge::ac3::OperatingMode::kRf;
     }
-    return iclforge::OperatingMode::kCustom;
+    return iclforge::ac3::OperatingMode::kCustom;
 }
 
-[[nodiscard]] QString downmix_name(iclforge::DownmixTarget target) {
-    return target == iclforge::DownmixTarget::kLtRt ? QStringLiteral("ltrt")
+[[nodiscard]] QString downmix_name(iclforge::ac3::DownmixTarget target) {
+    return target == iclforge::ac3::DownmixTarget::kLtRt ? QStringLiteral("ltrt")
                                                     : QStringLiteral("loro");
 }
 
-[[nodiscard]] iclforge::DownmixTarget downmix_from_name(const QString& name) {
-    return name == QLatin1String("ltrt") ? iclforge::DownmixTarget::kLtRt
-                                         : iclforge::DownmixTarget::kLoRo;
+[[nodiscard]] iclforge::ac3::DownmixTarget downmix_from_name(const QString& name) {
+    return name == QLatin1String("ltrt") ? iclforge::ac3::DownmixTarget::kLtRt
+                                         : iclforge::ac3::DownmixTarget::kLoRo;
 }
 
 [[nodiscard]] QString dual_mono_name(iclforge::hearth::DualMonoChoice choice) {
@@ -680,26 +683,26 @@ constexpr int kPollMs = 60;
     return iclforge::hearth::DualMonoChoice::kBoth;
 }
 
-[[nodiscard]] QString objects_policy_name(iclforge::render::ObjectsPolicy policy) {
+[[nodiscard]] QString objects_policy_name(iclforge::ac3::render::ObjectsPolicy policy) {
     switch (policy) {
-        case iclforge::render::ObjectsPolicy::kNever:
+        case iclforge::ac3::render::ObjectsPolicy::kNever:
             return QStringLiteral("never");
-        case iclforge::render::ObjectsPolicy::kAlways:
+        case iclforge::ac3::render::ObjectsPolicy::kAlways:
             return QStringLiteral("always");
-        case iclforge::render::ObjectsPolicy::kAuto:
+        case iclforge::ac3::render::ObjectsPolicy::kAuto:
         default:
             return QStringLiteral("auto");
     }
 }
 
-[[nodiscard]] iclforge::render::ObjectsPolicy objects_policy_from_name(const QString& name) {
+[[nodiscard]] iclforge::ac3::render::ObjectsPolicy objects_policy_from_name(const QString& name) {
     if (name == QLatin1String("never")) {
-        return iclforge::render::ObjectsPolicy::kNever;
+        return iclforge::ac3::render::ObjectsPolicy::kNever;
     }
     if (name == QLatin1String("always")) {
-        return iclforge::render::ObjectsPolicy::kAlways;
+        return iclforge::ac3::render::ObjectsPolicy::kAlways;
     }
-    return iclforge::render::ObjectsPolicy::kAuto;
+    return iclforge::ac3::render::ObjectsPolicy::kAuto;
 }
 
 [[nodiscard]] QString joc_domain_name(iclforge::oba::joc::Domain domain) {
@@ -711,26 +714,26 @@ constexpr int kPollMs = 60;
                                           : iclforge::oba::joc::Domain::kQmf;
 }
 
-[[nodiscard]] QString concealment_name(iclforge::ConcealmentPolicy policy) {
+[[nodiscard]] QString concealment_name(iclforge::ac3::ConcealmentPolicy policy) {
     switch (policy) {
-        case iclforge::ConcealmentPolicy::kNone:
+        case iclforge::ac3::ConcealmentPolicy::kNone:
             return QStringLiteral("stop");
-        case iclforge::ConcealmentPolicy::kMute:
+        case iclforge::ac3::ConcealmentPolicy::kMute:
             return QStringLiteral("mute");
-        case iclforge::ConcealmentPolicy::kRepeatFade:
+        case iclforge::ac3::ConcealmentPolicy::kRepeatFade:
         default:
             return QStringLiteral("repeatFade");
     }
 }
 
-[[nodiscard]] iclforge::ConcealmentPolicy concealment_from_name(const QString& name) {
+[[nodiscard]] iclforge::ac3::ConcealmentPolicy concealment_from_name(const QString& name) {
     if (name == QLatin1String("stop")) {
-        return iclforge::ConcealmentPolicy::kNone;
+        return iclforge::ac3::ConcealmentPolicy::kNone;
     }
     if (name == QLatin1String("mute")) {
-        return iclforge::ConcealmentPolicy::kMute;
+        return iclforge::ac3::ConcealmentPolicy::kMute;
     }
-    return iclforge::ConcealmentPolicy::kRepeatFade;
+    return iclforge::ac3::ConcealmentPolicy::kRepeatFade;
 }
 
 [[nodiscard]] QString ac4_drc_name(iclforge::ac4::DrcMode mode) {
@@ -954,7 +957,7 @@ constexpr int kPollMs = 60;
 // --- the play monitor: MeterSnapshot/UnitReport <-> QVariant, field by ----
 // field (play_meters.hpp, stream_decoder.hpp) --------------------------
 
-[[nodiscard]] QVariantMap channel_level_to_map(const iclforge::analysis::ChannelLevel& level) {
+[[nodiscard]] QVariantMap channel_level_to_map(const iclforge::ac3::analysis::ChannelLevel& level) {
     QVariantMap map;
     map[QStringLiteral("peakDb")] = level.peak_db;
     map[QStringLiteral("holdDb")] = level.hold_db;
@@ -1157,7 +1160,7 @@ HearthController::~HearthController() {
 }
 
 QString HearthController::versionDetails() const {
-    return QString::fromStdString(iclforge::version_details());
+    return QString::fromStdString(iclforge::ac3::version_details());
 }
 
 QString HearthController::licenceNotices() const {
@@ -1725,14 +1728,14 @@ void HearthController::poll() {
         }
         if (report->compr) {
             new_this_frame[QStringLiteral("comprDb")] =
-                20.0 * std::log10(iclforge::meta::compr_gain(*report->compr));
+                20.0 * std::log10(iclforge::ac3::meta::compr_gain(*report->compr));
         }
         if (report->blocks > 0) {
             double dynrng_min_db = std::numeric_limits<double>::infinity();
             double dynrng_max_db = -std::numeric_limits<double>::infinity();
             for (int i = 0; i < report->blocks; ++i) {
                 const double db = 20.0 * std::log10(
-                    iclforge::meta::dynrng_gain(report->dynrng[static_cast<std::size_t>(i)]));
+                    iclforge::ac3::meta::dynrng_gain(report->dynrng[static_cast<std::size_t>(i)]));
                 dynrng_min_db = std::min(dynrng_min_db, db);
                 dynrng_max_db = std::max(dynrng_max_db, db);
             }
@@ -2146,7 +2149,7 @@ QString HearthController::diagnosticsReport() const {
                                 .count();
     facts.log_started_at =
         QDateTime::fromMSecsSinceEpoch(static_cast<qint64>(started_ms)).toString(Qt::ISODateWithMs).toStdString();
-    facts.version = iclforge::version_details();
+    facts.version = iclforge::ac3::version_details();
 
     auto platform_row = [&facts](const char* name, const QString& value) {
         facts.platform.emplace_back(name, value.toStdString());

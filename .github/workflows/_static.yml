@@ -211,6 +211,21 @@ jobs:
         shell: bash
         run: python3 tools/checks/check_layering.py
 
+      # A library's public headers declare into the namespace named for it under
+      # the family's root (iclforge::ac3, iclforge::ac4, iclforge::mp4), so that
+      # the codecs are peers and a name says which library it belongs to.
+      # tools/checks/namespaces.json lists each library and the namespaces its
+      # headers may open; this reads every public header the way the compiler
+      # sees its braces and fails one that opens another library's namespace, and
+      # one that declares into iclforge itself. The three headers that still do
+      # are listed there as debts, and a listed debt that is gone fails too, so
+      # the change that moves it deletes its row. Its own suite runs in the
+      # Oracle unit tests step above.
+      - name: Library namespaces
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: python3 tools/checks/check_namespaces.py
+
       # A board flashed from this tree has to stay recoverable over USB, and
       # its bootloader has to keep checking an image before it boots it
       # (planning/esp32-ota.md). Either can be lost to one line in an sdkconfig

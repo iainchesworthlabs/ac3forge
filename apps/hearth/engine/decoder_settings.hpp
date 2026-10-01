@@ -100,7 +100,7 @@ enum class DualMonoChoice : std::uint8_t {
 struct DecoderSettings {
     // §7.7's operating mode. kLine and kRf each fix the dynamic range
     // handling and normalise dialogue; kCustom uses the four switches below.
-    OperatingMode mode = OperatingMode::kLine;
+    ac3::OperatingMode mode = ac3::OperatingMode::kLine;
     // kRf only: OutputConfig::rf_ceiling, in dBFS rather than the library's
     // own linear magnitude - decoder_setup() converts it, held to full scale.
     // 0.0 is OutputConfig's own default, and this has no effect outside kRf.
@@ -114,7 +114,7 @@ struct DecoderSettings {
     // kCustom only: §5.4.2.8's normalisation onto -31 dBFS.
     bool normalise_dialogue = true;
     // The fold for a two-speaker layout: kLtRt, or kLoRo for anything else.
-    DownmixTarget stereo_fold = DownmixTarget::kLoRo;
+    ac3::DownmixTarget stereo_fold = ac3::DownmixTarget::kLoRo;
     bool ltrt_phase_shift = true;
     // Whether the LFE joins a fold (where the stream allows it). One control
     // for both formats with a default for each until the listener sets it:
@@ -123,21 +123,21 @@ struct DecoderSettings {
     // 190-1 clause 6.2.17).
     std::optional<bool> mix_lfe = std::nullopt;
     // Levels to fold with in place of the stream's.
-    MixLevelOverride mix_levels{};
+    ac3::MixLevelOverride mix_levels{};
     DualMonoChoice dual_mono = DualMonoChoice::kBoth;
     // The programme of a multi-programme E-AC-3 stream to play, by its
     // independent substream id; unset plays the first. A session applies it
     // when an item opens, by choosing that programme's units, so it is not
     // part of the decoder configuration.
     std::optional<int> programme = std::nullopt;
-    render::ObjectsPolicy objects = render::ObjectsPolicy::kAuto;
+    ac3::render::ObjectsPolicy objects = ac3::render::ObjectsPolicy::kAuto;
     // Which domain a reconstruction runs the JOC matrix in (joc.hpp): kQmf,
     // TS 103 420's own domain, or the cheaper kMdctBand, which also lags the
     // bed less (256 samples against 576). Only reaches anything when objects
     // are reconstructed at all.
     oba::joc::Domain joc_domain = oba::joc::Domain::kQmf;
     // §7.10. A player keeps a stream continuous through a damaged frame.
-    ConcealmentPolicy concealment = ConcealmentPolicy::kRepeatFade;
+    ac3::ConcealmentPolicy concealment = ac3::ConcealmentPolicy::kRepeatFade;
     // Passed straight to DecoderConfig::fast_imdct: the FFT evaluation of
     // §7.9.4 step 3's inverse transform, against its reference direct form.
     bool fast_inverse_transform = true;
@@ -151,8 +151,8 @@ struct DecoderSettings {
 // build them with - AC-3's and E-AC-3's, and AC-4's, whose downmix is the
 // same fold.
 struct DecoderSetup {
-    render::Serving serving{};
-    DecoderConfig config{};
+    ac3::render::Serving serving{};
+    ac3::DecoderConfig config{};
     iclforge::ac4::DecoderConfig ac4{};
 };
 

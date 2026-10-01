@@ -189,8 +189,8 @@ def main() -> int:
         rows = []
         for key, label in (
             ("heap.peak_bytes", "Peak heap"),
-            ("static.frame_decoder_bytes", "sizeof(iclforge::FrameDecoder)"),
-            ("static.eac3_decoder_bytes", "sizeof(iclforge::Eac3Decoder)"),
+            ("static.frame_decoder_bytes", "sizeof(iclforge::ac3::FrameDecoder)"),
+            ("static.eac3_decoder_bytes", "sizeof(iclforge::ac3::Eac3Decoder)"),
             ("static.pcm_bytes",
              "Caller-owned PCM (0: the probe reads the decoders' blocks in place)"),
         ):

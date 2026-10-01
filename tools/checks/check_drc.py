@@ -47,7 +47,7 @@ DRC_FILM_STANDARD = "drc=film-standard"
 
 # What an RF-mode decode adds to a stream at dialnorm 24 besides the compr word
 # itself: dialnorm normalisation onto -31 dBFS (-7 dB) and RF mode's 11 dB
-# (iclforge::meta::kRfModeGainDb). ffmpeg's -heavy_compr applies neither.
+# (iclforge::ac3::meta::kRfModeGainDb). ffmpeg's -heavy_compr applies neither.
 RF_DECODE_GAIN_DB_AT_DIALNORM_24 = (24 - 31) + 11.0
 
 FAILURES: list[str] = []

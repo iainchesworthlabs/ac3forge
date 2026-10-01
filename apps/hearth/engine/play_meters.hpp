@@ -13,8 +13,8 @@
 
 // Meters on what the output plays (planning/hearth-reference-player.md,
 // Monitor): a level meter per output slot - peak, hold, RMS and a clip latch,
-// iclforge::analysis::LevelMeter's - and the programme's loudness from
-// iclforge::meta::LoudnessMeter, measured as the blocks are rendered and released
+// iclforge::ac3::analysis::LevelMeter's - and the programme's loudness from
+// iclforge::ac3::meta::LoudnessMeter, measured as the blocks are rendered and released
 // only when the device's clock reaches them.
 //
 // The GUI's stream player meters each chunk as it is queued, so its meters run
@@ -46,7 +46,7 @@ struct MeterSnapshot {
     // output was last opened or flushed.
     std::uint64_t output_frame = 0;
     // One per output slot, in slot order.
-    std::vector<analysis::ChannelLevel> levels{};
+    std::vector<ac3::analysis::ChannelLevel> levels{};
     std::optional<double> momentary_lkfs = std::nullopt;
     std::optional<double> short_term_lkfs = std::nullopt;
     std::optional<double> integrated_lkfs = std::nullopt;
@@ -89,20 +89,20 @@ public:
 
 private:
     void take_snapshot(std::uint64_t output_frame);
-    [[nodiscard]] meta::LoudnessMeter make_loudness() const;
+    [[nodiscard]] ac3::meta::LoudnessMeter make_loudness() const;
 
     std::uint32_t rate_;
     std::size_t interval_;
     std::size_t slots_;
-    analysis::LevelMeter levels_;
+    ac3::analysis::LevelMeter levels_;
     // The slots that name a location, in slot order, and that layout.
     std::vector<std::size_t> loudness_slots_;
-    eac3::chanmap::Layout loudness_layout_{};
+    ac3::eac3::chanmap::Layout loudness_layout_{};
     std::vector<std::span<const float>> loudness_views_;
     // This item's loudness, and the item before's while its windows still
     // reach back further than this one's.
-    std::optional<meta::LoudnessMeter> loudness_;
-    std::optional<meta::LoudnessMeter> outgoing_;
+    std::optional<ac3::meta::LoudnessMeter> loudness_;
+    std::optional<ac3::meta::LoudnessMeter> outgoing_;
     // Frames this item's meter has been fed, and fed since integrated
     // loudness and loudness range were last read, with that reading.
     std::uint64_t programme_frames_ = 0;

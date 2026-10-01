@@ -222,7 +222,7 @@ Bytes pmt_of(std::span<const std::byte> file) {
 }
 
 // A 3/2 + LFE complete-main service at 448 kbps, 48 kHz - the values
-// iclforge::io::scan reads off this project's own 5.1 output, spelled out here so
+// iclforge::ac3::io::scan reads off this project's own 5.1 output, spelled out here so
 // the descriptor assertions below are against known inputs rather than
 // whatever an encoder happened to produce.
 iclforge::mpegts::ServiceInfo five_one_service(int bsid) {
@@ -333,7 +333,7 @@ TEST_CASE("MPEG-TS descriptor identifies AC-3 vs Enhanced AC-3", "[mpegts]") {
 }
 
 // ETSI EN 300 468 Table D.6/D.7 with Table D.1's component_type: the DVB
-// descriptors used to leave every optional field out because iclforge::io::scan
+// descriptors used to leave every optional field out because iclforge::ac3::io::scan
 // could not supply one. Every byte below is decoded against the standard's
 // own field positions, not against what the builder happened to emit.
 TEST_CASE("DVB descriptors carry component_type and bsid", "[mpegts]") {
@@ -735,21 +735,22 @@ TEST_CASE("MPEG-TS muxer rejects what it cannot describe", "[mpegts]") {
           iclforge::mpegts::MuxError::kFrameTooLarge);
 }
 
-TEST_CASE("MPEG-TS mux of real encoded AC-3 round-trips through iclforge::io::scan", "[mpegts]") {
+TEST_CASE("MPEG-TS mux of real encoded AC-3 round-trips through iclforge::ac3::io::scan",
+          "[mpegts]") {
     // Real, non-silent, multi-frame material - a silent or single-frame
     // stream would exercise almost none of the encoder and none of the
     // frame-2-onward MDCT overlap state (CONTRIBUTING.md's validation
     // discipline). Different tones per channel so a channel-order mistake
     // would show up as wrong content, not just a wrong byte count.
-    auto encoder = std::make_unique<iclforge::FrameEncoder>(
-        iclforge::EncoderConfig{.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0});
-    std::vector<std::vector<float>> pcm(2, std::vector<float>(iclforge::kSamplesPerFrame));
+    auto encoder = std::make_unique<iclforge::ac3::FrameEncoder>(
+        iclforge::ac3::EncoderConfig{.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k2_0});
+    std::vector<std::vector<float>> pcm(2, std::vector<float>(iclforge::ac3::kSamplesPerFrame));
     const std::vector<std::span<const float>> views{pcm[0], pcm[1]};
 
     Bytes elementary;
     constexpr int kFrames = 6;
     for (int frame = 0; frame < kFrames; ++frame) {
-        for (int n = 0; n < iclforge::kSamplesPerFrame; ++n) {
+        for (int n = 0; n < iclforge::ac3::kSamplesPerFrame; ++n) {
             const auto nf = static_cast<float>(n);
             pcm[0][static_cast<std::size_t>(n)] = 0.3F * std::sin(nf * 0.05F);
             pcm[1][static_cast<std::size_t>(n)] = 0.3F * std::sin(nf * 0.13F);
@@ -759,20 +760,21 @@ TEST_CASE("MPEG-TS mux of real encoded AC-3 round-trips through iclforge::io::sc
         elementary.insert(elementary.end(), encoded->begin(), encoded->end());
     }
 
-    const auto scanned = iclforge::io::scan(elementary);
+    const auto scanned = iclforge::ac3::io::scan(elementary);
     REQUIRE(scanned.has_value());
     REQUIRE(scanned->access_units.size() == static_cast<std::size_t>(kFrames));
-    REQUIRE(scanned->kind == iclforge::io::StreamKind::kAc3);
+    REQUIRE(scanned->kind == iclforge::ac3::io::StreamKind::kAc3);
 
     std::vector<Bytes> frames;
     for (const auto unit : scanned->access_units) {
         frames.emplace_back(unit.begin(), unit.end());
     }
 
-    const iclforge::mpegts::AudioTrack track{.codec = iclforge::mpegts::AudioCodec::kAc3,
-                                   .sample_rate = iclforge::sample_rate_hz(scanned->sample_rate),
-                                   .channels = scanned->channels,
-                                   .samples_per_frame = iclforge::kSamplesPerFrame};
+    const iclforge::mpegts::AudioTrack track{
+        .codec = iclforge::mpegts::AudioCodec::kAc3,
+        .sample_rate = iclforge::ac3::sample_rate_hz(scanned->sample_rate),
+        .channels = scanned->channels,
+        .samples_per_frame = iclforge::ac3::kSamplesPerFrame};
     const auto file = iclforge::mpegts::mux(track, frames);
     REQUIRE(file.has_value());
 

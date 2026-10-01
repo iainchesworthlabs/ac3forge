@@ -88,18 +88,19 @@ template <typename Rank>
 
 // The coding mode that names an AC-4 layout's bed for a meter: 1/0, 2/0, 3/0
 // or 3/2; a 7.X layout's last pair is metered past it.
-[[nodiscard]] inline iclforge::Acmod ac4_bed_acmod(
+[[nodiscard]] inline iclforge::ac3::Acmod ac4_bed_acmod(
     std::span<const iclforge::ac4::Speaker> speakers) {
     const auto has = [&](iclforge::ac4::Speaker s) {
         return std::ranges::find(speakers, s) != speakers.end();
     };
     if (has(iclforge::ac4::Speaker::kLeftSurround)) {
-        return iclforge::Acmod::k3_2;
+        return iclforge::ac3::Acmod::k3_2;
     }
     if (has(iclforge::ac4::Speaker::kLeft)) {
-        return has(iclforge::ac4::Speaker::kCentre) ? iclforge::Acmod::k3_0 : iclforge::Acmod::k2_0;
+        return has(iclforge::ac4::Speaker::kCentre) ? iclforge::ac3::Acmod::k3_0
+                                                    : iclforge::ac3::Acmod::k2_0;
     }
-    return iclforge::Acmod::k1_0;
+    return iclforge::ac3::Acmod::k1_0;
 }
 
 // Where an AC-4 speaker is among A/52's Table E2.5 locations, for a meter that
@@ -108,9 +109,9 @@ template <typename Rank>
 // surrounds, Lw and Rw the wides, the top front pair the vertical heights, the
 // top back and top side pairs the top surrounds (Table E2.5 has one pair for
 // both, as the object renderer places them), and the second LFE LFE2.
-[[nodiscard]] inline iclforge::eac3::chanmap::Location ac4_location(
+[[nodiscard]] inline iclforge::ac3::eac3::chanmap::Location ac4_location(
     iclforge::ac4::Speaker speaker) {
-    using L = iclforge::eac3::chanmap::Location;
+    using L = iclforge::ac3::eac3::chanmap::Location;
     switch (speaker) {
         case iclforge::ac4::Speaker::kLeft:
             return L::kLeft;

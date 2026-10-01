@@ -85,7 +85,7 @@ std::string read_file_text(const fs::path& path) {
 std::vector<std::vector<std::byte>> silent_ac3_frames(std::size_t count) {
     std::vector<std::vector<std::byte>> frames;
     for (std::size_t i = 0; i < count; ++i) {
-        auto frame = iclforge::build_silent_stereo_frame({});
+        auto frame = iclforge::ac3::build_silent_stereo_frame({});
         REQUIRE(frame.has_value());
         frames.push_back(std::move(*frame));
     }
@@ -93,8 +93,8 @@ std::vector<std::vector<std::byte>> silent_ac3_frames(std::size_t count) {
 }
 
 std::vector<std::vector<std::byte>> silent_eac3_units(std::size_t count) {
-    const auto unit = iclforge::eac3::build_silent_access_unit(
-        {.independent = {.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true}});
+    const auto unit = iclforge::ac3::eac3::build_silent_access_unit(
+        {.independent = {.bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true}});
     REQUIRE(unit.has_value());
     return {count, unit->bytes};
 }
@@ -140,7 +140,7 @@ TEST_CASE("RecordingSink's MPEG-TS take is byte-identical to iclforge::mpegts::m
         iclforge::mpegts::AudioTrack{.codec = iclforge::mpegts::AudioCodec::kAc3,
                            .sample_rate = 48000,
                            .channels = 2,
-                           .samples_per_frame = iclforge::kSamplesPerFrame},
+                           .samples_per_frame = iclforge::ac3::kSamplesPerFrame},
         as_views(frames));
     REQUIRE(one_shot.has_value());
     CHECK(file == *one_shot);
@@ -157,7 +157,7 @@ TEST_CASE("RecordingSink's IEC 61937 take is byte-identical to the one-shot carr
     const auto payload = iclforge::iec61937::wrap_stream(as_views(frames), eac3);
     REQUIRE(payload.has_value());
     const auto one_shot = scratch_dir() / "carrier_one_shot.wav";
-    REQUIRE(iclforge::io::write_wav_pcm16_raw(one_shot.string(), *payload,
+    REQUIRE(iclforge::ac3::io::write_wav_pcm16_raw(one_shot.string(), *payload,
                                          eac3 ? 48000U * 4 : 48000U, 2)
                 .has_value());
     CHECK(file == read_file_bytes(one_shot));
@@ -173,7 +173,7 @@ TEST_CASE("RecordingSink's Matroska take matches iclforge::matroska::Writer's ow
         iclforge::matroska::AudioTrack{.codec_id = std::string{iclforge::matroska::kCodecAc3},
                              .sample_rate = 48000,
                              .channels = 2,
-                             .samples_per_frame = iclforge::kSamplesPerFrame});
+                             .samples_per_frame = iclforge::ac3::kSamplesPerFrame});
     REQUIRE(writer.has_value());
     std::vector<std::byte> expected = writer->header();
     for (const auto& frame : frames) {
@@ -217,13 +217,14 @@ TEST_CASE("RecordingSink's fragmented-MP4 take matches iclforge::mp4::fragment's
     for (const auto& frame : frames) {
         stream.insert(stream.end(), frame.begin(), frame.end());
     }
-    const auto scanned = iclforge::io::scan(stream);
+    const auto scanned = iclforge::ac3::io::scan(stream);
     REQUIRE(scanned.has_value());
-    const iclforge::mp4::AudioTrack track{.codec_id = std::string{iclforge::mp4::kCodecAc3},
-                                .sample_rate = 48000,
-                                .channels = scanned->channels,
-                                .samples_per_frame = iclforge::kSamplesPerFrame,
-                                .codec_config = iclforge::io::build_codec_config_box(*scanned)};
+    const iclforge::mp4::AudioTrack track{
+        .codec_id = std::string{iclforge::mp4::kCodecAc3},
+        .sample_rate = 48000,
+        .channels = scanned->channels,
+        .samples_per_frame = iclforge::ac3::kSamplesPerFrame,
+        .codec_config = iclforge::ac3::io::build_codec_config_box(*scanned)};
     const auto batch = iclforge::mp4::fragment(track, as_views(frames));
     REQUIRE(batch.has_value());
     REQUIRE(batch->media_segments.size() == 3);
@@ -603,7 +604,7 @@ TEST_CASE("RecordingSink reports a take that only fails as it is closed", "[gui]
                                        .sample_rate = 48000,
                                        .channels = 2})
                 .empty());
-    const auto small = iclforge::build_silent_stereo_frame({.bitrate_kbps = 32});
+    const auto small = iclforge::ac3::build_silent_stereo_frame({.bitrate_kbps = 32});
     REQUIRE(small.has_value());
     REQUIRE(small->size() < 512);
     REQUIRE(sink.push(*small).empty());
@@ -752,8 +753,8 @@ TEST_CASE("RecordingSink packs an AC-4 take in IEC 61937-14 bursts as the packer
         payload.insert(payload.end(), burst->begin(), burst->end());
     }
     const auto one_shot = scratch_dir() / "take_ac4_spdif_one_shot.wav";
-    REQUIRE(iclforge::io::write_wav_pcm16_raw(one_shot.string(), payload, carriage.carrier_rate_hz,
-                                         carriage.carrier_channels)
+    REQUIRE(iclforge::ac3::io::write_wav_pcm16_raw(
+                one_shot.string(), payload, carriage.carrier_rate_hz, carriage.carrier_channels)
                 .has_value());
     CHECK(read_file_bytes(file) == read_file_bytes(one_shot));
 }

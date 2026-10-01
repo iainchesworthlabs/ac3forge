@@ -124,13 +124,13 @@ std::unique_ptr<testsink::Sink> start_sink(const fs::path& directory, std::strin
 // mirrors: each unit is a full six-block (1,536-sample, 32 ms) burst on its
 // own, so `frames` * 32 ms is the programme's real-time length.
 std::vector<std::byte> eac3_stream(int frames) {
-    iclforge::eac3::FrameConfig config;
+    iclforge::ac3::eac3::FrameConfig config;
     config.bitrate_kbps = 192;
-    config.acmod = iclforge::Acmod::k2_0;
-    iclforge::eac3::FrameEncoder encoder{config};
+    config.acmod = iclforge::ac3::Acmod::k2_0;
+    iclforge::ac3::eac3::FrameEncoder encoder{config};
     std::vector<std::byte> out;
     for (int f = 0; f < frames; ++f) {
-        std::vector<float> samples(iclforge::kSamplesPerFrame);
+        std::vector<float> samples(iclforge::ac3::kSamplesPerFrame);
         for (std::size_t n = 0; n < samples.size(); ++n) {
             samples[n] = static_cast<float>(
                 0.3 * std::sin(2.0 * std::numbers::pi * 440.0 *
@@ -434,15 +434,15 @@ TEST_CASE(
     const std::optional<iclforge::render::OutputLayout> layout =
         iclforge::render::OutputLayout::parse(testsink::SinkOptions{}.layout);
     REQUIRE(layout.has_value());
-    iclforge::io::WavStreamReader wav;
+    iclforge::ac3::io::WavStreamReader wav;
     REQUIRE(wav.open(only_file(scratch / "burst" / "out", "bursts-", ".wav").string()).has_value());
     REQUIRE(static_cast<std::size_t>(wav.channels()) == layout->slots());
     std::vector<std::vector<float>> heard(layout->slots(),
-                                          std::vector<float>(iclforge::kSamplesPerBlock));
+                                          std::vector<float>(iclforge::ac3::kSamplesPerBlock));
     std::vector<std::span<float>> heard_spans(heard.begin(), heard.end());
-    std::vector<std::array<float, iclforge::kSamplesPerBlock>> rendered(layout->slots());
+    std::vector<std::array<float, iclforge::ac3::kSamplesPerBlock>> rendered(layout->slots());
     std::vector<std::span<float>> rendered_spans;
-    for (std::array<float, iclforge::kSamplesPerBlock>& slot : rendered) {
+    for (std::array<float, iclforge::ac3::kSamplesPerBlock>& slot : rendered) {
         rendered_spans.emplace_back(slot);
     }
     iclforge::ac4::Decoder decoder;
@@ -456,13 +456,13 @@ TEST_CASE(
         const iclforge::ac4::DecodedFrame& pcm = **decoded;
         renderer.set_bed(testsink::ac4_bed(pcm.speakers));
         std::vector<std::span<const float>> channels(pcm.channels.size());
-        for (std::size_t at = 0; at < pcm.samples; at += iclforge::kSamplesPerBlock) {
+        for (std::size_t at = 0; at < pcm.samples; at += iclforge::ac3::kSamplesPerBlock) {
             const std::size_t m =
-                std::min<std::size_t>(iclforge::kSamplesPerBlock, pcm.samples - at);
+                std::min<std::size_t>(iclforge::ac3::kSamplesPerBlock, pcm.samples - at);
             for (std::size_t c = 0; c < pcm.channels.size(); ++c) {
                 channels[c] = std::span<const float>(pcm.channels[c]).subspan(at, m);
             }
-            renderer.render(iclforge::PcmBlock{.index = 0,
+            renderer.render(iclforge::ac3::PcmBlock{.index = 0,
                                           .blocks = 1,
                                           .channels = channels,
                                           .objects = {},

@@ -20,7 +20,7 @@
 // crc1 PRECEDES the region it protects: A/52 §7.10.1 requires the register to
 // read zero after the first 5/8 of the syncframe has been shifted through,
 // and explicitly says crc1 is not the CRC of that region. It is solved for,
-// through the GF(2) polynomial inverse iclforge::solve_leading_crc implements -
+// through the GF(2) polynomial inverse iclforge::ac3::solve_leading_crc implements -
 // the same call src/ac3/src/encoder/encoder.cpp makes, including its
 // crc2 == kSyncWord avoidance step (a crc2 that happens to equal 0x0B77 would
 // make the frame's own tail look like the start of the next syncframe, so the
@@ -48,7 +48,7 @@ extern "C" std::size_t LLVMFuzzerMutate(std::uint8_t* data, std::size_t size,
 
 namespace iclforge_fuzz {
 
-// Walks `stream` as a concatenation of syncframes the way iclforge::split_frames
+// Walks `stream` as a concatenation of syncframes the way iclforge::ac3::split_frames
 // does - same bsid-at-bit-40 test, same two size derivations - and rewrites
 // each frame's CRC words in place. Stops at the first byte that is not the
 // start of a frame it can size and that fits, leaving the remainder alone: a
@@ -61,15 +61,15 @@ inline void restamp_syncframe_crcs(std::span<std::byte> stream) {
         const auto byte_at = [&](std::size_t i) {
             return std::to_integer<std::uint32_t>(from_here[i]);
         };
-        constexpr std::uint32_t kSyncHigh = std::uint32_t{iclforge::kSyncWord} >> 8;
-        constexpr std::uint32_t kSyncLow = std::uint32_t{iclforge::kSyncWord} & 0xFFU;
+        constexpr std::uint32_t kSyncHigh = std::uint32_t{iclforge::ac3::kSyncWord} >> 8;
+        constexpr std::uint32_t kSyncLow = std::uint32_t{iclforge::ac3::kSyncWord} & 0xFFU;
         if (byte_at(0) != kSyncHigh || byte_at(1) != kSyncLow) {
             return;
         }
         const auto bsid = byte_at(5) >> 3;
         std::size_t frame_bytes = 0;
         bool annex_e = false;
-        if (bsid >= iclforge::eac3::kMinDecodableBsid && bsid <= iclforge::eac3::kBsid) {
+        if (bsid >= iclforge::ac3::eac3::kMinDecodableBsid && bsid <= iclforge::ac3::eac3::kBsid) {
             // §E2.3.1.3: frmsiz states the word count outright.
             frame_bytes = ((static_cast<std::size_t>(byte_at(2) & 0x07) << 8) | byte_at(3)) * 2 + 2;
             annex_e = true;
@@ -80,9 +80,9 @@ inline void restamp_syncframe_crcs(std::span<std::byte> stream) {
             if (fscod == 3 || frmsizecod > 37) {
                 return;
             }
-            const auto sized = iclforge::frame_size_bytes(static_cast<iclforge::SampleRate>(fscod),
-                                                     iclforge::kBitratesKbps[frmsizecod >> 1],
-                                                     (frmsizecod & 1) != 0);
+            const auto sized = iclforge::ac3::frame_size_bytes(
+                static_cast<iclforge::ac3::SampleRate>(fscod),
+                iclforge::ac3::kBitratesKbps[frmsizecod >> 1], (frmsizecod & 1) != 0);
             if (!sized) {
                 return;
             }
@@ -103,19 +103,20 @@ inline void restamp_syncframe_crcs(std::span<std::byte> stream) {
             // crc1 covers [2, 2*words58); its own two bytes lead that region,
             // so the body handed to solve_leading_crc starts at 4.
             const auto words58 =
-                iclforge::frame_size_58_words(static_cast<std::uint32_t>(frame_bytes / 2));
+                iclforge::ac3::frame_size_58_words(static_cast<std::uint32_t>(frame_bytes / 2));
             const std::size_t region = static_cast<std::size_t>(words58) * 2;
             if (region < 4 || region > frame_bytes) {
                 return;
             }
-            const std::uint16_t crc1 = iclforge::solve_leading_crc(view.subspan(4, region - 4));
+            const std::uint16_t crc1 =
+                iclforge::ac3::solve_leading_crc(view.subspan(4, region - 4));
             frame[2] = static_cast<std::byte>(crc1 >> 8);
             frame[3] = static_cast<std::byte>(crc1 & 0xFF);
         }
-        std::uint16_t crc2 = iclforge::crc16(view.subspan(2, frame_bytes - 4));
-        if (crc2 == iclforge::kSyncWord) {
+        std::uint16_t crc2 = iclforge::ac3::crc16(view.subspan(2, frame_bytes - 4));
+        if (crc2 == iclforge::ac3::kSyncWord) {
             frame[frame_bytes - 3] ^= std::byte{0x01};  // crcrsv (§5.4.5.1)
-            crc2 = iclforge::crc16(view.subspan(2, frame_bytes - 4));
+            crc2 = iclforge::ac3::crc16(view.subspan(2, frame_bytes - 4));
         }
         frame[frame_bytes - 2] = static_cast<std::byte>(crc2 >> 8);
         frame[frame_bytes - 1] = static_cast<std::byte>(crc2 & 0xFF);

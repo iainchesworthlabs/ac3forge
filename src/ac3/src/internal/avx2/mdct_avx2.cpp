@@ -10,13 +10,13 @@
 #include "iclforge/dsp/detail/fft_kernel.hpp"
 #include "simd_avx2.hpp"
 
-namespace iclforge::internal::avx2 {
+namespace iclforge::ac3::internal::avx2 {
 
 void apply_analysis_window(std::span<const double, 512> x, std::span<double, 512> windowed) {
     const double* const in = x.data();
     double* const out = windowed.data();
     for (std::size_t n = 0; n < 512; n += 4) {
-        (f64x4::load(in + n) * f64x4::load(&iclforge::kAnalysisWindow[n])).store(out + n);
+        (f64x4::load(in + n) * f64x4::load(&iclforge::ac3::kAnalysisWindow[n])).store(out + n);
     }
 }
 
@@ -230,7 +230,7 @@ void imdct512_windowed_batch4(std::span<const double> coeffs0, std::span<const d
     // order - each formula is the original evaluated at n and n + 1 - and
     // the transpose after them moves finished values only, so this stays
     // bit-identical to four separate scalar calls.
-    const auto& w = iclforge::kAnalysisWindow;
+    const auto& w = iclforge::ac3::kAnalysisWindow;
     const auto yr = [&](std::size_t i) { return y_re[i]; };
     const auto yi = [&](std::size_t i) { return y_im[i]; };
     const auto store_run = [&](std::size_t base, f64x4 r0, f64x4 r1, f64x4 r2, f64x4 r3) {
@@ -362,4 +362,4 @@ void mdct512_forward_batch4(std::span<const double> w0, std::span<const double> 
     }
 }
 
-}  // namespace iclforge::internal::avx2
+}  // namespace iclforge::ac3::internal::avx2

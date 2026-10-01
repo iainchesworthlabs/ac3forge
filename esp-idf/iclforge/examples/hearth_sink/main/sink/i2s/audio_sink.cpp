@@ -175,10 +175,10 @@ IRAM_ATTR bool on_sent(i2s_chan_handle_t /*handle*/, i2s_event_data_t* /*event*/
 // because the sink is the only thing that needs them - the player hands over
 // planar float and never sees this format at all.
 union LineBuffer {
-    std::array<std::int32_t, iclforge::kSamplesPerBlock * 4> wide;
-    std::array<std::int16_t, iclforge::kSamplesPerBlock * 8> narrow;
+    std::array<std::int32_t, iclforge::ac3::kSamplesPerBlock * 4> wide;
+    std::array<std::int16_t, iclforge::ac3::kSamplesPerBlock * 8> narrow;
 };
-static_assert(sizeof(LineBuffer) == iclforge::kSamplesPerBlock * 16,
+static_assert(sizeof(LineBuffer) == iclforge::ac3::kSamplesPerBlock * 16,
               "a line's block is 16 bytes a frame at either slot width");
 LineBuffer g_buffer0{};
 LineBuffer g_buffer1{};
@@ -198,7 +198,7 @@ constexpr int kDmaFrames = CONFIG_ICLFORGE_EXAMPLE_I2S_DMA_FRAMES;
 // changed under a reconfigure would break that for the play after it.
 constexpr std::size_t kLineBytesPerFrame = 16;
 const DmaPlan g_dma_plan =
-    dma_plan(kDmaDescriptors, kDmaFrames, kLineBytesPerFrame, iclforge::kSamplesPerBlock);
+    dma_plan(kDmaDescriptors, kDmaFrames, kLineBytesPerFrame, iclforge::ac3::kSamplesPerBlock);
 
 // Line 0's ring starts counting again: the driver empties its queue of free
 // buffers when a channel is disabled, and a new channel starts with none.
@@ -454,8 +454,8 @@ void sink_write(std::span<const std::span<const float>> channels) {
         return;
     }
     std::size_t frames = channels[0].size();
-    if (frames > iclforge::kSamplesPerBlock) {
-        frames = iclforge::kSamplesPerBlock;
+    if (frames > iclforge::ac3::kSamplesPerBlock) {
+        frames = iclforge::ac3::kSamplesPerBlock;
     }
 
     g_model.arriving(esp_timer_get_time());
@@ -488,7 +488,7 @@ std::optional<iclforge::PlayoutWrite> sink_write_timed(std::span<const std::span
     sink_write(channels);
     // A block is exactly the player's 256 frames, which the DMA plan's
     // descriptor divides: this many buffers of line 0's ring took it.
-    const auto buffers = static_cast<std::uint32_t>(iclforge::kSamplesPerBlock / static_cast<std::size_t>(g_dma_plan.frames));
+    const auto buffers = static_cast<std::uint32_t>(iclforge::ac3::kSamplesPerBlock / static_cast<std::size_t>(g_dma_plan.frames));
     const std::optional<iclforge::DmaClock::Taken> taken = g_clock.took(g_ring, esp_timer_get_time(), buffers);
     if (!taken) {
         return std::nullopt;

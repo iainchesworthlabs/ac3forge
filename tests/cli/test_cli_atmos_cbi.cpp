@@ -110,8 +110,8 @@ TEST_CASE("atmos-cbi encodes a 5.1.4 WAV into a real bed OAMD+JOC stream", "[cli
     // from (§6.6.5), and this needs enough of them accumulated for 55 Hz (the
     // LFE tone) to resolve past the sine-projection helper's own noise floor.
     constexpr std::uint32_t kSampleRate = 48000;
-    const auto channels = make_cbi_channels(kInput514, 8 * static_cast<std::size_t>(iclforge::kSamplesPerFrame), kSampleRate);
-    REQUIRE(iclforge::io::write_wav_f32(wav_path.string(), channels, kSampleRate).has_value());
+    const auto channels = make_cbi_channels(kInput514, 8 * static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame), kSampleRate);
+    REQUIRE(iclforge::ac3::io::write_wav_f32(wav_path.string(), channels, kSampleRate).has_value());
 
     const auto rc = run_cli("atmos-cbi \"" + wav_path.string() + "\" \"" + out_path.string() +
                                 "\" 448 5.1.4",
@@ -120,11 +120,11 @@ TEST_CASE("atmos-cbi encodes a 5.1.4 WAV into a real bed OAMD+JOC stream", "[cli
     REQUIRE(fs::exists(out_path));
 
     const auto data = read_bytes(out_path);
-    const auto units = iclforge::split_access_units(data);
+    const auto units = iclforge::ac3::split_access_units(data);
     REQUIRE(units.has_value());
     REQUIRE(units->size() > 3);
 
-    iclforge::Eac3Decoder decoder;
+    iclforge::ac3::Eac3Decoder decoder;
     std::vector<std::vector<float>> accumulated;
     for (const auto& unit : *units) {
         const auto decoded = decoder.decode_access_unit(unit);
@@ -177,8 +177,8 @@ TEST_CASE("atmos-cbi infers the layout from the file's channel count", "[cli][at
     fs::remove(out_path);
 
     constexpr std::uint32_t kSampleRate = 48000;
-    const auto channels = make_cbi_channels(kInput514, 2 * static_cast<std::size_t>(iclforge::kSamplesPerFrame), kSampleRate);
-    REQUIRE(iclforge::io::write_wav_f32(wav_path.string(), channels, kSampleRate).has_value());
+    const auto channels = make_cbi_channels(kInput514, 2 * static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame), kSampleRate);
+    REQUIRE(iclforge::ac3::io::write_wav_f32(wav_path.string(), channels, kSampleRate).has_value());
 
     // No [layout] argument at all - the 10-channel file should resolve to
     // 5.1.4 on its own.
@@ -188,11 +188,11 @@ TEST_CASE("atmos-cbi infers the layout from the file's channel count", "[cli][at
     REQUIRE(fs::exists(out_path));
 
     const auto data = read_bytes(out_path);
-    const auto units = iclforge::split_access_units(data);
+    const auto units = iclforge::ac3::split_access_units(data);
     REQUIRE(units.has_value());
     REQUIRE_FALSE(units->empty());
 
-    iclforge::Eac3Decoder decoder;
+    iclforge::ac3::Eac3Decoder decoder;
     const auto decoded = decoder.decode_access_unit(units->front());
     REQUIRE(decoded.has_value());
     REQUIRE(decoded->has_value());
@@ -210,8 +210,8 @@ TEST_CASE("atmos-cbi refuses a layout whose channel count does not match the fil
     fs::remove(out_path);
 
     constexpr std::uint32_t kSampleRate = 48000;
-    const auto channels = make_cbi_channels(kInput514, static_cast<std::size_t>(iclforge::kSamplesPerFrame), kSampleRate);
-    REQUIRE(iclforge::io::write_wav_f32(wav_path.string(), channels, kSampleRate).has_value());
+    const auto channels = make_cbi_channels(kInput514, static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame), kSampleRate);
+    REQUIRE(iclforge::ac3::io::write_wav_f32(wav_path.string(), channels, kSampleRate).has_value());
 
     // 7.1.4 is a 12-channel bed; the file has 10.
     const auto rc = run_cli("atmos-cbi \"" + wav_path.string() + "\" \"" + out_path.string() +
@@ -233,8 +233,8 @@ TEST_CASE("atmos-cbi refuses an unrecognized channel count with no layout given"
     constexpr std::uint32_t kSampleRate = 48000;
     // 8 channels: none of 10 (5.1.4), 12 (7.1.4) or 16 (9.1.6).
     const auto channels =
-        make_cbi_channels(std::span{kInput514}.first(8), static_cast<std::size_t>(iclforge::kSamplesPerFrame), kSampleRate);
-    REQUIRE(iclforge::io::write_wav_f32(wav_path.string(), channels, kSampleRate).has_value());
+        make_cbi_channels(std::span{kInput514}.first(8), static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame), kSampleRate);
+    REQUIRE(iclforge::ac3::io::write_wav_f32(wav_path.string(), channels, kSampleRate).has_value());
 
     const auto rc =
         run_cli("atmos-cbi \"" + wav_path.string() + "\" \"" + out_path.string() + "\" 448", log);
@@ -251,8 +251,8 @@ TEST_CASE("atmos-cbi refuses src=/map=", "[cli][atmos-cbi]") {
     fs::remove(out_path);
 
     constexpr std::uint32_t kSampleRate = 48000;
-    const auto channels = make_cbi_channels(kInput514, static_cast<std::size_t>(iclforge::kSamplesPerFrame), kSampleRate);
-    REQUIRE(iclforge::io::write_wav_f32(wav_path.string(), channels, kSampleRate).has_value());
+    const auto channels = make_cbi_channels(kInput514, static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame), kSampleRate);
+    REQUIRE(iclforge::ac3::io::write_wav_f32(wav_path.string(), channels, kSampleRate).has_value());
 
     const auto rc = run_cli("atmos-cbi \"" + wav_path.string() + "\" \"" + out_path.string() +
                                 "\" 448 5.1.4 src=" + wav_path.string(),

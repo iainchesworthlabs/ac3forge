@@ -28,8 +28,8 @@ constexpr std::array<double, 6> kTones{1000.0, 800.0, 1200.0, 600.0, 1400.0, 60.
 // encoder. See CONTRIBUTING.md on why silence is a bad test signal.
 void fill_with_audio(std::vector<std::vector<float>>& pcm, int frame, double rate) {
     for (std::size_t ch = 0; ch < pcm.size(); ++ch) {
-        for (int n = 0; n < iclforge::kSamplesPerFrame; ++n) {
-            const double t = (frame * iclforge::kSamplesPerFrame + n) / rate;
+        for (int n = 0; n < iclforge::ac3::kSamplesPerFrame; ++n) {
+            const double t = (frame * iclforge::ac3::kSamplesPerFrame + n) / rate;
             pcm[ch][static_cast<std::size_t>(n)] = static_cast<float>(
                 0.5 * std::sin(2.0 * std::numbers::pi * kTones[ch] * t));
         }
@@ -45,14 +45,14 @@ void write(std::vector<std::byte>& stream, std::span<const std::byte> frame) {
 int main() {
     // Heap-allocated: FrameEncoder carries several KB of MDCT scratch/history
     // state (PREfast's C6262).
-    auto encoder = std::make_unique<iclforge::FrameEncoder>(iclforge::EncoderConfig{
+    auto encoder = std::make_unique<iclforge::ac3::FrameEncoder>(iclforge::ac3::EncoderConfig{
         .bitrate_kbps = 448,
-        .acmod = iclforge::Acmod::k3_2,  // L, C, R, SL, SR
+        .acmod = iclforge::ac3::Acmod::k3_2,  // L, C, R, SL, SR
         .lfe = true,
     });
 
     // Table 5.8 order, LFE last, exactly kSamplesPerFrame (1536) samples each.
-    std::vector<std::vector<float>> pcm(6, std::vector<float>(iclforge::kSamplesPerFrame));
+    std::vector<std::vector<float>> pcm(6, std::vector<float>(iclforge::ac3::kSamplesPerFrame));
     // encode_frame takes a span of spans, so the views must outlive the call.
     // Build them once and refill the buffers underneath each frame.
     const std::vector<std::span<const float>> views{pcm.begin(), pcm.end()};

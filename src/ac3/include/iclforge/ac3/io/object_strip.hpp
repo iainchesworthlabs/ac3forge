@@ -53,7 +53,7 @@
 // forward recompute over the finished frame rather than anything that has to
 // be solved for.
 
-namespace iclforge::io {
+namespace iclforge::ac3::io {
 
 enum class StripError : std::uint8_t {
     kEmpty,       // nothing to read
@@ -95,4 +95,4 @@ struct StrippedStream {
 [[nodiscard]] ICLFORGE_AC3_EXPORT std::expected<StrippedStream, StripError> strip_objects(
     std::span<const std::byte> stream);
 
-}  // namespace iclforge::io
+}  // namespace iclforge::ac3::io

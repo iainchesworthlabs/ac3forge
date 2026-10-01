@@ -31,17 +31,17 @@
 namespace {
 
 constexpr std::uint32_t kRate = 48'000;
-constexpr std::uint64_t kBurstFrames = iclforge::kSamplesPerFrame;
+constexpr std::uint64_t kBurstFrames = iclforge::ac3::kSamplesPerFrame;
 
 // One silent AC-3 stereo frame as a burst: silence, since a test that runs on
 // somebody's receiver should not be heard.
 std::vector<std::byte> silent_burst() {
-    iclforge::EncoderConfig config;
-    config.sample_rate = iclforge::SampleRate::k48000;
+    iclforge::ac3::EncoderConfig config;
+    config.sample_rate = iclforge::ac3::SampleRate::k48000;
     config.bitrate_kbps = 192;
-    config.acmod = iclforge::Acmod::k2_0;
-    iclforge::FrameEncoder encoder{config};
-    const std::vector<float> silence(iclforge::kSamplesPerFrame, 0.0F);
+    config.acmod = iclforge::ac3::Acmod::k2_0;
+    iclforge::ac3::FrameEncoder encoder{config};
+    const std::vector<float> silence(iclforge::ac3::kSamplesPerFrame, 0.0F);
     const std::vector<std::span<const float>> views(2, silence);
     const auto frame = encoder.encode_frame(views);
     REQUIRE(frame.has_value());

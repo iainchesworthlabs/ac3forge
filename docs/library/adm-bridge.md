@@ -4,7 +4,7 @@
 directions live here:
 
 - **Read**: maps the ADM object graph [`iclforge::adm`](adm.md) parses from a BW64/ADM master onto
-  [`iclforge::oba::AtmosEncoder`](spatial-and-atmos.md)'s input shape — one `iclforge::oba::ObjectPath` plus
+  [`iclforge::ac3::oba::AtmosEncoder`](spatial-and-atmos.md)'s input shape — one `iclforge::oba::ObjectPath` plus
   one mono PCM span per bed speaker feed or dynamic object, ready to drive `encode_frame()` in a
   loop. Driven end to end by `forge atmos-adm` and
   [`examples/encode_adm.cpp`](https://github.com/iainchesworthlabs/iclforge/blob/main/examples/encode_adm.cpp).
@@ -13,7 +13,7 @@ directions live here:
   encoder instead ([AC-4](ac4.md#encoding-objects)).
 - **Write** ("JOC → ADM BWF writer"): the mirror image — maps a decoded programme's own bed/object
   PCM and object automation onto an `iclforge::adm::AdmDocument`, ready for `iclforge::adm::write_bw64()`. The
-  programme is an `iclforge::Eac3Decoder`'s (its OAMD automation) or an `iclforge::ac4::Decoder`'s (each object's
+  programme is an `iclforge::ac3::Eac3Decoder`'s (its OAMD automation) or an `iclforge::ac4::Decoder`'s (each object's
   Annex F properties and updates). Driven end to end by `forge decode ... adm_out`.
 
 Both directions are the same "one place `iclforge::adm` and `iclforge::ac3`/`iclforge::oba` are allowed to meet"
@@ -36,7 +36,7 @@ if (!bridged) {
     return 1;
 }
 
-iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, static_cast<int>(bridged->channel_count())};
+iclforge::ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, static_cast<int>(bridged->channel_count())};
 // Per frame: slice bridged->pcm[i] to the frame's sample range, evaluate
 // iclforge::oba::evaluate_placements(bridged->paths, t), call encoder.encode_frame(...).
 ```
@@ -47,7 +47,7 @@ Two hard constraints rule out folding this into either side it bridges:
 
 - `iclforge::adm` is documentedly codec-blind — its own header comments and this project's design
   keep it with zero dependency on `iclforge::ac3`/`iclforge::oba`, and that does not change here.
-- `src/ac3` (`iclforge::ac3`, `iclforge::oba::AtmosEncoder`) is always built, unconditionally, by every
+- `src/ac3` (`iclforge::ac3`, `iclforge::ac3::oba::AtmosEncoder`) is always built, unconditionally, by every
   configuration of this project. It cannot gain a dependency on the opt-in, Boost-requiring
   `iclforge::adm` without breaking every default build.
 
@@ -319,7 +319,7 @@ is dynamic objects only, with the bed's own LFE bookkeeping as an implicit, alwa
 `run_atmos_path` already enforce, reused here rather than re-derived. `build()` and `build_iab()`
 refuse more channels than that whatever consumes the result, so `atmos-adm` and `atmos-iab` with
 `codec=ac4` are held to 15 as well, though the AC-4 object encoder takes 64. `sample_rate` is the raw
-`iclforge::adm::PcmAudio::sample_rate`, unconverted — mapping it to `iclforge::SampleRate` (and rejecting an
+`iclforge::adm::PcmAudio::sample_rate`, unconverted — mapping it to `iclforge::ac3::SampleRate` (and rejecting an
 unsupported rate) is left to the caller, the same way every existing WAV-reading entry point
 already does that itself.
 
@@ -337,7 +337,7 @@ first-block-always-holds override, the LFE override), `build()`'s graph-walking 
 mismatch, the 15-channel cap, default programme selection), and one flagship test that builds a
 real byte-level BW64 fixture (two DirectSpeakers bed channels plus one Objects channel that holds
 at one ring position and then jumps to another), parses it with the real `iclforge::adm::parse_bw64()`,
-bridges it, and drives a real `iclforge::oba::AtmosEncoder`/`iclforge::Eac3Decoder` round trip — confirming
+bridges it, and drives a real `iclforge::ac3::oba::AtmosEncoder`/`iclforge::ac3::Eac3Decoder` round trip — confirming
 the decoded bitstream's channel energy actually lands where the authored ADM positions and hold/
 jump timing say it should, the same standard `tests/ac3/oba/test_atmos_motion.cpp`'s own flagship test
 holds itself to.
@@ -366,6 +366,6 @@ way `test_cli_atmos_adm.cpp` does for `atmos-adm`.
 
 See also: [ADM / BW64 reading](adm.md) — the phase-1 parser this module consumes; [IAB
 reading](iab.md) — `iclforge::iab`, the other parser this module consumes (phases 1-2); [Spatial &
-Atmos objects](spatial-and-atmos.md) — `iclforge::oba::AtmosEncoder`, `iclforge::oba::motion`, and
+Atmos objects](spatial-and-atmos.md) — `iclforge::ac3::oba::AtmosEncoder`, `iclforge::oba::motion`, and
 `iclforge::oba::Position`'s own room-anchored coordinate convention this module's `coordinates.hpp`
 converts into.

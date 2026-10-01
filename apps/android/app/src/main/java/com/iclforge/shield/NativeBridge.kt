@@ -226,7 +226,7 @@ object NativeBridge {
     /**
      * OBJECTS OFF: strips the object layer out of every access unit before it
      * is wrapped for output, live, leaving everything else about the stream
-     * alone (`iclforge::io::strip_objects`). The bed decodes identically - it is
+     * alone (`iclforge::ac3::io::strip_objects`). The bed decodes identically - it is
      * the same coded bed either way - so what changes is that a licensed
      * decoder stops seeing an object programme and drops to plain DD+.
      *
@@ -240,7 +240,7 @@ object NativeBridge {
     /**
      * Two floats: the energy vector's azimuth (degrees counterclockwise from
      * front) and its magnitude in [0,1], over the REAL encoded 5.1 bed
-     * (`iclforge::analysis::energy_vector`).
+     * (`iclforge::ac3::analysis::energy_vector`).
      *
      * Distinct from the object positions [nativeGetObjectState] reports: those
      * are where the demo asked the object to go, this is where a 5.1 decoder's

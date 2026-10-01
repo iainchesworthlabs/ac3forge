@@ -111,9 +111,9 @@ TEST_CASE("orbiting object lands in the right channels end to end", "[spatial]")
     // ambiguous near pair boundaries and the 256-sample decode delay.)
     iclforge::spatial::BedRenderer renderer;
     const auto object = renderer.add_object({.azimuth_deg = 0.0, .gain = 0.7});
-    iclforge::FrameEncoder encoder{
-        {.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true}};
-    iclforge::FrameDecoder decoder;
+    iclforge::ac3::FrameEncoder encoder{
+        {.bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true}};
+    iclforge::ac3::FrameDecoder decoder;
 
     constexpr std::array<double, 5> kParkAzimuth = {0.0, 30.0, 110.0, 250.0, 330.0};
     constexpr int kFrames = 5;
@@ -131,7 +131,7 @@ TEST_CASE("orbiting object lands in the right channels end to end", "[spatial]")
         }
         renderer.set_target(
             object, {.azimuth_deg = kParkAzimuth[static_cast<std::size_t>(f)], .gain = 0.7});
-        for (int block = 0; block < iclforge::kBlocksPerFrame; ++block) {
+        for (int block = 0; block < iclforge::ac3::kBlocksPerFrame; ++block) {
             for (std::size_t n = 0; n < mono.size(); ++n) {
                 mono[n] = static_cast<float>(
                     0.6 * std::sin(2.0 * std::numbers::pi * 440.0 *
@@ -218,7 +218,7 @@ TEST_CASE("pan_direction over floor-only targets agrees with pan_room", "[spatia
     // IO12's dynamic-object-only render relies on: metering an object-based
     // programme onto a plain 5.1 target must reproduce the same figures the
     // flat VBAP-folded bed already measures.
-    using Location = iclforge::eac3::chanmap::Location;
+    using Location = iclforge::ac3::eac3::chanmap::Location;
     const std::array<Location, 5> floor = {Location::kLeft, Location::kCentre, Location::kRight,
                                            Location::kLeftSurround,
                                            Location::kRightSurround};
@@ -244,7 +244,7 @@ TEST_CASE("pan_direction over floor-only targets agrees with pan_room", "[spatia
 }
 
 TEST_CASE("pan_direction crossfades an elevated source into the height ring", "[spatial]") {
-    using Location = iclforge::eac3::chanmap::Location;
+    using Location = iclforge::ac3::eac3::chanmap::Location;
     const std::array<Location, 2> locations = {Location::kLeft, Location::kVhl};
     const auto targets = iclforge::spatial::pan_targets(locations);
     const int floor_ch = targets.index_of(Location::kLeft);

@@ -12,7 +12,7 @@
 #include "iclforge/ac3/detail/decode_scalar.hpp"
 #include "transient_prenoise_apply.hpp"
 
-namespace iclforge {
+namespace iclforge::ac3 {
 
 namespace {
 
@@ -144,4 +144,4 @@ void internal::apply_transient_prenoise(std::span<float> pcm, int transloc, int 
     }
 }
 
-}  // namespace iclforge
+}  // namespace iclforge::ac3

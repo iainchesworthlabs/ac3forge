@@ -28,7 +28,7 @@
 #include "iclforge/ac3/meta/mixing.hpp"
 #include "iclforge/render/spatial.hpp"
 
-namespace iclforge::plan {
+namespace iclforge::ac3::plan {
 
 namespace {
 
@@ -1376,4 +1376,4 @@ void render(const Routing& routing, std::span<const std::span<const float>> sour
     }
 }
 
-}  // namespace iclforge::plan
+}  // namespace iclforge::ac3::plan

@@ -8,8 +8,8 @@ using iclforge_c::guard;
 // Kept outside extern "C" below - see encoder.cpp's identical comment on
 // -Wreturn-type-c-linkage.
 namespace {
-iclforge::DecoderConfig decoder_config_to_cpp(const iclforge_decoder_config_t& config) {
-    return iclforge::DecoderConfig{.drc_scale = config.drc_scale,
+iclforge::ac3::DecoderConfig decoder_config_to_cpp(const iclforge_decoder_config_t& config) {
+    return iclforge::ac3::DecoderConfig{.drc_scale = config.drc_scale,
                                .heavy_compression = config.heavy_compression != 0};
 }
 }  // namespace
@@ -20,7 +20,7 @@ void iclforge_decoder_config_init(iclforge_decoder_config_t* config) {
     if (config == nullptr) {
         return;
     }
-    const iclforge::DecoderConfig defaults{};
+    const iclforge::ac3::DecoderConfig defaults{};
     *config = iclforge_decoder_config_t{.drc_scale = defaults.drc_scale,
                                          .heavy_compression = defaults.heavy_compression ? 1 : 0};
 }
@@ -120,7 +120,7 @@ uint8_t iclforge_decoded_frame_compr(const iclforge_decoded_frame_t* frame) {
 }
 
 uint8_t iclforge_decoded_frame_dynrng(const iclforge_decoded_frame_t* frame, int block_index) {
-    if (frame == nullptr || block_index < 0 || block_index >= iclforge::kBlocksPerFrame) {
+    if (frame == nullptr || block_index < 0 || block_index >= iclforge::ac3::kBlocksPerFrame) {
         return 0;
     }
     return frame->data.dynrng[static_cast<size_t>(block_index)];
@@ -143,7 +143,7 @@ uint8_t iclforge_decoded_frame_compr2(const iclforge_decoded_frame_t* frame) {
 }
 
 uint8_t iclforge_decoded_frame_dynrng2(const iclforge_decoded_frame_t* frame, int block_index) {
-    if (frame == nullptr || block_index < 0 || block_index >= iclforge::kBlocksPerFrame) {
+    if (frame == nullptr || block_index < 0 || block_index >= iclforge::ac3::kBlocksPerFrame) {
         return 0;
     }
     return frame->data.dynrng2[static_cast<size_t>(block_index)];
@@ -154,7 +154,7 @@ size_t iclforge_decoded_frame_channel_count(const iclforge_decoded_frame_t* fram
 }
 
 size_t iclforge_decoded_frame_samples_per_channel(const iclforge_decoded_frame_t*) {
-    return iclforge::kSamplesPerFrame;
+    return iclforge::ac3::kSamplesPerFrame;
 }
 
 const float* iclforge_decoded_frame_channel_samples(const iclforge_decoded_frame_t* frame,
@@ -168,7 +168,7 @@ const float* iclforge_decoded_frame_channel_samples(const iclforge_decoded_frame
 int iclforge_decoded_frame_block_switched(const iclforge_decoded_frame_t* frame,
                                            size_t channel_index, int block_index) {
     if (frame == nullptr || channel_index >= frame->data.blksw.size() || block_index < 0 ||
-        block_index >= iclforge::kBlocksPerFrame) {
+        block_index >= iclforge::ac3::kBlocksPerFrame) {
         return 0;
     }
     return frame->data.blksw[channel_index][static_cast<size_t>(block_index)] ? 1 : 0;

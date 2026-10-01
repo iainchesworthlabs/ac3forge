@@ -190,13 +190,13 @@ private:
 };
 
 std::vector<std::byte> eac3_stream(int frames) {
-    iclforge::eac3::FrameConfig config;
+    iclforge::ac3::eac3::FrameConfig config;
     config.bitrate_kbps = 192;
-    config.acmod = iclforge::Acmod::k2_0;
-    iclforge::eac3::FrameEncoder encoder{config};
+    config.acmod = iclforge::ac3::Acmod::k2_0;
+    iclforge::ac3::eac3::FrameEncoder encoder{config};
     std::vector<std::byte> out;
     for (int f = 0; f < frames; ++f) {
-        std::vector<float> samples(iclforge::kSamplesPerFrame);
+        std::vector<float> samples(iclforge::ac3::kSamplesPerFrame);
         for (std::size_t n = 0; n < samples.size(); ++n) {
             samples[n] = static_cast<float>(
                 0.3 * std::sin(2.0 * std::numbers::pi * 440.0 *
@@ -550,7 +550,7 @@ TEST_CASE("engine: the diagnostics ring hears each command, then what playback d
     // Outlives the engine, which writes to it until it has stopped.
     iclforge::hearth::DiagnosticLog diagnostics;
     iclforge::hearth::DecoderSettings rf;
-    rf.mode = iclforge::OperatingMode::kRf;
+    rf.mode = iclforge::ac3::OperatingMode::kRf;
     {
         const auto layout = iclforge::render::OutputLayout::parse("2.0");
         REQUIRE(layout.has_value());

@@ -27,33 +27,33 @@ namespace {
            (bytes[1] == std::byte{0x40} || bytes[1] == std::byte{0x41});
 }
 
-[[nodiscard]] MediaCodec codec_of(io::StreamKind kind) {
+[[nodiscard]] MediaCodec codec_of(ac3::io::StreamKind kind) {
     switch (kind) {
-        case io::StreamKind::kAc3: return MediaCodec::kAc3;
-        case io::StreamKind::kEac3: return MediaCodec::kEac3;
-        case io::StreamKind::kAc3CoreEac3Extension: return MediaCodec::kAc3WithEac3;
+        case ac3::io::StreamKind::kAc3: return MediaCodec::kAc3;
+        case ac3::io::StreamKind::kEac3: return MediaCodec::kEac3;
+        case ac3::io::StreamKind::kAc3CoreEac3Extension: return MediaCodec::kAc3WithEac3;
     }
     return MediaCodec::kEac3;
 }
 
 // The first syncframe's bitstream information - an AC-3 frame's, a legacy
-// core's, or an E-AC-3 independent substream's - parsed as iclforge::io::probe
+// core's, or an E-AC-3 independent substream's - parsed as iclforge::ac3::io::probe
 // parses it, with the transform left out. Dependent substreams extend the
 // programme's channels, not its bitstream information.
 [[nodiscard]] std::optional<MediaBitstream> read_bitstream(std::span<const std::byte> unit) {
-    DecoderConfig config;
+    ac3::DecoderConfig config;
     config.skip_reconstruction = true;
     std::size_t offset = 0;
     while (offset < unit.size()) {
         const auto rest = unit.subspan(offset);
-        const auto header = io::read_frame_header(rest);
+        const auto header = ac3::io::read_frame_header(rest);
         if (!header || header->bytes == 0 || header->bytes > rest.size()) {
             return std::nullopt;
         }
         const auto frame = rest.first(header->bytes);
         offset += header->bytes;
-        if (header->kind == io::StreamKind::kAc3) {
-            FrameDecoder decoder{config};
+        if (header->kind == ac3::io::StreamKind::kAc3) {
+            ac3::FrameDecoder decoder{config};
             const auto decoded = decoder.decode_frame(frame);
             if (!decoded) {
                 return std::nullopt;
@@ -68,22 +68,22 @@ namespace {
                 .levels = mix_levels(decoded->acmod, decoded->cmixlev, decoded->surmixlev,
                                      decoded->alternate_bsi)};
         }
-        if (header->strmtyp == eac3::StreamType::kDependent) {
+        if (header->strmtyp == ac3::eac3::StreamType::kDependent) {
             continue;
         }
-        Eac3Decoder decoder{config};
+        ac3::Eac3Decoder decoder{config};
         const auto decoded = decoder.decode_substream(frame);
         if (!decoded || !decoded->has_value()) {
             return std::nullopt;
         }
-        const DecodedSubstream& sub = **decoded;
+        const ac3::DecodedSubstream& sub = **decoded;
         return MediaBitstream{.acmod = sub.acmod,
                               .info = sub.info,
                               .alternate_bsi = std::nullopt,
                               .cmixlev = std::nullopt,
                               .surmixlev = std::nullopt,
                               .mixing = sub.mixing,
-                              .levels = mix_levels(sub.mixing)};
+                              .levels = ac3::mix_levels(sub.mixing)};
     }
     return std::nullopt;
 }
@@ -188,8 +188,8 @@ void write_container(JsonSink& json, const apps::ContainerFacts& facts) {
             json.member("fscod", static_cast<std::int64_t>(box.fscod));
             json.member("bsid", static_cast<std::int64_t>(box.bsid));
             json.member("bsmod", static_cast<std::int64_t>(box.bsmod));
-            json.member("bsmod_label",
-                        apps::probe_json::bsmod_label(box.bsmod, static_cast<Acmod>(box.acmod)));
+            json.member("bsmod_label", apps::probe_json::bsmod_label(
+                                           box.bsmod, static_cast<ac3::Acmod>(box.acmod)));
             json.member("acmod", static_cast<std::int64_t>(box.acmod));
             json.member("lfeon", box.lfeon);
             json.member("bit_rate_code", static_cast<std::int64_t>(box.bit_rate_code));
@@ -230,7 +230,7 @@ void write_container(JsonSink& json, const apps::ContainerFacts& facts) {
             // iclforge::mpegts::parse_service_descriptor's own comment). Showing one
             // label anyway would sometimes just be wrong; a caller that has
             // the elementary stream can label service_bsmod itself with the
-            // acmod iclforge::io::scan() actually read.
+            // acmod iclforge::ac3::io::scan() actually read.
             member_or_null(json, "full_service", facts.service_full_service);
             json.member("bsid", static_cast<std::int64_t>(facts.service_bsid));
             member_or_null(json, "mainid", facts.service_mainid);
@@ -283,7 +283,7 @@ void write_programmes(JsonSink& json, const MediaInfo& info) {
         json.member("substream_id", static_cast<std::int64_t>(programme.substreamid));
         json.member("acmod", static_cast<std::int64_t>(programme.acmod));
         json.member("lfeon", programme.lfe);
-        json.member("layout_label", analysis::layout_name(programme.acmod, programme.lfe));
+        json.member("layout_label", ac3::analysis::layout_name(programme.acmod, programme.lfe));
         json.member("channels", static_cast<std::int64_t>(programme.channels));
         json.member("bsid", static_cast<std::int64_t>(programme.bsid));
         json.member("bsmod", static_cast<std::int64_t>(programme.bsmod));
@@ -299,7 +299,7 @@ void write_programmes(JsonSink& json, const MediaInfo& info) {
     json.key("associated_services");
     json.begin_array();
     for (std::size_t index = 0; index < info.associated_services.size(); ++index) {
-        const io::SubstreamService& service = info.associated_services[index];
+        const ac3::io::SubstreamService& service = info.associated_services[index];
         if (!service.present) {
             continue;
         }
@@ -317,7 +317,7 @@ void write_programmes(JsonSink& json, const MediaInfo& info) {
 }
 
 void write_production(JsonSink& json, std::string_view name,
-                      const std::optional<meta::AudioProduction>& production) {
+                      const std::optional<ac3::meta::AudioProduction>& production) {
     json.key(name);
     if (!production) {
         json.value_null();
@@ -326,25 +326,25 @@ void write_production(JsonSink& json, std::string_view name,
     json.begin_object();
     json.member("mixlevel", static_cast<std::int64_t>(production->mixlevel));
     json.member("mix_level_db_spl",
-                static_cast<std::int64_t>(meta::mix_level_db_spl(production->mixlevel)));
+                static_cast<std::int64_t>(ac3::meta::mix_level_db_spl(production->mixlevel)));
     json.member("roomtyp", static_cast<std::int64_t>(production->roomtyp));
-    json.member("roomtyp_label", meta::describe(production->roomtyp));
+    json.member("roomtyp_label", ac3::meta::describe(production->roomtyp));
     json.member("adconvtyp", static_cast<std::int64_t>(production->adconvtyp));
-    json.member("adconvtyp_label", meta::describe(production->adconvtyp));
+    json.member("adconvtyp_label", ac3::meta::describe(production->adconvtyp));
     json.end_object();
 }
 
 // §5.4.2 / Table E1.2's informational group.
-void write_info(JsonSink& json, const meta::BsiInfo& info, Acmod acmod) {
+void write_info(JsonSink& json, const ac3::meta::BsiInfo& info, ac3::Acmod acmod) {
     json.begin_object();
     json.member("bsmod", static_cast<std::int64_t>(info.bsmod));
     json.member("bsmod_label", apps::probe_json::bsmod_label(static_cast<int>(info.bsmod), acmod));
     json.member("dsurmod", static_cast<std::int64_t>(info.dsurmod));
-    json.member("dsurmod_label", meta::describe(info.dsurmod));
+    json.member("dsurmod_label", ac3::meta::describe(info.dsurmod));
     json.member("dheadphonmod", static_cast<std::int64_t>(info.dheadphonmod));
-    json.member("dheadphonmod_label", meta::describe(info.dheadphonmod));
+    json.member("dheadphonmod_label", ac3::meta::describe(info.dheadphonmod));
     json.member("dsurexmod", static_cast<std::int64_t>(info.dsurexmod));
-    json.member("dsurexmod_label", meta::describe(info.dsurexmod));
+    json.member("dsurexmod_label", ac3::meta::describe(info.dsurexmod));
     json.member("copyright", info.copyrightb);
     json.member("original", info.origbs);
     json.member("langcod", info.langcod);
@@ -376,21 +376,21 @@ void write_info(JsonSink& json, const meta::BsiInfo& info, Acmod acmod) {
 }
 
 // Table D2.2's downmix preference, as {code, label}.
-void write_downmix_mode(JsonSink& json, std::string_view name, meta::DownmixMode mode) {
+void write_downmix_mode(JsonSink& json, std::string_view name, ac3::meta::DownmixMode mode) {
     json.key(name);
     json.begin_object();
     json.member("code", static_cast<std::int64_t>(mode));
-    json.member("label", meta::describe(mode));
+    json.member("label", ac3::meta::describe(mode));
     json.end_object();
 }
 
 // mixmdate's fold levels and programme scales (Table E1.2), or Annex D's
 // xbsi1, which fills the first five.
-void write_mix(JsonSink& json, const meta::MixMetadata& mix) {
+void write_mix(JsonSink& json, const ac3::meta::MixMetadata& mix) {
     json.begin_object();
     write_downmix_mode(json, "dmixmod", mix.dmixmod);
-    const auto fold_level = [&json](std::string_view name, meta::MixLevel code) {
-        write_level(json, name, static_cast<int>(code), level_db(meta::coefficient(code)));
+    const auto fold_level = [&json](std::string_view name, ac3::meta::MixLevel code) {
+        write_level(json, name, static_cast<int>(code), level_db(ac3::meta::coefficient(code)));
     };
     fold_level("ltrtcmixlev", mix.ltrtcmixlev);
     fold_level("lorocmixlev", mix.lorocmixlev);
@@ -400,7 +400,7 @@ void write_mix(JsonSink& json, const meta::MixMetadata& mix) {
     if (mix.lfemixlevcod) {
         json.begin_object();
         json.member("code", static_cast<std::int64_t>(*mix.lfemixlevcod));
-        json.member("db", meta::lfe_mix_level_db(*mix.lfemixlevcod), 2);
+        json.member("db", ac3::meta::lfe_mix_level_db(*mix.lfemixlevcod), 2);
         json.end_object();
     } else {
         json.value_null();
@@ -414,10 +414,10 @@ void write_mix(JsonSink& json, const meta::MixMetadata& mix) {
         json.begin_object();
         json.member("code", static_cast<std::int64_t>(*code));
         // Code 0 is mute, which has no level in dB.
-        if (*code == meta::kPgmScaleMute) {
+        if (*code == ac3::meta::kPgmScaleMute) {
             json.member_null("db");
         } else {
-            json.member("db", meta::pgm_scale_db(*code), 2);
+            json.member("db", ac3::meta::pgm_scale_db(*code), 2);
         }
         json.end_object();
     };
@@ -428,15 +428,16 @@ void write_mix(JsonSink& json, const meta::MixMetadata& mix) {
     // Table E2.7's premix-compression triple, shared by mixdef 0x1 (carried
     // directly) and mixdef 0x3 (carried again inside mixdata2e - see
     // MixingParameters::premix's own comment).
-    const auto write_premix = [&json](const meta::PremixCompression& premix) {
+    const auto write_premix = [&json](const ac3::meta::PremixCompression& premix) {
         json.begin_object();
         json.member("premixcmpsel", static_cast<std::int64_t>(premix.premixcmpsel));
-        json.member("premixcmpsel_label", premix.premixcmpsel == meta::PremixCompressionSource::kDynrng
+        json.member("premixcmpsel_label", premix.premixcmpsel == ac3::meta::PremixCompressionSource::kDynrng
                                                ? "dynrng"
                                                : "compr");
         json.member("drcsrc", static_cast<std::int64_t>(premix.drcsrc));
-        json.member("drcsrc_label",
-                    premix.drcsrc == meta::DrcSource::kExternal ? "external" : "this_substream");
+        json.member("drcsrc_label", premix.drcsrc == ac3::meta::DrcSource::kExternal
+                                        ? "external"
+                                        : "this_substream");
         json.member("premixcmpscl", static_cast<std::int64_t>(premix.premixcmpscl));
         json.end_object();
     };
@@ -451,7 +452,7 @@ void write_mix(JsonSink& json, const meta::MixMetadata& mix) {
         if (*code == 15) {
             json.member_null("db");
         } else {
-            json.member("db", meta::kExternalScaleDb[static_cast<std::size_t>(*code)], 2);
+            json.member("db", ac3::meta::kExternalScaleDb[static_cast<std::size_t>(*code)], 2);
         }
         json.end_object();
     };
@@ -465,20 +466,20 @@ void write_mix(JsonSink& json, const meta::MixMetadata& mix) {
     json.begin_object();
     json.member("code", static_cast<std::int64_t>(mix.mixing.mixdef));
     switch (mix.mixing.mixdef) {
-        case meta::MixDefinition::kNone:
+        case ac3::meta::MixDefinition::kNone:
             json.member("label", "none");
             break;
-        case meta::MixDefinition::kPremix:
+        case ac3::meta::MixDefinition::kPremix:
             json.member("label", "premix");
             json.key("premix");
             write_premix(mix.mixing.premix);
             break;
-        case meta::MixDefinition::kReserved:
+        case ac3::meta::MixDefinition::kReserved:
             json.member("label", "reserved");
             // §E2.3.1.23: twelve reserved bits, carried verbatim.
             json.member("reserved", static_cast<std::int64_t>(mix.mixing.reserved));
             break;
-        case meta::MixDefinition::kExtended:
+        case ac3::meta::MixDefinition::kExtended:
             json.member("label", "extended");
             json.key("external");
             if (mix.mixing.external) {
@@ -541,14 +542,15 @@ void write_mix(JsonSink& json, const meta::MixMetadata& mix) {
 
     // §E2.3.1.53-58: placement for a mono or 1+1 programme. pan2 is Ch2's own,
     // 1+1 only.
-    const auto write_pan = [&json](const std::optional<meta::PanInfo>& pan) {
+    const auto write_pan = [&json](const std::optional<ac3::meta::PanInfo>& pan) {
         if (!pan) {
             json.value_null();
             return;
         }
         json.begin_object();
         json.member("panmean", static_cast<std::int64_t>(pan->panmean));
-        json.member("degrees", static_cast<double>(pan->panmean) * meta::kPanMeanDegreesPerStep, 1);
+        json.member("degrees",
+                    static_cast<double>(pan->panmean) * ac3::meta::kPanMeanDegreesPerStep, 1);
         json.member("paninfo", static_cast<std::int64_t>(pan->paninfo));
         json.end_object();
     };
@@ -594,7 +596,7 @@ void write_bitstream(JsonSink& json, const std::optional<MediaBitstream>& bits) 
 
     json.key("alternate_bsi");
     if (bits->alternate_bsi) {
-        const meta::AlternateBsi& alternate = *bits->alternate_bsi;
+        const ac3::meta::AlternateBsi& alternate = *bits->alternate_bsi;
         json.begin_object();
         json.key("xbsi1");
         if (alternate.mix) {
@@ -604,14 +606,14 @@ void write_bitstream(JsonSink& json, const std::optional<MediaBitstream>& bits) 
         }
         json.key("xbsi2");
         if (alternate.extended) {
-            const meta::ExtendedBsi& extended = *alternate.extended;
+            const ac3::meta::ExtendedBsi& extended = *alternate.extended;
             json.begin_object();
             json.member("dsurexmod", static_cast<std::int64_t>(extended.dsurexmod));
-            json.member("dsurexmod_label", meta::describe(extended.dsurexmod));
+            json.member("dsurexmod_label", ac3::meta::describe(extended.dsurexmod));
             json.member("dheadphonmod", static_cast<std::int64_t>(extended.dheadphonmod));
-            json.member("dheadphonmod_label", meta::describe(extended.dheadphonmod));
+            json.member("dheadphonmod_label", ac3::meta::describe(extended.dheadphonmod));
             json.member("adconvtyp", static_cast<std::int64_t>(extended.adconvtyp));
-            json.member("adconvtyp_label", meta::describe(extended.adconvtyp));
+            json.member("adconvtyp_label", ac3::meta::describe(extended.adconvtyp));
             json.member("xbsi2", static_cast<std::int64_t>(extended.xbsi2));
             json.member("encinfo", extended.encinfo);
             json.end_object();
@@ -625,13 +627,13 @@ void write_bitstream(JsonSink& json, const std::optional<MediaBitstream>& bits) 
 
     if (bits->cmixlev) {
         write_level(json, "cmixlev", static_cast<int>(*bits->cmixlev),
-                    level_db(meta::coefficient(*bits->cmixlev)));
+                    level_db(ac3::meta::coefficient(*bits->cmixlev)));
     } else {
         json.member_null("cmixlev");
     }
     if (bits->surmixlev) {
         write_level(json, "surmixlev", static_cast<int>(*bits->surmixlev),
-                    level_db(meta::coefficient(*bits->surmixlev)));
+                    level_db(ac3::meta::coefficient(*bits->surmixlev)));
     } else {
         json.member_null("surmixlev");
     }
@@ -643,7 +645,7 @@ void write_bitstream(JsonSink& json, const std::optional<MediaBitstream>& bits) 
         json.value_null();
     }
 
-    const MixLevels& levels = bits->levels;
+    const ac3::MixLevels& levels = bits->levels;
     json.key("fold_levels");
     json.begin_object();
     json.member("loro_centre_db", level_db(levels.loro_clev), 2);
@@ -726,15 +728,15 @@ MediaInfo describe_media(const std::string& path, const LoadedItem& loaded) {
         return info;
     }
 
-    const auto scanned = io::scan(bytes);
+    const auto scanned = ac3::io::scan(bytes);
     if (!scanned) {
-        info.error = fmt::format("The stream could not be read: {}.", io::describe(scanned.error()));
+        info.error = fmt::format("The stream could not be read: {}.", ac3::io::describe(scanned.error()));
         return info;
     }
     info.codec = codec_of(scanned->kind);
     info.sample_rate = sample_rate_hz(scanned->sample_rate);
-    info.stream_samples = io::stream_duration_samples(*scanned);
-    for (const io::ScannedProgramme& programme : scanned->programmes) {
+    info.stream_samples = ac3::io::stream_duration_samples(*scanned);
+    for (const ac3::io::ScannedProgramme& programme : scanned->programmes) {
         info.programmes.push_back(MediaProgramme{
             .substreamid = programme.substreamid,
             .acmod = programme.acmod,
@@ -751,12 +753,12 @@ MediaInfo describe_media(const std::string& path, const LoadedItem& loaded) {
 
     // As forge probe walks a stream, over the same units the player plays:
     // the lead programme's.
-    io::ProbeOptions options;
+    ac3::io::ProbeOptions options;
     // Needed for info.objects below: without detail/on_access_unit, a
     // syncframe's own object layer never leaves the walk (io::Prober only
     // keeps it long enough to fold into report.program's bed/count summary).
     options.detail = true;
-    options.on_access_unit = [&info](const io::ProbeAccessUnit& unit) {
+    options.on_access_unit = [&info](const ac3::io::ProbeAccessUnit& unit) {
         // The first OAMD payload, matching report.program's own "first OAMD
         // payload described" rule - so the summary (objectCount,
         // complexityIndex) and the table (this) always describe the same
@@ -764,7 +766,7 @@ MediaInfo describe_media(const std::string& path, const LoadedItem& loaded) {
         if (info.objects) {
             return;
         }
-        for (const io::ProbeSyncframe& frame : unit.syncframes) {
+        for (const ac3::io::ProbeSyncframe& frame : unit.syncframes) {
             if (frame.objects) {
                 info.objects = frame.objects;
                 return;
@@ -774,11 +776,11 @@ MediaInfo describe_media(const std::string& path, const LoadedItem& loaded) {
     options.authenticity = [](std::span<const std::byte> frame) {
         return signing::has_authenticity_tag(frame);
     };
-    io::Prober prober{std::move(options)};
+    ac3::io::Prober prober{std::move(options)};
     for (std::size_t index = 0; index < scanned->access_units.size(); ++index) {
         if (const auto pushed = prober.push(scanned->access_units[index]); !pushed) {
             info.error = fmt::format("Access unit {} could not be read: {}.", index,
-                                     io::describe(pushed.error()));
+                                     ac3::io::describe(pushed.error()));
             break;
         }
     }
@@ -794,7 +796,7 @@ std::string media_info_json(const MediaInfo& info) {
     StringSink json{out};
     json.begin_object();
     json.member("schema", "iclforge.hearth.media/1");
-    json.member("generator", version_full);
+    json.member("generator", ac3::version_full);
     json.member("file", info.path);
     if (info.codec) {
         json.member("codec", codec_token(*info.codec));

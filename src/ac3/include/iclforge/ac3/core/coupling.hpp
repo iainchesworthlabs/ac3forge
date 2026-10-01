@@ -14,7 +14,7 @@
 // at the top of the spectrum for a large bit saving - the tool that makes
 // 5.1 viable well below 448 kbit/s.
 
-namespace iclforge::coupling {
+namespace iclforge::ac3::coupling {
 
 // §7.4.2: coefficients 37..252 form 18 sub-bands of 12.
 inline constexpr int kFirstBin = 37;
@@ -129,4 +129,4 @@ template <typename Scalar>
 // range downward by 54 dB in total.
 [[nodiscard]] ICLFORGE_AC3_EXPORT int choose_master(std::span<const double> values);
 
-}  // namespace iclforge::coupling
+}  // namespace iclforge::ac3::coupling

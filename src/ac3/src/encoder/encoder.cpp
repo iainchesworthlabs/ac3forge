@@ -38,7 +38,7 @@
 #include "exp_strategy.hpp"
 #include "snr_search.hpp"
 
-namespace iclforge {
+namespace iclforge::ac3 {
 
 namespace {
 
@@ -228,7 +228,7 @@ struct FrameEncoder::Impl {
     std::array<internal::encode_scalar_t, 512> time_scratch_{};
     // Four windowed blocks, not one (batched MDCT (four blocks)): step 1's
     // per-channel loop batches four BLOCKS' forward transforms into one
-    // iclforge::mdct512_forward_batch4 call, which needs all four to coexist.
+    // iclforge::ac3::mdct512_forward_batch4 call, which needs all four to coexist.
     // Six blocks a frame, so a channel whose first four blocks are all long
     // runs one batch plus two ordinary calls; lane 0 doubles as the
     // one-at-a-time path's own buffer.
@@ -391,7 +391,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // curves the runs cached for the last frame's searches are stale, and a
     // path that evaluates a cost without searching (VBR) must not read them.
     ++impl_->curve_generation_;
-    ICLFORGE_ZONE_SCOPED_N("iclforge::FrameEncoder::encode_frame");
+    ICLFORGE_ZONE_SCOPED_N("iclforge::ac3::FrameEncoder::encode_frame");
     // Before the first early return below, so a caller that keeps one trace
     // across a whole file never reads the previous frame's state back out of
     // a call that produced no frame at all.
@@ -868,7 +868,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // for the offset to sit on. A sound search would have to reconstruct and
     // measure real distortion per candidate.
     //
-    // iclforge::quality does exactly that (see ac3/quality/distortion.hpp), so
+    // iclforge::ac3::quality does exactly that (see ac3/quality/distortion.hpp), so
     // step 9a below now runs the search these values are the starting point
     // for - but only when EncoderConfig::search asks for it. fgaincod_for's
     // rate-adaptive curve above is the no-search default either way; the
@@ -2587,4 +2587,4 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     return frame;
 }
 
-}  // namespace iclforge
+}  // namespace iclforge::ac3

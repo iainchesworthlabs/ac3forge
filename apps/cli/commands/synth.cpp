@@ -27,7 +27,7 @@
 
 namespace forge_cli::commands {
 
-namespace plan = iclforge::plan;
+namespace plan = iclforge::ac3::plan;
 
 namespace {
 
@@ -55,7 +55,7 @@ void fill_tones(std::vector<std::vector<float>>& samples,
                 std::vector<std::span<const float>>& views,
                 std::span<const double> tone_hz, double amplitude, std::uint64_t n0) {
     for (std::size_t ch = 0; ch < samples.size(); ++ch) {
-        for (int i = 0; i < iclforge::kSamplesPerFrame; ++i) {
+        for (int i = 0; i < iclforge::ac3::kSamplesPerFrame; ++i) {
             samples[ch][static_cast<std::size_t>(i)] = static_cast<float>(
                 amplitude * std::sin(2.0 * std::numbers::pi * tone_hz[ch] *
                                      static_cast<double>(n0 + static_cast<std::uint64_t>(i)) /
@@ -67,14 +67,14 @@ void fill_tones(std::vector<std::vector<float>>& samples,
 
 // Frames that cover `seconds` of audio, rounded up.
 std::uint64_t frame_count(std::uint32_t seconds) {
-    return (static_cast<std::uint64_t>(seconds) * 48000 + iclforge::kSamplesPerFrame - 1) /
-           iclforge::kSamplesPerFrame;
+    return (static_cast<std::uint64_t>(seconds) * 48000 + iclforge::ac3::kSamplesPerFrame - 1) /
+           iclforge::ac3::kSamplesPerFrame;
 }
 
 }  // namespace
 
 int run_silence(std::string_view out_path, std::uint32_t seconds, std::uint32_t bitrate) {
-    const auto frame = iclforge::build_silent_stereo_frame({.bitrate_kbps = bitrate});
+    const auto frame = iclforge::ac3::build_silent_stereo_frame({.bitrate_kbps = bitrate});
     if (!frame) {
         fmt::println(stderr, "error: bitrate must be one of the 19 legal AC-3 rates");
         return kExitUsage;
@@ -124,14 +124,14 @@ int run_sine(std::string_view out_path, std::uint32_t seconds, std::uint32_t bit
 
     // Heap-allocated: FrameEncoder carries several KB of MDCT scratch/history
     // state, and this function only constructs it once (PREfast's C6262).
-    auto encoder = std::make_unique<iclforge::FrameEncoder>(config);
+    auto encoder = std::make_unique<iclforge::ac3::FrameEncoder>(config);
     const auto nchans = static_cast<std::size_t>(encoder->channel_count());
     const double amplitude = amplitude_pct / 100.0;
-    iclforge::analysis::LevelMeter meter{config.acmod, config.lfe, 48000};
+    iclforge::ac3::analysis::LevelMeter meter{config.acmod, config.lfe, 48000};
 
     const std::uint64_t count = frame_count(seconds);
     std::vector<std::vector<float>> samples(nchans,
-                                            std::vector<float>(iclforge::kSamplesPerFrame));
+                                            std::vector<float>(iclforge::ac3::kSamplesPerFrame));
     std::vector<std::span<const float>> views(nchans);
     // Streamed out as encoded, keep_partial hard-off: this command has
     // never honoured keep-partial - its output is synthetic and
@@ -144,7 +144,7 @@ int run_sine(std::string_view out_path, std::uint32_t seconds, std::uint32_t bit
     std::uint64_t n0 = 0;
     for (std::uint64_t f = 0; f < count; ++f) {
         fill_tones(samples, views, tone_hz, amplitude, n0);
-        n0 += iclforge::kSamplesPerFrame;
+        n0 += iclforge::ac3::kSamplesPerFrame;
         meter.process(views);
         auto frame = encoder->encode_frame(views);
         if (!frame) {
@@ -200,7 +200,7 @@ int run_eac3_sine(std::string_view out_path, std::uint32_t seconds, std::uint32_
     if (plan::rendered_channel_count(cp) <= 2) {
         std::ranges::fill(tone_hz, static_cast<double>(freq_hz));
     }
-    iclforge::eac3::AccessUnitEncoder encoder{config};
+    iclforge::ac3::eac3::AccessUnitEncoder encoder{config};
     const auto nchans = static_cast<std::size_t>(encoder.channel_count());
     // Holds because plan::validate() above already refused everything that
     // would leave this encoder without substreams - see its call site.
@@ -209,7 +209,7 @@ int run_eac3_sine(std::string_view out_path, std::uint32_t seconds, std::uint32_
 
     const std::uint64_t count = frame_count(seconds);
     std::vector<std::vector<float>> samples(nchans,
-                                            std::vector<float>(iclforge::kSamplesPerFrame));
+                                            std::vector<float>(iclforge::ac3::kSamplesPerFrame));
     std::vector<std::span<const float>> views(nchans);
     // Same output arrangement as 'sine' above, keep_partial hard-off for
     // the same synthetic-and-regenerable reason.
@@ -220,7 +220,7 @@ int run_eac3_sine(std::string_view out_path, std::uint32_t seconds, std::uint32_
     std::uint64_t n0 = 0;
     for (std::uint64_t f = 0; f < count; ++f) {
         fill_tones(samples, views, tone_hz, amplitude, n0);
-        n0 += iclforge::kSamplesPerFrame;
+        n0 += iclforge::ac3::kSamplesPerFrame;
         auto unit = encoder.encode_access_unit(views);
         if (!unit) {
             fmt::println(stderr, "error: invalid E-AC-3 configuration");
@@ -254,8 +254,8 @@ int run_orbit(std::string_view out_path, std::uint32_t seconds, std::uint32_t bi
                        .meta = meta.p};
     // Heap-allocated: FrameEncoder carries several KB of MDCT scratch/history
     // state, and this function only constructs it once (PREfast's C6262).
-    auto encoder = std::make_unique<iclforge::FrameEncoder>(plan::ac3_config(p));
-    iclforge::analysis::LevelMeter meter{iclforge::Acmod::k3_2, true, 48000};
+    auto encoder = std::make_unique<iclforge::ac3::FrameEncoder>(plan::ac3_config(p));
+    iclforge::ac3::analysis::LevelMeter meter{iclforge::ac3::Acmod::k3_2, true, 48000};
 
     const std::uint64_t count = frame_count(seconds);
     std::vector<float> mono(iclforge::spatial::kBlockSamples);
@@ -274,7 +274,7 @@ int run_orbit(std::string_view out_path, std::uint32_t seconds, std::uint32_t bi
         for (auto& channel : frame_channels) {
             channel.clear();
         }
-        for (int block = 0; block < iclforge::kBlocksPerFrame; ++block) {
+        for (int block = 0; block < iclforge::ac3::kBlocksPerFrame; ++block) {
             const double seconds_now = static_cast<double>(n0) / 48000.0;
             renderer.set_target(object,
                                 {.azimuth_deg = 360.0 * seconds_now /
@@ -330,7 +330,7 @@ int run_eac3_silence(std::string_view out_path, std::uint32_t seconds, std::uint
     if (!resolve_layout(layout, plan::Codec::kEac3, p, label)) {
         return kExitUsage;
     }
-    const auto unit = iclforge::eac3::build_silent_access_unit(plan::eac3_config(p));
+    const auto unit = iclforge::ac3::eac3::build_silent_access_unit(plan::eac3_config(p));
     if (!unit) {
         fmt::println(stderr, "error: invalid E-AC-3 configuration");
         return kExitUsage;

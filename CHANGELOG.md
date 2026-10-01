@@ -2014,7 +2014,11 @@ The sections below contain the complete change list and fixes.
   programs are `forge`, `forge-gui`, `hearth` and `crucible`, where they were `ac3cli`, `ac3gui`,
   `ac3hearth` and `ac3crucible`, and nothing answers to the old names: there is no alias and no
   launcher. The library is 22 libraries under `src/`, named `iclforge::<library>`, with the headers
-  `iclforge/<library>/` and the files `libiclforge_<library>`; the C API is `iclforge_c/iclforge.h`
+  `iclforge/<library>/` and the files `libiclforge_<library>`; the C++ names of a library are in
+  the namespace under `iclforge` that is named for it, so that the codecs are peers:
+  `iclforge::ac3` holds the AC-3, E-AC-3 and Atmos codec (`iclforge::ac3::FrameEncoder`,
+  `iclforge::ac3::io::read_wav`, `iclforge::ac3::eac3::AccessUnitEncoder`), `iclforge::ac4` the
+  AC-4 codec, and no codec declares into `iclforge` itself; the C API is `iclforge_c/iclforge.h`
   with the prefix `iclforge_`, the CMake options and the environment variables are `ICLFORGE_*`,
   the Python module is `iclforge`, the Rust crates `iclforge` and `iclforge-sys`, and the npm
   package `iclforge-wasm-decoder`. The Sendspin extension role and the sink firmware's project name

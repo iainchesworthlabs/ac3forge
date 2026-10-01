@@ -22,20 +22,20 @@ namespace iclforge::apps::probe_json {
 // same functions - a consumer and a reader can never be told two different
 // names for one stream.
 
-std::string_view codec_token(io::StreamKind kind) {
-    return kind == io::StreamKind::kAc3 ? "ac3" : "eac3";
+std::string_view codec_token(ac3::io::StreamKind kind) {
+    return kind == ac3::io::StreamKind::kAc3 ? "ac3" : "eac3";
 }
 
-std::string_view codec_label(io::StreamKind kind) {
-    return kind == io::StreamKind::kAc3 ? "AC-3" : "E-AC-3";
+std::string_view codec_label(ac3::io::StreamKind kind) {
+    return kind == ac3::io::StreamKind::kAc3 ? "AC-3" : "E-AC-3";
 }
 
-std::string_view strmtyp_token(eac3::StreamType type) {
+std::string_view strmtyp_token(ac3::eac3::StreamType type) {
     switch (type) {
-        case eac3::StreamType::kIndependent: return "independent";
-        case eac3::StreamType::kDependent: return "dependent";
-        case eac3::StreamType::kConvertible: return "convertible";
-        case eac3::StreamType::kReserved: break;
+        case ac3::eac3::StreamType::kIndependent: return "independent";
+        case ac3::eac3::StreamType::kDependent: return "dependent";
+        case ac3::eac3::StreamType::kConvertible: return "convertible";
+        case ac3::eac3::StreamType::kReserved: break;
     }
     return "reserved";
 }
@@ -44,7 +44,7 @@ std::string_view strmtyp_token(eac3::StreamType type) {
 // value - 0x7 is an associated "voice over" service at acmod 1/0 and a main
 // "karaoke" service at anything wider - so the pair is what names it, not
 // bsmod alone.
-std::string_view bsmod_label(int bsmod, Acmod acmod) {
+std::string_view bsmod_label(int bsmod, ac3::Acmod acmod) {
     switch (bsmod) {
         case 0: return "complete main";
         case 1: return "music and effects";
@@ -53,7 +53,7 @@ std::string_view bsmod_label(int bsmod, Acmod acmod) {
         case 4: return "dialogue";
         case 5: return "commentary";
         case 6: return "emergency";
-        case 7: return acmod == Acmod::k1_0 ? "voice over" : "karaoke";
+        case 7: return acmod == ac3::Acmod::k1_0 ? "voice over" : "karaoke";
         default: break;
     }
     return "reserved";
@@ -64,12 +64,12 @@ std::string_view bsmod_label(int bsmod, Acmod acmod) {
 // names in full.
 std::string_view asvc_label(bool asvc) { return asvc ? "associated service" : "main service"; }
 
-std::string_view exp_strategy_token(ExpStrategy strategy) {
+std::string_view exp_strategy_token(ac3::ExpStrategy strategy) {
     switch (strategy) {
-        case ExpStrategy::kReuse: return "reuse";
-        case ExpStrategy::kD15: return "D15";
-        case ExpStrategy::kD25: return "D25";
-        case ExpStrategy::kD45: return "D45";
+        case ac3::ExpStrategy::kReuse: return "reuse";
+        case ac3::ExpStrategy::kD15: return "D15";
+        case ac3::ExpStrategy::kD25: return "D25";
+        case ac3::ExpStrategy::kD45: return "D45";
     }
     return "reuse";
 }
@@ -132,7 +132,7 @@ int dialnorm_db(int code) { return -code; }
 
 // --- JSON ------------------------------------------------------------------
 
-void write_range(JsonSink& json, std::string_view name, const io::MinMax& range, bool negate) {
+void write_range(JsonSink& json, std::string_view name, const ac3::io::MinMax& range, bool negate) {
     json.key(name);
     json.begin_object();
     json.member("present", range.seen);
@@ -148,7 +148,7 @@ void write_range(JsonSink& json, std::string_view name, const io::MinMax& range,
     json.end_object();
 }
 
-void write_stream(JsonSink& json, const io::ProbeReport& report) {
+void write_stream(JsonSink& json, const ac3::io::ProbeReport& report) {
     json.key("stream");
     json.begin_object();
     json.member("codec", codec_token(report.kind));
@@ -159,18 +159,19 @@ void write_stream(JsonSink& json, const io::ProbeReport& report) {
     json.member("reduced_rate", report.reduced_rate);
     json.member("acmod", static_cast<std::int64_t>(report.acmod));
     json.member("lfeon", report.lfe);
-    json.member("layout_label", analysis::layout_name(report.acmod, report.lfe));
+    json.member("layout_label", ac3::analysis::layout_name(report.acmod, report.lfe));
     json.member("numblkscod", static_cast<std::int64_t>(report.numblkscod));
-    json.member("blocks_per_syncframe",
-                static_cast<std::int64_t>(report.kind == io::StreamKind::kAc3
-                                              ? kBlocksPerFrame
-                                              : eac3::blocks_per_syncframe(report.numblkscod)));
+    json.member(
+        "blocks_per_syncframe",
+        static_cast<std::int64_t>(report.kind == ac3::io::StreamKind::kAc3
+                                      ? ac3::kBlocksPerFrame
+                                      : ac3::eac3::blocks_per_syncframe(report.numblkscod)));
     json.member("coded_channels", static_cast<std::int64_t>(report.coded_channels));
     json.member("rendered_channels", static_cast<std::int64_t>(report.rendered_channels));
     json.key("layout");
     json.begin_array();
     for (const auto location : report.layout) {
-        json.value(eac3::chanmap::name(location));
+        json.value(ac3::eac3::chanmap::name(location));
     }
     json.end_array();
 
@@ -228,7 +229,7 @@ void write_stream(JsonSink& json, const io::ProbeReport& report) {
     json.member("present", report.dmixmod.has_value());
     if (report.dmixmod.has_value()) {
         json.member("code", static_cast<std::int64_t>(*report.dmixmod));
-        json.member("label", meta::describe(*report.dmixmod));
+        json.member("label", ac3::meta::describe(*report.dmixmod));
     } else {
         json.member_null("code");
         json.member_null("label");
@@ -322,7 +323,7 @@ void write_stream(JsonSink& json, const io::ProbeReport& report) {
 // --- AC-4 ---------------------------------------------------------------
 //
 // A separate walk from everything above, over iclforge::ac4::scan()/parse_raw_frame()
-// rather than iclforge::io::Prober - AC-4 is a different codec with a different
+// rather than iclforge::ac3::io::Prober - AC-4 is a different codec with a different
 // bitstream (see src/ac4/include/iclforge/ac4/ac4.hpp's own scope note: TOC/
 // presentation/substream-group framing, not audio decode), so none of the
 // AC-3/E-AC-3-specific fields above (acmod, bsmod, chanmap, dialnorm,
@@ -1033,7 +1034,7 @@ void write_container(JsonSink& json, const ContainerFacts& facts) {
             json.member("fscod", static_cast<std::int64_t>(box.fscod));
             json.member("bsid", static_cast<std::int64_t>(box.bsid));
             json.member("bsmod", static_cast<std::int64_t>(box.bsmod));
-            json.member("bsmod_label", bsmod_label(box.bsmod, static_cast<Acmod>(box.acmod)));
+            json.member("bsmod_label", bsmod_label(box.bsmod, static_cast<ac3::Acmod>(box.acmod)));
             json.member("acmod", static_cast<std::int64_t>(box.acmod));
             json.member("lfeon", box.lfeon);
             json.member("bit_rate_code", static_cast<std::int64_t>(box.bit_rate_code));

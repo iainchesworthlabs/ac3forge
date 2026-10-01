@@ -15,7 +15,7 @@
 #include "iclforge/ac3/core/tables.hpp"
 #include "iclforge/objects/emdf.hpp"
 
-namespace iclforge::emdf {
+namespace iclforge::ac3::emdf {
 
 namespace {
 
@@ -449,7 +449,7 @@ FrameLayout walk_frame(std::span<const std::byte> frame) {
     // resends the strategy (spxstre) if it actually changed, so a block that
     // says "reuse" needs last block's values still in scope. Every helper
     // reused here (spx_begin_subbnd, group_bands, kDefaultSpxBandStructure,
-    // ...) is this project's own clean-room iclforge::eac3 code, the same
+    // ...) is this project's own clean-room iclforge::ac3::eac3 code, the same
     // functions eac3_decoder.cpp itself calls to decode real spx content.
     // This mirrors that decoder's parse exactly, just discarding the
     // coordinate values once their bit width is known, since a map only needs
@@ -708,7 +708,7 @@ FrameLayout walk_frame(std::span<const std::byte> frame) {
                             w = (w << 1) | (bit_at(frame, bitp + static_cast<std::size_t>(i)) ? 1u
                                                                                              : 0u);
                         }
-                        if (w == kSyncWord) {
+                        if (w == iclforge::emdf::kSyncWord) {
                             out.has_container = true;
                             out.container_start = bitp;
                             field.carries_container = true;
@@ -865,4 +865,4 @@ FrameLayout walk_frame(std::span<const std::byte> frame) {
     return out;
 }
 
-}  // namespace iclforge::emdf
+}  // namespace iclforge::ac3::emdf

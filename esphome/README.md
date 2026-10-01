@@ -5,8 +5,8 @@ exposes a decoder plus the streaming framer.
 
 ## What this is, and is not
 
-**Is:** the plumbing. `IclForgeComponent` owns an `iclforge::FrameDecoder` and an
-`iclforge::io::AccessUnitAccumulator`; you feed it bytes and take planar float PCM
+**Is:** the plumbing. `IclForgeComponent` owns an `iclforge::ac3::FrameDecoder` and an
+`iclforge::ac3::io::AccessUnitAccumulator`; you feed it bytes and take planar float PCM
 back. `FrameDecoder` reads AC-3 alone: an E-AC-3 stream (bsid above 8), Atmos
 included, is framed but not decoded, and `decode()` then returns null with
 `failed()` set. There is no AC-4 here either.

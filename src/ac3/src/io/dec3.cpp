@@ -12,7 +12,7 @@
 #include "iclforge/ac3/io/elementary.hpp"
 #include "iclforge/ac3/meta/bsi.hpp"
 
-namespace iclforge::io {
+namespace iclforge::ac3::io {
 
 namespace {
 
@@ -71,7 +71,7 @@ std::vector<std::byte> build_codec_config_box(const ScannedStream& stream) {
     // data_rate(13) + num_ind_sub(3) = 16 bits, byte-aligned. data_rate's own
     // semantics ("the data rate of the ... bitstream, or the maximum data
     // rate if VBR" - Dolby's own EC3SpecificBox derivation guide) are exactly
-    // what iclforge::eac3::frame_words() fixes per bitrate for this project's CBR
+    // what iclforge::ac3::eac3::frame_words() fixes per bitrate for this project's CBR
     // encoder, so the first access unit's own size is the exact rate, not an
     // estimate: kbps = bytes * 8 * sample_rate / samples_per_frame / 1000.
     const auto first_unit_bytes =
@@ -152,7 +152,7 @@ std::vector<std::byte> build_codec_config_box(const ScannedStream& stream) {
 
     if (stream.oba_complexity_index.has_value()) {
         // TS 103 420 §8.3.1/§8.3.2.2, echoed into the box exactly as
-        // iclforge::io::scan() read it out of the bitstream's own addbsi (see
+        // iclforge::ac3::io::scan() read it out of the bitstream's own addbsi (see
         // ScannedStream::oba_complexity_index) - this is the exact signal
         // FFmpeg's E-AC-3+JOC remux path is documented to drop or mis-signal
         // (https://github.com/jellyfin/jellyfin-ffmpeg/issues/584), which is
@@ -175,4 +175,4 @@ std::string dash_channel_configuration(const ScannedStream& stream) {
     return fmt::format("{:04X}", stream.channel_map);
 }
 
-}  // namespace iclforge::io
+}  // namespace iclforge::ac3::io

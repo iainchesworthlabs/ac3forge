@@ -67,14 +67,14 @@ frames, per CONTRIBUTING.md's validation discipline), not six surfaces half-cove
 pass was AC-3 and single-substream E-AC-3:
 
 - `iclforge::ac3` — `Encoder`/`EncoderConfig`, `Decoder`/`DecodedFrame`.
-- `iclforge::eac3` — `Eac3Encoder`/`Eac3FrameConfig`, `Eac3Decoder`/`DecodedSubstream`.
+- `iclforge::ac3::eac3` — `Eac3Encoder`/`Eac3FrameConfig`, `Eac3Decoder`/`DecodedSubstream`.
 - `iclforge::ac4` — `Encoder`/`EncoderConfig`, `Decoder`/`DecodedFrame`, objects included (see
   Coverage below).
 
 Every config type follows the C header's own `_config_init` growth convention: construct with
 `Default::default()` (which calls the raw `iclforge_*_config_init()` FFI function first) and
 override only the fields you need — never a hand-written Rust-side guess at what the C++ defaults
-are. See `iclforge::EncoderConfig::default()`'s doc comment for the mechanics.
+are. See `iclforge::ac3::EncoderConfig::default()`'s doc comment for the mechanics.
 
 ### Coverage
 

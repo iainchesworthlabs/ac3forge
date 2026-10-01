@@ -14,7 +14,7 @@ iclforge_status_t iclforge_scan(const uint8_t* stream, size_t stream_size,
     }
     return guard([&stream, &stream_size, &out_stream]() -> iclforge_status_t {
         auto result =
-            iclforge::io::scan(std::as_bytes(std::span<const uint8_t>(stream, stream_size)));
+            iclforge::ac3::io::scan(std::as_bytes(std::span<const uint8_t>(stream, stream_size)));
         if (!result) {
             return iclforge_c::from_cpp(result.error());
         }
@@ -136,8 +136,8 @@ uint16_t iclforge_scanned_stream_channel_map(const iclforge_scanned_stream_t* st
 }
 
 namespace {
-const iclforge::io::SubstreamService* associated_substream(const iclforge_scanned_stream_t* stream,
-                                                        int index) {
+const iclforge::ac3::io::SubstreamService* associated_substream(
+    const iclforge_scanned_stream_t* stream, int index) {
     if (stream == nullptr || index < 0 ||
         static_cast<size_t>(index) >= stream->data.associated_substreams.size()) {
         return nullptr;
@@ -183,8 +183,8 @@ int iclforge_scanned_stream_associated_substream_mix_metadata(
 }
 
 namespace {
-const iclforge::io::ScannedProgramme* scanned_programme(const iclforge_scanned_stream_t* stream,
-                                                     size_t programme_index) {
+const iclforge::ac3::io::ScannedProgramme* scanned_programme(
+    const iclforge_scanned_stream_t* stream, size_t programme_index) {
     if (stream == nullptr || programme_index >= stream->data.programmes.size()) {
         return nullptr;
     }
@@ -281,7 +281,7 @@ int iclforge_scanned_stream_access_unit_timing(const iclforge_scanned_stream_t* 
     if (stream == nullptr) {
         return 0;
     }
-    const auto timing = iclforge::io::access_unit_timing(stream->data, index);
+    const auto timing = iclforge::ac3::io::access_unit_timing(stream->data, index);
     if (!timing.has_value()) {
         return 0;
     }
@@ -292,11 +292,11 @@ int iclforge_scanned_stream_access_unit_timing(const iclforge_scanned_stream_t* 
 }
 
 uint64_t iclforge_scanned_stream_duration_samples(const iclforge_scanned_stream_t* stream) {
-    return stream == nullptr ? 0 : iclforge::io::stream_duration_samples(stream->data);
+    return stream == nullptr ? 0 : iclforge::ac3::io::stream_duration_samples(stream->data);
 }
 
 double iclforge_scanned_stream_duration_seconds(const iclforge_scanned_stream_t* stream) {
-    return stream == nullptr ? 0.0 : iclforge::io::stream_duration_seconds(stream->data);
+    return stream == nullptr ? 0.0 : iclforge::ac3::io::stream_duration_seconds(stream->data);
 }
 
 int iclforge_scanned_stream_access_unit_at_sample(const iclforge_scanned_stream_t* stream,
@@ -304,7 +304,7 @@ int iclforge_scanned_stream_access_unit_at_sample(const iclforge_scanned_stream_
     if (stream == nullptr) {
         return 0;
     }
-    const auto index = iclforge::io::access_unit_at_sample(stream->data, sample);
+    const auto index = iclforge::ac3::io::access_unit_at_sample(stream->data, sample);
     if (!index.has_value()) {
         return 0;
     }
@@ -317,7 +317,7 @@ int iclforge_scanned_stream_access_unit_at_seconds(const iclforge_scanned_stream
     if (stream == nullptr) {
         return 0;
     }
-    const auto index = iclforge::io::access_unit_at_seconds(stream->data, seconds);
+    const auto index = iclforge::ac3::io::access_unit_at_seconds(stream->data, seconds);
     if (!index.has_value()) {
         return 0;
     }
@@ -330,7 +330,7 @@ int iclforge_scanned_stream_uniform_access_unit_samples(const iclforge_scanned_s
     if (stream == nullptr) {
         return 0;
     }
-    const auto samples = iclforge::io::uniform_access_unit_samples(stream->data);
+    const auto samples = iclforge::ac3::io::uniform_access_unit_samples(stream->data);
     if (!samples.has_value()) {
         return 0;
     }

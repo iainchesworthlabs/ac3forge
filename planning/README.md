@@ -45,7 +45,7 @@ the `AC3FORGE_` variables. The family is ICL Forge now, and its programs are `fo
 | [topology.md](topology.md) | Source, transport, sink roles; HLS/CMAF transport | Hearth sinks use Sendspin instead ([SUPERSEDED.md](SUPERSEDED.md)); none of the HLS/CMAF transport is built, and its frame still applies elsewhere |
 | [host-plugin.md](host-plugin.md) | DAW/NLE metering/QC plugin feasibility | [Proposed — DAW/NLE host plugin](../ROADMAP.md#proposed) |
 | [qc-report.md](qc-report.md) | Delivery-shaped QC report file | [Proposed — QC delivery report file](../ROADMAP.md#proposed) |
-| [layout.md](layout.md) | The layout and names of `src/` (N1B): codecs as peers over a codec-blind base, three layouts, the migration stages and a prototype, with an [inventory](layout-inventory.md); built as L2 in the stages S0 to S5 and N1A, with S6 left (see [what the runs found](layout.md#what-the-runs-found-that-the-plan-did-not)) | [N1 in the AC-4 plan](ac4.md#n1-the-names) |
+| [layout.md](layout.md) | The layout and names of `src/` (N1B): codecs as peers over a codec-blind base, three layouts, the migration stages and a prototype, with an [inventory](layout-inventory.md); built as L2 in the stages S0 to S6 and N1A (see [what the runs found](layout.md#what-the-runs-found-that-the-plan-did-not)) | [N1 in the AC-4 plan](ac4.md#n1-the-names) |
 
 ---
 

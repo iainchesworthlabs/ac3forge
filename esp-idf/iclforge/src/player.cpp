@@ -70,12 +70,12 @@ struct BlockView {
     int index = 0;
     std::span<const std::span<const float>> channels;
     std::span<const std::span<const float>> objects;
-    const iclforge::eac3::chanmap::Layout* bed = nullptr;
+    const iclforge::ac3::eac3::chanmap::Layout* bed = nullptr;
     std::span<const iclforge::oba::DisplayObject> places;
 };
 
-bool same_layout(const iclforge::eac3::chanmap::Layout& a,
-                 const iclforge::eac3::chanmap::Layout& b) {
+bool same_layout(const iclforge::ac3::eac3::chanmap::Layout& a,
+                 const iclforge::ac3::eac3::chanmap::Layout& b) {
     if (a.count != b.count) {
         return false;
     }
@@ -94,17 +94,18 @@ bool same_layout(const iclforge::eac3::chanmap::Layout& a,
 // BEFORE the decode because the block form hands the samples over during the
 // call and the layout only after it; the decoded layout is checked against
 // this once the call returns, and wins if they differ.
-std::optional<iclforge::eac3::chanmap::Layout> peek_layout(std::span<const std::byte> unit) {
+std::optional<iclforge::ac3::eac3::chanmap::Layout> peek_layout(std::span<const std::byte> unit) {
     std::uint16_t map = 0;
     std::size_t offset = 0;
     while (offset < unit.size()) {
-        const auto header = iclforge::io::read_frame_header(unit.subspan(offset));
+        const auto header = iclforge::ac3::io::read_frame_header(unit.subspan(offset));
         if (!header || header->bytes == 0) {
             return std::nullopt;
         }
-        const std::uint16_t own = iclforge::eac3::chanmap::acmod_map(header->acmod, header->lfe);
-        if (header->kind == iclforge::io::StreamKind::kEac3 &&
-            header->strmtyp == iclforge::eac3::StreamType::kDependent) {
+        const std::uint16_t own =
+            iclforge::ac3::eac3::chanmap::acmod_map(header->acmod, header->lfe);
+        if (header->kind == iclforge::ac3::io::StreamKind::kEac3 &&
+            header->strmtyp == iclforge::ac3::eac3::StreamType::kDependent) {
             map |= header->chanmap.value_or(own);
         } else {
             map |= own;
@@ -114,7 +115,7 @@ std::optional<iclforge::eac3::chanmap::Layout> peek_layout(std::span<const std::
     if (map == 0) {
         return std::nullopt;
     }
-    return iclforge::eac3::chanmap::expand(map);
+    return iclforge::ac3::eac3::chanmap::expand(map);
 }
 
 }  // namespace
@@ -130,12 +131,12 @@ struct Player::Impl {
 
     // Decided at start() from the layout: the decoder's own §7.8 fold for a
     // stereo or mono layout, the renderer for everything else.
-    std::optional<iclforge::DownmixTarget> fold;
+    std::optional<iclforge::ac3::DownmixTarget> fold;
     bool reconstruct = false;
     // The coded layout the renderer is set up for, from the headers of the
     // unit about to decode (see peek_layout) or the decoded layout of the
     // last one when the two disagreed.
-    iclforge::eac3::chanmap::Layout bed{};
+    iclforge::ac3::eac3::chanmap::Layout bed{};
     bool have_bed = false;
     // The slots that bed reaches, kept with it; see StreamInfo::silent.
     std::uint16_t bed_fed = 0;
@@ -178,22 +179,22 @@ struct Player::Impl {
     std::array<std::span<const float>, kMaxSlots> block_views{};
     // The framer's buffer: 16 KB holds an independent substream plus three
     // dependents, which covers Atmos.
-    alignas(4) std::array<std::byte, iclforge::io::kRecommendedBuffer> framing{};
+    alignas(4) std::array<std::byte, iclforge::ac3::io::kRecommendedBuffer> framing{};
     // The fetch task's read block.
     std::vector<std::byte> staging;
 
     // Two decoders, constructed on the first access unit that needs each -
     // see the header on why a unit that is one AC-3 syncframe cannot go
     // through Eac3Decoder under a fold.
-    std::optional<iclforge::FrameDecoder> ac3_decoder;
-    std::optional<iclforge::Eac3Decoder> eac3_decoder;
+    std::optional<iclforge::ac3::FrameDecoder> ac3_decoder;
+    std::optional<iclforge::ac3::Eac3Decoder> eac3_decoder;
 
 #if CONFIG_ICLFORGE_AC4
     // The AC-4 decoder, constructed when the play's first bytes say the stream
     // is AC-4 (decode_loop), and what its blocks are placed by. A play is one
     // codec throughout.
     std::optional<iclforge::ac4::Decoder> ac4_decoder;
-    std::array<iclforge::ac4::Speaker, iclforge::eac3::chanmap::kMaxChannels> ac4_speakers{};
+    std::array<iclforge::ac4::Speaker, iclforge::ac3::eac3::chanmap::kMaxChannels> ac4_speakers{};
     std::size_t ac4_speaker_count = 0;
     ac4bridge::PcmHash ac4_hash;
     // The rate of a block the sink does not run at: the play is refused once
@@ -204,7 +205,7 @@ struct Player::Impl {
     // The renderer's bed as last set. A block carries the bed it was decoded
     // against - a held block its own unit's, which the next unit's headers may
     // since have changed - and the renderer is set up again when that changes.
-    iclforge::eac3::chanmap::Layout renderer_bed{};
+    iclforge::ac3::eac3::chanmap::Layout renderer_bed{};
     bool renderer_has_bed = false;
     // A unit's object descriptions, gathered on its first block.
     std::array<iclforge::oba::DisplayObject, kMaxObjects> places{};
@@ -218,7 +219,7 @@ struct Player::Impl {
     bool holding = false;
     UnitHold hold;
     float* hold_storage = nullptr;
-    iclforge::eac3::chanmap::Layout held_bed{};
+    iclforge::ac3::eac3::chanmap::Layout held_bed{};
     bool held_has_bed = false;
     std::array<iclforge::oba::DisplayObject, kMaxObjects> held_places{};
     std::size_t held_place_count = 0;
@@ -419,7 +420,7 @@ struct Player::Impl {
 
     // What the decoder returned afterwards, against what the headers said. A
     // disagreement places the next unit by the decoded layout.
-    void confirm_bed(const iclforge::eac3::chanmap::Layout& decoded) {
+    void confirm_bed(const iclforge::ac3::eac3::chanmap::Layout& decoded) {
         if (fold.has_value() || same_layout(bed, decoded)) {
             return;
         }
@@ -433,7 +434,7 @@ struct Player::Impl {
     // signals the block carries, at most kMaxObjects. Only what the renderer
     // reads is kept - the label views the decoder's storage, which is gone
     // once the decode call returns, so it is cleared.
-    static std::size_t gather_places(const iclforge::PcmBlock& pcm,
+    static std::size_t gather_places(const iclforge::ac3::PcmBlock& pcm,
                                      iclforge::oba::DisplayObject* into) {
         if (pcm.object_metadata == nullptr || pcm.objects.empty()) {
             return 0;
@@ -460,7 +461,7 @@ struct Player::Impl {
         const std::span<const std::span<float>> out(block_spans.data(), slots);
         // The renderer reads the block's samples; the object description has
         // already reached it through `places`.
-        const iclforge::PcmBlock pcm{.index = view.index,
+        const iclforge::ac3::PcmBlock pcm{.index = view.index,
                                 .blocks = 0,
                                 .channels = view.channels,
                                 .objects = view.objects,
@@ -503,7 +504,7 @@ struct Player::Impl {
 
     // One block from the decoder: into the hold while a play's first unit is
     // held, and onto the layout and into the sink otherwise.
-    void deliver(const iclforge::PcmBlock& pcm) {
+    void deliver(const iclforge::ac3::PcmBlock& pcm) {
         if (holding) {
             if (hold_block(pcm)) {
                 return;
@@ -524,7 +525,7 @@ struct Player::Impl {
 
     // Into the hold, which the play's first block arms with room for blocks
     // like it. The unit's bed and object descriptions go beside it.
-    bool hold_block(const iclforge::PcmBlock& pcm) {
+    bool hold_block(const iclforge::ac3::PcmBlock& pcm) {
         if (!hold.armed() && !arm_hold(pcm)) {
             return false;
         }
@@ -546,16 +547,16 @@ struct Player::Impl {
     // the bitstream ring is, with "has it" asked rather than learned from a
     // failed allocation (see start()). Without the room the play goes on
     // unheld.
-    bool arm_hold(const iclforge::PcmBlock& pcm) {
+    bool arm_hold(const iclforge::ac3::PcmBlock& pcm) {
         const std::size_t floats = UnitHold::storage_floats(pcm.channels.size() + pcm.objects.size(),
-                                                            iclforge::kSamplesPerBlock);
+                                                            iclforge::ac3::kSamplesPerBlock);
         const std::uint32_t caps = heap_caps_get_total_size(MALLOC_CAP_SPIRAM) > 0
                                        ? (MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)
                                        : (MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
         hold_storage = static_cast<float*>(heap_caps_malloc(floats * sizeof(float), caps));
         if (hold_storage != nullptr &&
             hold.arm(std::span<float>(hold_storage, floats), pcm.channels.size(),
-                     pcm.objects.size(), iclforge::kSamplesPerBlock)) {
+                     pcm.objects.size(), iclforge::ac3::kSamplesPerBlock)) {
             return true;
         }
         std::printf("player: no room to hold the first unit (%u bytes); it plays as it comes\n",
@@ -596,7 +597,7 @@ struct Player::Impl {
     // StreamInfo's account of how the layout is served (see player.hpp), once
     // the first unit has said what the stream is: `silent` is filled in by
     // Player::stream(), since it grows as the play goes on.
-    void describe_stream(const std::optional<iclforge::eac3::chanmap::Layout>& coded,
+    void describe_stream(const std::optional<iclforge::ac3::eac3::chanmap::Layout>& coded,
                          bool dual_mono) {
         const std::string_view text = config.layout.text();
         const std::size_t n = std::min(text.size(), stream.layout.size() - 1);
@@ -620,21 +621,21 @@ struct Player::Impl {
             add("Ch2");
         } else if (coded.has_value()) {
             for (const auto location : *coded) {
-                add(iclforge::eac3::chanmap::name(location));
+                add(iclforge::ac3::eac3::chanmap::name(location));
             }
         }
     }
 
     // True when the unit produced audio, false when the decoder held it back
     // (§3.7's transient pre-noise processing releases each frame one call late).
-    std::expected<bool, iclforge::DecodeError> decode_unit(std::span<const std::byte> unit) {
-        const auto header = iclforge::io::read_frame_header(unit);
+    std::expected<bool, iclforge::ac3::DecodeError> decode_unit(std::span<const std::byte> unit) {
+        const auto header = iclforge::ac3::io::read_frame_header(unit);
         const bool one_ac3_syncframe = header.has_value() &&
-                                       header->kind == iclforge::io::StreamKind::kAc3 &&
+                                       header->kind == iclforge::ac3::io::StreamKind::kAc3 &&
                                        header->bytes == unit.size();
         prepare_bed(unit);
         bool delivered = false;
-        const auto deliver_block = [&](const iclforge::PcmBlock& pcm) {
+        const auto deliver_block = [&](const iclforge::ac3::PcmBlock& pcm) {
             deliver(pcm);
             delivered = true;
         };
@@ -655,7 +656,8 @@ struct Player::Impl {
                           .objects = false,
                           .objects_rendered = false,
                           .slots = static_cast<int>(config.layout.slots())};
-                describe_stream(peek_layout(unit), decoded->acmod == iclforge::Acmod::kDualMono);
+                describe_stream(peek_layout(unit),
+                                decoded->acmod == iclforge::ac3::Acmod::kDualMono);
                 have_stream.store(true);
             }
             return delivered;
@@ -675,7 +677,7 @@ struct Player::Impl {
         if (!have_stream.load()) {
             // Dual mono has no Table E2.5 layout, so its count is 0; it is two
             // channels all the same.
-            const bool dual_mono = au.acmod == iclforge::Acmod::kDualMono;
+            const bool dual_mono = au.acmod == iclforge::ac3::Acmod::kDualMono;
             stream = {.eac3 = true,
                       .acmod = static_cast<int>(au.acmod),
                       .channels = dual_mono ? 2 : au.layout.count,
@@ -720,7 +722,7 @@ struct Player::Impl {
             ac4_hash_us.fetch_add(static_cast<std::uint64_t>(esp_timer_get_time() - entered));
         }
         ac4_samples.fetch_add(block.samples);
-        deliver(iclforge::PcmBlock{.index = index,
+        deliver(iclforge::ac3::PcmBlock{.index = index,
                               .blocks = 0,
                               .channels = block.channels,
                               .objects = {},
@@ -886,8 +888,8 @@ struct Player::Impl {
 #endif  // CONFIG_ICLFORGE_AC4
 
     void decode_loop() {
-        using Status = iclforge::io::AccessUnitAccumulator::Status;
-        iclforge::io::AccessUnitAccumulator accumulator{framing};
+        using Status = iclforge::ac3::io::AccessUnitAccumulator::Status;
+        iclforge::ac3::io::AccessUnitAccumulator accumulator{framing};
         // resynchronised_bytes() is per accumulator; the running total
         // survives the re-arm at each pass.
         std::uint64_t resync_before = 0;
@@ -989,7 +991,7 @@ struct Player::Impl {
                     break;
                 }
                 resync_before += accumulator.resynchronised_bytes();
-                accumulator = iclforge::io::AccessUnitAccumulator{framing};
+                accumulator = iclforge::ac3::io::AccessUnitAccumulator{framing};
                 continue;
             }
 
@@ -1001,13 +1003,13 @@ struct Player::Impl {
             // Before anything is decoded: a stream at a rate the sink does not
             // run at is refused (PlayerConfig::sample_rate_hz), and a unit of a
             // programme other than the one playing is skipped, uncounted.
-            if (const auto header = iclforge::io::read_frame_header(unit.bytes)) {
-                const std::uint32_t hz = iclforge::sample_rate_hz(header->sample_rate);
+            if (const auto header = iclforge::ac3::io::read_frame_header(unit.bytes)) {
+                const std::uint32_t hz = iclforge::ac3::sample_rate_hz(header->sample_rate);
                 if (hz != config.sample_rate_hz) {
                     finish("sample rate", true, static_cast<int>(hz));
                     break;
                 }
-                if (header->kind == iclforge::io::StreamKind::kEac3) {
+                if (header->kind == iclforge::ac3::io::StreamKind::kEac3) {
                     if (!programme.has_value()) {
                         programme = header->substreamid;
                     } else if (header->substreamid != *programme) {
@@ -1064,7 +1066,7 @@ bool Player::start() {
     // renderer leaves alone for a block has to read as silence, not as
     // whatever the heap held. A start() that failed after this point left its
     // storage behind, and that goes before this one is taken.
-    const std::size_t floats = slots * iclforge::kSamplesPerBlock;
+    const std::size_t floats = slots * iclforge::ac3::kSamplesPerBlock;
     const std::uint32_t block_caps = heap_caps_get_total_size(MALLOC_CAP_SPIRAM) > 0
                                          ? (MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)
                                          : (MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
@@ -1078,8 +1080,8 @@ bool Player::start() {
     }
     for (std::size_t slot = 0; slot < slots; ++slot) {
         im.block_spans[slot] =
-            std::span<float>(im.block_storage.get() + (slot * iclforge::kSamplesPerBlock),
-                             iclforge::kSamplesPerBlock);
+            std::span<float>(im.block_storage.get() + (slot * iclforge::ac3::kSamplesPerBlock),
+                             iclforge::ac3::kSamplesPerBlock);
     }
     im.staging.resize(im.config.fetch_bytes);
     set_volume(im.config.volume);
@@ -1087,15 +1089,15 @@ bool Player::start() {
     // How the layout is served: the decoder's own §7.8 stage for a stereo or
     // mono room, the renderer for everything else, with the objects
     // reconstructed when the layout asks for what the bed cannot give.
-    const iclforge::render::Serving serving =
-        iclforge::render::serve(im.config.layout, im.config.stereo_fold, im.config.objects);
+    const iclforge::ac3::render::Serving serving =
+        iclforge::ac3::render::serve(im.config.layout, im.config.stereo_fold, im.config.objects);
     im.fold = serving.fold;
-    im.fold_word = im.fold == iclforge::DownmixTarget::kMono   ? "mono"
-                   : im.fold == iclforge::DownmixTarget::kLtRt ? "ltrt"
+    im.fold_word = im.fold == iclforge::ac3::DownmixTarget::kMono   ? "mono"
+                   : im.fold == iclforge::ac3::DownmixTarget::kLtRt ? "ltrt"
                    : im.fold.has_value()                  ? "loro"
                                                           : nullptr;
     im.reconstruct = serving.reconstruct;
-    iclforge::render::configure_decoder(serving, im.config.decoder);
+    iclforge::ac3::render::configure_decoder(serving, im.config.decoder);
     im.renderer = LayoutRenderer{im.config.layout};
     // Placed objects trail their bed by the reconstruction's own delay, which
     // depends on the domain, and the renderer holds the bed's LFE back by it.
@@ -1136,9 +1138,9 @@ bool Player::start() {
                 core_number(im.config.decode_core),
                 static_cast<unsigned>(im.config.decode_priority));
     const char* how = "as coded, the bed placed";
-    if (im.fold == iclforge::DownmixTarget::kMono) {
+    if (im.fold == iclforge::ac3::DownmixTarget::kMono) {
         how = "the decoder's mono fold";
-    } else if (im.fold == iclforge::DownmixTarget::kLtRt) {
+    } else if (im.fold == iclforge::ac3::DownmixTarget::kLtRt) {
         how = "the decoder's Lt/Rt fold";
     } else if (im.fold.has_value()) {
         how = "the decoder's Lo/Ro fold";

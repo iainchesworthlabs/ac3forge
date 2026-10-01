@@ -103,7 +103,7 @@ void append_chunk(Bytes& out, std::string_view id, const Bytes& content) {
     }
 }
 
-constexpr int kFrame = iclforge::kSamplesPerFrame;
+constexpr int kFrame = iclforge::ac3::kSamplesPerFrame;
 constexpr int kTotalFrames = 6;  // 3 frames holding SR, 3 frames holding centre
 
 Bytes build_fmt_chunk_3ch() {
@@ -323,11 +323,11 @@ TEST_CASE("forge atmos-adm parses, bridges and encodes a real ADM BWF master end
         stream_bytes[i] = static_cast<std::byte>(raw[i]);
     }
 
-    const auto units = iclforge::split_access_units(stream_bytes);
+    const auto units = iclforge::ac3::split_access_units(stream_bytes);
     REQUIRE(units.has_value());
     REQUIRE(units->size() == static_cast<std::size_t>(kTotalFrames));
 
-    iclforge::Eac3Decoder decoder;
+    iclforge::ac3::Eac3Decoder decoder;
 
     // AC-3 3/2 coded order (Table 5.8): L, C, R, Ls, Rs.
     constexpr int kCCh = 1;

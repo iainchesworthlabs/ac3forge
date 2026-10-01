@@ -22,7 +22,7 @@
 #include "iclforge/ac3/meta/drc.hpp"  // to_db
 #include "iclforge/ac3/meta/mixing.hpp"
 
-namespace iclforge {
+namespace iclforge::ac3 {
 
 namespace {
 
@@ -64,7 +64,7 @@ const std::vector<double>& hilbert_kernel() {
     return kernel;
 }
 
-// The same taps in the decode path's own scalar (iclforge::internal::decode_scalar_t):
+// The same taps in the decode path's own scalar (iclforge::ac3::internal::decode_scalar_t):
 // the double table above, narrowed once, so the shift's per-sample products
 // run at that width. The double build gets the double table back untouched.
 template <typename Scalar>
@@ -155,7 +155,7 @@ std::size_t available(std::span<const float> channel, std::size_t offset, std::s
     return channel.size() > offset ? std::min(count, channel.size() - offset) : 0;
 }
 
-// Which coded positions of Table 5.8 carry surround. iclforge::meta's own downmix
+// Which coded positions of Table 5.8 carry surround. iclforge::ac3::meta's own downmix
 // builders keep a fuller version of this privately; what is needed here is
 // only "which indices form the surround sum", and a shared layout type
 // serving both would be a worse fit for each.
@@ -437,9 +437,9 @@ void fold_block(const FoldPlan& plan, const OutputConfig& config,
 // one place once the frame is done.
 void scan_peak(Scalar& peak, const float* left, const float* right, std::size_t count) {
     for (std::size_t i = 0; i < count; ++i) {
-        peak = std::max(peak, internal::scalar_abs(static_cast<Scalar>(left[i])));
+        peak = std::max(peak, iclforge::internal::scalar_abs(static_cast<Scalar>(left[i])));
         if (right != nullptr) {
-            peak = std::max(peak, internal::scalar_abs(static_cast<Scalar>(right[i])));
+            peak = std::max(peak, iclforge::internal::scalar_abs(static_cast<Scalar>(right[i])));
         }
     }
 }
@@ -488,7 +488,7 @@ void limit_frame(const OutputConfig& config, double& protection_gain, Scalar sca
     [[maybe_unused]] Scalar walked = ramp_start;
     for (std::size_t i = 0; i < length; ++i) {
         Scalar gain{};
-        if constexpr (std::is_same_v<Scalar, internal::Fixed32>) {
+        if constexpr (std::is_same_v<Scalar, iclforge::internal::Fixed32>) {
             gain = walked;
             walked += step;
         } else {
@@ -510,7 +510,7 @@ void limit_frame(const OutputConfig& config, double& protection_gain, Scalar sca
 
 // Where each Table E2.5 location folds to, when a program has to be reduced
 // to one of §7.8's own acmod layouts before §7.8 can fold it at all. Shared
-// with iclforge::eac3::AccessUnitEncoder's whole-programme peak measurement - see
+// with iclforge::ac3::eac3::AccessUnitEncoder's whole-programme peak measurement - see
 // eac3_seat_fold.hpp for what the reduction does and why it lives there
 // rather than here.
 using eac3::seat::reduced_acmod;
@@ -842,4 +842,4 @@ void OutputStage::apply(std::span<const std::span<float>> channels,
 }
 
 
-}  // namespace iclforge
+}  // namespace iclforge::ac3

@@ -46,15 +46,15 @@ namespace {
 // (two keyframes cannot share one time_s - see iclforge::oba::PathError::kDuplicateTimestamp). This
 // is the same resolution tests/ac3/oba/test_atmos_motion.cpp's own make_holds() helper relies on
 // implicitly: every caller in this codebase samples ObjectPath::evaluate() once per encoded frame
-// (iclforge::kSamplesPerFrame = 1536 samples, 32 ms at 48 kHz - see iclforge::oba::AtmosEncoder::
-// encode_frame's own doc comment, "one placement per frame"), so any transition faster than one
-// frame period is already indistinguishable from instantaneous at the resolution that actually
-// reaches the bitstream. 1 microsecond is roughly 1/20 of one 48 kHz sample and about six orders
-// of magnitude below a 32 ms frame - far too small for any real frame boundary to land inside it,
-// and far smaller than any interpolationLength BS.2076-2 §10.3 itself expects a producer to
-// author ("It is recommended that audioBlockFormat sizes are chosen to be small enough to avoid
-// the use of the interpolationLength parameter for smoothly moving objects" - i.e. this parameter
-// is meant for short but audible crossfades, not zero).
+// (iclforge::ac3::kSamplesPerFrame = 1536 samples, 32 ms at 48 kHz - see
+// iclforge::ac3::oba::AtmosEncoder:: encode_frame's own doc comment, "one placement per frame"), so
+// any transition faster than one frame period is already indistinguishable from instantaneous at
+// the resolution that actually reaches the bitstream. 1 microsecond is roughly 1/20 of one 48 kHz
+// sample and about six orders of magnitude below a 32 ms frame - far too small for any real frame
+// boundary to land inside it, and far smaller than any interpolationLength BS.2076-2 §10.3 itself
+// expects a producer to author ("It is recommended that audioBlockFormat sizes are chosen to be
+// small enough to avoid the use of the interpolationLength parameter for smoothly moving objects" -
+// i.e. this parameter is meant for short but audible crossfades, not zero).
 constexpr double kInstantJumpEpsilon = 1.0e-6;
 
 }  // namespace

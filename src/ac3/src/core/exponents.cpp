@@ -11,7 +11,7 @@
 #include "iclforge/arithmetic/detail/simd.hpp"
 #include "iclforge/base/detail/profiling.hpp"
 
-namespace iclforge {
+namespace iclforge::ac3 {
 
 // to_fixed25 and exponent_from_fixed are header-inline (exponents.hpp says
 // why); this stays out of line because its callers are whole-block ones that
@@ -64,11 +64,11 @@ std::int32_t clamp_fixed25(double scaled) {
 // mentions - that want the conversion alone.
 void to_fixed25_block(std::span<const double> coefficients, std::span<std::int32_t> fixed) {
     assert(coefficients.size() == fixed.size());
-    const auto scale = internal::arch::f64x2::broadcast(16777216.0);  // 2^24
+    const auto scale = iclforge::internal::arch::f64x2::broadcast(16777216.0);  // 2^24
     std::size_t i = 0;
     for (; i + 2 <= coefficients.size(); i += 2) {
-        const auto scaled = internal::arch::round_ties_away(
-            internal::arch::f64x2::load(coefficients.data() + i) * scale);
+        const auto scaled = iclforge::internal::arch::round_ties_away(
+            iclforge::internal::arch::f64x2::load(coefficients.data() + i) * scale);
         fixed[i] = clamp_fixed25(scaled.lane0());
         fixed[i + 1] = clamp_fixed25(scaled.lane1());
     }
@@ -329,4 +329,4 @@ void decode_exponents(std::uint8_t absolute, std::span<const std::uint8_t> group
     }
 }
 
-}  // namespace iclforge
+}  // namespace iclforge::ac3

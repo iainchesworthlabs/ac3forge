@@ -19,7 +19,7 @@
 // allocation (§7.2.2.6) lets an encoder nudge the masking curve this routine
 // derives from exponents alone, in either direction, per band.
 
-namespace iclforge {
+namespace iclforge::ac3 {
 
 // Bit-allocation parameter codes as transmitted in the BSI/audblk. Defaults
 // are the spec's basic-encoder values (§8.2.12).
@@ -194,4 +194,4 @@ ICLFORGE_AC3_EXPORT void allocate_from_curve(std::span<const std::uint8_t> exps,
 [[nodiscard]] ICLFORGE_AC3_EXPORT DeltaSegments choose_delta_segments(
     std::span<const float> coefficients, std::span<const std::uint8_t> exps, int start);
 
-}  // namespace iclforge
+}  // namespace iclforge::ac3

@@ -9,7 +9,7 @@ export interface DecodedProgram {
     /** Per channel, one RMS value per ENERGY_BLOCK_SAMPLES-sample block. */
     energy: Float32Array[];
     energyBlockSize: number;
-    /** 0, 1 or 2 channels depending on whether `fold` was requested - the real iclforge::OutputStage fold, never a hand-rolled one. */
+    /** 0, 1 or 2 channels depending on whether `fold` was requested - the real iclforge::ac3::OutputStage fold, never a hand-rolled one. */
     fold: Float32Array[];
     durationSeconds: number;
     objectCount: number;

@@ -605,7 +605,7 @@ the life of the decoding task. That was bounded and paid once, so it was never t
 — but on an ESP32-S3 it was 32 KB of internal SRAM that object reconstruction then had nowhere to
 fit into.
 
-`iclforge::eac3::release_ecpl_scratch()` hands them back and the next call rebuilds what it needs. The
+`iclforge::ac3::eac3::release_ecpl_scratch()` hands them back and the next call rebuilds what it needs. The
 probe calls it between fixtures, and retained bytes at exit went from 34,232 to 24, and to **12**
 once the bin-angle vector became a stack array. What is left is one `__cxa_thread_atexit`
 registration record, for the pointer to the spectrum scratch — the one `thread_local` the library
@@ -1444,7 +1444,7 @@ ICLFORGE_CROSS_TIER_CHECK=1 ./tools/ci/run_codec_matrix.sh build/config-linux-ll
 ```
 
 The dynamic-dispatch follow-on proved this whole mechanism end to end against one trivial
-function first (`iclforge::internal::avx2::avx2_probe_matches_expected()`, no codec bit-exactness stakes
+function first (`iclforge::ac3::internal::avx2::avx2_probe_matches_expected()`, no codec bit-exactness stakes
 of its own) — deliberately, so the build/link/dispatch/test pipeline was proven before any kernel's
 correctness depended on it — then wired two real kernels behind it: `apply_analysis_window` and the
 DCT-IV/IMDCT twiddle stages (`mdct.cpp`'s `dct4_pre_twiddle`/`dct4_post_twiddle`,

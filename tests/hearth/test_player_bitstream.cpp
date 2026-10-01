@@ -144,7 +144,8 @@ public:
     [[nodiscard]] bool is_open() const override { return log_->open; }
 
     bool submit(std::span<const std::byte> burst) override {
-        const std::uint64_t held = (log_->submitted - log_->heard) / iclforge::kSamplesPerFrame;
+        const std::uint64_t held =
+            (log_->submitted - log_->heard) / iclforge::ac3::kSamplesPerFrame;
         if (!log_->open || held + 1 > log_->capacity_bursts) {
             return false;
         }
@@ -161,7 +162,7 @@ public:
             return false;
         }
         log_->bursts.emplace_back(burst.begin(), burst.end());
-        log_->submitted += iclforge::kSamplesPerFrame;
+        log_->submitted += iclforge::ac3::kSamplesPerFrame;
         return true;
     }
 
@@ -265,15 +266,15 @@ private:
 };
 
 // `count` AC-3 frames of a quiet tone, each its own unit.
-Units ac3_units(int count, iclforge::SampleRate rate = iclforge::SampleRate::k48000) {
-    iclforge::EncoderConfig config;
+Units ac3_units(int count, iclforge::ac3::SampleRate rate = iclforge::ac3::SampleRate::k48000) {
+    iclforge::ac3::EncoderConfig config;
     config.sample_rate = rate;
     config.bitrate_kbps = 192;
-    config.acmod = iclforge::Acmod::k2_0;
-    iclforge::FrameEncoder encoder{config};
+    config.acmod = iclforge::ac3::Acmod::k2_0;
+    iclforge::ac3::FrameEncoder encoder{config};
     Units out;
     for (int f = 0; f < count; ++f) {
-        std::vector<float> samples(iclforge::kSamplesPerFrame);
+        std::vector<float> samples(iclforge::ac3::kSamplesPerFrame);
         for (std::size_t n = 0; n < samples.size(); ++n) {
             samples[n] = 0.1F * static_cast<float>((static_cast<int>(n) + f * 37) % 50 - 25) / 25.0F;
         }
@@ -287,11 +288,11 @@ Units ac3_units(int count, iclforge::SampleRate rate = iclforge::SampleRate::k48
 
 // `count` E-AC-3 units of 2^numblkscod-ish blocks (1, 2, 3 or 6).
 Units eac3_units(int count, int numblkscod = 3) {
-    iclforge::eac3::FrameConfig config;
+    iclforge::ac3::eac3::FrameConfig config;
     config.bitrate_kbps = 192;
-    config.acmod = iclforge::Acmod::k2_0;
+    config.acmod = iclforge::ac3::Acmod::k2_0;
     config.numblkscod = numblkscod;
-    iclforge::eac3::FrameEncoder encoder{config};
+    iclforge::ac3::eac3::FrameEncoder encoder{config};
     const auto samples_per_unit = static_cast<std::size_t>(encoder.samples_per_frame());
     Units out;
     for (int f = 0; f < count; ++f) {
@@ -312,12 +313,12 @@ Units eac3_units(int count, int numblkscod = 3) {
 Units numbered_ac3_units(int count) {
     Units out;
     for (int f = 0; f < count; ++f) {
-        iclforge::EncoderConfig config;
+        iclforge::ac3::EncoderConfig config;
         config.bitrate_kbps = 192;
-        config.acmod = iclforge::Acmod::k2_0;
+        config.acmod = iclforge::ac3::Acmod::k2_0;
         config.dialnorm = 10 + f;
-        iclforge::FrameEncoder encoder{config};
-        const std::vector<float> samples(iclforge::kSamplesPerFrame, 0.05F);
+        iclforge::ac3::FrameEncoder encoder{config};
+        const std::vector<float> samples(iclforge::ac3::kSamplesPerFrame, 0.05F);
         const std::vector<std::span<const float>> views(2, samples);
         auto frame = encoder.encode_frame(views);
         REQUIRE(frame.has_value());
@@ -331,12 +332,12 @@ Units numbered_ac3_units(int count) {
 Units numbered_eac3_units(int count, int numblkscod) {
     Units out;
     for (int f = 0; f < count; ++f) {
-        iclforge::eac3::FrameConfig config;
+        iclforge::ac3::eac3::FrameConfig config;
         config.bitrate_kbps = 192;
-        config.acmod = iclforge::Acmod::k2_0;
+        config.acmod = iclforge::ac3::Acmod::k2_0;
         config.numblkscod = numblkscod;
         config.dialnorm = 10 + (f % 20);
-        iclforge::eac3::FrameEncoder encoder{config};
+        iclforge::ac3::eac3::FrameEncoder encoder{config};
         const std::vector<float> samples(static_cast<std::size_t>(encoder.samples_per_frame()),
                                          0.05F);
         const std::vector<std::span<const float>> views(2, samples);
@@ -350,18 +351,18 @@ Units numbered_eac3_units(int count, int numblkscod) {
 // Two programmes in one E-AC-3 stream, a unit of each in turn: independent
 // substreams 0 and 1.
 Bytes two_programmes(int count) {
-    iclforge::eac3::FrameConfig config;
+    iclforge::ac3::eac3::FrameConfig config;
     config.bitrate_kbps = 192;
-    config.acmod = iclforge::Acmod::k2_0;
+    config.acmod = iclforge::ac3::Acmod::k2_0;
     config.substreamid = 0;
-    iclforge::eac3::FrameEncoder first{config};
+    iclforge::ac3::eac3::FrameEncoder first{config};
     config.substreamid = 1;
-    iclforge::eac3::FrameEncoder second{config};
-    const std::vector<float> samples(iclforge::kSamplesPerFrame, 0.05F);
+    iclforge::ac3::eac3::FrameEncoder second{config};
+    const std::vector<float> samples(iclforge::ac3::kSamplesPerFrame, 0.05F);
     const std::vector<std::span<const float>> views(2, samples);
     Bytes out;
     for (int f = 0; f < count; ++f) {
-        for (iclforge::eac3::FrameEncoder* encoder : {&first, &second}) {
+        for (iclforge::ac3::eac3::FrameEncoder* encoder : {&first, &second}) {
             auto frame = encoder->encode_frame(views);
             REQUIRE(frame.has_value());
             out.insert(out.end(), frame->begin(), frame->end());
@@ -400,13 +401,13 @@ std::vector<Bytes> expected_bursts(const Units& units, BitstreamFormat format) {
 
 // The samples one unit codes.
 std::uint64_t unit_samples(const Bytes& unit) {
-    const auto header = iclforge::io::read_frame_header(unit);
+    const auto header = iclforge::ac3::io::read_frame_header(unit);
     REQUIRE(header.has_value());
-    if (header->kind != iclforge::io::StreamKind::kEac3) {
-        return iclforge::kSamplesPerFrame;
+    if (header->kind != iclforge::ac3::io::StreamKind::kEac3) {
+        return iclforge::ac3::kSamplesPerFrame;
     }
     constexpr std::array<std::uint64_t, 4> kBlocks{1, 2, 3, 6};
-    return kBlocks[static_cast<std::size_t>(header->numblkscod)] * iclforge::kSamplesPerBlock;
+    return kBlocks[static_cast<std::size_t>(header->numblkscod)] * iclforge::ac3::kSamplesPerBlock;
 }
 
 using Slots = std::array<std::vector<float>, iclforge::hearth::Ac3Transcoder::kChannels>;
@@ -508,7 +509,7 @@ std::vector<Bytes> wrapped(const std::vector<Bytes>& frames) {
 Slots link_audio(const std::vector<Bytes>& bursts) {
     const auto stream = iclforge::iec61937::unwrap_stream(joined(bursts));
     REQUIRE(stream.has_value());
-    const auto frames = iclforge::split_frames(*stream);
+    const auto frames = iclforge::ac3::split_frames(*stream);
     REQUIRE(frames.has_value());
     const auto layout = iclforge::render::OutputLayout::named("5.1");
     REQUIRE(layout.has_value());
@@ -715,11 +716,11 @@ TEST_CASE("bitstream: an AC-3 queue goes out a burst a frame, and joins",
     const auto& history = rig.player->history();
     REQUIRE(history.size() == 2);
     CHECK(history[0].first_frame == 0);
-    CHECK(history[0].frames == 5 * iclforge::kSamplesPerFrame);
-    CHECK(history[0].expected_frames == 5 * iclforge::kSamplesPerFrame);
-    CHECK(history[1].first_frame == 5 * iclforge::kSamplesPerFrame);
-    CHECK(history[1].frames == 4 * iclforge::kSamplesPerFrame);
-    CHECK(history[1].expected_frames == 4 * iclforge::kSamplesPerFrame);
+    CHECK(history[0].frames == 5 * iclforge::ac3::kSamplesPerFrame);
+    CHECK(history[0].expected_frames == 5 * iclforge::ac3::kSamplesPerFrame);
+    CHECK(history[1].first_frame == 5 * iclforge::ac3::kSamplesPerFrame);
+    CHECK(history[1].frames == 4 * iclforge::ac3::kSamplesPerFrame);
+    CHECK(history[1].expected_frames == 4 * iclforge::ac3::kSamplesPerFrame);
     CHECK(history[1].output_opens == history[0].output_opens);
     // Asked once for each item: at the start, and before the join.
     CHECK(rig.policy->calls == 2);
@@ -735,7 +736,7 @@ TEST_CASE("bitstream: E-AC-3 units of three blocks are packed two to a burst, ac
           "[hearth][player][bitstream]") {
     const Units a = eac3_units(5, /*numblkscod=*/2);
     const Units b = eac3_units(3, /*numblkscod=*/2);
-    const std::uint64_t unit_samples = 3 * iclforge::kSamplesPerBlock;
+    const std::uint64_t unit_samples = 3 * iclforge::ac3::kSamplesPerBlock;
     Library library;
     library.files["a.ec3"] = {.bytes = joined(a)};
     library.files["b.ec3"] = {.bytes = joined(b)};
@@ -781,7 +782,7 @@ TEST_CASE("bitstream: a unit's report is released when its own frames are heard,
     // Three-block units, two to a burst, each saying which it is. The first
     // unit of a pair is decoded before its burst is whole, so the end of the
     // bursts queued so far is not where it starts.
-    const std::uint64_t unit_samples = 3 * iclforge::kSamplesPerBlock;
+    const std::uint64_t unit_samples = 3 * iclforge::ac3::kSamplesPerBlock;
     Library library;
     library.files["a.ec3"] = {.bytes = joined(numbered_eac3_units(8, /*numblkscod=*/2))};
     Rig rig{library};
@@ -810,7 +811,7 @@ TEST_CASE("bitstream: a different stream or mode reopens, once what was sent has
     Library library;
     library.files["a.ec3"] = {.bytes = joined(eac3_units(4))};
     library.files["b.ac3"] = {.bytes = joined(ac3_units(3))};
-    library.files["c.ac3"] = {.bytes = joined(ac3_units(3, iclforge::SampleRate::k44100))};
+    library.files["c.ac3"] = {.bytes = joined(ac3_units(3, iclforge::ac3::SampleRate::k44100))};
     Rig rig{library};
     rig.player->queue().add(item("a.ec3"));
     rig.player->queue().add(item("b.ac3"));
@@ -833,7 +834,7 @@ TEST_CASE("bitstream: a different stream or mode reopens, once what was sent has
     REQUIRE(history.size() == 3);
     CHECK(history[1].output_opens == history[0].output_opens + 1);
     CHECK(history[2].output_opens == history[1].output_opens + 1);
-    CHECK(history[1].frames == 3 * iclforge::kSamplesPerFrame);
+    CHECK(history[1].frames == 3 * iclforge::ac3::kSamplesPerFrame);
 
     const auto notes = rig.notes();
     CHECK(has_note(notes, "output opened: bitstream (E-AC-3), 48000 Hz (open 1)"));
@@ -904,19 +905,19 @@ TEST_CASE("bitstream: the position and the meters follow the link's clock, and p
     CHECK(meters.output_frame == 2560);
 
     // Two frames heard: 64 ms, and a unit report to show.
-    rig.advance((2 * iclforge::kSamplesPerFrame) - 2560);
+    rig.advance((2 * iclforge::ac3::kSamplesPerFrame) - 2560);
     rig.player->pump();
     CHECK(rig.player->position().heard == std::chrono::milliseconds{64});
     CHECK(rig.player->position().duration == std::chrono::milliseconds{960});
     CHECK(rig.player->unit_report(report));
-    CHECK(report.acmod == iclforge::Acmod::k2_0);
+    CHECK(report.acmod == iclforge::ac3::Acmod::k2_0);
 
     // The decoder settings reach the meters only, and the status says so.
     CHECK_FALSE(rig.player->settings_note().empty());
 
     rig.player->pause();
     CHECK(rig.link->paused);
-    rig.advance(iclforge::kSamplesPerFrame);
+    rig.advance(iclforge::ac3::kSamplesPerFrame);
     CHECK(rig.player->position().heard == std::chrono::milliseconds{64});
     rig.player->play();
     CHECK_FALSE(rig.link->paused);
@@ -940,8 +941,8 @@ TEST_CASE("bitstream: an edit list's priming or padding inside a unit is sent wh
           expected_bursts(Units(a.begin(), std::next(a.begin(), 3)), BitstreamFormat::kAc3));
     const auto& history = rig.player->history();
     REQUIRE(history.size() == 1);
-    CHECK(history[0].frames == 3 * iclforge::kSamplesPerFrame);
-    CHECK(history[0].expected_frames == 3 * iclforge::kSamplesPerFrame);
+    CHECK(history[0].frames == 3 * iclforge::ac3::kSamplesPerFrame);
+    CHECK(history[0].expected_frames == 3 * iclforge::ac3::kSamplesPerFrame);
 }
 
 TEST_CASE("bitstream: with no link, or no usable output, playback stops and says why",
@@ -986,7 +987,7 @@ TEST_CASE("bitstream: when the outputs change, the playing item follows from whe
     rig.player->queue().add(item("a.ac3"));
     rig.player->play();
     rig.player->pump();
-    rig.advance(2 * iclforge::kSamplesPerFrame);
+    rig.advance(2 * iclforge::ac3::kSamplesPerFrame);
     rig.player->pump();
     REQUIRE(rig.player->position().heard == std::chrono::milliseconds{64});
 
@@ -1031,7 +1032,7 @@ TEST_CASE("bitstream: when the outputs change, the playing item follows from whe
 
 TEST_CASE("bitstream: a join the packer cannot make whole bursts of reopens instead",
           "[hearth][player][bitstream]") {
-    const std::uint64_t three_blocks = 3 * iclforge::kSamplesPerBlock;
+    const std::uint64_t three_blocks = 3 * iclforge::ac3::kSamplesPerBlock;
 
     SECTION("units of another length after a burst left open") {
         // Five three-block units leave one waiting for a partner. Six-block
@@ -1061,7 +1062,7 @@ TEST_CASE("bitstream: a join the packer cannot make whole bursts of reopens inst
         // The unit that never made a burst was not played.
         CHECK(history[0].frames == 4 * three_blocks);
         CHECK(history[0].expected_frames == 5 * three_blocks);
-        CHECK(history[1].frames == 2 * iclforge::kSamplesPerFrame);
+        CHECK(history[1].frames == 2 * iclforge::ac3::kSamplesPerFrame);
         CHECK(history[1].output_opens == history[0].output_opens + 1);
         CHECK(has_note(rig.notes(),
                        "item 2 \"b.ec3\" is next, once the output has played out and reopened: "
@@ -1090,7 +1091,7 @@ TEST_CASE("bitstream: a join the packer cannot make whole bursts of reopens inst
         REQUIRE(history.size() == 2);
         CHECK(history[0].frames == 5 * three_blocks);
         CHECK(history[1].first_frame == 5 * three_blocks);
-        CHECK(history[1].frames == 9 * iclforge::kSamplesPerBlock);
+        CHECK(history[1].frames == 9 * iclforge::ac3::kSamplesPerBlock);
     }
 }
 
@@ -1106,7 +1107,7 @@ TEST_CASE("bitstream: a join to another endpoint reopens there", "[hearth][playe
     rig.policy->endpoint = "hdmi2";
     rig.player->pump();
     // a is decoded and still being heard: it is still the item playing.
-    REQUIRE(rig.link->heard < 3 * iclforge::kSamplesPerFrame);
+    REQUIRE(rig.link->heard < 3 * iclforge::ac3::kSamplesPerFrame);
     CHECK(rig.player->queue().current_index() == 0);
     CHECK(rig.player->transport().state() == TransportState::kPlaying);
     REQUIRE(rig.play_out());
@@ -1138,7 +1139,7 @@ TEST_CASE("bitstream: an output change during a join waits until the join has be
     CHECK(rig.pcm->opens == 0);
 
     // a heard out, and b's first frame too: the move comes now, from there.
-    rig.advance((4 * iclforge::kSamplesPerFrame) + iclforge::kSamplesPerFrame);
+    rig.advance((4 * iclforge::ac3::kSamplesPerFrame) + iclforge::ac3::kSamplesPerFrame);
     const auto report = rig.player->pump();
     CHECK(report.note == "The output changed: Decoding here and playing PCM to \"Speakers\".");
     CHECK(rig.link->closes == 1);
@@ -1159,13 +1160,13 @@ TEST_CASE("bitstream: the meters and reports keep to the link after a unit that 
     Library library;
     library.files["a.ac3"] = {.bytes = joined(a)};
     DecoderSettings settings;
-    settings.concealment = iclforge::ConcealmentPolicy::kNone;
+    settings.concealment = iclforge::ac3::ConcealmentPolicy::kNone;
     Rig rig{library, /*with_link=*/true, settings};
     rig.player->queue().add(item("a.ac3"));
     rig.player->play();
     for (int i = 0; i < 5; ++i) {
         rig.player->pump();
-        rig.advance(iclforge::kSamplesPerFrame);
+        rig.advance(iclforge::ac3::kSamplesPerFrame);
     }
     rig.player->pump();
     rig.advance(1);
@@ -1427,13 +1428,13 @@ TEST_CASE("transcode: E-AC-3 goes out as AC-3, and items join through one encode
     }
 
     const std::uint64_t delay = iclforge::hearth::Ac3Transcoder::kDelay;
-    const std::uint64_t a_samples = 5 * 3 * iclforge::kSamplesPerBlock;
+    const std::uint64_t a_samples = 5 * 3 * iclforge::ac3::kSamplesPerBlock;
     const auto& history = rig.player->history();
     REQUIRE(history.size() == 2);
     CHECK(history[0].first_frame == delay);
     CHECK(history[0].frames == a_samples);
     CHECK(history[1].first_frame == a_samples + delay);
-    CHECK(history[1].frames == 7 * iclforge::kSamplesPerFrame);
+    CHECK(history[1].frames == 7 * iclforge::ac3::kSamplesPerFrame);
     CHECK(history[1].output_opens == history[0].output_opens);
 
     const auto notes = rig.notes();
@@ -1477,7 +1478,7 @@ TEST_CASE("transcode: the position, the meters and the reports run the encoder's
     CHECK(meters.levels.size() == 6);
 
     // Two frames heard: 64 ms, and the second unit is the newest reported.
-    rig.advance((2 * iclforge::kSamplesPerFrame) - 2560);
+    rig.advance((2 * iclforge::ac3::kSamplesPerFrame) - 2560);
     rig.player->pump();
     CHECK(rig.player->position().heard == std::chrono::milliseconds{64});
     REQUIRE(rig.player->unit_report(report));
@@ -1490,19 +1491,19 @@ TEST_CASE("transcode: the position, the meters and the reports run the encoder's
     const auto stream = iclforge::iec61937::unwrap_stream(joined(
         std::vector<Bytes>(rig.link->bursts.begin(), std::next(rig.link->bursts.begin(), 3))));
     REQUIRE(stream.has_value());
-    const auto frames = iclforge::split_frames(*stream);
+    const auto frames = iclforge::ac3::split_frames(*stream);
     REQUIRE(frames.has_value());
     REQUIRE(frames->size() == 3);
     for (std::size_t frame = 0; frame < frames->size(); ++frame) {
         CAPTURE(frame);
-        const auto meta = iclforge::io::read_frame_metadata((*frames)[frame]);
+        const auto meta = iclforge::ac3::io::read_frame_metadata((*frames)[frame]);
         REQUIRE(meta.has_value());
         CHECK(meta->dialnorm == 10 + static_cast<int>(frame));
     }
 
     rig.player->pause();
     CHECK(rig.link->paused);
-    rig.advance(iclforge::kSamplesPerFrame);
+    rig.advance(iclforge::ac3::kSamplesPerFrame);
     CHECK(rig.player->position().heard == std::chrono::milliseconds{64});
     rig.player->play();
     CHECK_FALSE(rig.link->paused);
@@ -1513,7 +1514,7 @@ TEST_CASE("transcode: an edit list is cut to the sample, and a seek starts the e
           "[hearth][player][bitstream][transcode]") {
     SECTION("the item's part, and nothing of the units around it") {
         const Units a = eac3_units(4, /*numblkscod=*/3);
-        const std::uint64_t play = (3 * iclforge::kSamplesPerFrame) - 200;
+        const std::uint64_t play = (3 * iclforge::ac3::kSamplesPerFrame) - 200;
         Library library;
         library.files["a.ec3"] = {.bytes = joined(a), .skip = 100, .play = play};
         Rig rig{library};
@@ -1592,7 +1593,7 @@ TEST_CASE("transcode: a reopen plays out everything the encoder holds first",
 
     const auto& history = rig.player->history();
     REQUIRE(history.size() == 2);
-    CHECK(history[0].frames == 5 * 3 * iclforge::kSamplesPerBlock);
+    CHECK(history[0].frames == 5 * 3 * iclforge::ac3::kSamplesPerBlock);
     CHECK(history[1].first_frame == 0);
     CHECK(has_note(rig.notes(),
                    "item 2 \"b.ac3\" is next, once the output has played out and reopened: "
@@ -1610,7 +1611,7 @@ TEST_CASE("transcode: a receiver that stops taking E-AC-3 is followed into a tra
     rig.player->queue().add(item("a.ec3"));
     rig.player->play();
     rig.player->pump();
-    rig.advance(2 * iclforge::kSamplesPerFrame);
+    rig.advance(2 * iclforge::ac3::kSamplesPerFrame);
     rig.player->pump();
     REQUIRE(rig.player->position().heard == std::chrono::milliseconds{64});
     CHECK(rig.player->transport().open_format().mode == OutputMode::kBitstream);
@@ -1646,12 +1647,12 @@ TEST_CASE("transcode: the meters follow a move into a transcode",
     rig.player->queue().add(item("a.ec3"));
     rig.player->play();
     rig.player->pump();
-    rig.advance(iclforge::kSamplesPerFrame);
+    rig.advance(iclforge::ac3::kSamplesPerFrame);
     rig.player->pump();
     rig.policy->bitstream_eac3 = false;
     REQUIRE_FALSE(rig.player->refollow().empty());
     rig.player->pump();
-    rig.advance(4 * iclforge::kSamplesPerFrame);
+    rig.advance(4 * iclforge::ac3::kSamplesPerFrame);
     MeterSnapshot meters;
     REQUIRE(rig.player->meters(meters));
     CHECK(meters.levels.size() == 6);
@@ -1660,16 +1661,16 @@ TEST_CASE("transcode: the meters follow a move into a transcode",
 
 TEST_CASE("transcode: a 7.1 item is transcoded from its own 5.1",
           "[hearth][player][bitstream][transcode]") {
-    iclforge::plan::Plan plan;
-    plan.codec = iclforge::plan::Codec::kEac3;
-    plan.layout = iclforge::plan::LayoutId::k71;
+    iclforge::ac3::plan::Plan plan;
+    plan.codec = iclforge::ac3::plan::Codec::kEac3;
+    plan.layout = iclforge::ac3::plan::LayoutId::k71;
     plan.bitrate_kbps = 384;
-    iclforge::eac3::AccessUnitEncoder encoder{iclforge::plan::eac3_config(plan)};
+    iclforge::ac3::eac3::AccessUnitEncoder encoder{iclforge::ac3::plan::eac3_config(plan)};
     const auto coded = static_cast<std::size_t>(encoder.channel_count());
     Units a;
     for (int f = 0; f < 6; ++f) {
-        std::vector<std::vector<float>> channels(coded,
-                                                 std::vector<float>(iclforge::kSamplesPerFrame));
+        std::vector<std::vector<float>> channels(
+            coded, std::vector<float>(iclforge::ac3::kSamplesPerFrame));
         for (std::size_t c = 0; c < coded; ++c) {
             for (std::size_t n = 0; n < channels[c].size(); ++n) {
                 channels[c][n] = 0.02F * static_cast<float>(
@@ -1696,11 +1697,11 @@ TEST_CASE("transcode: a 7.1 item is transcoded from its own 5.1",
 
 TEST_CASE("transcode: a rate AC-3 does not have stops playback and says why",
           "[hearth][player][bitstream][transcode]") {
-    iclforge::eac3::FrameConfig config;
+    iclforge::ac3::eac3::FrameConfig config;
     config.bitrate_kbps = 96;
-    config.acmod = iclforge::Acmod::k2_0;
-    config.sample_rate = iclforge::SampleRate::k24000;
-    iclforge::eac3::FrameEncoder encoder{config};
+    config.acmod = iclforge::ac3::Acmod::k2_0;
+    config.sample_rate = iclforge::ac3::SampleRate::k24000;
+    iclforge::ac3::eac3::FrameEncoder encoder{config};
     Units a;
     const std::vector<float> samples(static_cast<std::size_t>(encoder.samples_per_frame()), 0.05F);
     const std::vector<std::span<const float>> views(2, samples);
@@ -1740,8 +1741,8 @@ TEST_CASE("transcode: the listener's decoder settings do not change what is sent
 
     SECTION("the ones a receiver makes for itself change nothing") {
         DecoderSettings rf;
-        rf.mode = iclforge::OperatingMode::kRf;
-        rf.objects = iclforge::render::ObjectsPolicy::kAlways;
+        rf.mode = iclforge::ac3::OperatingMode::kRf;
+        rf.objects = iclforge::ac3::render::ObjectsPolicy::kAlways;
         rig.player->set_decoder_settings(rf);
         CHECK(rig.player->decoder_settings() == rf);
         REQUIRE(rig.play_out());
@@ -1750,7 +1751,7 @@ TEST_CASE("transcode: the listener's decoder settings do not change what is sent
 
     SECTION("concealment hands over to a new transcode decoder, seamlessly") {
         DecoderSettings muting;
-        muting.concealment = iclforge::ConcealmentPolicy::kMute;
+        muting.concealment = iclforge::ac3::ConcealmentPolicy::kMute;
         rig.player->set_decoder_settings(muting);
         REQUIRE(rig.play_out());
         // Dither aside, what the new decoder gives is what the old would
@@ -1787,9 +1788,9 @@ TEST_CASE("transcode: a concealment chosen mid-item reaches what is sent",
         // The unit's own samples, a block in from either end, where the
         // link has them.
         const std::uint64_t from =
-            (9 * iclforge::kSamplesPerFrame) + iclforge::hearth::Ac3Transcoder::kDelay + iclforge::kSamplesPerBlock;
+            (9 * iclforge::ac3::kSamplesPerFrame) + iclforge::hearth::Ac3Transcoder::kDelay + iclforge::ac3::kSamplesPerBlock;
         const std::uint64_t to =
-            from + iclforge::kSamplesPerFrame - (2 * iclforge::kSamplesPerBlock);
+            from + iclforge::ac3::kSamplesPerFrame - (2 * iclforge::ac3::kSamplesPerBlock);
         REQUIRE(heard[0].size() >= to);
         double energy = 0.0;
         for (std::uint64_t n = from; n < to; ++n) {
@@ -1799,7 +1800,7 @@ TEST_CASE("transcode: a concealment chosen mid-item reaches what is sent",
         return energy;
     };
     DecoderSettings muting;
-    muting.concealment = iclforge::ConcealmentPolicy::kMute;
+    muting.concealment = iclforge::ac3::ConcealmentPolicy::kMute;
     const double repeated = energy_of_unit_9(std::nullopt);
     const double muted = energy_of_unit_9(muting);
     // Repeated and fading out, the unit still carries a good part of the
@@ -1811,26 +1812,27 @@ TEST_CASE("transcode: a concealment chosen mid-item reaches what is sent",
 TEST_CASE("transcode: an item that folds at other levels reopens, other dialnorm joins",
           "[hearth][player][bitstream][transcode]") {
     // 5.1: a stream with no centre or surrounds sends no levels for them.
-    const auto units = [](int count, iclforge::meta::MixLevel centre, int dialnorm,
-                          std::optional<iclforge::meta::BitstreamMode> service = std::nullopt) {
-        iclforge::eac3::FrameConfig config;
+    const auto units = [](int count, iclforge::ac3::meta::MixLevel centre, int dialnorm,
+                          std::optional<iclforge::ac3::meta::BitstreamMode> service =
+                              std::nullopt) {
+        iclforge::ac3::eac3::FrameConfig config;
         config.bitrate_kbps = 192;
-        config.acmod = iclforge::Acmod::k3_2;
+        config.acmod = iclforge::ac3::Acmod::k3_2;
         config.lfe = true;
         config.dialnorm = dialnorm;
         if (service) {
-            iclforge::meta::BsiInfo info;
+            iclforge::ac3::meta::BsiInfo info;
             info.bsmod = *service;
             config.info = info;
         }
-        iclforge::meta::MixMetadata mixing;
-        mixing.dmixmod = iclforge::meta::DownmixMode::kLoRo;
+        iclforge::ac3::meta::MixMetadata mixing;
+        mixing.dmixmod = iclforge::ac3::meta::DownmixMode::kLoRo;
         mixing.lorocmixlev = centre;
-        mixing.lorosurmixlev = iclforge::meta::MixLevel::kMinus3dB;
+        mixing.lorosurmixlev = iclforge::ac3::meta::MixLevel::kMinus3dB;
         config.mixing = mixing;
-        iclforge::eac3::FrameEncoder encoder{config};
+        iclforge::ac3::eac3::FrameEncoder encoder{config};
         Units out;
-        const std::vector<float> samples(iclforge::kSamplesPerFrame, 0.05F);
+        const std::vector<float> samples(iclforge::ac3::kSamplesPerFrame, 0.05F);
         const std::vector<std::span<const float>> views(6, samples);
         for (int f = 0; f < count; ++f) {
             auto frame = encoder.encode_frame(views);
@@ -1840,11 +1842,13 @@ TEST_CASE("transcode: an item that folds at other levels reopens, other dialnorm
         return out;
     };
     Library library;
-    library.files["a.ec3"] = {.bytes =
-                                  joined(units(4, iclforge::meta::MixLevel::kMinus3dB, 31,
-                                               iclforge::meta::BitstreamMode::kVisuallyImpaired))};
-    library.files["b.ec3"] = {.bytes = joined(units(4, iclforge::meta::MixLevel::kMinus3dB, 24))};
-    library.files["c.ec3"] = {.bytes = joined(units(4, iclforge::meta::MixLevel::kMinus6dB, 24))};
+    library.files["a.ec3"] = {
+        .bytes = joined(units(4, iclforge::ac3::meta::MixLevel::kMinus3dB, 31,
+                              iclforge::ac3::meta::BitstreamMode::kVisuallyImpaired))};
+    library.files["b.ec3"] = {.bytes =
+                                  joined(units(4, iclforge::ac3::meta::MixLevel::kMinus3dB, 24))};
+    library.files["c.ec3"] = {.bytes =
+                                  joined(units(4, iclforge::ac3::meta::MixLevel::kMinus6dB, 24))};
     Rig rig{library};
     rig.policy->bitstream_eac3 = false;
     rig.policy->transcode_eac3 = true;
@@ -1874,30 +1878,30 @@ TEST_CASE("transcode: an item that folds at other levels reopens, other dialnorm
                   static_cast<std::ptrdiff_t>(rig.link->bursts_at_open[1])));
     const auto stream = iclforge::iec61937::unwrap_stream(joined(first));
     REQUIRE(stream.has_value());
-    const auto frames = iclforge::split_frames(*stream);
+    const auto frames = iclforge::ac3::split_frames(*stream);
     REQUIRE(frames.has_value());
     REQUIRE(frames->size() == 9);
     for (std::size_t frame = 0; frame < frames->size(); ++frame) {
         CAPTURE(frame);
-        const auto meta = iclforge::io::read_frame_metadata((*frames)[frame]);
+        const auto meta = iclforge::ac3::io::read_frame_metadata((*frames)[frame]);
         REQUIRE(meta.has_value());
         CHECK(meta->dialnorm == (frame < 4 ? 31 : 24));
         CHECK(meta->bsmod == (frame < 4 ? 2 : 0));
-        CHECK(meta->cmixlev == iclforge::meta::CentreMixLevel::kMinus3dB);
+        CHECK(meta->cmixlev == iclforge::ac3::meta::CentreMixLevel::kMinus3dB);
     }
 }
 
 TEST_CASE("transcode: dual mono heard as its second channel is sent levelled as that one",
           "[hearth][player][bitstream][transcode]") {
-    iclforge::eac3::FrameConfig config;
+    iclforge::ac3::eac3::FrameConfig config;
     config.bitrate_kbps = 192;
-    config.acmod = iclforge::Acmod::kDualMono;
+    config.acmod = iclforge::ac3::Acmod::kDualMono;
     config.dialnorm = 31;
     config.dialnorm2 = 20;
-    iclforge::eac3::FrameEncoder encoder{config};
+    iclforge::ac3::eac3::FrameEncoder encoder{config};
     Units a;
-    const std::vector<float> first(iclforge::kSamplesPerFrame, 0.05F);
-    const std::vector<float> second(iclforge::kSamplesPerFrame, -0.05F);
+    const std::vector<float> first(iclforge::ac3::kSamplesPerFrame, 0.05F);
+    const std::vector<float> second(iclforge::ac3::kSamplesPerFrame, -0.05F);
     const std::vector<std::span<const float>> views{first, second};
     for (int f = 0; f < 6; ++f) {
         auto frame = encoder.encode_frame(views);
@@ -1917,11 +1921,11 @@ TEST_CASE("transcode: dual mono heard as its second channel is sent levelled as 
 
     const auto stream = iclforge::iec61937::unwrap_stream(joined(rig.link->bursts));
     REQUIRE(stream.has_value());
-    const auto frames = iclforge::split_frames(*stream);
+    const auto frames = iclforge::ac3::split_frames(*stream);
     REQUIRE(frames.has_value());
     REQUIRE_FALSE(frames->empty());
     for (const auto frame : *frames) {
-        const auto meta = iclforge::io::read_frame_metadata(frame);
+        const auto meta = iclforge::ac3::io::read_frame_metadata(frame);
         REQUIRE(meta.has_value());
         CHECK(meta->dialnorm == 20);
     }
@@ -1976,7 +1980,7 @@ TEST_CASE("bitstream: a seek or a pause in the last moment of the queue is the i
         rig.player->pump();
         rig.advance(480);
     }
-    REQUIRE(rig.link->heard < 6 * iclforge::kSamplesPerFrame);
+    REQUIRE(rig.link->heard < 6 * iclforge::ac3::kSamplesPerFrame);
     CHECK(rig.player->transport().state() == TransportState::kPlaying);
 
     SECTION("a pause") {
@@ -2044,7 +2048,7 @@ TEST_CASE("bitstream: an item added while the last one is heard out joins it on 
     CHECK(rig.link->bursts == expected_bursts(both, BitstreamFormat::kEac3));
     CHECK(rig.link->unheard_at_close == std::vector<std::uint64_t>{0});
     REQUIRE(rig.player->history().size() == 2);
-    CHECK(rig.player->history()[1].first_frame == 5 * 3 * iclforge::kSamplesPerBlock);
+    CHECK(rig.player->history()[1].first_frame == 5 * 3 * iclforge::ac3::kSamplesPerBlock);
 }
 
 TEST_CASE("transcode: the last item's encoder is emptied while it is heard out",
@@ -2078,9 +2082,9 @@ TEST_CASE("transcode: the last item's encoder is emptied while it is heard out",
     CHECK(rig.link->unheard_at_close == std::vector<std::uint64_t>{0});
     const auto& history = rig.player->history();
     REQUIRE(history.size() == 2);
-    CHECK(history[1].first_frame ==
-          (first.size() * iclforge::kSamplesPerFrame) + iclforge::hearth::Ac3Transcoder::kDelay);
-    CHECK(history[1].frames == 4 * iclforge::kSamplesPerFrame);
+    CHECK(history[1].first_frame == (first.size() * iclforge::ac3::kSamplesPerFrame) +
+                                        iclforge::hearth::Ac3Transcoder::kDelay);
+    CHECK(history[1].frames == 4 * iclforge::ac3::kSamplesPerFrame);
 }
 
 TEST_CASE("bitstream: a link whose device goes away stops playback, and says so",

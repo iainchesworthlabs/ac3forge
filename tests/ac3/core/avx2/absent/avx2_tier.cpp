@@ -15,11 +15,11 @@
 
 #include <utility>
 
-namespace iclforge::internal::avx2 {
+namespace iclforge::ac3::internal::avx2 {
 
 bool avx2_probe_matches_expected() noexcept { std::unreachable(); }
 
-}  // namespace iclforge::internal::avx2
+}  // namespace iclforge::ac3::internal::avx2
 
 static_assert(!iclforge::test::avx2::kTierCompiled,
               "this translation unit is only for the build with no AVX2 tier; the present/ "

@@ -18,10 +18,10 @@
 // (8/24/32), to WAVE_FORMAT_EXTENSIBLE wrapping any of them, and to RF64/
 // BW64's 64-bit sizes turns that duplication into two chances to disagree
 // about what a file says, so the parse lives here once instead. Private to
-// src/io/ - not installed, not part of iclforge::io's public surface (see
+// src/io/ - not installed, not part of iclforge::ac3::io's public surface (see
 // ac3/io/wav.hpp for that).
 
-namespace iclforge::io::detail {
+namespace iclforge::ac3::io::detail {
 
 // How samples sit in the data chunk. The container width in bytes is what
 // the reader strides by; the interpretation is what it converts with.
@@ -113,4 +113,4 @@ struct Chunk {
 // the caller has already checked that sample_bytes(format) bytes are there.
 [[nodiscard]] float convert_sample(std::span<const char> raw, std::size_t at, SampleFormat format);
 
-}  // namespace iclforge::io::detail
+}  // namespace iclforge::ac3::io::detail

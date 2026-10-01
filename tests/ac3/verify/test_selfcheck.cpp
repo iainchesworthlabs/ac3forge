@@ -11,7 +11,7 @@
 #include "iclforge/ac3/verify/mirror.hpp"
 #include "iclforge/ac3/verify/selfcheck.hpp"
 
-// iclforge::verify - the encoder/decoder mirror check. See ac3/verify/mirror.hpp
+// iclforge::ac3::verify - the encoder/decoder mirror check. See ac3/verify/mirror.hpp
 // for what it compares and why the bit offset at each block boundary is the
 // part that does the heavy lifting.
 //
@@ -23,13 +23,13 @@
 
 namespace {
 
-using iclforge::verify::Field;
+using iclforge::ac3::verify::Field;
 
 // A trace of one frame, `blocks` blocks deep, that both sides agree on:
 // `streams` streams each, every array a constant, no delta correction. A test
 // then perturbs one copy.
-iclforge::verify::FrameTrace flat_trace(int fbw, int coded, int streams, int blocks) {
-    iclforge::verify::FrameTrace trace;
+iclforge::ac3::verify::FrameTrace flat_trace(int fbw, int coded, int streams, int blocks) {
+    iclforge::ac3::verify::FrameTrace trace;
     trace.fbw_channels = fbw;
     trace.coded_channels = coded;
     for (int block = 0; block < blocks; ++block) {
@@ -50,22 +50,22 @@ iclforge::verify::FrameTrace flat_trace(int fbw, int coded, int streams, int blo
 }  // namespace
 
 TEST_CASE("verify::compare passes an encoder and decoder that agree", "[verify]") {
-    const auto encoder = flat_trace(2, 2, 3, iclforge::kBlocksPerFrame);
+    const auto encoder = flat_trace(2, 2, 3, iclforge::ac3::kBlocksPerFrame);
     const auto decoder = encoder;
-    CHECK(iclforge::verify::compare(encoder, decoder, 0).empty());
+    CHECK(iclforge::ac3::verify::compare(encoder, decoder, 0).empty());
 }
 
 TEST_CASE("verify::compare reports the block boundary a desync starts at", "[verify]") {
-    const auto encoder = flat_trace(2, 2, 3, iclforge::kBlocksPerFrame);
+    const auto encoder = flat_trace(2, 2, 3, iclforge::ac3::kBlocksPerFrame);
     auto decoder = encoder;
     // A decoder that sized one field differently arrives at block 3 short. It
     // stays wrong for every block after that, which is exactly what a real
     // desync does - and the report must still name block 3.
-    for (int block = 3; block < iclforge::kBlocksPerFrame; ++block) {
+    for (int block = 3; block < iclforge::ac3::kBlocksPerFrame; ++block) {
         decoder.blocks[static_cast<std::size_t>(block)].bit_offset -= 17;
     }
 
-    const auto found = iclforge::verify::compare(encoder, decoder, 12);
+    const auto found = iclforge::ac3::verify::compare(encoder, decoder, 12);
     REQUIRE_FALSE(found.empty());
     CHECK(found.front().frame == 12);
     CHECK(found.front().block == 3);
@@ -80,7 +80,7 @@ TEST_CASE("verify::compare reports the block boundary a desync starts at", "[ver
 }
 
 TEST_CASE("verify::compare names the stream and field a delta divergence is in", "[verify]") {
-    const auto encoder = flat_trace(2, 2, 3, iclforge::kBlocksPerFrame);
+    const auto encoder = flat_trace(2, 2, 3, iclforge::ac3::kBlocksPerFrame);
     auto decoder = encoder;
     // The shape of the deltbaie bug this facility was built for: the encoder
     // has dropped a correction, the decoder is still holding it, and the two
@@ -92,35 +92,35 @@ TEST_CASE("verify::compare names the stream and field a delta divergence is in",
     held.deltlen[0] = 3;
     held.deltba[0] = 5;
 
-    const auto found = iclforge::verify::compare(encoder, decoder, 0);
+    const auto found = iclforge::ac3::verify::compare(encoder, decoder, 0);
     REQUIRE_FALSE(found.empty());
     CHECK(found.front().block == 2);
     CHECK(found.front().stream == 1);
     CHECK(found.front().field == Field::kDeltaSegmentCount);
     CHECK(found.front().encoder == 0);
     CHECK(found.front().decoder == 1);
-    CHECK(iclforge::verify::describe(found.front(), 2, 2) ==
+    CHECK(iclforge::ac3::verify::describe(found.front(), 2, 2) ==
           "frame 0 block 2 channel 1: deltnseg encoder=0 decoder=1");
 }
 
 TEST_CASE("verify::compare reports a bap divergence against its bin", "[verify]") {
-    const auto encoder = flat_trace(3, 4, 5, iclforge::kBlocksPerFrame);
+    const auto encoder = flat_trace(3, 4, 5, iclforge::ac3::kBlocksPerFrame);
     auto decoder = encoder;
     decoder.blocks[1].streams[4].bap[42] = 9;
 
-    const auto found = iclforge::verify::compare(encoder, decoder, 3);
+    const auto found = iclforge::ac3::verify::compare(encoder, decoder, 3);
     REQUIRE_FALSE(found.empty());
     CHECK(found.front().block == 1);
     CHECK(found.front().stream == 4);
     CHECK(found.front().index == 42);
     CHECK(found.front().field == Field::kBap);
     // Stream 4 is neither a channel nor the LFE in a 3-fbw, 4-coded frame.
-    CHECK(iclforge::verify::describe(found.front(), 3, 4) ==
+    CHECK(iclforge::ac3::verify::describe(found.front(), 3, 4) ==
           "frame 3 block 1 coupling: bap[42] encoder=3 decoder=9");
 }
 
 TEST_CASE("verify::compare caps how much of one desynced array it reports", "[verify]") {
-    const auto encoder = flat_trace(1, 1, 1, iclforge::kBlocksPerFrame);
+    const auto encoder = flat_trace(1, 1, 1, iclforge::ac3::kBlocksPerFrame);
     auto decoder = encoder;
     // Every bin of the allocation differs, which is what a real desync does to
     // one. The identity of the block and stream is the finding; the other 60
@@ -129,27 +129,27 @@ TEST_CASE("verify::compare caps how much of one desynced array it reports", "[ve
         value = 1;
     }
 
-    const auto found = iclforge::verify::compare(encoder, decoder, 0);
-    CHECK(static_cast<int>(found.size()) == iclforge::verify::kMaxPerArray);
+    const auto found = iclforge::ac3::verify::compare(encoder, decoder, 0);
+    CHECK(static_cast<int>(found.size()) == iclforge::ac3::verify::kMaxPerArray);
 }
 
 TEST_CASE("verify::compare reports a decoder that stopped early", "[verify]") {
-    const auto encoder = flat_trace(2, 2, 3, iclforge::kBlocksPerFrame);
+    const auto encoder = flat_trace(2, 2, 3, iclforge::ac3::kBlocksPerFrame);
     auto decoder = encoder;
     // A refused frame leaves the trace ending where the decoder gave up.
-    for (int block = 4; block < iclforge::kBlocksPerFrame; ++block) {
+    for (int block = 4; block < iclforge::ac3::kBlocksPerFrame; ++block) {
         decoder.blocks[static_cast<std::size_t>(block)].entered = false;
         decoder.blocks[static_cast<std::size_t>(block)].allocated = false;
     }
 
-    const auto found = iclforge::verify::compare(encoder, decoder, 0);
+    const auto found = iclforge::ac3::verify::compare(encoder, decoder, 0);
     REQUIRE_FALSE(found.empty());
     CHECK(found.front().block == 4);
     CHECK(found.front().field == Field::kBlockReached);
 }
 
 TEST_CASE("verify::compare reports a block the decoder entered but never allocated", "[verify]") {
-    const auto encoder = flat_trace(2, 2, 3, iclforge::kBlocksPerFrame);
+    const auto encoder = flat_trace(2, 2, 3, iclforge::ac3::kBlocksPerFrame);
     auto decoder = encoder;
     // §7.10.2's guards fire between entering a block and allocating it - an
     // exponent outside 0..24, a grouped exponent above 124 - so this is the
@@ -157,12 +157,12 @@ TEST_CASE("verify::compare reports a block the decoder entered but never allocat
     // matching bit offset is the one worth looking at first.
     decoder.blocks[2].allocated = false;
     decoder.blocks[2].streams.clear();
-    for (int block = 3; block < iclforge::kBlocksPerFrame; ++block) {
+    for (int block = 3; block < iclforge::ac3::kBlocksPerFrame; ++block) {
         decoder.blocks[static_cast<std::size_t>(block)].entered = false;
         decoder.blocks[static_cast<std::size_t>(block)].allocated = false;
     }
 
-    const auto found = iclforge::verify::compare(encoder, decoder, 0);
+    const auto found = iclforge::ac3::verify::compare(encoder, decoder, 0);
     REQUIRE_FALSE(found.empty());
     CHECK(found.front().block == 2);
     CHECK(found.front().field == Field::kAllocationReached);
@@ -173,7 +173,7 @@ TEST_CASE("verify::compare names which part of a delta correction the two sides 
     // Both sides send one segment, so the count agrees and the comparison
     // has to go segment by segment: each of the three fields is its own
     // finding, indexed by the segment it sits in.
-    auto encoder = flat_trace(2, 2, 3, iclforge::kBlocksPerFrame);
+    auto encoder = flat_trace(2, 2, 3, iclforge::ac3::kBlocksPerFrame);
     auto& sent = encoder.blocks[1].streams[0].delta;
     sent.deltnseg = 2;
     sent.deltoffst = {3, 6};
@@ -185,7 +185,7 @@ TEST_CASE("verify::compare names which part of a delta correction the two sides 
     read.deltlen[1] = 1;
     read.deltba[1] = 6;
 
-    const auto found = iclforge::verify::compare(encoder, decoder, 5);
+    const auto found = iclforge::ac3::verify::compare(encoder, decoder, 5);
     REQUIRE(found.size() == 3);
     for (const auto& mismatch : found) {
         CHECK(mismatch.block == 1);
@@ -197,17 +197,17 @@ TEST_CASE("verify::compare names which part of a delta correction the two sides 
     CHECK(found[0].decoder == 7);
     CHECK(found[1].field == Field::kDeltaLength);
     CHECK(found[2].field == Field::kDeltaValue);
-    CHECK(iclforge::verify::describe(found[2], 2, 2) ==
+    CHECK(iclforge::ac3::verify::describe(found[2], 2, 2) ==
           "frame 5 block 1 channel 0: deltba[1] encoder=5 decoder=6");
 }
 
 TEST_CASE("verify::compare reports a disagreement about how much was coded, not what", "[verify]") {
     SECTION("the coded bandwidth: one side has more exponents") {
-        const auto encoder = flat_trace(2, 3, 3, iclforge::kBlocksPerFrame);
+        const auto encoder = flat_trace(2, 3, 3, iclforge::ac3::kBlocksPerFrame);
         auto decoder = encoder;
         decoder.blocks[0].streams[2].exponents.resize(40);
         decoder.blocks[0].streams[2].bap.resize(40);
-        const auto found = iclforge::verify::compare(encoder, decoder, 0);
+        const auto found = iclforge::ac3::verify::compare(encoder, decoder, 0);
         // Counts, not the arrays: comparing bins past the shorter one's end
         // would be comparing values one side never computed.
         REQUIRE(found.size() == 2);
@@ -216,14 +216,14 @@ TEST_CASE("verify::compare reports a disagreement about how much was coded, not 
         CHECK(found[0].decoder == 40);
         CHECK(found[1].field == Field::kBapCount);
         // Stream 2 of a 2-fbw, 3-coded frame is the LFE.
-        CHECK(iclforge::verify::describe(found[0], 2, 3) ==
+        CHECK(iclforge::ac3::verify::describe(found[0], 2, 3) ==
               "frame 0 block 0 LFE: exponent count encoder=64 decoder=40");
     }
     SECTION("the stream count: one side coded a coupling channel the other did not") {
-        const auto encoder = flat_trace(2, 2, 3, iclforge::kBlocksPerFrame);
+        const auto encoder = flat_trace(2, 2, 3, iclforge::ac3::kBlocksPerFrame);
         auto decoder = encoder;
         decoder.blocks[3].streams.pop_back();
-        const auto found = iclforge::verify::compare(encoder, decoder, 0);
+        const auto found = iclforge::ac3::verify::compare(encoder, decoder, 0);
         REQUIRE(found.size() == 1);
         CHECK(found[0].block == 3);
         CHECK(found[0].stream == -1);
@@ -231,14 +231,14 @@ TEST_CASE("verify::compare reports a disagreement about how much was coded, not 
         CHECK(found[0].encoder == 3);
         CHECK(found[0].decoder == 2);
         // A block-level finding names no stream and no index.
-        CHECK(iclforge::verify::describe(found[0], 2, 2) ==
+        CHECK(iclforge::ac3::verify::describe(found[0], 2, 2) ==
               "frame 0 block 3: coded stream count encoder=3 decoder=2");
     }
     SECTION("the deltbaie gate bit itself") {
-        const auto encoder = flat_trace(1, 1, 1, iclforge::kBlocksPerFrame);
+        const auto encoder = flat_trace(1, 1, 1, iclforge::ac3::kBlocksPerFrame);
         auto decoder = encoder;
         decoder.blocks[4].deltbaie = true;
-        const auto found = iclforge::verify::compare(encoder, decoder, 0);
+        const auto found = iclforge::ac3::verify::compare(encoder, decoder, 0);
         REQUIRE(found.size() == 1);
         CHECK(found[0].block == 4);
         CHECK(found[0].field == Field::kDeltbaie);
@@ -260,7 +260,7 @@ TEST_CASE("every mirror field describes itself, and a report is one line per mis
         Field::kBap};
     std::vector<std::string> names;
     for (const auto field : fields) {
-        const std::string name{iclforge::verify::describe(field)};
+        const std::string name{iclforge::ac3::verify::describe(field)};
         CAPTURE(name);
         CHECK_FALSE(name.empty());
         CHECK(name != "unknown field");
@@ -269,20 +269,20 @@ TEST_CASE("every mirror field describes itself, and a report is one line per mis
     std::ranges::sort(names);
     CHECK(std::ranges::adjacent_find(names) == names.end());
 
-    const std::vector<iclforge::verify::Mismatch> mismatches = {
+    const std::vector<iclforge::ac3::verify::Mismatch> mismatches = {
         {.frame = 1, .block = 0, .field = Field::kBitOffset, .encoder = 10, .decoder = 11},
         {.frame = 1, .block = -1, .stream = 0, .index = 2, .field = Field::kExponent,
          .encoder = 4, .decoder = 5}};
-    CHECK(iclforge::verify::report(mismatches, 1, 1) ==
+    CHECK(iclforge::ac3::verify::report(mismatches, 1, 1) ==
           "frame 1 block 0: bit offset at block start encoder=10 decoder=11\n"
           "frame 1 channel 0: exponent[2] encoder=4 decoder=5");
-    CHECK(iclforge::verify::report({}, 1, 1).empty());
+    CHECK(iclforge::ac3::verify::report({}, 1, 1).empty());
 }
 
 TEST_CASE("a reset trace compares clean against an empty one", "[verify]") {
     // The per-frame reuse MirrorEncoder relies on: after reset() nothing of
     // the previous frame survives to be compared against the next.
-    auto used = flat_trace(2, 3, 4, iclforge::kBlocksPerFrame);
+    auto used = flat_trace(2, 3, 4, iclforge::ac3::kBlocksPerFrame);
     used.blocks[0].deltbaie = true;
     used.reset();
     CHECK(used.fbw_channels == 0);
@@ -294,7 +294,7 @@ TEST_CASE("a reset trace compares clean against an empty one", "[verify]") {
         CHECK(block.bit_offset == 0);
         CHECK(block.streams.empty());
     }
-    CHECK(iclforge::verify::compare(used, iclforge::verify::FrameTrace{}, 0).empty());
+    CHECK(iclforge::ac3::verify::compare(used, iclforge::ac3::verify::FrameTrace{}, 0).empty());
 }
 
 // --- end to end ------------------------------------------------------------
@@ -305,15 +305,15 @@ namespace {
 // frame that failed the check, rendered, or an empty string if all of them
 // passed. Catch2's REQUIRE then carries the whole thing into the failure
 // message: frame, block, channel, field, both values.
-std::string mirror_encode(const iclforge::EncoderConfig& config,
+std::string mirror_encode(const iclforge::ac3::EncoderConfig& config,
                           const std::vector<std::vector<float>>& channels) {
-    iclforge::verify::MirrorEncoder encoder{config};
-    const std::size_t frames = channels.front().size() / iclforge::kSamplesPerFrame;
+    iclforge::ac3::verify::MirrorEncoder encoder{config};
+    const std::size_t frames = channels.front().size() / iclforge::ac3::kSamplesPerFrame;
     std::vector<std::span<const float>> views(channels.size());
     for (std::size_t frame = 0; frame < frames; ++frame) {
         for (std::size_t ch = 0; ch < channels.size(); ++ch) {
-            views[ch] = std::span{channels[ch]}.subspan(frame * iclforge::kSamplesPerFrame,
-                                                        iclforge::kSamplesPerFrame);
+            views[ch] = std::span{channels[ch]}.subspan(frame * iclforge::ac3::kSamplesPerFrame,
+                                                        iclforge::ac3::kSamplesPerFrame);
         }
         const auto checked = encoder.encode_frame(views);
         if (!checked) {
@@ -330,7 +330,7 @@ std::string mirror_encode(const iclforge::EncoderConfig& config,
                 out += "\n";
             }
             out += "frame " + std::to_string(frame) + ": decoder refused the frame (" +
-                   std::string{iclforge::describe(*checked->decode_error)} + ")";
+                   std::string{iclforge::ac3::describe(*checked->decode_error)} + ")";
         }
         return out;
     }
@@ -338,7 +338,7 @@ std::string mirror_encode(const iclforge::EncoderConfig& config,
 }
 
 std::vector<std::vector<float>> golden_audio(const std::string& name) {
-    auto wav = iclforge::io::read_wav(std::string{ICLFORGE_GOLDEN_AUDIO_DIR} + "/" + name);
+    auto wav = iclforge::ac3::io::read_wav(std::string{ICLFORGE_GOLDEN_AUDIO_DIR} + "/" + name);
     REQUIRE(wav.has_value());
     return wav->channels;
 }
@@ -355,8 +355,8 @@ TEST_CASE("encoder and decoder agree on real stereo programme material", "[verif
     const auto channels = golden_audio("reference_stereo.wav");
     for (const std::uint32_t kbps : {48u, 64u, 96u, 128u, 192u, 256u}) {
         CAPTURE(kbps);
-        iclforge::EncoderConfig config;
-        config.acmod = iclforge::Acmod::k2_0;
+        iclforge::ac3::EncoderConfig config;
+        config.acmod = iclforge::ac3::Acmod::k2_0;
         config.bitrate_kbps = kbps;
         const auto failure = mirror_encode(config, channels);
         INFO(failure);
@@ -368,8 +368,8 @@ TEST_CASE("encoder and decoder agree with coupling active", "[verify][golden]") 
     const auto channels = golden_audio("reference_stereo.wav");
     for (const std::uint32_t kbps : {96u, 128u, 192u}) {
         CAPTURE(kbps);
-        iclforge::EncoderConfig config;
-        config.acmod = iclforge::Acmod::k2_0;
+        iclforge::ac3::EncoderConfig config;
+        config.acmod = iclforge::ac3::Acmod::k2_0;
         config.bitrate_kbps = kbps;
         // Coupling adds a whole extra stream to the comparison, with its own
         // exponents, its own allocation region and its own delta correction.
@@ -382,7 +382,7 @@ TEST_CASE("encoder and decoder agree with coupling active", "[verify][golden]") 
 
 TEST_CASE("encoder and decoder agree on 5.1 with an LFE", "[verify][golden]") {
     const auto wav = golden_audio("reference_51.wav");
-    const auto layout = iclforge::io::ac3_layout_for(wav.size());
+    const auto layout = iclforge::ac3::io::ac3_layout_for(wav.size());
     REQUIRE(layout.has_value());
     // WAV order is not A/52 Table 5.8's; reorder before the encoder sees it.
     std::vector<std::vector<float>> channels;
@@ -391,7 +391,7 @@ TEST_CASE("encoder and decoder agree on 5.1 with an LFE", "[verify][golden]") {
     }
     for (const std::uint32_t kbps : {384u, 448u}) {
         CAPTURE(kbps);
-        iclforge::EncoderConfig config;
+        iclforge::ac3::EncoderConfig config;
         config.acmod = layout->acmod;
         config.lfe = layout->lfe;
         config.bitrate_kbps = kbps;
@@ -402,10 +402,10 @@ TEST_CASE("encoder and decoder agree on 5.1 with an LFE", "[verify][golden]") {
 }
 
 TEST_CASE("the mirror check is off unless a trace is attached", "[verify]") {
-    iclforge::EncoderConfig config;
-    config.acmod = iclforge::Acmod::k2_0;
+    iclforge::ac3::EncoderConfig config;
+    config.acmod = iclforge::ac3::Acmod::k2_0;
     CHECK(config.trace == nullptr);
-    iclforge::DecoderConfig decoder_config;
+    iclforge::ac3::DecoderConfig decoder_config;
     CHECK(decoder_config.trace == nullptr);
 
     // And attaching one changes nothing about the output: the trace reads
@@ -414,16 +414,16 @@ TEST_CASE("the mirror check is off unless a trace is attached", "[verify]") {
     // one, which would make the check worthless.
     const auto channels = golden_audio("reference_stereo.wav");
     std::vector<std::span<const float>> views{
-        std::span{channels[0]}.first(iclforge::kSamplesPerFrame),
-        std::span{channels[1]}.first(iclforge::kSamplesPerFrame)};
+        std::span{channels[0]}.first(iclforge::ac3::kSamplesPerFrame),
+        std::span{channels[1]}.first(iclforge::ac3::kSamplesPerFrame)};
 
-    iclforge::FrameEncoder plain{config};
+    iclforge::ac3::FrameEncoder plain{config};
     const auto without = plain.encode_frame(views);
     REQUIRE(without.has_value());
 
-    iclforge::verify::FrameTrace trace;
+    iclforge::ac3::verify::FrameTrace trace;
     config.trace = &trace;
-    iclforge::FrameEncoder traced{config};
+    iclforge::ac3::FrameEncoder traced{config};
     const auto with = traced.encode_frame(views);
     REQUIRE(with.has_value());
 

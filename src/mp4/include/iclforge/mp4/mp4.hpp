@@ -20,7 +20,7 @@
 // configuration box payload - as opaque bytes. It has NO dependency on
 // iclforge::ac3 and no knowledge of AC-3: a caller muxing E-AC-3 hands over
 // whole access units plus a ready-made 'dec3' payload (see
-// iclforge::io::build_codec_config_box, ac3/io/dec3.hpp); a caller muxing
+// iclforge::ac3::io::build_codec_config_box, ac3/io/dec3.hpp); a caller muxing
 // something else hands over whatever its own frames and sample-entry config
 // box are. Keeping the codec-specific box payload opaque here is exactly why
 // iclforge::matroska stays codec-blind too, applied to the one place MP4
@@ -89,7 +89,7 @@ struct AudioTrack {
     // The sample entry's one child configuration box, PAYLOAD ONLY (this
     // module writes the box's own size+FourCC header, choosing 'dac3' or
     // 'dec3' from codec_id above). Opaque to this module by design - see
-    // iclforge::io::build_codec_config_box (ac3/io/dec3.hpp) for how AC-3/E-AC-3
+    // iclforge::ac3::io::build_codec_config_box (ac3/io/dec3.hpp) for how AC-3/E-AC-3
     // callers produce it, and examples/mux_mp4.cpp for the full round trip.
     std::vector<std::byte> codec_config;
     std::string language{"und"};
@@ -176,7 +176,7 @@ struct FragmentOptions {
     // 1-10 s range the CMAF/DASH-IF interoperability guidelines assume most
     // packagers and CDNs are tuned for. Every AC-3/E-AC-3 access unit this
     // project produces is independently decodable (see
-    // AudioTrack::samples_per_frame's own comment, and how iclforge::io::scan
+    // AudioTrack::samples_per_frame's own comment, and how iclforge::ac3::io::scan
     // already groups a whole access unit - independent substream plus any
     // dependents - into the one opaque frame iclforge::mp4:: ever sees), so any
     // grouping is valid; this only trades segment count for

@@ -80,7 +80,7 @@ constexpr std::uint32_t kDac4 = fourcc("dac4");
 
 // --- the dac3/dec3 configuration box ---------------------------------------
 //
-// The read twin of iclforge::io::build_codec_config_box (ac3/io/dec3.hpp), field
+// The read twin of iclforge::ac3::io::build_codec_config_box (ac3/io/dec3.hpp), field
 // for field: ETSI TS 102 366 Annex F §F.4 (AC3SpecificBox) and §F.6
 // (EC3SpecificBox), plus TS 103 420 §8.3.1/§8.3.2.2's Atmos extension. A
 // tiny MSB-first bit reader rather than iclforge::BitReader, because this module
@@ -148,7 +148,7 @@ CodecConfig parse_codec_config(std::uint32_t box_type, std::span<const std::byte
 
     // §F.6: data_rate(13) num_ind_sub(3), then one independent-substream
     // record. Only the first is read: iclforge::mp4::AudioTrack describes exactly one
-    // track, and iclforge::io::scan groups an access unit as one independent
+    // track, and iclforge::ac3::io::scan groups an access unit as one independent
     // substream plus its dependents, so a second record has nowhere to go
     // in ReadTrack - and num_ind_sub is reported verbatim so a caller can
     // see that the file claimed more.

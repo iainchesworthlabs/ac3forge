@@ -35,7 +35,7 @@
 // measures first and configures the encoder second, which is exactly what
 // real encoders do with an analysis pass.
 
-namespace iclforge::meta {
+namespace iclforge::ac3::meta {
 
 // ITU-R BS.1770-5 (11/2023) Annex 3, "Extended loudness measurement algorithm
 // for loudspeaker configurations of advanced sound systems", Table 4: the
@@ -173,8 +173,8 @@ class ICLFORGE_AC3_EXPORT LoudnessMeter {
 
     // Every private data member - the K-weighting filter state, the
     // loudness/true-peak accumulators, all of it - lives behind this one
-    // pimpl, following the same pattern as iclforge::io::WavStreamReader/Writer
-    // and iclforge::FrameEncoder. Impl is defined in loudness.cpp.
+    // pimpl, following the same pattern as iclforge::ac3::io::WavStreamReader/Writer
+    // and iclforge::ac3::FrameEncoder. Impl is defined in loudness.cpp.
     struct Impl;
     std::unique_ptr<Impl> impl_;
 };
@@ -185,4 +185,4 @@ class ICLFORGE_AC3_EXPORT LoudnessMeter {
 // 31 is a poor default rather than a neutral one.
 [[nodiscard]] ICLFORGE_AC3_EXPORT int dialnorm_from_lkfs(double lkfs);
 
-}  // namespace iclforge::meta
+}  // namespace iclforge::ac3::meta

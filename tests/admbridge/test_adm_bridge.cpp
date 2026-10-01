@@ -24,14 +24,14 @@
 // rather than a byte-level BW64 file, which keeps the error-path and coordinate/timeline unit tests
 // focused on this module's own logic. The one flagship test at the bottom goes through a REAL
 // byte-level BW64 fixture and iclforge::adm::parse_bw64() end to end, then through a real
-// iclforge::oba::AtmosEncoder::encode_frame()/Eac3Decoder round trip, per this project's own
+// iclforge::ac3::oba::AtmosEncoder::encode_frame()/Eac3Decoder round trip, per this project's own
 // standard for codec-adjacent behaviour (silence/frame-0 checks give false passes - see
 // tests/ac3/oba/test_atmos_motion.cpp's own flagship test for the established pattern this one
 // follows).
 
 namespace {
 
-constexpr int kFrame = iclforge::kSamplesPerFrame;
+constexpr int kFrame = iclforge::ac3::kSamplesPerFrame;
 
 // ---------------------------------------------------------------------------
 // Coordinate conversion
@@ -683,7 +683,7 @@ TEST_CASE("build() applies absolute time as object.start_s + block.rtime_s", "[a
 
 // ---------------------------------------------------------------------------
 // Flagship: a real BW64/ADM fixture, parsed by the real iclforge::adm::parse_bw64(), bridged, and
-// driven through a real iclforge::oba::AtmosEncoder / iclforge::Eac3Decoder round trip.
+// driven through a real iclforge::ac3::oba::AtmosEncoder / iclforge::ac3::Eac3Decoder round trip.
 //
 // Byte-fixture helpers are duplicated from tests/adm/test_adm.cpp rather than shared, per this
 // project's own established per-file convention for test helpers (see tests/
@@ -933,9 +933,9 @@ TEST_CASE("a real ADM BWF master's bed and moving object survive admbridge into 
     CHECK_FALSE(result->is_lfe[1]);
     CHECK(result->sample_rate == 48000);
 
-    iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 448},
+    iclforge::ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448},
                                    static_cast<int>(result->channel_count())};
-    iclforge::Eac3Decoder decoder;
+    iclforge::ac3::Eac3Decoder decoder;
     std::vector<std::span<const float>> views(result->channel_count());
 
     // AC-3 3/2 coded order (Table 5.8): L, C, R, Ls, Rs.

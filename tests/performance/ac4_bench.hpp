@@ -42,7 +42,7 @@ inline ::iclforge::ac4::EncoderConfig five_one_config() {
 // does, so every frame of a 200-frame run is real audio.
 class FrameSource {
 public:
-    FrameSource(const iclforge::io::WavData& wav, std::span<const std::size_t> channels) {
+    FrameSource(const iclforge::ac3::io::WavData& wav, std::span<const std::size_t> channels) {
         ordered_.reserve(channels.size());
         for (const std::size_t ch : channels) {
             ordered_.push_back(&wav.channels[ch % wav.channels.size()]);

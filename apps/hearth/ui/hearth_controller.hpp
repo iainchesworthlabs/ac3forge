@@ -59,7 +59,7 @@ class HearthController : public QObject {
     QML_SINGLETON
 
     // --- about ------------------------------------------------------------
-    // Version, commit and build target, for About (iclforge::version_details()).
+    // Version, commit and build target, for About (iclforge::ac3::version_details()).
     Q_PROPERTY(QString versionDetails READ versionDetails CONSTANT)
     // The third-party notices this build ships - the package's NOTICES.txt,
     // embedded at build time - for About > Licences.
@@ -215,7 +215,7 @@ class HearthController : public QObject {
 
     // One entry per render layout slot, in slot order (matching
     // speakerLabels): {peakDb, holdDb, rmsDb, clipped}, from
-    // MeterSnapshot::levels (iclforge::analysis::ChannelLevel). Empty while no
+    // MeterSnapshot::levels (iclforge::ac3::analysis::ChannelLevel). Empty while no
     // output is open or nothing has been metered yet.
     Q_PROPERTY(QVariantList levels READ levels NOTIFY monitorChanged)
     // momentary/shortTerm/integrated (LUFS), range (LU) and truePeak (dBTP).

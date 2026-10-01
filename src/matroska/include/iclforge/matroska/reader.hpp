@@ -27,7 +27,7 @@
 // Two shapes, mirroring the write side exactly:
 //
 //   demux()  - batch, and ZERO-COPY: the frames it returns are spans into
-//              the caller's own buffer, the way iclforge::io::scan already hands
+//              the caller's own buffer, the way iclforge::ac3::io::scan already hands
 //              back access units. For a caller that has the file resident
 //              anyway.
 //   Reader   - incremental, for a file too big to hold: push() chunks in,

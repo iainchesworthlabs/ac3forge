@@ -92,7 +92,7 @@ TestCase {
         mouseClick(findChild(win, "shortcutsAboutButton"));
         tryVerify(function() { return about.opened; }, 5000, "About... did not open About");
         // The version line is built from HearthController.versionDetails,
-        // which is never empty (iclforge::version_details()).
+        // which is never empty (iclforge::ac3::version_details()).
         verify(HearthController.versionDetails.length > 0);
         verify(H.textItem(about.contentItem, "Hearth") !== null);
         verify(H.textItem(about.contentItem, about.compactVersion(HearthController.versionDetails)) !== null,

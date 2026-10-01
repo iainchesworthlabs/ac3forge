@@ -48,20 +48,20 @@ struct InspectOutcome {
 // qc_controller.cpp's own dual-mono split contributes to only the
 // programme(s) actually present.
 std::optional<RawResult> measure_eac3_objects(std::span<const std::byte> stream, QString& error) {
-    const auto frames = iclforge::split_frames(stream);
+    const auto frames = iclforge::ac3::split_frames(stream);
     if (!frames || frames->empty()) {
         error = QStringLiteral("Not a valid E-AC-3 stream.");
         return std::nullopt;
     }
-    iclforge::Eac3Decoder decoder;
+    iclforge::ac3::Eac3Decoder decoder;
     RawResult result;
     result.codec_label = QStringLiteral("E-AC-3");
 
     bool have_first = false;
     double time_s = 0.0;
 
-    const auto ingest = [&](const iclforge::DecodedSubstream& sub) {
-        if (sub.strmtyp == iclforge::eac3::StreamType::kDependent) {
+    const auto ingest = [&](const iclforge::ac3::DecodedSubstream& sub) {
+        if (sub.strmtyp == iclforge::ac3::eac3::StreamType::kDependent) {
             return;  // object audio only ever rides in the independent bed
         }
         if (!have_first) {
@@ -69,7 +69,7 @@ std::optional<RawResult> measure_eac3_objects(std::span<const std::byte> stream,
             result.sample_rate_hz = sample_rate_hz(sub.sample_rate);
         }
         if (result.sample_rate_hz > 0) {
-            time_s += static_cast<double>(iclforge::kSamplesPerFrame) /
+            time_s += static_cast<double>(iclforge::ac3::kSamplesPerFrame) /
                       static_cast<double>(result.sample_rate_hz);
         }
         if (!sub.object_metadata) {
@@ -227,7 +227,7 @@ std::optional<RawResult> measure_ac4_objects(std::span<const std::byte> stream, 
             const bool bed = object.kind == iclforge::ac4::ObjectKind::kBed;
             beds += bed ? 1 : 0;
             f.labels.push_back(bed && object.speaker
-                                   ? to_qstring(iclforge::eac3::chanmap::name(
+                                   ? to_qstring(iclforge::ac3::eac3::chanmap::name(
                                          iclforge::apps::ac4_location(*object.speaker)))
                                    : QString());
         }
@@ -295,7 +295,7 @@ InspectOutcome inspect_file(const QString& path) {
         outcome.result = std::move(*measured);
         return outcome;
     }
-    const auto bsid = iclforge::stream_bsid(stream);
+    const auto bsid = iclforge::ac3::stream_bsid(stream);
     if (!bsid) {
         outcome.error = QStringLiteral("%1 is too short to hold a syncframe.").arg(path);
         return outcome;

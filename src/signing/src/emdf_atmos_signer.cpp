@@ -15,14 +15,14 @@
 namespace iclforge::signing {
 namespace {
 
-// Where the frame's fields are is iclforge::emdf::walk_frame's job (see
+// Where the frame's fields are is iclforge::ac3::emdf::walk_frame's job (see
 // ac3/emdf/frame_layout.hpp): one bit-accurate walk of the syncframe, shared
-// with the object-layer strip in iclforge::io, so the two cannot drift apart. What
+// with the object-layer strip in iclforge::ac3::io, so the two cannot drift apart. What
 // is left here is the part that is actually about signing - which of those
 // regions are excluded from the authenticated message, and what is hashed
 // over the rest.
-using emdf::BitRange;
-using emdf::FrameLayout;
+using ac3::emdf::BitRange;
+using ac3::emdf::FrameLayout;
 
 int prot_bits(int code) { return (code == 0) ? 0 : (code == 1) ? 8 : (code == 2) ? 32 : 128; }
 
@@ -63,7 +63,7 @@ struct TagContext {
 
 std::optional<TagContext> compute_tag_context(std::span<const std::byte> frame,
                                                const SigningKey& key) {
-    const FrameLayout p = emdf::walk_frame(frame);
+    const FrameLayout p = ac3::emdf::walk_frame(frame);
     // A frame outside the walker's scope, or one whose fields stopped making
     // sense part-way through, reports no container - so it is left unsigned
     // rather than signed over a bit range that was never confirmed.
@@ -129,7 +129,7 @@ bool has_authenticity_tag(std::span<const std::byte> frame) {
     // walk_frame screens the frame's shape itself and reports no container
     // for anything outside this signer's subset - an ordinary non-Atmos
     // frame included - so nothing here has to pre-qualify what it is handed.
-    const FrameLayout p = emdf::walk_frame(frame);
+    const FrameLayout p = ac3::emdf::walk_frame(frame);
     if (!p.supported || !p.has_container) {
         return false;
     }
@@ -193,7 +193,7 @@ int sign_atmos_stream(std::span<std::byte> stream, const SigningKey& key) {
     int signed_count = 0;
     std::size_t off = 0;
     while (off + 6 <= stream.size()) {
-        const std::size_t size = emdf::syncframe_size(stream.subspan(off));
+        const std::size_t size = ac3::emdf::syncframe_size(stream.subspan(off));
         if (off + size > stream.size()) break;
         if (sign_atmos_frame(stream.subspan(off, size), key)) ++signed_count;
         off += size;
@@ -223,7 +223,7 @@ VerifySummary verify_atmos_stream(std::span<const std::byte> stream, const Signi
     VerifySummary summary;
     std::size_t off = 0;
     while (off + 6 <= stream.size()) {
-        const std::size_t size = emdf::syncframe_size(stream.subspan(off));
+        const std::size_t size = ac3::emdf::syncframe_size(stream.subspan(off));
         if (off + size > stream.size()) break;
         switch (verify_atmos_frame(stream.subspan(off, size), key)) {
             case VerifyResult::kValid: ++summary.valid; break;

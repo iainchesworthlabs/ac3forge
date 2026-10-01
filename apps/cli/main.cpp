@@ -31,7 +31,7 @@
 
 namespace {
 
-namespace plan = iclforge::plan;
+namespace plan = iclforge::ac3::plan;
 
 using namespace forge_cli;
 using namespace forge_cli::commands;
@@ -640,7 +640,7 @@ int run_main(int argc, char** argv) {
     const std::span<char*> raw{argv, static_cast<std::size_t>(argc)};
     if (raw.size() > 1 &&
         (std::string_view{raw[1]} == "--version" || std::string_view{raw[1]} == "-v")) {
-        fmt::println("{}", iclforge::version_details());
+        fmt::println("{}", iclforge::ac3::version_details());
         return kExitOk;
     }
     // Split the command line into positional arguments and metadata options. An

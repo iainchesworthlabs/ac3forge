@@ -176,7 +176,7 @@ things advertise the object layer and they have to agree:
 - The **`addbsi` object marker** (ETSI TS 103 420 §8.3.1's `flag_ec3_extension_type_a` and
   §8.3.2.2's `complexity_index_type_a`). This is a few bits in the bitstream header, and it is
   the only thing a *reader* — as opposed to a decoder — has to go on: it is what
-  `iclforge::io::scan` reports, what the MP4 `dec3` box's Dolby Atmos extension is built from, what
+  `iclforge::ac3::io::scan` reports, what the MP4 `dec3` box's Dolby Atmos extension is built from, what
   becomes an HLS `CHANNELS="<N>/JOC"` attribute, and what makes FFmpeg report the stream as
   "Dolby Digital Plus + Dolby Atmos". A stream with the marker but no container promises a
   packager, a player and a manifest an object layer that isn't there.

@@ -47,7 +47,7 @@
 // ac3/verify/selfcheck.hpp for the encode-then-decode-then-compare driver
 // most callers actually want.
 
-namespace iclforge::verify {
+namespace iclforge::ac3::verify {
 
 // One coded stream's state within one block, as that side believed it. Streams
 // are numbered exactly as both the encoder and the decoder already number them
@@ -78,7 +78,7 @@ struct StreamTrace {
     // an encoder's rate-control search). Zero on an encoder-only trace.
     //
     // §7.2.2.1's composite SNR offset in force for this stream this block -
-    // iclforge::snr_offset(csnroffst, fsnroffst), already resolved from the
+    // iclforge::ac3::snr_offset(csnroffst, fsnroffst), already resolved from the
     // transmitted codes rather than left for a reader to recompute.
     int snr_offset = 0;
     // §7.2.2.5's masking curve, the value bap is actually derived from -
@@ -183,4 +183,4 @@ inline constexpr int kMaxPerArray = 4;
 [[nodiscard]] ICLFORGE_AC3_EXPORT std::string report(std::span<const Mismatch> mismatches,
                                                  int fbw_channels, int coded_channels);
 
-}  // namespace iclforge::verify
+}  // namespace iclforge::ac3::verify

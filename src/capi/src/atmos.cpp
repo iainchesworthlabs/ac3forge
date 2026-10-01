@@ -10,8 +10,8 @@ using iclforge_c::guard;
 // Kept outside extern "C" below - see encoder.cpp's identical comment on
 // -Wreturn-type-c-linkage.
 namespace {
-iclforge::oba::AtmosConfig atmos_config_to_cpp(const iclforge_atmos_config_t& config) {
-    return iclforge::oba::AtmosConfig{.sample_rate = iclforge_c::to_cpp(config.sample_rate),
+iclforge::ac3::oba::AtmosConfig atmos_config_to_cpp(const iclforge_atmos_config_t& config) {
+    return iclforge::ac3::oba::AtmosConfig{.sample_rate = iclforge_c::to_cpp(config.sample_rate),
                                   .bitrate_kbps = config.bitrate_kbps,
                                   .dialnorm = config.dialnorm,
                                   .num_bands_idx = config.num_bands_idx,
@@ -27,7 +27,7 @@ void iclforge_atmos_config_init(iclforge_atmos_config_t* config) {
     if (config == nullptr) {
         return;
     }
-    const iclforge::oba::AtmosConfig defaults{};
+    const iclforge::ac3::oba::AtmosConfig defaults{};
     *config = iclforge_atmos_config_t{.sample_rate = iclforge_c::from_cpp(defaults.sample_rate),
                                        .bitrate_kbps = defaults.bitrate_kbps,
                                        .dialnorm = defaults.dialnorm,
@@ -56,11 +56,11 @@ iclforge_status_t iclforge_atmos_encoder_create(const iclforge_atmos_config_t* c
         return ICLFORGE_ERROR_INVALID_ARGUMENT;
     }
     // num_bands_idx indexes joc::kNumBands (Table 50) and kSubbandToBand
-    // directly, starting in iclforge::oba::AtmosEncoder's own constructor - which
+    // directly, starting in iclforge::ac3::oba::AtmosEncoder's own constructor - which
     // cannot report a failure - so an index outside the table is refused
     // before the encoder is built, not after it has already read past it.
     if (config->num_bands_idx < 0 ||
-        config->num_bands_idx >= static_cast<int>(iclforge::oba::joc::kNumBands.size())) {
+        config->num_bands_idx >= static_cast<int>(iclforge::ac3::oba::joc::kNumBands.size())) {
         return ICLFORGE_ERROR_INVALID_ARGUMENT;
     }
     return guard([&config, &object_count, &out_encoder] {
@@ -84,7 +84,7 @@ iclforge_status_t iclforge_atmos_encoder_encode_frame(
         return ICLFORGE_ERROR_INVALID_ARGUMENT;
     }
     if (object_count != static_cast<size_t>(iclforge_atmos_encoder_dynamic_object_count(encoder)) ||
-        placement_count != object_count || samples_per_object != iclforge::kSamplesPerFrame) {
+        placement_count != object_count || samples_per_object != iclforge::ac3::kSamplesPerFrame) {
         return ICLFORGE_ERROR_INVALID_ARGUMENT;
     }
     return guard([&encoder, &objects, &object_count, &samples_per_object, &placements,

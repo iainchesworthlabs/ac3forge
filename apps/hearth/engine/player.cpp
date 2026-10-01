@@ -251,8 +251,8 @@ std::string Player::join_blocked(const OutputChoice& next, std::string_view titl
     // add up to the six blocks a burst period is, and an E-AC-3 stream's
     // units are all the same length, so the next item's first says whether
     // they can.
-    constexpr auto kBlock = static_cast<std::uint64_t>(kSamplesPerBlock);
-    constexpr auto kBurstBlocks = static_cast<std::uint64_t>(kBlocksPerFrame);
+    constexpr auto kBlock = static_cast<std::uint64_t>(ac3::kSamplesPerBlock);
+    constexpr auto kBurstBlocks = static_cast<std::uint64_t>(ac3::kBlocksPerFrame);
     const std::uint64_t pending = packed_frames_ / kBlock;
     const std::uint64_t next_blocks = prepared_->unit_samples_at(0) / kBlock;
     if (next_blocks != 0 && pending < kBurstBlocks && (kBurstBlocks - pending) % next_blocks == 0) {
@@ -477,7 +477,7 @@ void Player::encode_transcoded(bool last) {
             block.spans.push_back(Span{.record = span.record, .frames = span.frames});
         }
         // A frame is a whole burst period on the link, padding and all.
-        block.frames = static_cast<std::size_t>(kSamplesPerFrame);
+        block.frames = static_cast<std::size_t>(ac3::kSamplesPerFrame);
         block.record = spans.empty() ? history_.size() - 1 : spans.back().record;
         pending_frames_ += block.frames;
     };

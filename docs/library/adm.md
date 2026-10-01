@@ -5,8 +5,8 @@
 pipelines require. Like `iclforge::matroska`, `iclforge::mp4` and `iclforge::mpegts`, it links nothing
 from `iclforge::ac3` — it has no idea AC-3, E-AC-3 or the JOC/Atmos object layer exist.
 
-Mapping the graph this module parses onto `iclforge::oba::AtmosEncoder` (ADM → encode) or building it
-from a decoded `iclforge::Eac3Decoder` programme (decode → ADM) is a separate module,
+Mapping the graph this module parses onto `iclforge::ac3::oba::AtmosEncoder` (ADM → encode) or building it
+from a decoded `iclforge::ac3::Eac3Decoder` programme (decode → ADM) is a separate module,
 [`iclforge::admbridge`](adm-bridge.md); driving the read direction end to end — a real ADM BWF master
 straight to a DD+ JOC E-AC-3 stream — is `forge atmos-adm`, and the write direction is
 `forge decode ... adm_out` (see [Commands](../forge/cli/commands.md)) and
@@ -65,7 +65,7 @@ back and prints what it found.
   `jumpPosition`, HOA order/degree/normalization) → `audioStreamFormat`/`audioTrackFormat` →
   `audioTrackUID`. See [`iclforge/adm/model.hpp`](https://github.com/iainchesworthlabs/iclforge/blob/main/src/adm/include/iclforge/adm/model.hpp) for exactly which sub-elements are carried and which
   are deliberately out of scope (`zoneExclusion`, `objectDivergence`, `screenRef`, the
-  Matrix/Binaural-specific sub-elements, and loudness metadata — `iclforge::meta::loudness` already
+  Matrix/Binaural-specific sub-elements, and loudness metadata — `iclforge::ac3::meta::loudness` already
   measures loudness independently).
 
 **`model` always includes BS.2076-2 Annex A's "common definitions".** libadm's own `parseXml()`
@@ -82,7 +82,7 @@ of whether the file re-declared it — so `model.pack_formats`/`channel_formats`
 `AdmDocument` — the `parse_bw64` result — holds all three pieces together: `model` (the graph
 above), `chna` (the join table, one `ChnaEntry` per physical-track-to-ADM-ID row), and `audio`
 (the decoded PCM, one `std::vector<float>` per channel, same `[-1, 1)` normalization convention
-`iclforge::io::WavData` uses). `AdmError` covers open/parse failure — `kCannotOpen`, `kNotRiff`,
+`iclforge::ac3::io::WavData` uses). `AdmError` covers open/parse failure — `kCannotOpen`, `kNotRiff`,
 `kMalformedXml`, `kMalformedAdm`, `kOther`;
 see [`iclforge/adm/ac3adm.hpp`](https://github.com/iainchesworthlabs/iclforge/blob/main/src/adm/include/iclforge/adm/ac3adm.hpp) for the full list. In practice, the two libraries underneath this
 module (see below) report almost everything through one broad exception family each, so most
@@ -242,5 +242,5 @@ PCM-only framing). Float ones exist too.
 See also: [File I/O](file-io.md) — the plain-WAV reader this module's container-parsing
 deliberately does not share an implementation with, despite the family resemblance;
 [ADM → Atmos bridging](adm-bridge.md) — `iclforge::admbridge`, which maps this graph onto
-`iclforge::oba::AtmosEncoder`; [Spatial & Atmos objects](spatial-and-atmos.md) — the
-`iclforge::oba::AtmosEncoder`/`iclforge::oba::motion` surface that bridge drives.
+`iclforge::ac3::oba::AtmosEncoder`; [Spatial & Atmos objects](spatial-and-atmos.md) — the
+`iclforge::ac3::oba::AtmosEncoder`/`iclforge::oba::motion` surface that bridge drives.

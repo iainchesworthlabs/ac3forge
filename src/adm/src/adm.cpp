@@ -590,7 +590,7 @@ std::expected<void, AdmWriteError> write_bw64(const std::string& path, const Adm
         writer->write(interleaved.data(), document.audio.frame_count());
         // ~Bw64Writer (writer's destructor, at scope exit) finalizes the file: writes the <axml>
         // chunk queued above, then patches the RIFF/data chunk sizes now that every sample has
-        // gone out - the same "close on scope exit" shape iclforge::io::WavStreamWriter's own
+        // gone out - the same "close on scope exit" shape iclforge::ac3::io::WavStreamWriter's own
         // callers rely on elsewhere in this project.
     } catch (const std::exception&) {
         return std::unexpected(AdmWriteError::kOther);

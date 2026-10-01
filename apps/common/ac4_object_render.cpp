@@ -10,7 +10,7 @@
 namespace iclforge::apps {
 namespace {
 
-using Location = iclforge::eac3::chanmap::Location;
+using Location = iclforge::ac3::eac3::chanmap::Location;
 using S = iclforge::ac4::Speaker;
 
 // Where each of AC-4's speakers sits among E-AC-3's locations (Table E2.5),
@@ -119,7 +119,7 @@ void Ac4ObjectRenderer::reset() {
 Ac4ObjectRenderer::Gains Ac4ObjectRenderer::speaker_gains(iclforge::ac4::Speaker speaker) {
     // The bed as the one channel: the layout renderer's gain from it to each
     // slot, 1 to the slot of its own location where the layout has one.
-    iclforge::eac3::chanmap::Layout bed;
+    iclforge::ac3::eac3::chanmap::Layout bed;
     bed.items[0] = location_of(speaker);
     bed.count = 1;
     renderer_.set_bed(bed);

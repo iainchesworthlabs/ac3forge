@@ -72,7 +72,7 @@ namespace iclforge::coreaudio {
 // kAudioStreamPropertyAvailablePhysicalFormats). kAudioFormatEnhancedAC3
 // ('ec-3') has no comparably long history as a *physical* (IEC 60958-wrapped)
 // stream format the way kAudioFormat60958AC3 does - it is the same fourCC
-// iclforge::io::build_codec_config_box uses for a raw E-AC-3 *elementary* stream
+// iclforge::ac3::io::build_codec_config_box uses for a raw E-AC-3 *elementary* stream
 // in an MP4 sample entry, not a documented S/PDIF/HDMI wire format. Apple's
 // own support documentation confirms Dolby Digital Plus/Atmos HDMI
 // passthrough exists on Apple Silicon Macs without documenting the HAL
