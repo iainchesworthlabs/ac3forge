@@ -20,6 +20,7 @@ Each script's header says what it does and takes. This page says in what order.
 | S3, the namespace root | `python tools/n1b/n1b_names.py --root <worktree>`; then `python tools/n1b/n1b_reflow.py --root <worktree> --base HEAD~1`, which wraps the lines the first pass pushed past the column limit. Each is committed alone (below). |
 | S4, packages and identifiers | `n1b_apply.py --scope packages` and `n1b_paths.py` (the package directories and the files named for the brand), `n1b_sendspin.py`, `n1b_idents.py`, `n1b_reflow.py`, and then `cargo fmt` and `cargo update --workspace --offline` in `rust/`. Each is committed alone (below). |
 | N1A, the programs' names | `python tools/n1b/n1b_programs.py --root <worktree> --phase all --json <table.json>` (the moves are staged, the text is not), `n1b_reflow.py`, and then `lupdate` and `gen_pseudo_locale.py` over the renamed sources. The settings migration, the JNI check and what the driver keeps are by hand. Each is committed alone (below). |
+| S5, the pages and the addresses | `python tools/n1b/n1b_docs.py --root <worktree> --phase text`, then `--phase urls`, then `--phase words`, each committed alone (below). The install routes, the library pages, the code that names the repository, the status of the plans and the changelog are by hand. |
 
 The plan a stage writes is what the build-file pass reads, since the pass runs after the files have moved.
 All the passes are idempotent: a second run on a finished tree changes nothing.
@@ -380,6 +381,107 @@ of the settings migration.
 What N1A leaves: S5's list (the pages, the changelog and the plans), the wording of what the programs say (U1), the external identities,
 and the driver's identity until it is rebuilt and signed.
 
+## S5, start to finish
+
+In a worktree of `main` with N1A merged (the S5 branch is made from N1A's head, so the merge of `main` brings in
+nothing) and `<work>` a directory outside the tree. The passes read the tracked text files outside the history
+(`CHANGELOG.md`, `planning/`, `tests/golden`, the released winget manifests, `.git-blame-ignore-revs` and this
+directory) and write them back in place. Each phase arrives in a commit of its own just before the pass that uses it,
+so the parent of a scripted commit holds the script that made it.
+
+    python tools/n1b/n1b_docs.py --root . --phase text --dry-run                                  # 256 files
+    python tools/n1b/n1b_docs.py --root . --phase text --report <work>/text-report.txt            # 3,511 lines each way
+    git add -A && git commit -m "S5: the pages, and the comments that name C++ and CMake, follow the new names"
+    python tools/n1b/n1b_docs.py --root . --phase urls --report <work>/urls-report.txt            # 121 files, 481 lines
+    git add -A && git commit -m "S5: every address names the repository iclforge"
+    (the third phase arrives in a commit of its own: the words of build and tool text)
+    python tools/n1b/n1b_docs.py --root . --phase words --report <work>/words-report.txt          # 20 files, 65 lines
+    git add -A && git commit -m "S5: build and tool text names the libraries as it should"
+    (by hand: below)
+    python tools/n1b/n1b_docs.py --root . --phase all --dry-run                                   # 0 files in each phase
+
+Each of the three scripted commits is what its script gives on its parent: a scratch repository made from
+`git -c core.autocrlf=false archive` of the parent, with the phase run there from the scratch tree itself, has the
+blobs of the commit (3,048 paths for the first two), and a second run changes nothing. The last command is the same
+property of the stage's last commit, and it holds because of `FORMER_NAME_LINES` and `FORMER_NAME_FILES`: what the
+hand-written commits say about the past on purpose (60 lines in 12 files, and `docs/renamed.md`) is left. One of those
+lines is not new: the driver's .NET namespace in `apps/windows/README.md`, which the text phase changed and which the
+owner's decision of 2026-10-01 keeps until N1D renames the driver, so the later version of the script run on the
+parent of the text commit leaves that one line as it was.
+
+### What `n1b_docs.py` decides
+
+A page (every tracked `.md`, `mkdocs.yml`, `overrides/`, the docs site's data and scripts under `docs/`, the generated
+snippets) takes these rules in this order; every other file that is not C, C++ or Rust takes the first three, and a Rust
+file takes them in its comment lines. `--report` lists every decision and `--json` the counts.
+
+| rule | what it renames | places |
+|---|---|---:|
+| `header` | the include spelling of a header that moved (`HEADER_MAP`: 159 spellings from `layoutdef.py` applied to the tree before S2, each held to a header of the tree by a test) | 260 |
+| `cmake-target` | a CMake alias of the old single library (`ac3::forge` is `iclforge::ac3`; the table of `n1b_cmake.py`) | 473 |
+| `namespace` | a C++ qualifier (`ac3::oba::X`, `ac4::X`; the rules of `n1b_names.py` without the C++-only ones) | 1,263 |
+| `program`, `variable` | the table of `n1b_programs.py` (`ac3cli` is `forge`, `AC3GUI_X` is `ICLFORGE_GUI_X`) | 1,018, 13 |
+| `identifier`, `owned` | the brand as an identifier, and what a program owns (the decisions of `n1b_idents.py` and `n1b_programs.py`) | 1,031, 47 |
+| `bare-code`, `display-family`, `display-member`, `literal` | the one decision a page adds: the bare word is the identifier `iclforge` in code (a fenced block, a code span, a `<script>`, a data file), "ICL Forge" in prose, and "Hearth" and "Crucible" for the two members; a Kconfig menu title and the Homebrew cask's name are literals | 116, 102, 18, 11 |
+
+A link to a heading whose text changed follows the new anchor, in the history too (a link is not text of the history):
+34 pages have a heading with a new slug, and 10 pages link one. Reported and kept: an address (427, the `urls`
+phase's), the file name of an asset of a release that exists (5), the output of a past release (2) and the Windows
+driver's installed identity (16). `urls` moves the repository (455 places), the Pages site (26), the tap (23), an issue
+reference (2), the path a runner makes from the repository's name (4) and a clone directory (1), and keeps the URL of a
+release that exists, the winget manifests' directory, the SonarCloud key and the lines the hand-written commit writes.
+`words` renames, in the comments of CMake, workflows, shell, Python and the presets, a library called by the name it
+had (54: `ac3adm`, `ac3iab`, `libac3iab.so`) and a raw target of the old single library (13: `forge_shared`,
+`forge_c_static`), and keeps the six lines that tell a past event in the name of its time (`HISTORICAL_LINES`).
+
+### What the passes cannot decide, by hand
+
+- What is published decides what an install route says, so each route is written for a release up to `v0.10.0-beta.1`
+  and for the first release made after the rename (`docs/renamed.md` is the table, and `docs/releasing.md`, the Forge,
+  macOS and Python pages, the support catalogue and the Homebrew README say it where it decides a step). A sentence
+  that is true only after the owner has renamed the repository, the tap and the project key, or published, is
+  listed in the pull request.
+- The old single library is 22 libraries: the layout block of README and CONTRIBUTING, the library index, the header
+  map and the pkg-config names are written from the tree (`check_pages.py` holds every header spelling and target a page names
+  to the tree, and stays).
+- Code that names the repository derives it, so that it is right before and after the rename: the two guards test
+  `github.repository_owner`, `bump_manifests.py` reads `GITHUB_REPOSITORY`, `tools/hearth/ota.py` asks it and then the
+  GitHub CLI, and the pages of the docs site that fetch the quality history read the repository off the address they are
+  served under (the site is deployed at every push to `main`). The tap is named by its new name in `manifest-bump.yml`,
+  so the tap has to be renamed before the first release.
+- The status of the plans (`planning/ac4.md`, `layout.md`, `README.md`), the roadmap row, one changelog entry and a note
+  on the three pages that narrate the old names.
+- The pass reads a line at a time, so a code span over two lines is cut in two: two such spans were put right by hand.
+- Not regenerated: the screenshots that show the old names (the 17 of the Forge GUI, the Shield app's, the demo's); a
+  start of Hearth asks for a firewall rule, and the GUI and the Shield need a display and a device.
+
+### The proof
+
+    python tools/n1b/n1b_docs.py --root . --phase all --dry-run          # 0 files in each phase
+    python tools/n1b/n1b_docs.py --root . --residual                     # a reason for every place that is left
+    python tools/n1b/check_pages.py --root .                             # 0 problems
+    python tools/checks/check_doc_paths.py                               # 0 missing of 5,650 paths
+    python tools/checks/generate_support_matrices.py --check
+    python -m mkdocs build --strict -d <work>/site                       # and a check of the links of the built site
+    python tools/ci/precheck.py
+    python tools/n1b/baseline.py record --build <msvc tree> --out <work>/after
+    python tools/n1b/baseline.py compare <N1A's record> <work>/after     # all four kinds identical
+
+The stage changes pages, comments, addresses and build text, and no code that runs but the address of the repository in
+`bump_manifests.py` and `ota.py`, so the proof that nothing built changed is an MSVC build of every default target
+(1,431 steps, no `--target`, after a clean) and the whole ctest, and a `baseline.py` record equal to N1A's in the
+pinned-hash streams, the exports of every shared library, the public headers and the 44 commands of the CLI corpus. The
+corpus does not print the man page, whose `.UR` address is the one text of the CLI this stage changes. Qt's `lupdate`
+over the three programs finds 836, 832 and 385 texts, 0 new.
+
+### What S5 leaves
+
+The wording of what the programs and pages say, where it names no name (U1); S6, which nests the AC-3 codec's own
+symbols under `iclforge::ac3`; the comments and strings of the C and C++ sources that still say `ac3adm`, `ac3iab` or
+`ac3audio`; the Windows driver's identity (N1D); and the owner's steps outside the repository: the repository, the tap
+and the SonarCloud project key are renamed, the pending publisher of the PyPI project `iclforge` is created, and the
+first release is made under the new names.
+
 ## Proof
 
 `tools/n1b/baseline.py` records and compares what a stage must not change, against a build tree:
@@ -393,6 +495,9 @@ library became several (`--map l2`) or a namespace changed (`--rewrite cuts,name
 lets a library lose names that another library of the new record still exports: `admbridge.dll` links
 the codec statically and re-exports the members it pulls in, so a change to what its headers include
 changes how many it carries. The union of every library's names is compared in any case.
+
+`check_pages.py` holds every header spelling (`iclforge/base/layout.hpp`) and library target (`iclforge::dsp`) a page
+names to the tree, which `check_doc_paths.py` cannot do since neither is a path.
 
 `tools/checks/check_layering.py` fails an include that crosses from one library into another its row of
 `tools/checks/layering.json` does not list. The includes a pending cut still removes are listed in
