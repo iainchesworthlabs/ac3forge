@@ -1,37 +1,37 @@
-# ADM / BW64 reading and writing: `ac3adm::ac3adm`
+# ADM / BW64 reading and writing: `iclforge::adm`
 
-`ac3adm/ac3adm.hpp`, library `ac3adm::ac3adm`. A standalone BW64/RF64 + Audio Definition Model
+`iclforge/adm/ac3adm.hpp`, library `iclforge::adm`. A standalone BW64/RF64 + Audio Definition Model
 (ADM) parser and writer: the professional delivery format Netflix's and Apple's own Atmos ingest
-pipelines require. Like `matroska::matroska`, `mp4::mp4` and `mpegts::mpegts`, it links nothing
-from `ac3::forge` — it has no idea AC-3, E-AC-3 or the JOC/Atmos object layer exist.
+pipelines require. Like `iclforge::matroska`, `iclforge::mp4` and `iclforge::mpegts`, it links nothing
+from `iclforge::ac3` — it has no idea AC-3, E-AC-3 or the JOC/Atmos object layer exist.
 
-Mapping the graph this module parses onto `ac3::oba::AtmosEncoder` (ADM → encode) or building it
-from a decoded `ac3::Eac3Decoder` programme (decode → ADM) is a separate module,
-[`ac3::admbridge`](adm-bridge.md); driving the read direction end to end — a real ADM BWF master
-straight to a DD+ JOC E-AC-3 stream — is `ac3cli atmos-adm`, and the write direction is
-`ac3cli decode ... adm_out` (see [Commands](../forge/cli/commands.md)) and
+Mapping the graph this module parses onto `iclforge::oba::AtmosEncoder` (ADM → encode) or building it
+from a decoded `iclforge::Eac3Decoder` programme (decode → ADM) is a separate module,
+[`iclforge::admbridge`](adm-bridge.md); driving the read direction end to end — a real ADM BWF master
+straight to a DD+ JOC E-AC-3 stream — is `forge atmos-adm`, and the write direction is
+`forge decode ... adm_out` (see [Commands](../forge/cli/commands.md)) and
 [`examples/encode_adm.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/encode_adm.cpp). This page and
 [`examples/read_adm.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/read_adm.cpp) only demonstrate this module's own read-side API — opening a file and walking the
 parsed graph; `encode_adm.cpp` is the one that shows the full read-direction pipeline. See
 "Writing" below for `write_bw64()`.
 
-**Opt-in, unlike every other module in this library.** `AC3FORGE_BUILD_ADM` defaults **off**, and
+**Opt-in, unlike every other module in this library.** `ICLFORGE_BUILD_ADM` defaults **off**, and
 turning it on additionally needs `-DVCPKG_MANIFEST_FEATURES=adm` (see
 [`vcpkg.json`](https://github.com/iainchesworthlabs/ac3forge/blob/main/vcpkg.json)) to resolve its Boost dependency:
 
 ```bash
-cmake --preset config-windows-msvc-debug -DAC3FORGE_BUILD_ADM=ON -DVCPKG_MANIFEST_FEATURES=adm
+cmake --preset config-windows-msvc-debug -DICLFORGE_BUILD_ADM=ON -DVCPKG_MANIFEST_FEATURES=adm
 ```
 
-Every other target in this project — `ac3cli`, `ac3gui`, `ac3tests`, every other example — builds
-identically whether `AC3FORGE_BUILD_ADM` is on or off; nothing links `ac3adm::ac3adm`
+Every other target in this project — `forge`, `forge-gui`, `iclforge-tests`, every other example — builds
+identically whether `ICLFORGE_BUILD_ADM` is on or off; nothing links `iclforge::adm`
 unconditionally. See "Why opt-in" below for the reasoning.
 
 ```cpp
-const auto document = ac3adm::parse_bw64(fixture_path);
+const auto document = iclforge::adm::parse_bw64(fixture_path);
 if (!document) {
-    fmt::printf("parse_bw64 failed: %.*s\n", static_cast<int>(ac3adm::describe(document.error()).size()),
-                ac3adm::describe(document.error()).data());
+    fmt::printf("parse_bw64 failed: %.*s\n", static_cast<int>(iclforge::adm::describe(document.error()).size()),
+                iclforge::adm::describe(document.error()).data());
     return 1;
 }
 ```
@@ -63,9 +63,9 @@ back and prints what it found.
   `audioContent` → `audioObject` → `audioPackFormat`/`audioChannelFormat` (with its
   `audioBlockFormat` time-divisions — position, gain, width/height/depth, `channelLock`,
   `jumpPosition`, HOA order/degree/normalization) → `audioStreamFormat`/`audioTrackFormat` →
-  `audioTrackUID`. See [`ac3adm/model.hpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/adm/include/iclforge/adm/model.hpp) for exactly which sub-elements are carried and which
+  `audioTrackUID`. See [`iclforge/adm/model.hpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/adm/include/iclforge/adm/model.hpp) for exactly which sub-elements are carried and which
   are deliberately out of scope (`zoneExclusion`, `objectDivergence`, `screenRef`, the
-  Matrix/Binaural-specific sub-elements, and loudness metadata — `ac3::meta::loudness` already
+  Matrix/Binaural-specific sub-elements, and loudness metadata — `iclforge::meta::loudness` already
   measures loudness independently).
 
 **`model` always includes BS.2076-2 Annex A's "common definitions".** libadm's own `parseXml()`
@@ -74,7 +74,7 @@ pack/channel/stream/track/block formats (one set per standard loudspeaker layout
 third-order HOA component) and merges the file's own content into it, so that a file referencing
 a common-definition ID (e.g. a stereo bed's pack format `AP_00010002`) without locally
 re-declaring it still resolves. This module keeps that merge rather than filtering it back out:
-[`ac3::admbridge`](adm-bridge.md) needs exactly this, a pack/channel/stream/track format reference that resolves regardless
+[`iclforge::admbridge`](adm-bridge.md) needs exactly this, a pack/channel/stream/track format reference that resolves regardless
 of whether the file re-declared it — so `model.pack_formats`/`channel_formats`/`stream_formats`/
 `track_formats` are never just "what this one file defined". `model.programmes`/`contents`/
 `objects`/`track_uids` are unaffected (the common set defines none of those four).
@@ -82,9 +82,9 @@ of whether the file re-declared it — so `model.pack_formats`/`channel_formats`
 `AdmDocument` — the `parse_bw64` result — holds all three pieces together: `model` (the graph
 above), `chna` (the join table, one `ChnaEntry` per physical-track-to-ADM-ID row), and `audio`
 (the decoded PCM, one `std::vector<float>` per channel, same `[-1, 1)` normalization convention
-`ac3::io::WavData` uses). `AdmError` covers open/parse failure — `kCannotOpen`, `kNotRiff`,
+`iclforge::io::WavData` uses). `AdmError` covers open/parse failure — `kCannotOpen`, `kNotRiff`,
 `kMalformedXml`, `kMalformedAdm`, `kOther`;
-see [`ac3adm/ac3adm.hpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/adm/include/iclforge/adm/ac3adm.hpp) for the full list. In practice, the two libraries underneath this
+see [`iclforge/adm/ac3adm.hpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/adm/include/iclforge/adm/ac3adm.hpp) for the full list. In practice, the two libraries underneath this
 module (see below) report almost everything through one broad exception family each, so most
 real failures surface as `kCannotOpen` (bad/truncated container), `kMalformedXml` (axml
 isn't well-formed XML) or `kMalformedAdm` (well-formed XML that isn't a valid ADM document) — see
@@ -98,16 +98,16 @@ plain-data graph `parse_bw64` produces) into a libadm `adm::Document` (a new tra
 `build_adm_model()`), serializes it with `adm::writeXml()`, and writes the BW64 container
 (`<fmt >`/`<chna>`/`<axml>`/`<data>`) with libbw64's `Bw64Writer` (`bw64::writeFile()`) — the same
 two vendored libraries as the read side, in the other direction. Always 24-bit integer PCM
-(`ac3adm::kWriteBitDepth`; `EBU Tech 3306`'s own framing). The pinned libbw64 can write IEEE
+(`iclforge::adm::kWriteBitDepth`; `EBU Tech 3306`'s own framing). The pinned libbw64 can write IEEE
 float, but `write_bw64` has no option that asks for it.
 
 ```cpp
-ac3adm::AdmDocument document;
+iclforge::adm::AdmDocument document;
 // ... populate document.model / document.chna / document.audio ...
-const auto written = ac3adm::write_bw64(path, document);
+const auto written = iclforge::adm::write_bw64(path, document);
 if (!written) {
-    fmt::printf("write_bw64 failed: %.*s\n", static_cast<int>(ac3adm::describe(written.error()).size()),
-                ac3adm::describe(written.error()).data());
+    fmt::printf("write_bw64 failed: %.*s\n", static_cast<int>(iclforge::adm::describe(written.error()).size()),
+                iclforge::adm::describe(written.error()).data());
     return 1;
 }
 ```
@@ -133,10 +133,10 @@ from the model wherever `has_sample_rate` is set. On the read side both attribut
 `has_bit_depth`.
 
 `write_bw64`'s own translator supports exactly the element shapes [ADM → Atmos bridging](adm-bridge.md)'s
-write direction (`ac3::admbridge::write()`) produces: `audioProgramme` → `audioContent` →
+write direction (`iclforge::admbridge::write()`) produces: `audioProgramme` → `audioContent` →
 `audioObject` (no nesting) → `audioPackFormat` (`Objects` or `DirectSpeakers`, no nesting) →
 `audioChannelFormat` (cartesian `audioBlockFormat`s only) → `audioStreamFormat` → `audioTrackFormat`
-→ `audioTrackUID`. `ac3::admbridge::write()` always populates the full `audioStreamFormat`/
+→ `audioTrackUID`. `iclforge::admbridge::write()` always populates the full `audioStreamFormat`/
 `audioTrackFormat` chain rather than BS.2076-2's plain-PCM shortcut (`audioTrackUID` referencing
 `audioPackFormat`/`audioChannelFormat` directly, with no stream/track format at all) — libadm's own
 `adm::reassignIds()` zeroes out any `audioChannelFormat` no `audioStreamFormat` references ("get an
@@ -153,7 +153,7 @@ than cartesian (a default-constructed `AudioBlockFormat` is one: its `position` 
 
 ## Built on the EBU's own reference implementations
 
-Unlike every other module in this project, `ac3adm::ac3adm` is not a from-scratch implementation
+Unlike every other module in this project, `iclforge::adm` is not a from-scratch implementation
 of its format. It is a thin translation layer over two vendored third-party libraries, fetched
 via CMake `FetchContent` (see [`src/adm/CMakeLists.txt`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/adm/CMakeLists.txt)):
 
@@ -181,8 +181,8 @@ validation this project has no comparative advantage in getting exactly right on
 An earlier attempt at exactly that hand-rolled approach is what prompted switching to these
 libraries instead.
 
-Neither library's own types appear in `ac3adm::ac3adm`'s public headers
-(`ac3adm/ac3adm.hpp`, `ac3adm/model.hpp`) — they are translated into this module's own types at
+Neither library's own types appear in `iclforge::adm`'s public headers
+(`iclforge/adm/ac3adm.hpp`, `iclforge/adm/model.hpp`) — they are translated into this module's own types at
 the boundary and stay an implementation detail, the same way this project keeps every other
 vendored dependency (e.g. Catch2 in `tests/`) out of its own public API. One practical reason
 beyond the usual "don't leak a dependency's API" one: libadm's own public C++ namespace is `adm`,
@@ -197,15 +197,15 @@ Format, Integer and Rational — the exact list confirmed by grepping libadm 0.1
 and Integer aren't mentioned there at all, but `adm/utilities/time_conversion.hpp` needs both).
 Every other dependency in this project is either in-tree or a single small vcpkg
 package (Catch2); pulling in Boost is a materially bigger footprint, so it is deliberately
-**opt-in rather than default-on** — `AC3FORGE_BUILD_ADM` defaults `OFF` (unlike
-`AC3FORGE_BUILD_MATROSKA`/`AC3FORGE_BUILD_MP4`/`AC3FORGE_BUILD_MPEGTS`, which default `ON`), and
+**opt-in rather than default-on** — `ICLFORGE_BUILD_ADM` defaults `OFF` (unlike
+`ICLFORGE_BUILD_MATROSKA`/`ICLFORGE_BUILD_MP4`/`ICLFORGE_BUILD_MPEGTS`, which default `ON`), and
 turning it on needs the dedicated `adm` vcpkg feature to resolve those Boost packages. A build
-with `AC3FORGE_BUILD_ADM=OFF` (the default) never touches `find_package(Boost)`, never fetches
+with `ICLFORGE_BUILD_ADM=OFF` (the default) never touches `find_package(Boost)`, never fetches
 libbw64/libadm, and behaves identically to a build of this project before this module existed.
 
-`ac3adm::ac3adm` IS part of the installed `find_package(ac3forge)` package (see
+`iclforge::adm` IS part of the installed `find_package(iclforge)` package (see
 [the library overview](index.md)), but **shared-only** — unlike every other module here, there is
-no `ac3adm::ac3adm_static` to link against, since a static archive would leave a downstream
+no `iclforge::adm_static` to link against, since a static archive would leave a downstream
 consumer with unresolved symbols into libbw64/libadm (neither installed/exported by this project
 in its own right); a self-contained `.so` absorbs both at its own build step instead. It is
 **not** wired into the Android/Shield NDK build — see `src/adm/CMakeLists.txt`'s own header
@@ -240,6 +240,6 @@ PCM-only framing). Float ones exist too.
 
 See also: [File I/O](file-io.md) — the plain-WAV reader this module's container-parsing
 deliberately does not share an implementation with, despite the family resemblance;
-[ADM → Atmos bridging](adm-bridge.md) — `ac3::admbridge`, which maps this graph onto
-`ac3::oba::AtmosEncoder`; [Spatial & Atmos objects](spatial-and-atmos.md) — the
-`ac3::oba::AtmosEncoder`/`ac3::oba::motion` surface that bridge drives.
+[ADM → Atmos bridging](adm-bridge.md) — `iclforge::admbridge`, which maps this graph onto
+`iclforge::oba::AtmosEncoder`; [Spatial & Atmos objects](spatial-and-atmos.md) — the
+`iclforge::oba::AtmosEncoder`/`iclforge::oba::motion` surface that bridge drives.

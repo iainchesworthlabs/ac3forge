@@ -1,4 +1,4 @@
-# Contributing to ac3forge
+# Contributing to ICL Forge
 
 ## Build and test
 
@@ -91,7 +91,7 @@ anything under `apps/`.
 
 **The tree holds four products, and the directories say which is which.** `src/`
 other than `src/audio` and `src/sendspin`, the bindings under `python/`, `js/` and `rust/`, and
-`examples/`, `fuzz/` and `apps/baremetal` are **the library** — `ac3forge` and `ac3::forge` name
+`examples/`, `fuzz/` and `apps/baremetal` are **the library** — `iclforge` and `iclforge::ac3` name
 it, and those identifiers name its packages too. `apps/cli`, `apps/gui` and `apps/common` are
 **Forge**, the tooling pair, built and packaged as one thing. `apps/crucible`, with the driver
 in `apps/windows`, is **Crucible**. `apps/hearth`, `src/sendspin` and the `hearth_sink` example
@@ -100,27 +100,27 @@ are **Hearth**. `apps/android` and `apps/wasm` are library demonstrations. `src/
 [The naming and scope plan](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/recasting.md)
 records what each member owns, down to the targets, packages and CI legs.
 
-**These naming rules govern prose and code.** `ac3forge` and
-`ac3::forge` name the library and the family's identifiers — the CMake project, the packages,
+**These naming rules govern prose and code.** `iclforge` and
+`iclforge::ac3` name the library and the family's identifiers — the CMake project, the packages,
 the namespace, the C symbol prefix; **Forge**, capitalised and standing alone, names the
-`ac3cli` + `ac3gui` pair. "AC3Forge" is the family in prose, every identifier stays lowercase,
-and "AC3Forge Forge" is never written. `ac3cli --version` keeps printing `ac3forge <version>`
+`forge` + `forge-gui` pair. "ICL Forge" is the family in prose, every identifier stays lowercase,
+and "ICL Forge Forge" is never written. `forge --version` keeps printing `iclforge <version>`
 (`src/ac3/src/version.cpp`), because that is the library's version line and the published
 Homebrew formula's test asserts it.
 
-**The `ac3/` header prefix marks a dependency on `ac3::forge`, not just anything codec-adjacent.**
+**The `ac3/` header prefix marks a dependency on `iclforge::ac3`, not just anything codec-adjacent.**
 A module installs its public headers under `include/ac3/<name>/` exactly when it depends on or
-extends `ac3::forge`'s own model: `forge` itself (`ac3/core`, `ac3/encoder`, ...), `admbridge`
+extends `iclforge::ac3`'s own model: `forge` itself (`ac3/core`, `ac3/encoder`, ...), `admbridge`
 (`ac3/admbridge`), `audio` (`ac3/audio`), `signing` (`ac3/signing`). A bare `include/<name>/`
 (no `ac3/` prefix) marks a module as deliberately codec-blind: `ac3adm` (ADM/BW64 file parsing),
 `matroska`, `mp4`, `mpegts` (container muxing) — none of these know AC-3, E-AC-3 or Atmos exist,
 and should stay that way. The AC-4 libraries are bare too, for a different reason: `ac4/`
-(`ac4::ac4`, the inspector), `ac4dec/` (`ac4::decoder`) and `ac4enc/` (`ac4::encoder`) are a
-separate codec that shares no bitstream syntax with `ac3::forge` and depends on nothing in it.
+(`iclforge::ac4`, the inspector), `ac4dec/` (`iclforge::ac4dec`) and `ac4enc/` (`iclforge::ac4enc`) are a
+separate codec that shares no bitstream syntax with `iclforge::ac3` and depends on nothing in it.
 `ac4core` is the static library the decoder and the encoder share, and has no public headers.
 
-The one deliberate exception is `capi`: it installs under `include/ac3forge_c/`, not `ac3/`,
-even though it depends on the codec directly (it wraps `ac3::forge_static`). The `ac3/` tree is
+The one deliberate exception is `capi`: it installs under `include/iclforge_c/`, not `ac3/`,
+even though it depends on the codec directly (it wraps `iclforge::ac3_static`). The `ac3/` tree is
 a C++ namespace; `capi` is a C-callable surface, and a C or non-C++ consumer has no reason to
 see, or accidentally `#include`, a C++ header. Don't read "not under `ac3/`" as "codec-blind"
 here — it's a different axis (language surface, not dependency) that happens to look similar.
@@ -163,7 +163,7 @@ file-supplied text therefore goes through `strtod` instead (`src/ac3/src/encoder
 Linux or Homebrew-macOS build, so the CI legs that catch it are Android (Shield) and Build wheels
 (macos-latest).
 
-**Warnings are errors.** `ac3::warnings` is linked privately into every first-party target,
+**Warnings are errors.** `iclforge::warnings` is linked privately into every first-party target,
 including `examples/`. That includes `-Wsign-conversion` and its MSVC equivalents, which in
 this codebase means a lot of explicit `static_cast<std::size_t>` on indices. Add the cast; do
 not suppress the warning.
@@ -261,10 +261,10 @@ Ranked by how much they prove. Prefer the strongest one available for what you a
      `tools/checks/check_drc.py` and `tools/checks/check_coupling.py`/`check_coupling_level.py` for metadata
      that only a discriminating decode can confirm, and `tools/ci/quality_race.py ci` for a numeric
      SNR/LSD floor per E-AC-3 tool variant. Running any of these locally needs `ffmpeg` on `PATH`
-     and, for the Python ones, `AC3CLI` (or `--cli`) pointed at your build's `ac3cli`.
+     and, for the Python ones, `ICLFORGE_CLI` (or `--cli`) pointed at your build's `forge`.
    - **The gold-reference gate** (`tools/checks/verify_gold_reference.sh`, in the pull-request
      gate and on every platform leg):
-     *quality* and cross-platform reproducibility on one fixed sample - does ac3cli's own decoder
+     *quality* and cross-platform reproducibility on one fixed sample - does forge's own decoder
      agree with FFmpeg's, by SNR, on every compiler this project builds with. See
      [docs/building.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/building.md#gold-reference-correctness-gate).
 
@@ -327,11 +327,11 @@ the tests there do.
 layer's *syntax*, not its audio: that decoder gates object decoding on a keyed authenticity tag
 this project ships no key for, so it renders these streams as their 5.1 bed, and FFmpeg
 implements no JOC reconstruction at all. Nothing outside this repository can produce an
-independent object decode of an ac3forge stream. What exists instead is a self-consistency
+independent object decode of an ICL Forge stream. What exists instead is a self-consistency
 series with real resolution — `tools/ci/quality_race.py`'s `objects` mode scores a committed
 five-object scene per object per rate in the nightly run, trended at [Object quality
 trend](https://iainchesworthlabs.github.io/ac3forge/object-quality-trend/). If you are changing
-`ac3::oba::joc` or `ac3::oba`, run it before and after and put both numbers in the commit message;
+`iclforge::oba::joc` or `iclforge::oba`, run it before and after and put both numbers in the commit message;
 it takes seconds and it is the only quality signal that layer has.
 
 Neither decoder covers everything, and the gaps do not overlap: see the [verification-gap

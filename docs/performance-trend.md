@@ -2,7 +2,7 @@
 
 Five separate mechanisms, not one, and it matters which is which:
 
-- **The hard gate**: `ac3perf` (`tests/performance/test_performance.cpp`) asserts that
+- **The hard gate**: `iclforge-perf` (`tests/performance/test_performance.cpp`) asserts that
   each workload, encode or decode, of AC-3, E-AC-3, the Atmos object layer and AC-4
   finishes within twice its real-time budget (`kSlackFactor`): real time is the
   functional requirement, and the second factor is headroom for a runner slower than a
@@ -20,20 +20,20 @@ Five separate mechanisms, not one, and it matters which is which:
   hard-regression verdict is passed to the separate blocking `performance-gate`
   job. No measurement or an approved `perf-regression-approved` label on the
   pull request passes the gate.
-- **This page's whole-frame tables**: `ac3bench` (`tests/performance/bench_encoder.cpp`)
+- **This page's whole-frame tables**: `iclforge-bench` (`tests/performance/bench_encoder.cpp`)
   runs the same configurations for longer (200 frames) and records the actual
   ms/frame number, not just a pass/fail, in the run after each merge to `main`, one
   record per run (a burst of merges is one run). It exists
   to answer a question the hard gate cannot: is throughput quietly drifting slower
   over time even while it keeps passing. The series is Speed: a workload's ms per frame
   against its own frame budget.
-- **This page's per-kernel tables**: `ac3kernelbench`
+- **This page's per-kernel tables**: `iclforge-kernelbench`
   (`tests/performance/kernel_bench.cpp`) times each hot kernel in isolation (ns/call,
   fed real audio through the real windowing + forward MDCT) in the same runs. It
-  answers the question one level below `ac3bench`'s: when a whole-frame number
+  answers the question one level below `iclforge-bench`'s: when a whole-frame number
   drifts, *which stage* moved - without anyone having to reattach a profiler to find
   out.
-- **This page's memory tables**: `ac3membench`
+- **This page's memory tables**: `iclforge-membench`
   (`tests/performance/bench_memory.cpp`) counts what the others time: heap
   allocations and allocator traffic per frame (Allocation per frame), the live bytes
   still held after the steady-state frames (Live growth), and peak RSS,
@@ -59,7 +59,7 @@ The AC-3, E-AC-3 and Atmos encoders are `plain_51` and `plain_51_fast_mdct`,
 `ac4_stereo_decode` and `ac4_51_decode`, which read those encoders' streams. The decode series
 are timed against streams encoded in the same run: a decode number only means something against
 a stream whose rate and tool set are known. By name, `plain_*` and `ac3_*` are AC-3 (`plain_51`
-is `ac3::FrameEncoder` at 5.1, 448 kbit/s), `eac3_*`, `ecpl_*` and `atmos_*` are E-AC-3 (Atmos is
+is `iclforge::FrameEncoder` at 5.1, 448 kbit/s), `eac3_*`, `ecpl_*` and `atmos_*` are E-AC-3 (Atmos is
 joint object coding carried in E-AC-3) and `ac4_*` is AC-4. The memory series name their
 workloads `<codec>_<layout>_encode` and `_decode` (`ac3_51_encode`, `ecpl_51_encode`,
 `atmos_4obj_decode`), with one for enhanced coupling that the timing series lack.
@@ -73,14 +73,14 @@ shared transforms: `ac4_mdct512_forward`, `ac4_imdct512_inverse`, `ac4_fft512_fo
 [Quality trend](quality-trend.md#ac-4-decode-quality).
 
 Every workload is fed real programme material (`tests/golden/audio/reference_51.wav`,
-through `tests/performance/real_audio.hpp`), not the 440 Hz tone `ac3bench` and
-`ac3perf` ran on before PF1. A single stationary tone is not a cheaper version of
+through `tests/performance/real_audio.hpp`), not the 440 Hz tone `iclforge-bench` and
+`iclforge-perf` ran on before PF1. A single stationary tone is not a cheaper version of
 programme material, it is a different workload: its spectrum is one bin wide, so the
 SNR-offset search converges against an allocation almost nothing competes for,
 coupling has near-nothing to share between channels, rematrixing sees a pair that is
 already identical, and the transient detector never fires — so the block-switched
 transform never runs at all. A regression confined to any of those could not move the
-number. `ac3kernelbench` had this rule from the start; PF1 applied it to the other
+number. `iclforge-kernelbench` had this rule from the start; PF1 applied it to the other
 two. The fixture is 78 frames long and the benches run 200, so frame indices wrap;
 the seam that creates lands in the same place on every run.
 
@@ -127,7 +127,7 @@ escape predicate instead.
 
 ## A bench that cannot see a bug class cannot gate it
 
-`ac3kernelbench`'s JOC series originally ran at four objects. The quadratic accessor
+`iclforge-kernelbench`'s JOC series originally ran at four objects. The quadratic accessor
 above moved those rows about 26% — an ordinary-looking optimisation — while moving a
 real 12-object decode 1.8-2.9x. The bench was structurally unable to report the
 difference, because at four objects an O(objects²) term is nearly invisible.
@@ -157,17 +157,17 @@ perturbs an existing series' baseline. That is also why an existing series' name
 not reused for a differently-shaped measurement — a trailing mean over two different
 workloads is a number with no owner.
 
-`tools/ci/append_kernel_history.py` does the same for `ac3kernelbench`'s per-kernel
+`tools/ci/append_kernel_history.py` does the same for `iclforge-kernelbench`'s per-kernel
 numbers (`kernels-develop.jsonl` / `kernels-main.jsonl`, same branch), with the same
 two trailing-baseline tiers - but both tiers are `::warning::` annotations and the
 kernel series **never fails the job**: a micro-kernel's ns/call on a shared CI runner
-is far noisier than a 200-frame whole-frame average, and `ac3perf` plus the
+is far noisier than a 200-frame whole-frame average, and `iclforge-perf` plus the
 whole-frame series already gate anything a user would feel. This page's per-kernel
 tables are where kernel regressions surface. Every series is keyed by its own kernel
 name end to end - a trailing mean over mixed kernels would be a number with no owner,
 the same conflation the quality-trend history once had to be cured of.
 
-`tools/ci/append_memory_history.py` does the same for `ac3membench`'s numbers
+`tools/ci/append_memory_history.py` does the same for `iclforge-membench`'s numbers
 (`memory-develop.jsonl` / `memory-main.jsonl`, same branch), with the same two
 tiers on **two** churn metrics per series - allocations/frame and bytes/frame,
 either one regressing flags the record - and it gates like the whole-frame
@@ -485,7 +485,7 @@ follow the same convention, table-only (no chart to style).
 
 ## Per-kernel trend
 
-Same commits, one level finer: each kernel's ns/call from `ac3kernelbench`, one
+Same commits, one level finer: each kernel's ns/call from `iclforge-kernelbench`, one
 series per kernel. Both directions of both block sizes are covered in both their
 direct and fast forms — `mdct512_forward`/`_fast`, `mdct256_pair`/`_fast`,
 `imdct512_windowed`/`_fast`, `imdct256_pair`/`_fast` — so the ratio between a pair
@@ -608,7 +608,7 @@ decode spends; the bare row is what the oracle costs.
 ## Memory trend
 
 Same runs, a different measure: **Allocation per frame**, each workload's
-heap-allocation count and allocator traffic per frame from `ac3membench`, one
+heap-allocation count and allocator traffic per frame from `iclforge-membench`, one
 series per workload - including the decode paths the timing benches don't
 cover. It counts allocator traffic, not memory in use: a buffer allocated and
 freed every frame counts every time and is held by none. The Δ column is
@@ -632,7 +632,7 @@ exactly how it was found: the gate fired on the merge, and by then the merge
 was the thing it was reporting on. The
 `Memory vs base` job (`tools/ci/compare_memory.py`, in `_compare.yml`, run for a
 merge queue entry that changes `src/`) closes that: it
-builds `ac3membench` at the entry's head and at the commit it is queued on and runs
+builds `iclforge-membench` at the entry's head and at the commit it is queued on and runs
 each once, comparing the same two churn metrics against the same thresholds,
 imported from `append_memory_history.py` so the two gates cannot disagree. One
 run per side is the whole measurement - these counts do not move between runs
@@ -682,7 +682,7 @@ share.
 
 It is one step rather than a drift. Both E-AC-3-family workloads sit flat at
 the old values through every record up to `3aedec41` and flat at the new ones
-from `83546721` (2026-08-25) onward. Bisecting `ac3membench` brackets the
+from `83546721` (2026-08-25) onward. Bisecting `iclforge-membench` brackets the
 step to PR #352's per-channel exponent-run planner: the commit before it
 (`f54ea929`) measures 95.0 allocations/frame for `eac3_51_encode`, and
 `fb58aa62` measures 248.2 (a windows-msvc build - the leg differs from this
@@ -692,7 +692,7 @@ exponent runs through its own encoder.
 The extra churn was a defect rather than the planner's intended cost, and was
 tracked as [#544](https://github.com/iainchesworthlabs/ac3forge/issues/544).
 `encode_run` in `src/ac3/src/encoder/eac3_frame.cpp` assigned the by-value
-return of `ac3::encode_exponents`, which owns a `std::vector`, so each run
+return of `iclforge::encode_exponents`, which owns a `std::vector`, so each run
 reallocated that buffer on every frame; the planner multiplied the number of
 runs from one per channel to one per run per channel. The bench's own columns
 carried the signature. Before the step each encode workload's steady-state
@@ -732,7 +732,7 @@ runs the old numbers on purpose.
 
 Not a trend series — one measured configuration, on the concrete target the
 roadmap names: `arm-none-eabi` cross-compiled for QEMU's `mps2-an385` machine (Cortex-M3,
-soft float, no OS), `AC3FORGE_MINIMAL_DECODER=ON`, `CMAKE_BUILD_TYPE=MinSizeRel`. See
+soft float, no OS), `ICLFORGE_MINIMAL_DECODER=ON`, `CMAKE_BUILD_TYPE=MinSizeRel`. See
 [Building → Minimum-footprint decoder profile](building.md#minimum-footprint-decoder-profile)
 for what the profile changes and why.
 
@@ -765,8 +765,8 @@ or the ceiling before merging. The image had already reached 412,516 bytes by th
 The same thing happened a second time. The largest movement in that re-measurement was a
 relocation rather than growth. AP3's Pimpl sweep (`ee5ff91e`) gave both decoders a
 `struct Impl; std::unique_ptr<Impl> impl_;`
-(both in `src/ac3/include/iclforge/ac3/decoder/decoder.hpp`), so `sizeof(ac3::FrameDecoder)` and
-`sizeof(ac3::Eac3Decoder)` fell from 12,952 and 27,408 bytes to a single 4-byte pointer each, and
+(both in `src/ac3/include/iclforge/ac3/decoder/decoder.hpp`), so `sizeof(iclforge::FrameDecoder)` and
+`sizeof(iclforge::Eac3Decoder)` fell from 12,952 and 27,408 bytes to a single 4-byte pointer each, and
 the state they used to hold in place now lives on the heap. That state came out of automatic
 storage: both decoders are locals in `decode_ac3()` and `decode_eac3()`, and `.bss` was unchanged
 at 237,592 bytes across those two measurements. It has moved since, for unrelated reasons the
@@ -785,7 +785,7 @@ intervening commits.
 | `.bss` (zero-initialised) | 62,217 |
 | **Image total** | **352,101** (343.8 KiB) |
 
-These are `arm-none-eabi-size`'s own columns, which is what `AC3FORGE_MAX_IMAGE_BYTES` gates, so
+These are `arm-none-eabi-size`'s own columns, which is what `ICLFORGE_MAX_IMAGE_BYTES` gates, so
 they group sections rather than list them: `.text` here includes `.init`, `.fini` and
 `.ARM.exidx`, `.data` includes `.init_array` and `.fini_array`, and `.bss` includes `.tbss`. Read
 per-section with `arm-none-eabi-size -A`, `.text` is 289,452, `.data` 388 and `.bss` 62,184.
@@ -909,8 +909,8 @@ a silent fast-path substitution — see the building doc for why.
 |---|---|
 | Peak heap | 237,206 bytes (231.6 KiB), the 7.1.4 fixture folded to stereo; 230,798 as coded, 211,371 with Atmos objects |
 | Retained after teardown | 12 bytes |
-| `sizeof(ac3::FrameDecoder)` | 4 bytes (one `unique_ptr` — see above) |
-| `sizeof(ac3::Eac3Decoder)` | 4 bytes (one `unique_ptr` — see above) |
+| `sizeof(iclforge::FrameDecoder)` | 4 bytes (one `unique_ptr` — see above) |
+| `sizeof(iclforge::Eac3Decoder)` | 4 bytes (one `unique_ptr` — see above) |
 | Caller-owned PCM buffer | none: the probe decodes through the `_by_block` forms and reads the decoders' blocks in place |
 | AC-3 allocations per frame, steady state | 3 |
 | AC-3 2/0 and 1/0 allocations per frame, steady state | 1 |
@@ -995,7 +995,7 @@ made has been destroyed — so not per-frame growth and not a leak. It is 12 byt
 `__cxa_thread_atexit` registration record, for the pointer to enhanced coupling's spectrum scratch,
 the one `thread_local` the library still declares.
 
-It was 34,232 until the probe began calling `ac3::eac3::release_ecpl_scratch()` between fixtures,
+It was 34,232 until the probe began calling `iclforge::eac3::release_ecpl_scratch()` between fixtures,
 and 24 until the per-bin angle buffer stopped being a second `thread_local`. The 34,232 was
 enhanced coupling's 32,768-byte spectrum scratch and its 1,440-byte bin-angle vector, both
 `thread_local` so §E3.5 neither allocates per call nor puts 32 KB on the stack, and therefore
@@ -1103,7 +1103,7 @@ block, all of it software floating point before and integer after.
 
 The two object rows moved by neither step, and that is not the tier's doing.
 JOC's reconstruction runs in `float` in every build of this library, the
-double one included (`recon_scalar_t` in `ac3/oba/joc.hpp`), so an object row
+double one included (`recon_scalar_t` in `iclforge/ac3/oba/joc.hpp`), so an object row
 is a float transform sandwich whatever the decoder's own scalar is; the tier's
 only contact with it is one conversion per matrix coefficient read. Bringing
 it in would be a fixed forward MDCT and a fixed QMF path - a separate piece of
@@ -1153,9 +1153,9 @@ has what the encode direction cannot fit on an ESP32-S3, with the host profile's
 ### The AC-4 decoder
 
 `tools/checks/run_baremetal_probe.sh --ac4` builds the decode profile with the AC-4 decoder in it
-(`AC3FORGE_MINIMAL_AC4=ON`, `AC3FORGE_DECODE_SCALAR=float`; the presets `config-arm-none-eabi-minimal-ac4`
+(`ICLFORGE_MINIMAL_AC4=ON`, `ICLFORGE_DECODE_SCALAR=float`; the presets `config-arm-none-eabi-minimal-ac4`
 and its `-icount` and `config-linux-gcc-minimal-ac4`) and the AC-4 probe in place of the AC-3 and
-E-AC-3 one: AC-4 shares nothing with `ac3::forge`, so it is a build of its own. It decodes six
+E-AC-3 one: AC-4 shares nothing with `iclforge::ac3`, so it is a build of its own. It decodes six
 committed streams (`apps/baremetal/ac4_fixture.hpp`, made by
 `tools/generators/gen_baremetal_ac4_fixture.py`): 2.0 from DEE with A-SPX, 2.0 constructed in
 A-CPL, 5.1 from DEE, 5.1 constructed in A-CPL, DEE's 5.1.4 tones, and DEE's 2.0 at 48 kbit/s,

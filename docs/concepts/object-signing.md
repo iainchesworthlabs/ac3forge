@@ -6,13 +6,13 @@ does one extra thing before it will reconstruct the objects — it checks a keye
 carried in the stream's EMDF *protection* field. Without a valid tag it plays the plain 5.1 bed
 instead of the height-rendered objects (see [Atmos & JOC](atmos-joc.md#two-limitations)).
 
-`ac3::signing` computes that tag.
+`iclforge::signing` computes that tag.
 
 ## The library has no key — you provide it
 
 This is the one thing to take away from this page:
 
-> **`ac3::signing` contains no key, and never will. Every user of the library supplies their own
+> **`iclforge::signing` contains no key, and never will. Every user of the library supplies their own
 > key at runtime — this project's own tools included, and any consumer outside this project
 > equally.** The library cannot sign anything until *you* hand it a key.
 
@@ -29,7 +29,7 @@ key, reads none from the build, and has no way to obtain or derive one. What it 
 A stream signed with a key that does not match a given decoder's simply fails that decoder's check,
 exactly as an unsigned one does. Providing a key that a particular licensed decoder accepts — and
 being entitled to use it — is entirely the library user's responsibility, whether that user is this
-project or someone building on `ac3::signing` elsewhere.
+project or someone building on `iclforge::signing` elsewhere.
 
 !!! note "The tag construction, precisely"
     `tag = HMAC-SHA-256(key, A ‖ B)`, truncated to the primary protection field's width.
@@ -40,7 +40,7 @@ project or someone building on `ac3::signing` elsewhere.
 
 ## Verifying a tag this signer wrote
 
-`ac3::signing` also checks its own tag: `verify_atmos_frame`/`verify_atmos_stream` recompute the
+`iclforge::signing` also checks its own tag: `verify_atmos_frame`/`verify_atmos_stream` recompute the
 same HMAC over the same frame regions and compare it against what a frame's
 `protection_bits_primary` already holds, without modifying anything. That is useful for round-trip
 testing, catching tampering or corruption of this project's own signed test assets, and CI/delivery
@@ -64,7 +64,7 @@ return, rather than a per-frame vector callers would otherwise have to reduce th
 
 ## Using the library (any consumer)
 
-Any code that links `ac3::signing` gets a key-less signer and must construct a key to use it. The
+Any code that links `iclforge::signing` gets a key-less signer and must construct a key to use it. The
 whole API surface is the key type plus the sign/verify calls:
 
 ```cpp
@@ -72,14 +72,14 @@ whole API surface is the key type plus the sign/verify calls:
 #include "iclforge/signing/emdf_atmos_signer.hpp"
 
 // You own the bytes. There is no default, no built-in, no fallback key.
-ac3::signing::SigningKey key{ my_32_key_bytes };          // or:
-auto loaded = ac3::signing::load_signing_key("/path/key"); // file/env resolver
+iclforge::signing::SigningKey key{ my_32_key_bytes };          // or:
+auto loaded = iclforge::signing::load_signing_key("/path/key"); // file/env resolver
 
 // Sign a whole E-AC-3 elementary stream in place; returns the frames signed.
-int n = ac3::signing::sign_atmos_stream(stream, key);
+int n = iclforge::signing::sign_atmos_stream(stream, key);
 
 // Check it back, without modifying the stream.
-ac3::signing::VerifySummary v = ac3::signing::verify_atmos_stream(stream, key);
+iclforge::signing::VerifySummary v = iclforge::signing::verify_atmos_stream(stream, key);
 // v.valid == n, v.mismatch == 0, assuming `stream` and `key` are unchanged.
 ```
 
@@ -90,8 +90,8 @@ in the library reference for the rest of the API surface.
 - `SigningKey` owns the key bytes and **zeroizes them on destruction**; it is never persisted.
 - An empty `SigningKey` (the default) signs nothing — `sign_atmos_stream` returns 0 and leaves the
   stream untouched. There is no way to end up signed without having supplied a key.
-- `load_signing_key()` is a convenience resolver (a path argument, then `AC3FORGE_SIGNING_KEY_FILE`,
-  then an inline `AC3FORGE_SIGNING_KEY`) for tools that take a key from the environment; a library
+- `load_signing_key()` is a convenience resolver (a path argument, then `ICLFORGE_SIGNING_KEY_FILE`,
+  then an inline `ICLFORGE_SIGNING_KEY`) for tools that take a key from the environment; a library
   consumer can ignore it and construct `SigningKey` directly from bytes it obtained however it likes.
 - **Key format: base64, a `0xHH` byte array, or raw bytes.** `decode_signing_key()` (which
   `load_signing_key()` uses, and which you can call yourself on bytes you already hold)
@@ -107,7 +107,7 @@ in the library reference for the rest of the API surface.
   truncated array export looks nothing like a random binary key, and signing with the
   wrong secret this way produces a stream that verifies fine against itself while a real decoder
   rejects it — the exact failure mode this check exists to turn into a clear error instead. So one
-  base64 value works everywhere: as the CI secret, as `AC3FORGE_SIGNING_KEY`, or as a
+  base64 value works everywhere: as the CI secret, as `ICLFORGE_SIGNING_KEY`, or as a
   `signing-key=` file — and a raw binary key file, or a copy-pasted `0xHH` array, decodes to the
   same bytes.
 
@@ -121,12 +121,12 @@ examples of the rule above, not additional machinery.
 Signing is **off unless you both ask for it and provide a key**:
 
 ```bash
-ac3cli atmos out.ec3 8 448 4 6 objects sign-objects signing-key=/path/to/atmos.key
+forge atmos out.ec3 8 448 4 6 objects sign-objects signing-key=/path/to/atmos.key
 ```
 
 - `sign-objects` requests signing.
 - `signing-key=<path>` names the key file (preferred — a path doesn't leak into `ps`/shell history).
-- Or, instead of `signing-key=`, set `AC3FORGE_SIGNING_KEY_FILE` (a path) or `AC3FORGE_SIGNING_KEY`
+- Or, instead of `signing-key=`, set `ICLFORGE_SIGNING_KEY_FILE` (a path) or `ICLFORGE_SIGNING_KEY`
   (the key inline, base64 or raw) — the same resolver order `load_signing_key()` uses.
 
 `sign-objects` with no key anywhere is a hard error (it won't silently ship an unsigned stream); no
@@ -140,13 +140,13 @@ everywhere. See [CLI metadata options](../forge/cli/metadata-options.md).
 of writing one:
 
 ```bash
-ac3cli decode signed.ec3 out.wav verify-objects signing-key=/path/to/atmos.key
+forge decode signed.ec3 out.wav verify-objects signing-key=/path/to/atmos.key
 ```
 
 - Checking is **just as opt-in as signing**: `verify-objects` is off by default, and a `decode` or
   `monitor` invocation with no `verify-objects` plays a signed stream exactly like an unsigned one —
   it never routes through the checker at all. `Eac3Decoder` itself never gains any knowledge of
-  `ac3::signing`; the check runs separately, over the same raw stream bytes, and only when the
+  `iclforge::signing`; the check runs separately, over the same raw stream bytes, and only when the
   operator asks for it.
 - With `verify-objects` and a key, every frame's tag is checked and a summary is reported
   (`N valid, M mismatched, K unsigned`). Any mismatch is a hard failure — the command refuses,
@@ -185,7 +185,7 @@ the app streams the unsigned `bed51`-equivalent, always safe on any receiver.
 This page is **E-AC-3 / EMDF** object signing only. TrueHD uses a different keyed check —
 **Evolution frame protection** (truncated HMAC-SHA-256 over the access unit and the Evolution
 frame). That seam belongs on the TrueHD/MLP branch (`feature/truehd-atmos-support`, roadmap IM5),
-not in `ac3::signing`. Open tools such as truehdd expose it as an optional `--evo-key`; decode
+not in `iclforge::signing`. Open tools such as truehdd expose it as an optional `--evo-key`; decode
 without a key stays unchecked. Any future multi-key verify / licensed soft-gate for MLP should
 target Evolution HMAC, parallel to but separate from the EMDF policy on this page.
 

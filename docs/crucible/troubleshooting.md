@@ -101,7 +101,7 @@ Working as intended. Crucible cannot use the ALSA backend at all — no per-appl
 ALSA wins whenever both sets of headers are present. Reconfigure:
 
 ```bash
-cmake --preset config-linux-gcc -B build/crucible -DAC3FORGE_BUILD_CRUCIBLE=ON -DAC3FORGE_WITH_ALSA=OFF -DAC3FORGE_WITH_PIPEWIRE=ON
+cmake --preset config-linux-gcc -B build/crucible -DICLFORGE_BUILD_CRUCIBLE=ON -DICLFORGE_WITH_ALSA=OFF -DICLFORGE_WITH_PIPEWIRE=ON
 ```
 
 Note what that trades: ALSA's `iec958` passthrough was the first path confirmed against a real
@@ -169,7 +169,7 @@ application's settings; and the last 512 messages the application and its engine
 first, stamped in seconds since the log began.
 
 It withholds the signing key, the path to the key file (whether chosen in Settings or given
-through `AC3FORGE_SIGNING_KEY_FILE`), the value of `AC3FORGE_SIGNING_KEY`, the value of every
+through `ICLFORGE_SIGNING_KEY_FILE`), the value of `ICLFORGE_SIGNING_KEY`, the value of every
 other environment variable, and the executable paths of the applications listed. The report is
 composed from named fields, and none of them is the key or its path; the settings section is a
 fixed list of keys, with anything under `signing/` written as `<withheld>`; and the finished text
@@ -203,12 +203,12 @@ theme under the binary's own name.
 - A script, an interpreter or a command-line player (`python3`, `sh`, `aplay`) has no icon of
   its own, and the monogram is the right picture for it.
 
-`QT_LOGGING_RULES="ac3crucible.icons.debug=true" ac3crucible` prints the theme Crucible found
+`QT_LOGGING_RULES="crucible.icons.debug=true" crucible` prints the theme Crucible found
 and which of the three answered for each application.
 
 ## Getting more out of it
 
 The console runner's `status` line reports the frame's own time beside the loop's cadence,
 underruns, tap backlog and sink depth. The window shows the same. A build with
-`AC3FORGE_ENABLE_TRACY=ON` carries Tracy zones on every stage of the frame loop if you need to
+`ICLFORGE_ENABLE_TRACY=ON` carries Tracy zones on every stage of the frame loop if you need to
 know where the time actually goes.

@@ -1,15 +1,15 @@
 # ---------------------------------------------------------------------------
 # iclforge::admbridge - ADM BWF → JOC bridge, phase 2: maps the ADM object graph
-# iclforge::adm (src/adm) parses onto ac3::oba::AtmosEncoder's input shape.
+# iclforge::adm (src/adm) parses onto iclforge::oba::AtmosEncoder's input shape.
 #
 # A NEW standalone module, not folded into either side it bridges, for two
 # reasons that are each independently sufficient:
 #
 #   - src/adm is documentedly codec-blind (see its own CMakeLists.txt/
 #     header comments) - it does not, and should not, gain a dependency on
-#     iclforge::ac3/ac3::oba just to know what an "object" or "bed" means in
+#     iclforge::ac3/iclforge::oba just to know what an "object" or "bed" means in
 #     JOC/Atmos terms.
-#   - src/ac3 (-> iclforge::ac3, ac3::oba::AtmosEncoder) is always built,
+#   - src/ac3 (-> iclforge::ac3, iclforge::oba::AtmosEncoder) is always built,
 #     unconditionally, by every configuration of this project. It cannot
 #     gain a dependency on the opt-in, Boost-requiring ac3adm without
 #     breaking every default build - the exact reason ac3adm itself defaults
@@ -67,8 +67,8 @@ target_include_directories(iclforge_admbridge_objects
 target_compile_features(iclforge_admbridge_objects PUBLIC cxx_std_23)
 
 # PUBLIC: this module's own public headers (bridge.hpp, coordinates.hpp, iab_bridge.hpp) name
-# types from ac3::oba (iclforge::ac3), iclforge::adm AND (IAB reader phase 3) iclforge::iab in
-# their signatures (ac3::oba::ObjectPath, ac3adm::AdmDocument, ac3iab::IABitstreamFrame, ...), so
+# types from iclforge::oba (iclforge::ac3), iclforge::adm AND (IAB reader phase 3) iclforge::iab in
+# their signatures (iclforge::oba::ObjectPath, iclforge::adm::AdmDocument, iclforge::iab::IABitstreamFrame, ...), so
 # anything linking iclforge::admbridge needs all three transitively - the same PUBLIC-link-its-
 # dependency shape src/signing/CMakeLists.txt uses for iclforge::ac3.
 #

@@ -754,7 +754,7 @@ FGAINCOD_WINDOWS = 5
 
 
 def rate_adaptive_fgaincod(kbps, nfchans):
-    """ac3::rate_adaptive_fgaincod (src/ac3/src/core/bitalloc.cpp), mirrored.
+    """iclforge::rate_adaptive_fgaincod (src/ac3/src/core/bitalloc.cpp), mirrored.
 
     Deliberately a second copy of the line rather than a number typed per
     row: this mode exists to pin the code the ENCODER would have chosen, so
@@ -1548,7 +1548,7 @@ TREND_LEGS = [
 ]
 
 
-# The encoder's own "header room" refusal (ac3::eac3's budget check - see
+# The encoder's own "header room" refusal (iclforge::eac3's budget check - see
 # tools/ci/fuzz_eac3_encoder_space.py's REFUSALS, which names this exact
 # message): a legitimate outcome at the two crossover legs TREND_LEGS' own
 # comment added deliberately, not a defect. eac3-stereo-64's "none" row is
@@ -1838,11 +1838,11 @@ OBJECT_LEGS = [
 # the bed itself, plus reconstruct()'s own pass over that decoded bed. That
 # second delay depends on the domain reconstruct() runs in, and these legs
 # exercise the CLI's default (AtmosConfig::joc_domain / DecoderConfig::
-# joc_domain = ac3::oba::joc::Domain::kQmf, apps/cli/support.hpp), which is
-# ac3::dsp::kQmfDelay = kQmfTaps - kQmfHop = 576 samples (src/ac3/include/
-# ac3/dsp/qmf.hpp), not the 256-sample MDCT round trip the older
+# joc_domain = iclforge::oba::joc::Domain::kQmf, apps/cli/support.hpp), which is
+# iclforge::dsp::kQmfDelay = kQmfTaps - kQmfHop = 576 samples (src/ac3/include/
+# iclforge/dsp/qmf.hpp), not the 256-sample MDCT round trip the older
 # Domain::kMdctBand path used. 256 + 576 = 832.
-# ac3::oba::joc::reconstruction_delay(domain) is the single place either number
+# iclforge::oba::joc::reconstruction_delay(domain) is the single place either number
 # is derived (src/ac3/include/iclforge/ac3/oba/joc.hpp); tests/ac3/oba/test_atmos.cpp
 # calls it rather than hard-coding a figure, and its comment carries the
 # full reasoning. Fixed here rather than searched for by cross-correlation

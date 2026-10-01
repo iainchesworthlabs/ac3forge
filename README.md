@@ -1,4 +1,4 @@
-# ac3forge
+# ICL Forge
 
 <!-- Build & code health. CodeQL, MSVC Code Analysis, Static Analysis and
      SonarCloud run nightly against main, not per PR - see
@@ -29,14 +29,14 @@
 [![C++23](https://img.shields.io/badge/C%2B%2B-23-blue)](docs/building.md)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
-AC3Forge is a clean-room AC-3, E-AC-3, AC-4 and Dolby Atmos codec, written from the published
+ICL Forge is a clean-room AC-3, E-AC-3, AC-4 and Dolby Atmos codec, written from the published
 standards in C++23, and the applications built on it.
 
 | Component | What it is | Docs |
 |---|---|---|
-| **The library** — `ac3::forge` | Encodes and decodes AC-3 and E-AC-3, including Atmos objects through JOC, and decodes and encodes AC-4. Includes container, metadata, quality, and platform-audio modules, with C, Python, Rust, and WebAssembly interfaces that decode and encode AC-4 as well as AC-3 and E-AC-3. | [Library](docs/library/index.md), [capabilities](docs/library/capabilities.md) |
-| **Forge** — `ac3cli` + `ac3gui` | CLI and GUI for encoding, decoding, inspection, quality checks, and live audio. `ac3cli` reads and writes AC-4, and so does the GUI: its QC, player, and object pages read it, and its encoder page and Objects tab write it, objects included; substreams, presentations, and the other layouts stay with the command line. | [Forge](docs/forge/index.md), [CLI](docs/forge/cli/index.md), [GUI](docs/forge/gui/index.md) |
-| **Crucible** — `ac3crucible` | Captures desktop applications separately and positions them in an Atmos scene. Runs on Windows and Linux; macOS code builds in CI but has not run with audio hardware. | [Crucible](docs/crucible/index.md), [install](docs/crucible/install.md) |
+| **The library** — `iclforge::ac3` | Encodes and decodes AC-3 and E-AC-3, including Atmos objects through JOC, and decodes and encodes AC-4. Includes container, metadata, quality, and platform-audio modules, with C, Python, Rust, and WebAssembly interfaces that decode and encode AC-4 as well as AC-3 and E-AC-3. | [Library](docs/library/index.md), [capabilities](docs/library/capabilities.md) |
+| **Forge** — `forge` + `forge-gui` | CLI and GUI for encoding, decoding, inspection, quality checks, and live audio. `forge` reads and writes AC-4, and so does the GUI: its QC, player, and object pages read it, and its encoder page and Objects tab write it, objects included; substreams, presentations, and the other layouts stay with the command line. | [Forge](docs/forge/index.md), [CLI](docs/forge/cli/index.md), [GUI](docs/forge/gui/index.md) |
+| **Crucible** — `crucible` | Captures desktop applications separately and positions them in an Atmos scene. Runs on Windows and Linux; macOS code builds in CI but has not run with audio hardware. | [Crucible](docs/crucible/index.md), [install](docs/crucible/install.md) |
 | **Hearth** | Plays streams through speakers, a receiver, or ESP32 network sinks. The desktop player plays to local outputs and to network sinks, and plays AC-4. The ESP32-S3 and ESP32-C6 sinks play in Sendspin groups on hardware. On the ESP32-P4, `hearth_sink` plays AC-4 from an HTTP source on a board; no ESP32 sink takes AC-4 in a group yet. | [Hearth](docs/hearth/index.md) |
 
 The AC-3, E-AC-3 and AC-4 codecs link no other codec library, FFmpeg included. The FFmpeg
@@ -93,10 +93,10 @@ or objects. See
 [Validation: AC-4](docs/verification.md#ac-4). No listening panel has been run; published quality
 values are waveform or model-based measures.
 
-**AC-4 containers and receivers.** Matroska registers no codec ID for AC-4, so `ac3cli mkv` refuses
+**AC-4 containers and receivers.** Matroska registers no codec ID for AC-4, so `forge mkv` refuses
 it; MP4, CMAF and MPEG-TS carry it. No receiver found accepts AC-4 over IEC 61937, so no AC-4 burst
 has reached hardware, and WASAPI, PipeWire and Core Audio have no AC-4 passthrough format:
-`ac3cli play` and Hearth decode AC-4 to PCM.
+`forge play` and Hearth decode AC-4 to PCM.
 
 [Validation](docs/verification.md) covers object playback and independent checking in full: what
 object reconstruction means in practice, and which streams FFmpeg can check independently versus
@@ -111,17 +111,17 @@ Beyond that:
 
 | Target | What runs there | Under emulation | Real hardware |
 |---|---|:---:|:---:|
-| Windows x64 | Library, `ac3cli`, `ac3gui`, Hearth, Crucible | — | ✅¹ |
-| Linux x64 / arm64 | Library, `ac3cli`, `ac3gui`, Hearth, Crucible | — | ✅² |
+| Windows x64 | Library, `forge`, `forge-gui`, Hearth, Crucible | — | ✅¹ |
+| Linux x64 / arm64 | Library, `forge`, `forge-gui`, Hearth, Crucible | — | ✅² |
 | Raspberry Pi 4B | Everything Linux arm64 runs | — | ✅³ |
-| macOS arm64 / Intel | Library, `ac3cli`, `ac3gui`, Hearth; Crucible compiles | — | ✗⁴ |
+| macOS arm64 / Intel | Library, `forge`, `forge-gui`, Hearth; Crucible compiles | — | ✗⁴ |
 | Android (NVIDIA Shield) | Shield Atmos Demo only, sideload-only | — | ✅⁵ |
 | WebAssembly | Decode and encode AC-3 and E-AC-3 in a browser page; the AC-4 module builds and has no page | — | ✅⁶ |
 | ESP32-S3 | Hearth (`hearth_sink` Sendspin player, `i2s_player`); decode (every layout/tool, Atmos objects) or encode (2/0, 5.1); reusable ESP-IDF component | ✅ correct | ✅⁷ |
 | ESP32-C3 | Decode only, fixed-point tier (no FPU), same component | ✅ correct | —⁸ |
 | ESP32-C6 | Decode, fixed-point tier, same component; timed on a board with and without Wi-Fi | — | ✅⁹ |
-| ESP32-P4 | Decode in the float tier, same component, with AC-4 decode behind `CONFIG_AC3FORGE_AC4`; `hearth_sink` on revision 1.x boards | — | ✅¹⁰ |
-| Bare metal (`arm-none-eabi`) | Decode or encode, `ac3::forge_minimal`; AC-4 decode in a probe of its own | ✅ correct | —¹¹ |
+| ESP32-P4 | Decode in the float tier, same component, with AC-4 decode behind `CONFIG_ICLFORGE_AC4`; `hearth_sink` on revision 1.x boards | — | ✅¹⁰ |
+| Bare metal (`arm-none-eabi`) | Decode or encode, `iclforge::ac3_minimal`; AC-4 decode in a probe of its own | ✅ correct | —¹¹ |
 
 1. Capture, monitor playback, `spatial` rendering and exclusive-mode IEC 61937 passthrough
    (AC-3, E-AC-3 and signed Atmos) are all confirmed, an Onkyo TX-RZ740 over HDMI.
@@ -162,7 +162,7 @@ from vcpkg: 6.5+ for the GUI, 6.8+ for Hearth and Crucible. Windows needs Visual
 [vcpkg](https://github.com/microsoft/vcpkg) checkout with `VCPKG_ROOT` set, which the desktop
 presets read, supplies fmt and Catch2, the libraries of the default Hearth build, and Boost and Tracy
 for the opt-in `adm` and `profiling` features. Configured without a preset, fmt and Catch2 fall
-back to a `FetchContent` build from source, and Hearth needs `-DAC3FORGE_BUILD_HEARTH=OFF`
+back to a `FetchContent` build from source, and Hearth needs `-DICLFORGE_BUILD_HEARTH=OFF`
 unless its libraries are installed another way.
 
 ```bash
@@ -172,7 +172,7 @@ ctest --preset test-windows-msvc-debug
 ```
 
 Linux follows the same shape (`config-linux-gcc-debug`, etc.), with the GUI opt-in via
-`-DAC3FORGE_BUILD_GUI=ON` rather than on by default. See
+`-DICLFORGE_BUILD_GUI=ON` rather than on by default. See
 [Quick start](docs/quickstart.md) for the shortest path and
 [Building from source](docs/building.md) for the rest — the full preset list, building without
 Qt, packaging, and per-platform notes. Cutting a release is covered in
@@ -181,14 +181,14 @@ Qt, packaging, and per-platform notes. Cutting a release is covered in
 ## Using it
 
 ```bash
-ac3cli encode in.wav out.ac3 448 couple
-ac3cli ac4-encode in.wav out.ac4 192
-ac3cli decode out.ac4 out.wav
+forge encode in.wav out.ac3 448 couple
+forge ac4-encode in.wav out.ac4 192
+forge decode out.ac4 out.wav
 ```
 
-`ac3cli`'s commands cover encoding, decoding, muxing, inspection, QC and live capture, for AC-3,
+`forge`'s commands cover encoding, decoding, muxing, inspection, QC and live capture, for AC-3,
 E-AC-3 and AC-4; run it with no arguments for the full listing.
-`ac3gui` is a Qt Quick front end over the same library: file and live-capture encoding, a plan
+`forge-gui` is a Qt Quick front end over the same library: file and live-capture encoding, a plan
 view for placing objects, channel-level metering, QC, a stream player and an object inspector.
 AC-4 works in file encoding (objects included), QC, the player and the inspector, and is refused
 in a live session. The pair is [Forge](docs/forge/index.md).
@@ -201,7 +201,7 @@ Quality is measured, not asserted, and checked six independent ways — a normat
 decoder, FFmpeg as an external oracle, independent Python transcriptions of the spec, Dolby's own
 tooling, fuzzing in both directions, and an encoder/decoder mirror self-check — all
 platform-independent, since every coding decision Forge or Crucible makes is a call into
-`ac3::forge`, or into the AC-4 libraries for AC-4. What each check reaches and where it runs out:
+`iclforge::ac3`, or into the AC-4 libraries for AC-4. What each check reaches and where it runs out:
 [Validation](docs/verification.md). AC-4 is checked against Dolby Encoding Engine's streams,
 MediaInfo's readings, librempeg's decoder and a second transcription of its syntax:
 [Validation: AC-4](docs/verification.md#ac-4).
@@ -224,50 +224,50 @@ and where the raw-pointer boundaries are, the per-access-unit resource limits, a
 
 ```
 # the library — src/ is installable, apps/ consumes it and never the reverse
-src/ac3/      ac3::forge — the AC-3, E-AC-3 and Atmos codec, GUI-free
-src/capi/       ac3forge_c — a plain-C11 surface over the AC-3, E-AC-3 and AC-4 encode/decode
+src/ac3/      iclforge::ac3 — the AC-3, E-AC-3 and Atmos codec, GUI-free
+src/capi/       iclforge_c — a plain-C11 surface over the AC-3, E-AC-3 and AC-4 encode/decode
                 cores, for bindings and callers that do not link C++23
-src/admbridge/  ac3::admbridge — maps the ADM object graph src/adm parses onto the Atmos
+src/admbridge/  iclforge::admbridge — maps the ADM object graph src/adm parses onto the Atmos
                 encoder's input
-src/signing/    ac3::signing — EMDF object signing, key supplied at runtime
-src/matroska/   matroska::matroska — a standalone MKV muxer, no ac3::forge dependency
-src/mp4/        mp4::mp4 — a standalone MP4/ISOBMFF muxer plus fMP4/CMAF + HLS/DASH, no ac3::forge dependency
-src/mpegts/     mpegts::mpegts — a standalone MPEG-2 Transport Stream muxer, no ac3::forge dependency
-src/adm/     ac3adm::ac3adm — BW64/RF64 + Audio Definition Model reader (opt-in, needs Boost)
-src/iab/     ac3iab::ac3iab — a standalone SMPTE ST 2098-2 (IAB) bitstream reader, codec-blind
-src/ac4/        ac4::ac4 — a standalone AC-4 sync frame/TOC/presentation/substream inspector
-src/ac4dec/     ac4::decoder — an AC-4 decoder, from ETSI TS 103 190-1 and -2; no ac3::forge
+src/signing/    iclforge::signing — EMDF object signing, key supplied at runtime
+src/matroska/   iclforge::matroska — a standalone MKV muxer, no iclforge::ac3 dependency
+src/mp4/        iclforge::mp4 — a standalone MP4/ISOBMFF muxer plus fMP4/CMAF + HLS/DASH, no iclforge::ac3 dependency
+src/mpegts/     iclforge::mpegts — a standalone MPEG-2 Transport Stream muxer, no iclforge::ac3 dependency
+src/adm/     iclforge::adm — BW64/RF64 + Audio Definition Model reader (opt-in, needs Boost)
+src/iab/     iclforge::iab — a standalone SMPTE ST 2098-2 (IAB) bitstream reader, codec-blind
+src/ac4/        iclforge::ac4 — a standalone AC-4 sync frame/TOC/presentation/substream inspector
+src/ac4dec/     iclforge::ac4dec — an AC-4 decoder, from ETSI TS 103 190-1 and -2; no iclforge::ac3
                 dependency
-src/ac4enc/     ac4::encoder — an AC-4 encoder, from the same standards; no ac3::forge dependency
-src/ac4core/    ac4::core — the tables and transforms the AC-4 decoder and encoder share, a static
+src/ac4enc/     iclforge::ac4enc — an AC-4 encoder, from the same standards; no iclforge::ac3 dependency
+src/ac4core/    iclforge::ac4core — the tables and transforms the AC-4 decoder and encoder share, a static
                 library with no headers of its own
-src/arithmetic/ ac3::arithmetic — header-only: Fixed32, the project's own float functions and the
-                SIMD seam that ac3::forge and ac4::core share; built in-tree, not installed
-src/iamf/       iamf::iamf — a standalone IAMF v1.1 OBU/ISOBMFF writer, fed from an E-AC-3 decode
-src/sendspin/   ac3::sendspin — Sendspin player and server for Hearth (desktop tools and the
+src/arithmetic/ iclforge::arithmetic — header-only: Fixed32, the project's own float functions and the
+                SIMD seam that iclforge::ac3 and iclforge::ac4core share; built in-tree, not installed
+src/iamf/       iclforge::iamf — a standalone IAMF v1.1 OBU/ISOBMFF writer, fed from an E-AC-3 decode
+src/sendspin/   iclforge::sendspin — Sendspin player and server for Hearth (desktop tools and the
                 ESP32 sink); built with the hearth feature, not as part of the codec library
-python/         the ac3forge PyPI package — pybind11 bindings straight onto ac3::forge and the
+python/         the iclforge PyPI package — pybind11 bindings straight onto iclforge::ac3 and the
                 AC-4 libraries
-js/             ac3forge-wasm-decoder — the npm streaming decoder package (AudioWorklet + Worker),
+js/             iclforge-wasm-decoder — the npm streaming decoder package (AudioWorklet + Worker),
                 with a typed wrapper for the AC-4 WebAssembly module
-rust/           ac3forge-sys and ac3forge — Rust crates over the C API in src/capi
+rust/           iclforge-sys and iclforge — Rust crates over the C API in src/capi
 examples/       the programs docs/library/ is written from
 fuzz/           libFuzzer harnesses over untrusted-input entry points (Clang only, off by
                 default) — see fuzz/README.md
-apps/baremetal/ ac3probe — the minimum-footprint probes (AC-3 and E-AC-3 decode, the encoders,
+apps/baremetal/ iclforge-probe — the minimum-footprint probes (AC-3 and E-AC-3 decode, the encoders,
                 the AC-4 decoder), cross-compiled for arm-none-eabi and run under QEMU, or built
                 natively on the host
 
 # Forge — the CLI and the GUI, built and packaged as one thing
-apps/cli/       ac3cli — command-line front end
-apps/gui/       ac3gui — Qt Quick front end (QML module "Ac3Forge")
+apps/cli/       forge — command-line front end
+apps/gui/       forge-gui — Qt Quick front end (QML module "ForgeGui")
 apps/common/    the recording sink, fMP4 folder writer, container input and AC-4 encode and object
                 steps the CLI and GUI compile in directly, and Hearth's engine in part; no
                 library target of its own
 apps/notices/   the NOTICES.txt and LICENSE.txt that Forge's packages install
 
 # Crucible — the desktop application and its Windows driver
-apps/crucible/  AC3Forge Crucible: the engine, the ac3crucible-run runner, the ac3crucible
+apps/crucible/  Crucible: the engine, the crucible-run runner, the crucible
                 window, its translations and packaging, and the spikes the plan was measured
                 with. Windows and Linux run it; the macOS platform half beside them, under
                 engine/platform/macos and ui/platform/macos, compiles and is exercised by the
@@ -278,13 +278,13 @@ apps/linux/     the Linux-only tooling of Crucible: a scripted VM guest built to
                 crash; not built or packaged
 
 # Hearth — desktop player and ESP32 Sendspin sinks
-apps/hearth/    ac3hearth engine and window, ac3hearth-testsink, ac3hearth-testserver, ac3hearth-render
+apps/hearth/    hearth engine and window, hearth-testsink, hearth-testserver, hearth-render
 esp-idf/        ESP-IDF component and examples: hearth_sink (Sendspin player) and i2s_player
 esphome/        ESPHome external component wrapping the ESP32-S3 decoder; not a media_player yet
 
 # beside those — demonstrations of the library, not products of their own
 apps/android/   Shield Atmos Demo — Android TV app, live Atmos object motion over HDMI
-apps/wasm/      the browser demos, decode and encode, over ac3::forge compiled to WASM, and the
+apps/wasm/      the browser demos, decode and encode, over iclforge::ac3 compiled to WASM, and the
                 AC-4 module
 
 # shared, owned by none of them
@@ -337,7 +337,7 @@ Product documentation starts at [Forge](docs/forge/index.md),
 
 Copyright (C) 2026 Iain Chesworth.
 
-ac3forge is free software: you can redistribute it and/or modify it under the terms of the GNU
+ICL Forge is free software: you can redistribute it and/or modify it under the terms of the GNU
 General Public License as published by the Free Software Foundation, either version 3 of the
 License, or (at your option) any later version. It is distributed in the hope that it will be
 useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or

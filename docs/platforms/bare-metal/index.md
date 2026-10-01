@@ -1,6 +1,6 @@
 # Bare metal
 
-Five targets, one profile: `ac3::forge_minimal`, the minimum-footprint build of the codec — one
+Five targets, one profile: `iclforge::ac3_minimal`, the minimum-footprint build of the codec — one
 static library, no exceptions, no RTTI, decode-only or encode-only, and none of the direct-form
 transform tables. What differs between the targets is the part and, on parts with no
 floating-point unit, the arithmetic tier the decoder runs in
@@ -8,7 +8,7 @@ floating-point unit, the arithmetic tier the decoder runs in
 
 AC-4 is built from its own libraries (`src/ac4`, `src/ac4core`, `src/ac4dec`), the decoder only:
 no bare-metal build has the AC-4 encoder. The [Cortex-M3](cortex-m3.md#status) leg probes it, and the
-[ESP32-P4](esp32-p4.md#ac-4) decodes it behind `CONFIG_AC3FORGE_AC4`. It is not built for the
+[ESP32-P4](esp32-p4.md#ac-4) decodes it behind `CONFIG_ICLFORGE_AC4`. It is not built for the
 ESP32-S3, the ESP32-C6 or the ESP32-C3 yet: those are phases D14c and D14d of
 [`planning/ac4.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/ac4.md#d14-ac-4-on-the-esp32s).
 No ESP32 sink takes AC-4 in a Sendspin group either.

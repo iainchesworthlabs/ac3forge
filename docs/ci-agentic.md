@@ -106,7 +106,7 @@ once per entry, on GitHub's `windows-latest`. Entries build in parallel and merg
 the `merge-queue-main` ruleset (see [branch protection](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/branch-protection.md)).
 
 An entry that changes `src/` also runs two comparisons ([`_compare.yml`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/_compare.yml)):
-the encoder's speed (`ac3bench` and `ac3kernelbench`) and its heap churn (`ac3membench`), built and
+the encoder's speed (`iclforge-bench` and `iclforge-kernelbench`) and its heap churn (`iclforge-membench`), built and
 measured at the commit the entry is queued on, which is main or the entry ahead of it, and at the
 entry's head. A workload that takes twice as long, or whose heap churn at least doubles, fails the
 entry, unless its pull request carries the `perf-regression-approved` or

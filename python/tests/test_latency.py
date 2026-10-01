@@ -57,7 +57,7 @@ def test_ac3_round_trip_shifts_the_signal_by_the_transform_term():
     assert decoder.latency_samples == 0
 
 
-# The §7.1 QMF filterbank's own analysis+synthesis delay (ac3::dsp::kQmfDelay =
+# The §7.1 QMF filterbank's own analysis+synthesis delay (iclforge::dsp::kQmfDelay =
 # 576, not exposed through the Python bindings) on top of the bed's transform
 # term: JOC reconstruction pulls objects back out of the decoded bed in a
 # 64-band complex QMF domain, not the MDCT's. 576 is spelled out here rather

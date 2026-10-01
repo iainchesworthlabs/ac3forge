@@ -161,7 +161,7 @@ metadata options (any order, after the positional arguments):
                     signing-key= instead of just playing it - a mismatch refuses the command;
                     omitted (the default) decodes signed and unsigned streams alike, unchecked
   signing-key=<path>  the key file sign-objects/verify-objects use (or
-                    AC3FORGE_SIGNING_KEY_FILE / AC3FORGE_SIGNING_KEY)
+                    ICLFORGE_SIGNING_KEY_FILE / ICLFORGE_SIGNING_KEY)
   verify            eac3-encode: decode every access unit as it is encoded and diff the
                     decoder's model against the encoder's own, refusing the run at the first
                     disagreement - off by default, since it roughly doubles the work
@@ -196,7 +196,7 @@ for no make-up. Both apply to
 E-AC-3 decode too, matching the legacy AC-3 decoder — `.ec3` input no longer accepts and silently
 ignores them. `fast-imdct=off` and `mode=` select the inverse transform's evaluation and apply to
 both codecs' decode alike. `monitor` and `spatial` take the same four: all three commands build
-one `ac3::DecoderConfig` from these options and hand it to the same decoder. AC-4 has neither
+one `iclforge::DecoderConfig` from these options and hand it to the same decoder. AC-4 has neither
 `drc=` nor `heavy`: its decoder takes an `output-level=` and its own `drcmode=` names (see
 [AC-4 options](#ac-4-options)), and `decode` given `drc=` or `heavy` with an AC-4 stream names
 them in a warning and ignores them.
@@ -218,7 +218,7 @@ The two gate tokens exist because the two formats carry the group differently:
   applied for their originally anticipated purpose (§D1), so Annex D spends them on `xbsi1`
   (`dmixmod` plus separate Lt/Rt and Lo/Ro centre and surround levels) and `xbsi2` (`dsurexmod`,
   `dheadphonmod`, `adconvtyp`). It is implied by `dmixmod=`, by any of the four level tokens, and
-  by the three `xbsi2` tokens — so `ac3cli encode in.wav out.ac3 384 51 dmixmod=ltrt` writes a
+  by the three `xbsi2` tokens — so `forge encode in.wav out.ac3 384 51 dmixmod=ltrt` writes a
   `bsid`-6 stream without being asked twice. `timecode=` and `annexd` are refused together: they
   are the same 28 bits. `dmixmod=` offers Table D2.2's three defined codes; its reserved `11`
   has no token, and the library will not write it.
@@ -237,7 +237,7 @@ language table it once indexed having been dropped in favour of the signalling l
 ISO 639-2 code.
 
 ```bash
-ac3cli encode in.wav out.ac3 384 51 bsmod=vi mixlevel=105 roomtyp=large copyright dmixmod=ltrt ltrtcmixlev=-1.5 dsurexmod=ex adconvtyp=hdcd
+forge encode in.wav out.ac3 384 51 bsmod=vi mixlevel=105 roomtyp=large copyright dmixmod=ltrt ltrtcmixlev=-1.5 dsurexmod=ex adconvtyp=hdcd
 ```
 
 That is an AC-3 visually-impaired associated service, mixed at 105 dB SPL in a large X-curve
@@ -259,7 +259,7 @@ sends whichever of `extmix=`/`auxmix=`/`speechmix=` are given inside a length-pr
 Naming any of them turns `mixmeta` on.
 
 ```bash
-ac3cli eac3-encode in.wav out.ec3 448 none 51 pgmscl=-6 extpgmscl=+3 \
+forge eac3-encode in.wav out.ec3 448 none 51 pgmscl=-6 extpgmscl=+3 \
     mixdef=ext premixcmp=dynrng:external:0 extmix=0,2,0,off,off,15 \
     blkmixcfg=3,-,7,-,-,31 bsmod=commentary mixlevel=98 roomtyp=small
 ```
@@ -300,7 +300,7 @@ tools:  Annex E coding tools, '+'-joined — none | cpl | spx | aht | tpn |
 ```
 
 The tool set is the fourth positional argument, not an `=` option. Example:
-`ac3cli eac3-encode in.wav out.ec3 192 cpl+spx:5+aht:0` turns on coupling (auto band edge),
+`forge eac3-encode in.wav out.ec3 192 cpl+spx:5+aht:0` turns on coupling (auto band edge),
 spectral extension pinned to band 5, and AHT with GAQ off; `cpl+ecpl+tpn` in the same slot turns
 on enhanced coupling (auto band edge) and transient pre-noise processing together — `ecpl` and
 `tpn` are independent tools, not alternatives to each other or to `spx`/`aht`, so any
@@ -308,7 +308,7 @@ combination the tools argument accepts is legal here. `all` does not currently i
 `tpn`; name them explicitly to get either. Use `nodelta` in this positional argument, such as
 `cpl+nodelta`; `delta=off` is the command-wide option spelling.
 
-`ac3cli eac3-encode in.wav out.ec3 192 cpl+numblkscod:1` couples and halves the syncframe to two
+`forge eac3-encode in.wav out.ec3 192 cpl+numblkscod:1` couples and halves the syncframe to two
 blocks (10.7 ms) — useful where 32 ms of encode latency is too much (live monitoring, a
 round-trip over a network link) at the cost of the bsi/audfrm header repeating three times as
 often for the same audio, which comes straight out of the mantissas at a fixed bit rate.
@@ -344,14 +344,14 @@ vbr (eac3-encode only): off | q:0..1[,min:kbps][,max:kbps]
 
 There are two rate controls here, named by the leading token.
 
-**`q:` — plain VBR.** `ac3cli eac3-encode in.wav out.ec3 192 none stereo q:0.4,max:320` encodes at
+**`q:` — plain VBR.** `forge eac3-encode in.wav out.ec3 192 none stereo q:0.4,max:320` encodes at
 quality 0.4, capped at 320 kbps whenever the content would otherwise ask for more; `bitrate_kbps`
 (192 here) still drives the coupling/spx band-edge defaults the way it always has, since VBR has
 no fixed target rate to hand them. What quality 0.4 actually costs, and whether it beats CBR at
 that cost, is measured in
 [E-AC-3 rate control: what VBR and ABR are worth](../../concepts/ac3-eac3.md#e-ac-3-rate-control-what-vbr-and-abr-are-worth).
 
-**`avg:` — average-rate (ABR).** `ac3cli eac3-encode in.wav out.ec3 192 none stereo avg:192`
+**`avg:` — average-rate (ABR).** `forge eac3-encode in.wav out.ec3 192 none stereo avg:192`
 delivers a stream that averages 192 kbps over the long run while each frame's size still follows
 the content. The encoder holds one SNR offset across frames and steers it — up while the stream is
 running under its target, down while it is over — with a sliding-window reservoir underneath as a
@@ -436,7 +436,7 @@ object slots rather than to file channels (see
 [`objects=` and `map=`](#objects-and-map-modeatmos)).
 
 With exactly one source (no `src=` at all), `map=` is not needed: the existing automatic
-single-source panning applies, byte-identical to a plain `ac3cli encode`/`eac3-encode` invocation
+single-source panning applies, byte-identical to a plain `forge encode`/`eac3-encode` invocation
 that predates this option — omitting `map=` is defined to behave exactly as if `src=`/`map=` did
 not exist. With more than one source, `map=` becomes mandatory: automatic panning has no defined
 meaning across several files, so every loaded channel needs an explicit entry (or an explicit
@@ -462,7 +462,7 @@ is not dropped but becomes an object held at that speaker, and an LFE row the LF
 [AC-4 objects from a WAV](commands.md#ac-4-objects-from-a-wav).
 
 ```bash
-ac3cli atmos-encode stems.wav out.ec3 448 src=vo.wav \
+forge atmos-encode stems.wav out.ec3 448 src=vo.wav \
     map=0.0:obj,0.1:obj@-3,0.2-3:objm,1.0:obj,1.1:none
 ```
 
@@ -480,7 +480,7 @@ programme, or, for `obj`/`objm`, into that object's own plane as it is assembled
 trim, the same as an explicit `@0`.
 
 ```bash
-ac3cli eac3-encode roundtrip-stereo.wav out.ec3 384 none 51 \
+forge eac3-encode roundtrip-stereo.wav out.ec3 384 none 51 \
     src=roundtrip-51.wav \
     map=0.0:C,0.1:none,1.0:L,1.1:R@-3,1.2:none,1.3:LFE,1.4:Ls,1.5:Rs \
     offset=1:2.5
@@ -500,7 +500,7 @@ it contains. `offset=` applies as silence, not truncation: the programme's overa
 cover whichever source ends latest once every offset is applied, not just the longest source's own
 raw length, so a delayed source is never cut short to fit. `<sourceIndex>` uses the same numbering
 `src=` establishes (`0` is the primary positional file, `1..N` are `src=` in the order given), and
-works with a single source too — `ac3cli encode in.wav out.ac3 384 51 offset=0:2.5` needs no
+works with a single source too — `forge encode in.wav out.ac3 384 51 offset=0:2.5` needs no
 `src=`/`map=` at all. Omitting `offset=` for a source (or giving it `0` seconds) behaves exactly as
 it always has.
 
@@ -515,7 +515,7 @@ actually reaches the stream.
 In the GUI, a full-bandwidth channel explicitly assigned onto `LFE`/`LFE2` is sent through a
 120 Hz low-pass rather than passed through untouched — an explicit assignment states raw content
 for that position, and a real subwoofer (and the LFE channel's own +10 dB mixing headroom)
-assumes it only ever carries deep bass. `ac3cli` does not filter: its `map=` routing is a pure
+assumes it only ever carries deep bass. `forge` does not filter: its `map=` routing is a pure
 gain matrix, so content mapped onto `LFE`/`LFE2` (e.g. `1.3:LFE` above) passes through
 unfiltered. Neither front end touches a source's own dedicated LFE channel reaching `LFE`
 through automatic single-source routing (no `src=`/`map=` at all) — that stays bit-exact, since
@@ -560,7 +560,7 @@ playable file rather than nothing.
 | Value | What it writes | Byte-identical to |
 |---|---|---|
 | `raw` (default) | The bare `.ac3`/`.ec3` elementary stream, or an `.ac4` one's sync frames with their CRC | the frames, concatenated |
-| `mkv` (alias `matroska`) | Matroska, via `matroska::Writer`'s unknown-size Segment | `mkv` over the same frames, modulo the streaming Segment header |
+| `mkv` (alias `matroska`) | Matroska, via `iclforge::matroska::Writer`'s unknown-size Segment | `mkv` over the same frames, modulo the streaming Segment header |
 | `ts` (alias `mpegts`) | MPEG-2 Transport Stream, DVB profile | `ts` over the same frames |
 | `spdif` | IEC 61937 bursts inside a PCM16 WAV carrier | `spdif` over the same frames |
 | `fmp4` (alias `cmaf`) | A directory of fragmented MP4/CMAF segments plus HLS/DASH manifests, via `Fmp4FolderWriter` (`apps/common/fmp4_folder_writer.hpp`) | see below |
@@ -591,11 +591,11 @@ media, so an `<n>` below 3 is accepted but not something a player will enjoy. Th
 lists every segment — right for a session whose folder will be served whole afterwards.
 
 ```bash
-ac3cli record out.mkv 30 192 0 container=mkv
-ac3cli record out.ts  30 448 0 container=ts layout=51
-ac3cli live out.wav 0 30 448 -2 -2 atmos container=spdif
-ac3cli live out.mkv 0 30 448 -2 -2 atmos container=mkv
-ac3cli live out_dir 0 30 448 -2 -2 atmos container=fmp4 fmp4-window=20
+forge record out.mkv 30 192 0 container=mkv
+forge record out.ts  30 448 0 container=ts layout=51
+forge live out.wav 0 30 448 -2 -2 atmos container=spdif
+forge live out.mkv 0 30 448 -2 -2 atmos container=mkv
+forge live out_dir 0 30 448 -2 -2 atmos container=fmp4 fmp4-window=20
 ```
 
 ### `layout=` and `codec=`
@@ -630,10 +630,10 @@ shape — a 5.1 E-AC-3 bed plus its object layer — so passing either alongside
 than silently ignored.
 
 ```bash
-ac3cli record out.ec3 30 448 0 layout=51
-ac3cli record out.ec3 30 384 0 layout=stereo codec=eac3
-ac3cli live out.ec3 0 30 448 -1 -1 channels layout=714
-ac3cli record out.ac4 30 192 0 layout=51 codec=ac4 drc=film-light
+forge record out.ec3 30 448 0 layout=51
+forge record out.ec3 30 384 0 layout=stereo codec=eac3
+forge live out.ec3 0 30 448 -1 -1 channels layout=714
+forge record out.ac4 30 192 0 layout=51 codec=ac4 drc=film-light
 ```
 
 ### `watchdog=`
@@ -675,7 +675,7 @@ the encoder — so a two-device `atmos` session simply has more capture channels
 to. The measured drift is printed once, in signed parts-per-million, when the session ends.
 
 ```bash
-ac3cli live out.ec3 0 30 448 -2 -2 atmos capture2=1
+forge live out.ec3 0 30 448 -2 -2 atmos capture2=1
 ```
 
 Captures 30 seconds of Atmos-mode E-AC-3 from device 0 (the clock master) plus device 1
@@ -705,7 +705,7 @@ capture devices as sources: source `0` is `capture_device`, source `1` is `captu
 # Four objects: capture channels 0 and 1 on their own, 2-3 folded to one, and
 # capture2's first channel as the fourth. Two more slots are allocated and left
 # silent, so the stream declares six objects throughout.
-ac3cli live out.ec3 0 60 448 -2 -2 atmos capture2=1 objects=6 \
+forge live out.ec3 0 60 448 -2 -2 atmos capture2=1 objects=6 \
     map=0.0:obj,0.1:obj@-3,0.2-0.3:objm,0.4:none,0.5:none,1.0:obj,1.1:none
 ```
 
@@ -728,8 +728,8 @@ file-only session, which is what `live` did before. A receiver that accepts neit
 a refusal either way.
 
 ```bash
-ac3cli live out.ec3 0 30 448 -2 1 channels layout=714      # capped 5.1 AC-3 to receiver 1
-ac3cli live out.ec3 0 30 448 -2 1 channels layout=714 downmix=off
+forge live out.ec3 0 30 448 -2 1 channels layout=714      # capped 5.1 AC-3 to receiver 1
+forge live out.ec3 0 30 448 -2 1 channels layout=714 downmix=off
 ```
 
 ## Play options (`play`): `follow=`
@@ -750,7 +750,7 @@ automatic fallback:
 
 - E-AC-3 on an AC-3-only sink is transcoded to AC-3 first (`transcode`, through a
   temporary file — dialnorm, `compr` and the mix metadata carry across exactly as a direct
-  `ac3cli transcode` call would), then plays as AC-3. This is the "no 5.1 PCM over optical"
+  `forge transcode` call would), then plays as AC-3. This is the "no 5.1 PCM over optical"
   case: an optical link can carry compressed AC-3 but never multichannel PCM, so a 5.1 E-AC-3
   source has no other way through.
 - A sink that bitstreams neither format falls back to decoded PCM (`monitor`'s own §7.8-aware
@@ -767,8 +767,8 @@ an AC-4 stream to PCM on an ordinary output whatever the sink accepts, and `foll
 asks for passthrough alone, refuses it (exit `4`).
 
 ```bash
-ac3cli play programme.ec3 2                # follows the sink (the default)
-ac3cli play programme.ec3 2 follow=off     # the old plain refusal instead
+forge play programme.ec3 2                # follows the sink (the default)
+forge play programme.ec3 2 follow=off     # the old plain refusal instead
 ```
 
 ## Common options (every command): `quiet`, `verbose`
@@ -795,14 +795,14 @@ stdout, and a progress line in the middle of a piped elementary stream would cor
 reading it.
 
 ```bash
-ac3cli encode in.wav out.ac3 448 51 quiet && echo "encoded"
-ac3cli decode long.ec3 - verbose > out.wav
+forge encode in.wav out.ac3 448 51 quiet && echo "encoded"
+forge decode long.ec3 - verbose > out.wav
 ```
 
 ## Exit codes
 
 Every command returns one of eight codes, so a script can tell *why* something failed rather than
-only *that* it did. `ac3cli help exit-codes` prints the same table.
+only *that* it did. `forge help exit-codes` prints the same table.
 
 | Code | Meaning |
 |---|---|
@@ -824,7 +824,7 @@ framing failed`, `no programmes in stream`). A script that gates on `2` for a ba
 test for `1` there as well.
 
 ```bash
-ac3cli qc out.ec3 preset=ebu-r128-s2
+forge qc out.ec3 preset=ebu-r128-s2
 case $? in
   0) echo "in spec" ;;
   6) echo "out of spec" ;;
@@ -856,7 +856,7 @@ a second language, an audio description, a commentary — so one stream carries 
 the alternatives, and a receiver plays one of them.
 
 ```bash
-ac3cli eac3-encode film51.wav out.ec3 448 none 51 off \
+forge eac3-encode film51.wav out.ec3 448 none 51 off \
     programme2=commentary.wav programme2-layout=mono programme2-bitrate=96 \
     programme2-bsmod=commentary programme2-dialnorm=20 \
     programme3=description.wav programme3-layout=mono programme3-bitrate=96 \
@@ -914,10 +914,10 @@ never a fold of several, since two programmes are alternatives rather than layer
 would give a WAV that splices unrelated audio, or a loudness figure neither programme has.
 
 ```bash
-ac3cli decode out.ec3 main.wav                # programme 0
-ac3cli decode out.ec3 commentary.wav programme=1
-ac3cli levels out.ec3 programme=1
-ac3cli qc out.ec3 programme=1 preset=atsc-a85
+forge decode out.ec3 main.wav                # programme 0
+forge decode out.ec3 commentary.wav programme=1
+forge levels out.ec3 programme=1
+forge qc out.ec3 programme=1 preset=atsc-a85
 ```
 
 Omitting it takes the first programme the stream carries. When there is more than one, each
@@ -996,7 +996,7 @@ which describe AC-3 and E-AC-3 metadata AC-4 has no counterpart for.
 `compr=`/`compr2=` round **down** to the nearest representable word, not to nearest: §7.7.2
 exists to give "an assured upper limit of instantaneous peak reproduced signal level", and a
 ceiling exceeded by half a step is not assured. That is the same rule
-`ac3::meta::encode_compr_at_most` applies on the encode side.
+`iclforge::meta::encode_compr_at_most` applies on the encode side.
 
 `compr=` is a different thing from the `heavy`/`ceiling=`/`dialogue=` group above. Those ask an
 *encoder* to derive a compression word from the signal it is coding; `compr=` names the word
@@ -1005,7 +1005,7 @@ only where the stream already carries a `compr` word. Asking for one where it do
 refused, not invented.
 
 `dialnorm=` and `dialnorm2=` work on `metadata` too, but only with an explicit `1..31` value:
-`dialnorm=auto` needs a measurement, which is what `ac3cli normalize` is. On `transcode` they
+`dialnorm=auto` needs a measurement, which is what `forge normalize` is. On `transcode` they
 override the value carried from the source, and `dialnorm=auto` measures the *source* the same
 way an encode from a WAV would; an AC-4 source is measured as the presentation it transcodes, as
 coded. A transcode to AC-4 takes `dialnorm=` and `drc=` for AC-4's dialnorm and DRC profile, and
@@ -1035,8 +1035,8 @@ qc options (qc; any order, after the positional arguments):
 `preset=<name>` checks `qc`'s BS.1770-4 measurement against one named delivery-loudness gate instead of just
 reporting it; `preset=all` checks every one below in a single run. Each preset states a target integrated
 loudness, a symmetric tolerance around it (in LU) and a true-peak ceiling (a one-sided limit, never exceeded —
-not a tolerance band). The numbers are defined in `ac3::meta::qc_preset()`
-([`ac3/meta/qc.hpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/ac3/include/iclforge/ac3/meta/qc.hpp)), each
+not a tolerance band). The numbers are defined in `iclforge::meta::qc_preset()`
+([`iclforge/ac3/meta/qc.hpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/ac3/include/iclforge/ac3/meta/qc.hpp)), each
 read directly from its own primary source rather than recalled from memory:
 
 | Preset | Loudness | Max true peak | Source (version, date) |
@@ -1132,7 +1132,7 @@ a rear centre at M+180, at unity.
 
 `layout=` above meters *channels* — the bed, or the whole assembled program with every dependent's channels
 laid over it. Neither sees a dynamic object's own position: this project's own encoder pans every object onto
-the flat 5.1 ring at encode time (`ac3::spatial::pan_room`'s own "a raised object folds onto the ring... at
+the flat 5.1 ring at encode time (`iclforge::spatial::pan_room`'s own "a raised object folds onto the ring... at
 full level"), so an object authored directly overhead measures no differently from one on the ring — the bed
 a legacy 5.1 decoder plays has nowhere else to put it.
 
@@ -1142,17 +1142,17 @@ then meter *that* through Annexes 1/3 — and to report which configuration and 
 rendering, since two reasonable choices can legitimately disagree by several LU (Annex 4's own worked example,
 its Table 6, does exactly that across renderers and layouts). `objects=<layout>` is that: it re-renders each
 dynamic object by its own OAMD position — including height — onto the named layout (`51`, `71`, `512`, `514`
-or `714`) via `ac3::spatial`'s direction-based panner (the same height-aware geometry `ac3::plan`'s
+or `714`) via `iclforge::spatial`'s direction-based panner (the same height-aware geometry `iclforge::plan`'s
 layout-to-layout channel renderer uses internally), then meters the result through the Annex 3 algorithm
 `layout=rendered` already implements:
 
 ```text
-$ ac3cli qc atmos.ec3 objects=514
+$ forge qc atmos.ec3 objects=514
 qc: atmos.ec3 (E-AC-3, 3/2 + LFE, 48000 Hz, 62 access unit(s), 1.98 s)
   layout=bed  (BS.1770 Annex 1, Table 3 weights over the Table 5.8 bed)
   ...
   objects=5.1.4  (BS.1770-5 Annex 4: objects re-rendered by their own OAMD
-  position, via ac3::spatial's direction panner, then Annex 3)
+  position, via iclforge::spatial's direction panner, then Annex 3)
   objects: measured (BS.1770-4 gated / EBU Tech 3342 / BS.1770-4 Annex 2):
   ...
 ```
@@ -1170,7 +1170,7 @@ non-object material this decoder cannot separate back out — is refused rather 
 dropping content:
 
 ```text
-$ ac3cli qc plain_channel_based.ec3 objects=514
+$ forge qc plain_channel_based.ec3 objects=514
 error: programme 0 carries no dynamic-object-only OAMD - objects= needs OAMD dynamic
 objects (try layout=rendered or layout=bed instead)
 ```
@@ -1184,7 +1184,7 @@ full report format and the exit-code convention this drives.
 ```text
 probe options (probe; any order, after the positional arguments):
   json=1            emit the JSON document instead of the human table
-                    (schema ac3forge.probe/1 - docs/forge/cli/commands.md)
+                    (schema iclforge.probe/1 - docs/forge/cli/commands.md)
   detail=frames     add a per-access-unit dump: offsets, sizes, CRC,
                     substream headers and each frame's object layer
   detail=blocks     the same, plus every block's coding tools and
@@ -1287,7 +1287,7 @@ Optional positional arguments, when omitted:
   `atmos`, `atmos-path`, `atmos-encode` and `atmos-cbi`; `atmos-adm` and `atmos-iab` do not take
   it, and an AC-4 object stream (`codec=ac4`) has no such container to sign, so it is refused
   there. Off unless you pass both — `sign-objects` alone with no key is an error. The key may also come from
-  `AC3FORGE_SIGNING_KEY_FILE` / `AC3FORGE_SIGNING_KEY` instead of `signing-key=`. The key is never
+  `ICLFORGE_SIGNING_KEY_FILE` / `ICLFORGE_SIGNING_KEY` instead of `signing-key=`. The key is never
   stored by the tool; the algorithm is in-tree but the key is yours to provision. Full details in
   [Object signing](../../concepts/object-signing.md).
 - **`fast-mdct=off`**: every encode runs the §7.9.4 fast forward MDCT by default (the quality
@@ -1344,7 +1344,7 @@ Optional positional arguments, when omitted:
   [Atmos & JOC](../../concepts/atmos-joc.md#which-domain-the-matrix-lives-in). Note that the two
   domains do not have the same latency, so a `decode` writing objects with `objects_dir=` gets
   them 576 samples behind the bed under `qmf` and 256 behind under `mdct`.
-- **`verify`**: `eac3-encode` only. Runs the encoder/decoder mirror self-check (`ac3::verify`,
+- **`verify`**: `eac3-encode` only. Runs the encoder/decoder mirror self-check (`iclforge::verify`,
   see [Validation](../../verification.md#six-independent-checks)) over every access unit the command
   emits: each one is decoded with this project's own decoder as soon as it is encoded, and the
   decoder's model of it — per-substream, per-block bit offsets, decoded exponents, `bap`, delta
@@ -1366,7 +1366,7 @@ Optional positional arguments, when omitted:
   no external decoder to check against at all — see
   [Validation → where the oracles don't reach](../../verification.md#where-the-oracles-dont-reach).
   `encode` (AC-3) has no equivalent token yet; its half of the same facility is library-only
-  (`ac3::verify::MirrorEncoder`).
+  (`iclforge::verify::MirrorEncoder`).
 - **`keep-partial`**: `encode`, `eac3-encode` and `atmos-encode` refuse a frame that cannot fit the
   configuration mid-run just as they always have, but with `keep-partial` given, whatever frames
   were already encoded before that point are written to `<name>.partial.<ext>` (`out.ec3` →

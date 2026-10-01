@@ -1,8 +1,8 @@
-# ac3forge
+# ICL Forge
 
-AC3Forge is a clean-room C++23 implementation of AC-3, E-AC-3, and Dolby Atmos decoding and
+ICL Forge is a clean-room C++23 implementation of AC-3, E-AC-3, and Dolby Atmos decoding and
 encoding, and of AC-4 decoding and encoding. The repository contains the codec library and three
-applications built on it. AC-4 is in the library, in `ac3cli`, in the Forge GUI, in the Hearth
+applications built on it. AC-4 is in the library, in `forge`, in the Forge GUI, in the Hearth
 desktop player, and in the C, Python, Rust, and WebAssembly bindings. Crucible does not use it,
 and no ESP32 network sink decodes it in a Sendspin group.
 

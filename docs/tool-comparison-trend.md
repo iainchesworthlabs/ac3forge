@@ -9,7 +9,7 @@ The commit-level half of the external-encoder landscape comparison — see
 `main` encodes the same eight fixed legs
 [`tools/generators/gen_external_baseline.py`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/generators/gen_external_baseline.py)
 measures FFmpeg's and Dolby DEE's encoders against, scores this build's own
-output through `ac3cli`'s own decoder (no FFmpeg, no DEE, at CI time — see
+output through `forge`'s own decoder (no FFmpeg, no DEE, at CI time — see
 `tools/ci/quality_race.py`'s `trend` mode), and appends the numbers here. The
 job that computes them, FFmpeg Validate, runs nightly, so the series has a point a
 night, not one per merge. It

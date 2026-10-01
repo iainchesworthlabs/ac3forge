@@ -44,7 +44,7 @@ Nothing. Unlike the Windows guest, which needs an install ISO from Microsoft,
 | `New-SeedIso.ps1` | Writes the cloud-init seed CD from `seed/` and `guest/`, and the ssh key that goes with it. `-Reboot` stops the guest, re-seeds and starts it again — which is how a change to `guest/provision.sh` reaches an existing VM without recreating it. |
 | `Wait-TrayTestVm.ps1` | Polls until provisioning has finished, prints what the guest ended up with **and which process owns `org.kde.StatusNotifierWatcher`**, then takes the `clean-install` snapshot. |
 | `Sync-Source.ps1` | Pushes the working tree to `~/src` in the guest — `git ls-files -co --exclude-standard`, so uncommitted work goes too and build directories do not. |
-| `Test-Tray.ps1` | The measurement: builds `ac3crucible` and launches it ten times in the guest's own session, reporting how many survived. `-NestSubmenu` adds a second arm with a submenu put back in the tray's menu, which is the Qt bug. `-Gdb` runs each launch under gdb and prints the backtrace and registers on death; `-Valgrind` runs one under memcheck; `-Asan` builds our half with AddressSanitizer. |
+| `Test-Tray.ps1` | The measurement: builds `crucible` and launches it ten times in the guest's own session, reporting how many survived. `-NestSubmenu` adds a second arm with a submenu put back in the tray's menu, which is the Qt bug. `-Gdb` runs each launch under gdb and prints the backtrace and registers on death; `-Valgrind` runs one under memcheck; `-Asan` builds our half with AddressSanitizer. |
 | `TrayVmCommon.ps1` | Dot-sourced by the others: where the guest is, its address, and `Invoke-TrayGuest` to run something in it over ssh. |
 | `guest/provision.sh` | Runs in the guest at first boot (`sudo crucible-provision` re-runs it): the archives, the toolchain, the Qt kit, the desktop, PipeWire, the debug tools and symbols, autologin, and vcpkg. |
 | `guest/build-crucible.sh` | `crucible-build` in the guest. `--nest-submenu` puts a submenu back in the tray's menu, `--tray` forces the tray on where the seam says the session has none, `--asan` instruments our half. Both edits are reverted from a pristine copy after every build, so the shipped source in the guest never drifts. |
@@ -144,7 +144,7 @@ plugin from the same session: `QT_QPA_PLATFORM=wayland` (the default `run-trials
   tree carries CRLF into the guest. The compiler does not mind; an anchored `sed` — which is
   what the reproducer edit is — matches nothing. `Sync-Source.ps1` strips it from the build
   inputs on the way in.
-- **`ac3crucible_lupdate` sees only the platform it runs on.** Running it in this guest deletes
+- **`crucible_lupdate` sees only the platform it runs on.** Running it in this guest deletes
   the *Windows* tray sentence from all six catalogues, translated, and replaces it with the
   Linux one, unfinished (docs/crucible/localisation.md).
 

@@ -31,7 +31,7 @@
 # prompted using the EBU's own reference implementations instead).
 #
 # Neither library's own types appear in this module's public headers
-# (ac3adm/ac3adm.hpp, ac3adm/model.hpp) - see model.hpp's own header comment
+# (iclforge/adm/ac3adm.hpp, iclforge/adm/model.hpp) - see model.hpp's own header comment
 # for why (libadm's own C++ namespace is `adm`, which is also why this
 # module's namespace is `ac3adm` and not `adm`).
 #

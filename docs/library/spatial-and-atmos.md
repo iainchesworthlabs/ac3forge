@@ -2,12 +2,12 @@
 
 ## The spatial object layer
 
-`ac3/spatial/spatial.hpp`. Mono sources placed on the ITU-R BS.775 ring, rendered to a 5.1
+`iclforge/render/spatial.hpp`. Mono sources placed on the ITU-R BS.775 ring, rendered to a 5.1
 bed. This is the plain-AC-3 object path: the output is an ordinary 5.1 stream and *nothing
 survives about where the object was*.
 
 ```cpp
-ac3::spatial::BedRenderer renderer;
+iclforge::spatial::BedRenderer renderer;
 // add_object allocates, so call it before rendering starts.
 const std::size_t object = renderer.add_object({.azimuth_deg = 0.0, .gain = 0.7});
 ```
@@ -27,8 +27,8 @@ renderer.set_target(object, {.azimuth_deg = 180.0 * seconds, .gain = 0.7});
 std::array<std::span<float>, 6> block_out{};
 for (std::size_t ch = 0; ch < 6; ++ch) {
     block_out[ch] = std::span<float>{bed[ch]}.subspan(
-        static_cast<std::size_t>(block * ac3::spatial::kBlockSamples),
-        ac3::spatial::kBlockSamples);
+        static_cast<std::size_t>(block * iclforge::spatial::kBlockSamples),
+        iclforge::spatial::kBlockSamples);
 }
 const std::array<std::span<const float>, 1> audio{std::span<const float>{source}};
 renderer.render_block(audio, block_out);
@@ -44,9 +44,9 @@ There is no `z`. A 5.1 ring has no height speakers, so a raised source folds ont
 its azimuth, at full level. Objects never reach the LFE by panning — `lfe_send` is the only
 route.
 
-## Objects with metadata: `ac3::oba::AtmosEncoder`
+## Objects with metadata: `iclforge::oba::AtmosEncoder`
 
-`ac3/oba/atmos.hpp`. The same objects, but their positions survive: the output is one ordinary
+`iclforge/ac3/oba/atmos.hpp`. The same objects, but their positions survive: the output is one ordinary
 5.1 E-AC-3 stream with OAMD and JOC payloads riding beside it in an EMDF container
 (TS 102 366 Annex H, carried in a block skip field). A decoder that knows about neither plays
 the bed unchanged, at full level — that is the design target, not a fallback.
@@ -55,14 +55,14 @@ the bed unchanged, at full level — that is the design target, not a fallback.
 constexpr int kObjects = 3;
 // Object metadata competes with the mantissas for the same frame, so an
 // object stream wants more headroom than a plain 5.1 one.
-ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, kObjects};
+iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, kObjects};
 ```
 
 ```cpp
 // Positions are room-anchored per §4.2.1: x 0 at the left wall to 1 at
 // the right, y 0 front to 1 back, z -1 at the floor to +1 at the
 // ceiling (0 is listener height).
-std::array<ac3::oba::ObjectPlacement, kObjects> placement{};
+std::array<iclforge::oba::ObjectPlacement, kObjects> placement{};
 placement[obj] = {
     .position = {.x = 0.5 + 0.45 * std::cos(angle),
                  .y = 0.5 + 0.45 * std::sin(angle),
@@ -91,7 +91,7 @@ placement[obj] = {
     .snap = false,
     // §5.6.1.6 Table 20/21: which horizontal zones the renderer may use,
     // and whether the Top-Bottom zone is in play at all.
-    .zone = ac3::oba::ZoneConstraint::kScreenOnly,
+    .zone = iclforge::oba::ZoneConstraint::kScreenOnly,
     .enable_elevation = true,
 };
 ```
@@ -145,19 +145,19 @@ is — see [Atmos & JOC](../concepts/atmos-joc.md#oamd)'s "a programme need not 
 assignment) instead of an object count:
 
 ```cpp
-using ac3::oba::bed;
+using iclforge::oba::bed;
 const std::uint16_t layout = bed::kLR | bed::kC | bed::kLfe | bed::kLsRs |
                              bed::kTflTfr | bed::kTblTbr;  // 5.1.4
-ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, ac3::oba::BedProgram{.bed = layout}};
+iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, iclforge::oba::BedProgram{.bed = layout}};
 ```
 
 `encode_bed_frame` replaces `encode_frame`: no `ObjectPlacement` to supply, because a bed
 channel's position comes from its label, not an argument (TS 103 420 §5.5.9) — just one span of
-audio per channel, in `ac3::oba::bed_labels(layout)`'s own order (LFE included, at whichever
+audio per channel, in `iclforge::oba::bed_labels(layout)`'s own order (LFE included, at whichever
 position that order puts it):
 
 ```cpp
-// channels.size() == ac3::oba::bed_channel_count(encoder.program()).
+// channels.size() == iclforge::oba::bed_channel_count(encoder.program()).
 const auto unit = encoder.encode_bed_frame(channels);
 ```
 
@@ -172,7 +172,7 @@ it does for a dynamic-object one).
 
 Only the 5.1.4 channel order has been checked against a real DEE-produced stream
 (`tests/ac3/oba/test_dee_joc_fixture.cpp`); 7.1.4 and 9.1.6 extend it by Table 12's own channel order,
-unverified against DEE itself. `ac3cli atmos-cbi` is the CLI surface — see
+unverified against DEE itself. `forge atmos-cbi` is the CLI surface — see
 [CLI commands](../forge/cli/commands.md).
 
 ## Getting the objects back: `oba::joc::reconstruct`
@@ -183,7 +183,7 @@ estimated in. The result **lags the bed**, and by how much depends on the domain
 
 ```cpp
 // 256 samples of encode+decode, plus the JOC transform pair's own delay.
-const int delay = 256 + ac3::oba::joc::reconstruction_delay(config.joc_domain);
+const int delay = 256 + iclforge::oba::joc::reconstruction_delay(config.joc_domain);
 ```
 
 `oba::joc::reconstruction_delay()` returns 576 for `kQmf` (the filterbank's 640-tap window less one
@@ -191,24 +191,24 @@ const int delay = 256 + ac3::oba::joc::reconstruction_delay(config.joc_domain);
 reconstructed objects against a known source and gets the shift wrong measures the latency
 instead of the reconstruction, and still looks plausible.
 
-The filterbank is usable on its own as `ac3::dsp::QmfAnalysis` / `QmfSynthesis` (`ac3/dsp/qmf.hpp`)
+The filterbank is usable on its own as `iclforge::dsp::QmfAnalysis` / `QmfSynthesis` (`iclforge/dsp/qmf.hpp`)
 — 64 complex subbands, one timeslot per 64 samples, perfect reconstruction.
 
-## Scripted motion: `ac3::oba::motion`
+## Scripted motion: `iclforge::oba::motion`
 
-`ac3/oba/motion.hpp`. `AtmosEncoder::encode_frame` always took a fresh `ObjectPlacement` per
+`iclforge/objects/motion.hpp`. `AtmosEncoder::encode_frame` always took a fresh `ObjectPlacement` per
 call; what this adds is a shared way to say *where* an object is at a given moment, so a caller
 stops reimplementing that per-frame math independently the way `atmos_objects.cpp` does.
 
 ```cpp
 // A closed-form orbit - evaluated exactly rather than decimated into
 // keyframes, so it stays an exact circle.
-const auto orbit = ac3::oba::make_orbit_path(/*rate_hz=*/0.5, /*phase_rad=*/0.0,
+const auto orbit = iclforge::oba::make_orbit_path(/*rate_hz=*/0.5, /*phase_rad=*/0.0,
                                              /*height=*/0.5, /*gain=*/0.6, /*lfe_send=*/0.0);
 
 // Sparse authored points, linearly interpolated between neighbours and held
 // at the ends rather than extrapolated.
-auto keyframed = ac3::oba::KeyframePath::create({
+auto keyframed = iclforge::oba::KeyframePath::create({
     {.time_s = 0.0, .position = {.x = 0.0, .y = 0.5, .z = 0.0}, .gain = 0.0},
     {.time_s = 0.8, .position = {.x = 0.5, .y = 0.9, .z = 0.0}, .gain = 0.8},
     {.time_s = 1.6, .position = {.x = 1.0, .y = 0.5, .z = 0.0}, .gain = 0.0},
@@ -218,7 +218,7 @@ auto keyframed = ac3::oba::KeyframePath::create({
 ```cpp
 // One call per frame gets every object's placement at that instant, in
 // path order - exactly the span encode_frame() wants.
-const auto placement = ac3::oba::evaluate_placements(paths, seconds);
+const auto placement = iclforge::oba::evaluate_placements(paths, seconds);
 const auto unit = encoder.encode_frame(views, placement);
 ```
 
@@ -226,15 +226,15 @@ Full program: [`examples/scripted_object_motion.cpp`](https://github.com/iainche
 
 `ObjectPath` is a `std::variant` of the two kinds behind one `evaluate(time_s)` interface, so a
 caller doesn't need to know which one it holds. It is the *per-object* layer: one object, one
-path, no notion of a scene. `ac3cli atmos`'s built-in orbit and `live`'s `atmos` mode use it
+path, no notion of a scene. `forge atmos`'s built-in orbit and `live`'s `atmos` mode use it
 directly; anything with more than one object and a file to load from wants `ObjectScene` below.
 
-## The scene: `ac3::oba::ObjectScene`
+## The scene: `iclforge::oba::ObjectScene`
 
-`ac3/oba/scene.hpp`. `AtmosEncoder::encode_frame` takes one `ObjectPlacement` per object per
+`iclforge/objects/scene.hpp`. `AtmosEncoder::encode_frame` takes one `ObjectPlacement` per object per
 frame and nothing more, so every caller that wanted a *scene* — objects with names, a bed
 assignment, automation, a file it can be saved to and reloaded from — used to build its own.
-`ac3cli atmos-path` grew a keyframe-file grammar; the GUI's timeline grew a parallel one it
+`forge atmos-path` grew a keyframe-file grammar; the GUI's timeline grew a parallel one it
 exports in that grammar; the station-broadcast example hard-coded a cue table in C++. This is
 the one description they share.
 
@@ -245,8 +245,8 @@ same kind of thing: it rewrites the coordinates that go into OAMD, so what reach
 bitstream is an ordinary scene that happens to have been turned.
 
 ```cpp
-using ac3::oba::Interpolation;
-auto built = ac3::oba::ObjectScene::create({
+using iclforge::oba::Interpolation;
+auto built = iclforge::oba::ObjectScene::create({
     {.name = "flyby",
      .automation = {{.time_s = 0.0, .position = {.x = 0.0, .y = 0.5, .z = 0.5}, .gain = 0.6,
                      .interp = Interpolation::kSmooth},
@@ -256,7 +256,7 @@ auto built = ac3::oba::ObjectScene::create({
 });
 const auto& scene = *built;
 
-std::vector<ac3::oba::ObjectPlacement> placement(scene.object_count());
+std::vector<iclforge::oba::ObjectPlacement> placement(scene.object_count());
 scene.evaluate_into(seconds, placement);        // allocation-free, once per frame
 const auto unit = encoder.encode_frame(views, placement);
 ```
@@ -291,7 +291,7 @@ all-zero `Orientation` is an *exact* no-op, not a rotation by zero, so an un-tur
 positions are bit-identical to the authored doubles.
 
 ```cpp
-scene.set_orientation(ac3::oba::orientation_from_degrees(90, 0, 0));  // front wall → right wall
+scene.set_orientation(iclforge::oba::orientation_from_degrees(90, 0, 0));  // front wall → right wall
 ```
 
 ### The live half: `SceneCursor`
@@ -302,7 +302,7 @@ the one live source; the `positions=` token takes nothing else, and no MIDI or g
 source exists.
 
 ```cpp
-ac3::oba::SceneCursor cursor{std::move(scene)};
+iclforge::oba::SceneCursor cursor{std::move(scene)};
 cursor.push({.object = 0, .placement = {.position = {.x = 0.75}, .gain = 0.9}});
 cursor.sample_into(seconds, placement);   // overridden objects report the pushed value
 cursor.release(0);                        // back to the authored timeline
@@ -317,7 +317,7 @@ neighbours never end up in different rooms.
 
 ### The OSC wire form
 
-`ac3/oba/scene_osc.hpp`. A third reader of a per-object update, beside the JSON and
+`iclforge/objects/scene_osc.hpp`. A third reader of a per-object update, beside the JSON and
 keyframe-text forms above. Where those two AUTHOR a timeline up front, this one feeds
 `SceneCursor` while a session is running: parse one UDP datagram from a show-control rig or a
 DAW into zero or more updates, merge each onto the object's current placement, push the result.
@@ -330,8 +330,8 @@ const auto datagram = osc_xyz_message("/object/0/xyz", 0.9F, 0.1F, 0.5F);
 ```
 
 ```cpp
-ac3::oba::OscParseStats stats;
-for (const auto& update : ac3::oba::parse_osc_packet(datagram, &stats)) {
+iclforge::oba::OscParseStats stats;
+for (const auto& update : iclforge::oba::parse_osc_packet(datagram, &stats)) {
     if (update.release) {
         cursor.release(update.object);
         continue;
@@ -341,7 +341,7 @@ for (const auto& update : ac3::oba::parse_osc_packet(datagram, &stats)) {
     // 1.0 - see apply()'s own header comment for why this step exists
     // and cannot be skipped in favour of pushing `update` directly.
     const auto base = cursor.scene().evaluate(update.object, 0.0);
-    if (const auto merged = ac3::oba::apply(update, base)) {
+    if (const auto merged = iclforge::oba::apply(update, base)) {
         cursor.push({.object = update.object, .placement = *merged});
     }
 }
@@ -381,9 +381,9 @@ update against the object and re-applying it once a position finally arrives.
 
 This header is pure, portable, zero-socket, zero-thread code — no I/O of any kind — and is
 fuzzed (`fuzz/fuzz_osc_parse.cpp`) and unit-tested (`tests/objects/test_scene_osc.cpp`) accordingly.
-The actual UDP listener, `ac3::audio::LivePositionSource`, is a separate, app-serving-only piece
-and is **not** part of this installed library, for the same reason the rest of `ac3::audio`
-isn't (see [Using ac3::forge](index.md)'s note on live audio); `ac3cli live mode=atmos
+The actual UDP listener, `iclforge::audio::LivePositionSource`, is a separate, app-serving-only piece
+and is **not** part of this installed library, for the same reason the rest of `iclforge::audio`
+isn't (see [Using iclforge::ac3](index.md)'s note on live audio); `forge live mode=atmos
 positions=osc:[<bind>:]<port>` is where a reader can see it wired up end to end over a real
 socket.
 
@@ -399,7 +399,7 @@ Python's) if they ever want to read a scene without linking this library.
 
 ```json
 {
-  "ac3forge_scene": 1,
+  "iclforge_scene": 1,
   "orientation": { "yaw_rad": 0, "pitch_rad": 0, "roll_rad": 0 },
   "objects": [
     {
@@ -419,13 +419,13 @@ control shows real edits rather than formatting churn, and a save/load cycle is 
 reader is strict about what it does not recognise — an unknown member is an error, because a
 hand-authored file's likeliest fault is a misspelled key and silently defaulting `"gian"` to
 `1.0` would be wrong in a way nothing reports. Forward compatibility rides on the
-`ac3forge_scene` version number instead. `orientation` accepts `yaw_deg`/`pitch_deg`/`roll_deg`
+`iclforge_scene` version number instead. `orientation` accepts `yaw_deg`/`pitch_deg`/`roll_deg`
 in place of the radian spellings (but never both for one axis). `bed` names TS 103 420 Table 12
 channel labels — `"lr"`, `"c"`, `"lfe"`, `"ls_rs"`, `"lb_rb"`, `"tfl_tfr"`, `"tsl_tsr"`,
 `"tbl_tbr"`, `"lw_rw"`, `"lfe2"` — and an empty array means a dynamic object.
 
 `scene_objects_from_keyframe_text()` / `to_keyframe_text()` read and write the older
-whitespace-column grammar `ac3cli atmos-path` has always taken, unchanged including its
+whitespace-column grammar `forge atmos-path` has always taken, unchanged including its
 diagnostics — see [CLI → Commands](../forge/cli/commands.md). `read_scene()` and `scene_from_text()`
 take either, told apart by whether the first non-whitespace character is `{`, so a path argument
 keeps working whichever form the file is in.
@@ -447,15 +447,15 @@ worse than exposing none: a C caller would get a scene it could load and not eva
 save the JSON form from either language and hand the resulting placements to the existing encoder
 bindings.
 
-This layer backs `ac3cli atmos-path` and `atmos-encode`'s optional scene argument, the GUI's
+This layer backs `forge atmos-path` and `atmos-encode`'s optional scene argument, the GUI's
 object-path export, and the [station broadcast](station-broadcast.md) scene's ten authored
 objects.
 
 ### The same authoring for AC-4 objects
 
 The AC-4 object encoder ([AC-4 § Encoding objects](ac4.md#encoding-objects)) takes each object's
-PCM and its metadata over time in `ac4::ObjectProperties`, and reads no scene format. The
-applications feed it the layers on this page and the ADM and IAB bridges: `ac3cli atmos-encode`,
+PCM and its metadata over time in `iclforge::ac4::ObjectProperties`, and reads no scene format. The
+applications feed it the layers on this page and the ADM and IAB bridges: `forge atmos-encode`,
 `atmos-adm` and `atmos-iab` with `codec=ac4`, and the Forge GUI's encoder page, turn each object's
 authored position and gain into one metadata update a frame
 (`apps/common/ac4_objects_core.hpp`). `ObjectScene`, `motion.hpp` and `AtmosEncoder` know nothing
@@ -473,15 +473,15 @@ no sync word to find, so it decodes the bed as ordinary 5.1. The choice is objec
 never both.
 
 ```cpp
-ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448, .emit_object_metadata = false}, kObjects};
+iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 448, .emit_object_metadata = false}, kObjects};
 ```
 
 Turning it off drops TS 103 420 §8.3.1's `addbsi` object marker along with the container, so the
 stream doesn't *advertise* an object layer either. That marker (`flag_ec3_extension_type_a` plus
 §8.3.2.2's `complexity_index_type_a`) is the only thing a reader has to go on: it is what
-`ac3::io::scan` reports as `ScannedStream::oba_complexity_index`, what
-`ac3::io::build_codec_config_box` turns into the `dec3` box's Dolby Atmos extension, what
-`ac3cli fmp4` writes as an HLS `CHANNELS="<N>/JOC"` attribute, and what FFmpeg keys its
+`iclforge::io::scan` reports as `ScannedStream::oba_complexity_index`, what
+`iclforge::io::build_codec_config_box` turns into the `dec3` box's Dolby Atmos extension, what
+`forge fmp4` writes as an HLS `CHANNELS="<N>/JOC"` attribute, and what FFmpeg keys its
 "Dolby Digital Plus + Dolby Atmos" profile off. Left in, all four would claim objects that were
 never encoded — the same empty-promise this mode exists to avoid.
 

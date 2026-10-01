@@ -10,7 +10,7 @@ reconcile.
 
 That is the model for AC-3 and E-AC-3. With AC-4 as the codec and object mode off, `ac4-encode`'s
 rule holds instead: one source, in its own layout. A second source or an assigned channel is
-refused with *"AC-4 encodes one source in its own layout, as ac3cli ac4-encode takes a WAV file;
+refused with *"AC-4 encodes one source in its own layout, as forge ac4-encode takes a WAV file;
 remove the other sources and the assignment."*, and a start offset above 0 with *"AC-4 encodes the
 source as it is; set its start offset to 0."* In object mode the table decides the objects for
 AC-4 as it does for E-AC-3 (see [Objects & motion](objects-and-motion.md#ac-4-objects)).

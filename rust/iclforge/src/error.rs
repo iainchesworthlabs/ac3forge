@@ -32,19 +32,19 @@ pub enum Error {
     DecodeReservedValue,
     DecodeUnsupported,
     DecodeInvalidStream,
-    /// `ac4::DecodeError` (a syntax element ran past the end of its substream).
+    /// `iclforge::ac4::DecodeError` (a syntax element ran past the end of its substream).
     Ac4DecodeTruncated,
-    /// `ac4::DecodeError` (`ac4::parse_raw_frame` refused the table of contents).
+    /// `iclforge::ac4::DecodeError` (`iclforge::ac4::parse_raw_frame` refused the table of contents).
     Ac4DecodeInvalidToc,
-    /// `ac4::DecodeError` (a value the syntax cannot follow).
+    /// `iclforge::ac4::DecodeError` (a value the syntax cannot follow).
     Ac4DecodeInvalidStream,
-    /// `ac4::DecodeError` (legal AC-4 this decoder does not read yet).
+    /// `iclforge::ac4::DecodeError` (legal AC-4 this decoder does not read yet).
     Ac4DecodeUnsupported,
-    /// `ac4::DecodeError` (a non-I-frame needs configuration no I-frame has sent).
+    /// `iclforge::ac4::DecodeError` (a non-I-frame needs configuration no I-frame has sent).
     Ac4DecodeMissingIFrame,
-    /// `ac4::EncodeError` (a configuration outside what the encoder writes).
+    /// `iclforge::ac4::EncodeError` (a configuration outside what the encoder writes).
     Ac4EncodeInvalidConfig,
-    /// `ac4::EncodeError` (a channel count/length mismatch, or a non-finite sample).
+    /// `iclforge::ac4::EncodeError` (a channel count/length mismatch, or a non-finite sample).
     Ac4EncodeInvalidInput,
     /// A raw `iclforge_status_t` value this crate doesn't recognize. `iclforge_status_message`
     /// still gives a human-readable string for it (`"unknown status"` for a value the C library

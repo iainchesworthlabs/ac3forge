@@ -1,6 +1,6 @@
 # Landscape
 
-How ac3forge's encoder compares to FFmpeg's and Dolby's own (DEE, the Dolby
+How ICL Forge's encoder compares to FFmpeg's and Dolby's own (DEE, the Dolby
 Encoding Engine) at matched bitrates, release by release. This is the
 headline number — see [Tool comparison trend](tool-comparison-trend.md) for
 the commit-level, per-Annex-E-tool detail this page deliberately doesn't
@@ -211,9 +211,9 @@ a history to show here ([Validation: AC-4](verification.md#the-encoder)).
           <th rowspan="2" class="landscape-group-start">Baseline</th>
         </tr>
         <tr>
-          <th class="landscape-group-start">ac3forge</th><th>vs FFmpeg</th><th>vs DEE</th>
-          <th class="landscape-group-start">ac3forge</th><th>vs FFmpeg</th><th>vs DEE</th>
-          <th class="landscape-group-start">ac3forge</th><th>vs FFmpeg</th><th>vs DEE</th>
+          <th class="landscape-group-start">iclforge</th><th>vs FFmpeg</th><th>vs DEE</th>
+          <th class="landscape-group-start">iclforge</th><th>vs FFmpeg</th><th>vs DEE</th>
+          <th class="landscape-group-start">iclforge</th><th>vs FFmpeg</th><th>vs DEE</th>
         </tr>
       </thead>
       <tbody>${trs}</tbody>
@@ -232,7 +232,7 @@ a history to show here ([Validation: AC-4](verification.md#the-encoder)).
 ## Spectrograms
 
 A visual supplement to the table above — one image per leg, each stacking
-the original source against ac3forge's own decode and, where the baseline
+the original source against ICL Forge's own decode and, where the baseline
 has a trustworthy score for it (see **n/a** below), FFmpeg's and DEE's own
 decodes of the same material at the same bitrate. All four panels are present
 on every leg from baseline version 2 onward; before that the two 5.1 legs had
@@ -240,35 +240,35 @@ no DEE panel, because DEE had no trustworthy score for them.
 
 <div class="landscape-spectrograms">
   <figure>
-    <img src="https://raw.githubusercontent.com/iainchesworthlabs/ac3forge/quality-history/spectrograms/ac3-51-448.png" alt="ac3-51-448 spectrogram: original vs ac3forge vs FFmpeg vs DEE" loading="lazy">
+    <img src="https://raw.githubusercontent.com/iainchesworthlabs/ac3forge/quality-history/spectrograms/ac3-51-448.png" alt="ac3-51-448 spectrogram: original vs ICL Forge vs FFmpeg vs DEE" loading="lazy">
     <figcaption>ac3-51-448 (AC-3, 5.1 @ 448 kbit/s) — synthetic fixture.</figcaption>
   </figure>
   <figure>
-    <img src="https://raw.githubusercontent.com/iainchesworthlabs/ac3forge/quality-history/spectrograms/eac3-stereo-192.png" alt="eac3-stereo-192 spectrogram: original vs ac3forge vs FFmpeg vs DEE" loading="lazy">
+    <img src="https://raw.githubusercontent.com/iainchesworthlabs/ac3forge/quality-history/spectrograms/eac3-stereo-192.png" alt="eac3-stereo-192 spectrogram: original vs ICL Forge vs FFmpeg vs DEE" loading="lazy">
     <figcaption>eac3-stereo-192 (E-AC-3, stereo @ 192 kbit/s) — synthetic fixture; 96 kbit/s per channel.</figcaption>
   </figure>
   <figure>
-    <img src="https://raw.githubusercontent.com/iainchesworthlabs/ac3forge/quality-history/spectrograms/eac3-51-256.png" alt="eac3-51-256 spectrogram: original vs ac3forge vs FFmpeg vs DEE" loading="lazy">
+    <img src="https://raw.githubusercontent.com/iainchesworthlabs/ac3forge/quality-history/spectrograms/eac3-51-256.png" alt="eac3-51-256 spectrogram: original vs ICL Forge vs FFmpeg vs DEE" loading="lazy">
     <figcaption>eac3-51-256 (E-AC-3, 5.1 @ 256 kbit/s) — synthetic fixture.</figcaption>
   </figure>
   <figure>
-    <img src="https://raw.githubusercontent.com/iainchesworthlabs/ac3forge/quality-history/spectrograms/eac3-stereo-96.png" alt="eac3-stereo-96 spectrogram: original vs ac3forge vs FFmpeg vs DEE" loading="lazy">
+    <img src="https://raw.githubusercontent.com/iainchesworthlabs/ac3forge/quality-history/spectrograms/eac3-stereo-96.png" alt="eac3-stereo-96 spectrogram: original vs ICL Forge vs FFmpeg vs DEE" loading="lazy">
     <figcaption>eac3-stereo-96 (E-AC-3, stereo @ 96 kbit/s) — synthetic fixture; 48 kbit/s per channel, where spectral extension runs in every block.</figcaption>
   </figure>
   <figure>
-    <img src="https://raw.githubusercontent.com/iainchesworthlabs/ac3forge/quality-history/spectrograms/eac3-stereo-64.png" alt="eac3-stereo-64 spectrogram: original vs ac3forge vs FFmpeg vs DEE" loading="lazy">
+    <img src="https://raw.githubusercontent.com/iainchesworthlabs/ac3forge/quality-history/spectrograms/eac3-stereo-64.png" alt="eac3-stereo-64 spectrogram: original vs ICL Forge vs FFmpeg vs DEE" loading="lazy">
     <figcaption>eac3-stereo-64 (E-AC-3, stereo @ 64 kbit/s) — synthetic fixture; 32 kbit/s per channel, where spectral extension runs in every block.</figcaption>
   </figure>
   <figure>
-    <img src="https://raw.githubusercontent.com/iainchesworthlabs/ac3forge/quality-history/spectrograms/ac3-music-stereo-192.png" alt="ac3-music-stereo-192 spectrogram: original vs ac3forge vs FFmpeg vs DEE" loading="lazy">
+    <img src="https://raw.githubusercontent.com/iainchesworthlabs/ac3forge/quality-history/spectrograms/ac3-music-stereo-192.png" alt="ac3-music-stereo-192 spectrogram: original vs ICL Forge vs FFmpeg vs DEE" loading="lazy">
     <figcaption>ac3-music-stereo-192 (AC-3, stereo @ 192 kbit/s) — 30 s of real orchestral music. Compare the top octave against the synthetic legs above: this one rolls off, they do not.</figcaption>
   </figure>
   <figure>
-    <img src="https://raw.githubusercontent.com/iainchesworthlabs/ac3forge/quality-history/spectrograms/eac3-music-stereo-96.png" alt="eac3-music-stereo-96 spectrogram: original vs ac3forge vs FFmpeg vs DEE" loading="lazy">
+    <img src="https://raw.githubusercontent.com/iainchesworthlabs/ac3forge/quality-history/spectrograms/eac3-music-stereo-96.png" alt="eac3-music-stereo-96 spectrogram: original vs ICL Forge vs FFmpeg vs DEE" loading="lazy">
     <figcaption>eac3-music-stereo-96 (E-AC-3, stereo @ 96 kbit/s) — 30 s of real music, 48 kbit/s per channel.</figcaption>
   </figure>
   <figure>
-    <img src="https://raw.githubusercontent.com/iainchesworthlabs/ac3forge/quality-history/spectrograms/eac3-speech-stereo-64.png" alt="eac3-speech-stereo-64 spectrogram: original vs ac3forge vs FFmpeg vs DEE" loading="lazy">
+    <img src="https://raw.githubusercontent.com/iainchesworthlabs/ac3forge/quality-history/spectrograms/eac3-speech-stereo-64.png" alt="eac3-speech-stereo-64 spectrogram: original vs ICL Forge vs FFmpeg vs DEE" loading="lazy">
     <figcaption>eac3-speech-stereo-64 (E-AC-3, stereo @ 64 kbit/s) — 30 s of real connected speech, 32 kbit/s per channel.</figcaption>
   </figure>
 </div>
@@ -315,7 +315,7 @@ first baseline and are unchanged, so their series are continuous:
 
 The five added at version 2 close two different gaps.
 
-**Rates where the Annex E tools run.** ac3forge's `auto` decides per frame,
+**Rates where the Annex E tools run.** ICL Forge's `auto` decides per frame,
 from the rate and the frame's own content
 (`src/ac3/src/encoder/eac3_frame.cpp`): coupling starts below about
 12 + 14n kbit/s per channel for n channels, and spectral extension below a
@@ -340,7 +340,7 @@ for the sources, licences and measured spectra.
 
 Three metrics are shown side by side, each with its own **vs FFmpeg** /
 **vs DEE** delta against that tool's number for the same leg at the baseline
-version shown. Green always means ac3forge came out better, which is a
+version shown. Green always means ICL Forge came out better, which is a
 *higher* number for SNR and MOS and a *lower* one for LSD — the stored
 deltas are all plainly ours-minus-theirs, and only the colouring knows which
 way each metric points.
@@ -356,7 +356,7 @@ metric. (The per-tool detail behind that trade is in
 
 **n/a** on a `vs DEE` or `vs FFmpeg` cell means that side of the comparison
 has no real number for that leg and metric — not that the comparison came out
-even. **-** in an ac3forge cell means the metric was not scored for that row
+even. **-** in an ICL Forge cell means the metric was not scored for that row
 at all: LSD is a measure of what the Annex E tools trade away, so it is scored
 on the E-AC-3 legs only and the AC-3 rows leave it blank.
 
@@ -381,7 +381,7 @@ regenerated locally, occasionally, and reviewed by hand as a normal PR (see
 automatically, and never runs in CI. The **Baseline** column names which
 version of it a given release's numbers were compared against, so a jump in
 that column marks where the external side of the comparison changed, not
-ac3forge's own encoder.
+ICL Forge's own encoder.
 
 **MOS** is [ViSQOL](https://github.com/google/visqol)'s MOS-LQO (Mean
 Opinion Score - Listening Quality Objective) in audio mode, a perceptual-
@@ -422,9 +422,9 @@ conditions:
 
 | Leg | Codec | Layout | Rate | Arms |
 |---|---|---|---|---|
-| `ac3-51-448` | AC-3 | 5.1 | 448 kbit/s | ac3forge, FFmpeg |
-| `eac3-stereo-192` | E-AC-3 | stereo | 192 kbit/s | ac3forge, FFmpeg, DEE |
-| `eac3-51-256` | E-AC-3 | 5.1 | 256 kbit/s | ac3forge, FFmpeg |
+| `ac3-51-448` | AC-3 | 5.1 | 448 kbit/s | ICL Forge, FFmpeg |
+| `eac3-stereo-192` | E-AC-3 | stereo | 192 kbit/s | ICL Forge, FFmpeg, DEE |
+| `eac3-51-256` | E-AC-3 | 5.1 | 256 kbit/s | ICL Forge, FFmpeg |
 
 The 5.1 legs have no DEE arm, for the reason their `vs DEE` cells are already
 **n/a** above: that DEE build drops the Ls channel on discrete 6-channel
@@ -434,7 +434,7 @@ stimulus nobody should draw a conclusion from is worse than a missing one.
 Each leg also carries BS.1534-3's hidden reference and its two low-pass
 anchors, 3.5 kHz (mandatory) and 7 kHz (recommended).
 
-**One decoder for everything.** Every stimulus, including ac3forge's own
+**One decoder for everything.** Every stimulus, including ICL Forge's own
 encode, is decoded by FFmpeg. This is deliberately the opposite of what the
 trend legs do. A listening test compares *encoders*; if each encoder's output
 went through its own decoder, the panel would be scoring encoder-and-decoder
@@ -509,10 +509,10 @@ interval for MUSHRA, or one row per (leg, system) with proportion correct, a
 
 ### Reproducing the stimulus set
 
-After building `ac3cli`:
+After building `forge`:
 
 ```bash
-AC3CLI=build/config-linux-llvm/bin/ac3cli python3 tools/listening/gen_listening_stimuli.py --out listening-session
+ICLFORGE_CLI=build/config-linux-llvm/bin/forge python3 tools/listening/gen_listening_stimuli.py --out listening-session
 ```
 
 [`tools/listening/README.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/listening/README.md)

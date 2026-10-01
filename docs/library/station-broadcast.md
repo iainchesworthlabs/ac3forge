@@ -34,9 +34,9 @@ sequence starts at 0:01, the diegetic fan edit at about 0:14.)
 | 1:43 | The wormhole opens behind the station | A subsonic core almost entirely on `lfe_send` — the only route to the LFE — plus two shimmer objects that split and wrap up and over the room; the score's final cadence lands on the flash at 1:44, as in the original |
 | 1:51 | ...and swallows itself | Pitch and gains collapse back to front-centre |
 
-Ten named objects in one `ac3::oba::ObjectScene`, each with its own authored
+Ten named objects in one `iclforge::oba::ObjectScene`, each with its own authored
 automation, evaluated at the *end* of each frame — the same convention as
-`ac3cli atmos-path`, because both metadata layers interpolate to that point.
+`forge atmos-path`, because both metadata layers interpolate to that point.
 It is the same type that command reads from a file and the GUI's timeline
 edits, so this cue sheet could equally have been loaded from JSON rather than
 written in C++.

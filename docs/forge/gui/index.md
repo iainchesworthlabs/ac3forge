@@ -1,7 +1,7 @@
 # Window layout
 
-`ac3gui` is Forge's graphical interface. It uses a two-pane workbench for sources, codec
-settings, objects, metadata, and results. The equivalent [`ac3cli`](../cli/index.md) command is
+`forge-gui` is Forge's graphical interface. It uses a two-pane workbench for sources, codec
+settings, objects, metadata, and results. The equivalent [`forge`](../cli/index.md) command is
 shown at the bottom of the window.
 
 The screenshots use the current workbench in the default Signal light theme. Theme and text-size
@@ -16,20 +16,20 @@ on the spot) and a one-sentence tour of the window:
 
 ![The first-run screen](screenshots/firstrun.png)
 
-Any of those, plus dragging a file onto the window or launching `ac3gui path/to/file` from a
+Any of those, plus dragging a file onto the window or launching `forge-gui path/to/file` from a
 shell, works from the first-run screen or the workbench alike — a WAV becomes a source, an
 already-encoded `.ac3`/`.ec3` opens in the [stream player](open-stream.md) instead. An `.ac4` file
 is not recognised there: dropped or named on the command line it is read as a source and refused,
-so open one with **Open stream…**, whose file picker has an AC-4 filter. `ac3gui` claims no file
+so open one with **Open stream…**, whose file picker has an AC-4 filter. `forge-gui` claims no file
 type with the desktop, so a double-click in the file manager does not reach it:
 
-- On Linux `ac3gui.desktop` has no `MimeType=` line, and the `ac3gui-mime.xml` fragment the package
+- On Linux `forge-gui.desktop` has no `MimeType=` line, and the `forge-gui-mime.xml` fragment the package
   installs only declares the `audio/ac3` and `audio/eac3` types with their `*.ac3` and `*.ec3`
   globs.
 - On macOS `Info.plist` carries no document types.
 - The Windows installer points `.ac3` and `.ec3` at [Hearth](../../hearth/index.md), the desktop
-  player, and at `ac3gui.exe` only in a package built without Hearth (the one case where a
-  double-click does start `ac3gui`).
+  player, and at `forge-gui.exe` only in a package built without Hearth (the one case where a
+  double-click does start `forge-gui`).
 - Hearth is the registered opener for `.ac3` and `.ec3` on all three; no platform registers `.ac4`.
 
 See [Loading a source](loading-a-source.md#01-input).
@@ -40,7 +40,7 @@ Minimum size 1280×900. Two panes, divided by a vertical rule:
 
 ![The workbench: a 5.1 source loaded, Advanced tier](screenshots/overview-default.png)
 
-- **Header** (top): the `ac3forge` wordmark and subtitle, a **Guided / Advanced / Expert**
+- **Header** (top): the `iclforge` wordmark and subtitle, a **Guided / Advanced / Expert**
   segmented control, a **QC a stream…** button (a separate dialog that measures an
   already-encoded file — see [QC a stream](qc.md)), an **Inspect objects…** button (its decode-side
   counterpart for Dolby Atmos object metadata/audio — see [Inspect objects](inspect-objects.md)),
@@ -59,7 +59,7 @@ Minimum size 1280×900. Two panes, divided by a vertical rule:
   Beneath it, a tab bar (hidden in Guided, which fills the panel with its own steps) — tabs carry
   a badge counting their non-default settings, so a collapsed panel still declares itself.
 - **Run strip** (bottom): past and in-flight runs — file encodes, recordings, and live sessions
-  alike — each a compact **`ac3cli` command-line chip**, beside the primary Encode button.
+  alike — each a compact **`forge` command-line chip**, beside the primary Encode button.
     - Encode runs in-process, so the command line is reference material: click a chip to open a
       popover with the complete live-generated line (wrapped, with Copy). It's present in every
       tier, including Guided, since a codec developer should always be one click from the
@@ -68,7 +68,7 @@ Minimum size 1280×900. Two panes, divided by a vertical rule:
       metadata in `print_meta_usage`'s own grammar, AC-3's bare `couple`, quoting where names
       carry spaces. A live source renders as the single `live` subcommand, even with Matroska
       selected (`container=mkv`) — see [Live capture & session](live-session.md). A *file*
-      encode's Matroska container is *two* commands instead (`… && ac3cli mkv …`), since pasting
+      encode's Matroska container is *two* commands instead (`… && forge mkv …`), since pasting
       one command would write a raw elementary stream into a file named `.mkv`.
     - Finished chips carry **Show in folder** and **Play** — the latter sends the run's own
       output to a receiver over the same IEC 61937 passthrough path Format's own Passthrough
@@ -81,7 +81,7 @@ Minimum size 1280×900. Two panes, divided by a vertical rule:
       no AC-3 or E-AC-3 stream.
     - Clicking a chip's summary text (the text is the click target, not the status square or
       padding) opens that run's details popover: status, rate, duration, size, frame count, the
-      failure text if it failed, and the exact `ac3cli` command line as it stood *when that run
+      failure text if it failed, and the exact `forge` command line as it stood *when that run
       started* — snapshotted, not read live, so an old chip's popover stays accurate even after
       the command bar above has moved on.
     - Failed and cancelled chips say which they are in the chip text itself, with a frame count
@@ -176,7 +176,7 @@ A real dialog, persisted across sessions (QSettings), three columns:
     - **Explanations** — show the plain-language notes beside controls, and optionally warn
       before a choice changes the codec (the codec follows the channels either way; the warning
       only makes the moment deliberate).
-- **When ac3forge opens**
+- **When ICL Forge opens**
     - The Controls tier (including "whatever I used last"); reopen the last session's sources
       and assignments (saved as one unit on close, restored on open — a file gone missing fails
       its load with the usual message rather than aborting the rest); optionally start on the
@@ -197,7 +197,7 @@ A real dialog, persisted across sessions (QSettings), three columns:
       Preferences stops overwriting it for the rest of the session.
     - **Capture** — start monitoring as soon as a device is chosen, and whether Record asks for a
       filename or writes straight to the output folder under a timestamped take name.
-    - **Command line** — keep the `ac3cli` line visible.
+    - **Command line** — keep the `forge` line visible.
     - **Diagnostics** — **Save diagnostics…** writes a plain-text file for a bug report: the
       versions, the platform, what is loaded, the settings in force and the last messages the
       window logged. It carries no audio, no part of any file you loaded and no signing key,

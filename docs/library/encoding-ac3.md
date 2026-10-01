@@ -1,18 +1,18 @@
-# AC-3: `ac3::FrameEncoder`
+# AC-3: `iclforge::FrameEncoder`
 
-`ac3/encoder/encoder.hpp`. One call, one syncframe.
+`iclforge/ac3/encoder/encoder.hpp`. One call, one syncframe.
 
 ```cpp
 // Heap-allocated: FrameEncoder carries several KB of MDCT scratch/history
 // state (PREfast's C6262).
-auto encoder = std::make_unique<ac3::FrameEncoder>(ac3::EncoderConfig{
+auto encoder = std::make_unique<iclforge::FrameEncoder>(iclforge::EncoderConfig{
     .bitrate_kbps = 448,
-    .acmod = ac3::Acmod::k3_2,  // L, C, R, SL, SR
+    .acmod = iclforge::Acmod::k3_2,  // L, C, R, SL, SR
     .lfe = true,
 });
 
 // Table 5.8 order, LFE last, exactly kSamplesPerFrame (1536) samples each.
-std::vector<std::vector<float>> pcm(6, std::vector<float>(ac3::kSamplesPerFrame));
+std::vector<std::vector<float>> pcm(6, std::vector<float>(iclforge::kSamplesPerFrame));
 // encode_frame takes a span of spans, so the views must outlive the call.
 // Build them once and refill the buffers underneath each frame.
 const std::vector<std::span<const float>> views{pcm.begin(), pcm.end()};
@@ -37,7 +37,7 @@ Full program: [`examples/encode_ac3.cpp`](https://github.com/iainchesworthlabs/a
 | Field | Default | Notes |
 |---|---|---|
 | `sample_rate` | `k48000` | Also `k44100`, `k32000`. |
-| `bitrate_kbps` | 192 | Must be one of the 19 Table 5.18 rates; `ac3::is_valid_bitrate` checks. |
+| `bitrate_kbps` | 192 | Must be one of the 19 Table 5.18 rates; `iclforge::is_valid_bitrate` checks. |
 | `dialnorm` | 31 | 1–31 (§5.4.2.8). 31 means "no attenuation", which is a claim about your content. |
 | `chbwcod` | -1 | Coded bandwidth, 0–60. -1 derives it from the bit rate and the content — see below. |
 | `acmod` | `k2_0` | Table 5.8, including `kDualMono` (1+1) — see below. |
@@ -54,7 +54,7 @@ Full program: [`examples/encode_ac3.cpp`](https://github.com/iainchesworthlabs/a
 | `drc2` | none | `std::optional<meta::Profile>`. Ch2's own DRC, meaningful only under `kDualMono` — no fallback to `drc` when unset (see below). |
 | `heavy2` | none | `std::optional<meta::HeavyConfig>`. Ch2's own heavy compression, same rule as `drc2`. |
 | `cmixlev`, `surmixlev` | −4.5 dB, −6 dB | Tables 5.9/5.10. Always define the §7.8 downmix, whatever `acmod` is. |
-| `info` | all defaults | `meta::BsiInfo`, the informational bsi fields (§5.4.2): service type, surround mode, mixing level and room type, copyright bits, time code — see [Bit stream information](metadata.md#bit-stream-information-ac3metabsihpp). |
+| `info` | all defaults | `meta::BsiInfo`, the informational bsi fields (§5.4.2): service type, surround mode, mixing level and room type, copyright bits, time code — see [Bit stream information](metadata.md#bit-stream-information-iclforgeac3metabsihpp). |
 | `alternate_bsi` | none | `std::optional<meta::AlternateBsi>`: Annex D's `xbsi1`/`xbsi2`, which writes `bsid` 6 — see [Annex D's alternate syntax](metadata.md#annex-ds-alternate-syntax-bsid-6). |
 | `search` | `kNone` | Per-frame search over §7.2.2's transmitted bit allocation parameters, judged on the error the decoder will reconstruct — see below. `kDistortion` or `kPerceptual` turn it on; the CLI spells it `search=distortion` / `search=perceptual`. |
 | `trace` | `nullptr` | `verify::FrameTrace*`: the encoder's half of the [mirror self-check](decoding.md#the-mirror-self-check). Null costs one branch per block. |
@@ -66,7 +66,7 @@ plus per-band coordinates.
 ### Coded bandwidth
 
 `chbwcod` decides where the coded spectrum stops. At -1 — the default, and the same default
-`ac3::eac3::FrameConfig` now takes — the encoder answers from two things.
+`iclforge::eac3::FrameConfig` now takes — the encoder answers from two things.
 
 The **bit rate sets a ceiling**, on the curve the AC-3 encoder used before the content half
 existed: two thirds of the per-channel kbit/s, clamped to 24–60. Below about 90 kbit/s per channel the bits the top of
@@ -135,7 +135,7 @@ covers the whole frame there.
 
 Off by default (`EncoderConfig::search`). With it on, the encoder stops taking §7.2.2's bit
 allocation parameters as given and chooses them per frame, from the error a decoder will actually
-reconstruct — measured by [`ac3::quality`](quality.md) without decoding anything.
+reconstruct — measured by [`iclforge::quality`](quality.md) without decoding anything.
 
 The candidates are `dbpbcod` {2, 3} × `fgaincod` {1, 2, 4}, six in all. The no-search default -
 `dbpbcod` 3 at whatever `fgaincod_for` (above) computes for the frame's rate - is scored
@@ -250,7 +250,7 @@ difference channel's bits go where they are actually needed.
 
 Not a channel layout — two independent, single-channel programmes sharing one syncframe (a
 second language track, a commentary track), each levelled and compressed on its own. Set
-`acmod = ac3::Acmod::kDualMono` and `dialnorm2`; `channels[0]` is Ch1, `channels[1]` is Ch2
+`acmod = iclforge::Acmod::kDualMono` and `dialnorm2`; `channels[0]` is Ch1, `channels[1]` is Ch2
 (`fullbw_channel_count(kDualMono)` is 2, same as stereo, but the two channels are never
 downmixed, coupled or rematrixed together — coupling silently stays off even if `coupling` is
 set, since averaging two unrelated programmes together would leak one into the other). The
@@ -265,14 +265,14 @@ by hand has to honour the convention itself.
 
 ## Latency
 
-`ac3/latency.hpp`. The first question an engine or conferencing integrator asks, answered as a
+`iclforge/ac3/latency.hpp`. The first question an engine or conferencing integrator asks, answered as a
 number rather than a shrug:
 
 ```cpp
 const auto budget = encoder->latency();
 std::printf("%d samples, %.2f ms\n",
             budget.total_samples(),
-            ac3::latency_ms(budget, encoder->config().sample_rate));
+            iclforge::latency_ms(budget, encoder->config().sample_rate));
 // 1792 samples, 37.33 ms
 ```
 
@@ -310,12 +310,12 @@ by a block would add 256 samples here.
 
 `total_samples()` is a bound, not an average: a sample entering the encoder is delayed by
 between `transform_samples` (the last sample of a frame) and `total_samples() - 1` (the first),
-and never more. The decoder adds nothing of its own — `ac3::FrameDecoder::latency_samples()` is
+and never more. The decoder adds nothing of its own — `iclforge::FrameDecoder::latency_samples()` is
 zero, structurally, because `decode_frame` returns a frame's full PCM from the call that
 supplies its bytes.
 
-The same budget is on the C API as `ac3forge_encoder_latency()` /
-`ac3forge_encoder_latency_samples()` (see [the C API](c-api.md)) and in Python as
+The same budget is on the C API as `iclforge_encoder_latency()` /
+`iclforge_encoder_latency_samples()` (see [the C API](c-api.md)) and in Python as
 `FrameEncoder.latency` / `.latency_samples` (see [the Python API](python-api.md)).
 
 ---

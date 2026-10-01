@@ -531,7 +531,7 @@ jobs:
             --iclforge-tests ./build/config-linux-gcc/bin/iclforge-tests
 
       # A6's own exit (same planning doc): the scripted player as one member of a group alongside
-      # a burst-taking test sink, played from the app's own ac3::hearth::Engine - not just Group
+      # a burst-taking test sink, played from the app's own iclforge::hearth::Engine - not just Group
       # directly, the way the step above's own host case does for A4. Reuses the venv above.
       - name: aiosendspin 9.1.1 player, as a group member
         shell: bash

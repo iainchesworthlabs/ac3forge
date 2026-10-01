@@ -17,7 +17,7 @@ FFmpeg implements no JOC reconstruction — it decodes these streams as their
 does implement it, but [gates object decoding on a keyed authenticity
 tag](concepts/atmos-joc.md#two-limitations) this project ships no key
 for, so it plays them as the bed too. Nothing outside this repository can
-currently produce an independent object decode of an ac3forge stream. What
+currently produce an independent object decode of an ICL Forge stream. What
 these numbers say is that this project's encoder and decoder still agree
 with each other about TS 103 420 as precisely as they did last commit; a
 regression on either side collapses them, and a defect both sides share is
@@ -52,7 +52,7 @@ is exactly what a parametric object coder has to keep apart.
 scene to probe one thing. The bed has no height channels, so elevation costs
 nothing in the downmix and two objects differing only in height are panned
 into the five bed channels identically — the limit
-[`ac3/oba/atmos.hpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/ac3/include/iclforge/ac3/oba/atmos.hpp)
+[`iclforge/ac3/oba/atmos.hpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/ac3/include/iclforge/ac3/oba/atmos.hpp)
 names in its own module comment. Direction is not the matrix's only axis
 though: JOC solves per *frequency band*, so a pair sharing a direction but
 not a spectrum is still separable, and these two score as well as the
@@ -535,9 +535,9 @@ Four metrics, and only SNR is regression-checked:
   *delayed* identity, carrying two stacked delays — 256 samples from the
   bed's own encode/decode, plus 576 more from reconstruction's own pass over
   that decoded bed through §7.1's 64-band complex QMF filterbank (the
-  default `Domain::kQmf`; `ac3::dsp::kQmfDelay` in `qmf.hpp`), not the
+  default `Domain::kQmf`; `iclforge::dsp::kQmfDelay` in `qmf.hpp`), not the
   older 256-sample MDCT round trip `Domain::kMdctBand` used before the
-  filterbank existed. `ac3::joc::reconstruction_delay(domain)` is the single
+  filterbank existed. `iclforge::joc::reconstruction_delay(domain)` is the single
   place either figure is derived, and `tests/ac3/oba/test_atmos.cpp` calls it
   rather than hard-coding a number; its comment carries the full reasoning.
   It is fixed rather than found by cross-correlation on purpose — a
@@ -579,8 +579,8 @@ been written as of 2026-08-25's move to trunk-based development, so the
 was wired up but had not landed a row on either branch before `develop` was
 retired, and its first row on `main` is from 2026-08-26.
 
-Reproduce any row locally, after building `ac3cli`:
+Reproduce any row locally, after building `forge`:
 
 ```bash
-AC3CLI=build/config-linux-llvm/bin/ac3cli python3 tools/ci/quality_race.py objects
+ICLFORGE_CLI=build/config-linux-llvm/bin/forge python3 tools/ci/quality_race.py objects
 ```

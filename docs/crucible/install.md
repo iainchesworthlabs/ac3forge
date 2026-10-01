@@ -8,14 +8,14 @@ mute captured applications.
 
 ### Get it
 
-`ac3forge-crucible-<version>-win64.zip`, from the releases page. It carries the window, the
+`iclforge-crucible-<version>-win64.zip`, from the releases page. It carries the window, the
 console runner, its own Qt runtime, the driver's install and remove scripts, the third-party
 notices (`NOTICES.txt`) and the licence (`LICENSE.txt`). It does not carry the driver those
 scripts install — the next section says why, and what that means before you change any security
-setting. Unpack it somewhere and run `ac3crucible.exe`. About > Licences… shows the same notices
+setting. Unpack it somewhere and run `crucible.exe`. About > Licences… shows the same notices
 from inside the window.
 
-It is a separate download from the main `ac3forge` package, and stays one while its driver is
+It is a separate download from the main `iclforge` package, and stays one while its driver is
 test-signed.
 
 ### The silent device
@@ -81,7 +81,7 @@ The window says which of these you are in rather than leaving you to work it out
 
 ### Get it
 
-`ac3forge-crucible-<version>-Linux-x86_64.tar.gz`, or the `ac3forge-crucible_<version>_amd64.deb`
+`iclforge-crucible-<version>-Linux-x86_64.tar.gz`, or the `iclforge-crucible_<version>_amd64.deb`
 beside it, from the releases page; on a Raspberry Pi 4 or 5, or any other 64-bit ARM Debian or
 Ubuntu machine, the `-Linux-aarch64.tar.gz` and the `_arm64.deb` beside those. All four come off
 the same Crucible pass on the two Linux LLVM legs — the CI legs that build against PipeWire,
@@ -102,17 +102,17 @@ directory — and is the route for anything you have changed, and for a distribu
 PipeWire is older than the one the packages were built against. From a checkout:
 
 ```bash
-cmake --preset config-linux-gcc -B build/crucible -DAC3FORGE_BUILD_CRUCIBLE=ON -DAC3FORGE_WITH_ALSA=OFF -DAC3FORGE_WITH_PIPEWIRE=ON
+cmake --preset config-linux-gcc -B build/crucible -DICLFORGE_BUILD_CRUCIBLE=ON -DICLFORGE_WITH_ALSA=OFF -DICLFORGE_WITH_PIPEWIRE=ON
 ```
 
 ```bash
-cmake --build build/crucible --target ac3crucible ac3crucible-run
+cmake --build build/crucible --target crucible crucible-run
 ```
 
-`-DAC3FORGE_WITH_ALSA=OFF` is not optional. With ALSA headers present the library selects ALSA,
+`-DICLFORGE_WITH_ALSA=OFF` is not optional. With ALSA headers present the library selects ALSA,
 and Crucible refuses to build against it.
 
-The tarball and the `.deb` carry the notices under `share/doc/ac3forge-crucible/`:
+The tarball and the `.deb` carry the notices under `share/doc/iclforge-crucible/`:
 `NOTICES.txt` (what the build links and embeds, with each licence), `LICENSE.txt`, and the
 notices once more as `copyright`, the name Debian tools look for. About > Licences… shows the
 same text.
@@ -132,7 +132,7 @@ the same key `wpctl set-default` writes, and restores your previous default on e
 
 ### What you get, and what you do not
 
-The window builds and runs on Linux (`ac3crucible`), and so does `ac3crucible-run`, a console
+The window builds and runs on Linux (`crucible`), and so does `crucible-run`, a console
 runner over the same engine that lists the applications it can see, takes positions, and reports
 which output it chose and why. Building the window needs Qt 6.8 or later with Quick, Quick
 Controls 2, Widgets and Linguist Tools; Quick 3D is optional and adds the 3D room, Qt SVG is
@@ -145,12 +145,12 @@ icon named after its binary. A script, an interpreter or a command-line player (
 `aplay`) has none of those, and shows the monogram.
 
 ```
-ac3crucible-run [--null-sink SUBSTR] [--key PATH] [--pin MODE] [--low-latency]
+crucible-run [--null-sink SUBSTR] [--key PATH] [--pin MODE] [--low-latency]
                 [--bitrate KBPS] [--set-default SUBSTR]
 
 Options:
   --null-sink SUBSTR       silent endpoint applications render into
-  --key PATH               signing key file; otherwise use AC3FORGE_SIGNING_KEY*
+  --key PATH               signing key file; otherwise use ICLFORGE_SIGNING_KEY*
   --pin MODE               start in atmos, ddplus, dd, pcm, headphones, or stereo
   --low-latency            use one-block frames and the smallest PCM sink period
   --bitrate KBPS           fixed bit rate; default 448, or 1536 with --low-latency
@@ -194,14 +194,14 @@ Two things worth knowing before you start:
 Builds, and no release publishes it. The library's Core Audio process tap and device watcher, and
 Crucible's macOS platform half, are in the tree and build. Both macOS CI legs compile and link
 them, run the test suites, the window's Qt Quick suites among them, and package the application
-as `ac3forge-crucible-<version>-Darwin.zip`, whose contents `tools/ci/check_crucible_package.py`
+as `iclforge-crucible-<version>-Darwin.zip`, whose contents `tools/ci/check_crucible_package.py`
 checks. That archive is a CI artifact and no release asset: a release's macOS package is the
 universal disk image of the runtime component. Beyond that nothing has run on a Mac. A hosted
 runner has a virtual sound device and a window session, and on the Apple Silicon one the first
 process tap never returned from `AudioDeviceCreateIOProcID`. The backend now refuses the tap
-unless `AC3FORGE_MACOS_PROCESS_TAP` is set in the environment, so on macOS Crucible lists the
+unless `ICLFORGE_MACOS_PROCESS_TAP` is set in the environment, so on macOS Crucible lists the
 applications using sound and taps none of them. Nothing has been captured, played or launched on a
-desktop Mac. The route is a source build with `-DAC3FORGE_BUILD_CRUCIBLE=ON`, the same as those
+desktop Mac. The route is a source build with `-DICLFORGE_BUILD_CRUCIBLE=ON`, the same as those
 two CI legs use, or that CI archive.
 
 It needs no driver when it runs: macOS process taps mute an application where they capture it, so
@@ -256,10 +256,10 @@ shown the dialog to anybody.
 Without one, Crucible streams 5.1 and your placements pan within the bed; height does nothing.
 With one, you get Atmos objects.
 
-Point Settings at a key file, or set the same environment variable `ac3cli` reads:
+Point Settings at a key file, or set the same environment variable `forge` reads:
 
 ```bash
-export AC3FORGE_SIGNING_KEY_FILE=/path/to/key
+export ICLFORGE_SIGNING_KEY_FILE=/path/to/key
 ```
 
 Crucible stores the *path*, never the key material. Plaintext key material never reaches a

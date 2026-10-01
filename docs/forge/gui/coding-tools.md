@@ -28,7 +28,7 @@ there to let the encoder pick a band edge, or pin one explicitly:
 | **Spectral extension** | begin band — auto or pinned (§E3.6). Turning it on reveals a further **Attenuate the spectral-extension seam** checkbox. |
 | **Adaptive hybrid transform** | GAQ mode, 0–3 — mode 0 is AHT with gain-adaptive quantization switched off, which is how GAQ's own contribution gets measured (§E3.4) |
 
-At the foot of the card, a monospace `ac3cli tools token` readout (`cpl+spx`, `cpl+spx+aht`, …)
+At the foot of the card, a monospace `forge tools token` readout (`cpl+spx`, `cpl+spx+aht`, …)
 shows the exact string that reproduces this configuration on the command line — see
 [CLI → Options & grammars](../cli/metadata-options.md) for the full `tools:` grammar, including the
 `cpl:N`/`spx:N`/`aht:N` pinning syntax this token expands to.

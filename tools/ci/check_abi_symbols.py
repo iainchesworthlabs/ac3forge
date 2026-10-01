@@ -104,7 +104,7 @@ def exported_symbols(library: Path) -> list[str]:
     type ahead of the qualified name (e.g. "long std::__lg<long>(long)") -
     a prefix or substring check on demangled text would either miss these
     or, worse, wrongly exclude a real project export whose signature merely
-    mentions a std:: type it returns (e.g. mp4::fragment's
+    mentions a std:: type it returns (e.g. iclforge::mp4::fragment's
     std::expected<...> return type). The mangled encoding always puts the
     symbol's own qualified name first, so a prefix check there is
     unambiguous. c++filt then demangles only the survivors, so the

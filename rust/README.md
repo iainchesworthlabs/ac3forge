@@ -1,12 +1,12 @@
-# ac3forge Rust bindings
+# ICL Forge Rust bindings
 
-Roadmap item AP9: the first non-Python binding over `ac3forge_c/ac3forge.h`. Two crates:
+Roadmap item AP9: the first non-Python binding over `iclforge_c/iclforge.h`. Two crates:
 
-- **`ac3forge-sys`** — raw, `bindgen`-generated FFI declarations. Nothing here is hand-written;
+- **`iclforge-sys`** — raw, `bindgen`-generated FFI declarations. Nothing here is hand-written;
   `build.rs` regenerates them from the header at every build, against the exact library it also
   compiled from source, so header drift is caught the moment it happens rather than discovered by
   a consumer months later.
-- **`ac3forge`** — a safe, idiomatic wrapper over it: `Result`/`Option` instead of status codes
+- **`iclforge`** — a safe, idiomatic wrapper over it: `Result`/`Option` instead of status codes
   and out-parameters, RAII handles, slices instead of raw pointers.
 
 ## Why this lives in-tree
@@ -28,7 +28,7 @@ the CMake configure the same way Gradle does.
 You need, on `PATH`: **CMake** (the same minimum this project already requires — see the root
 `CMakeLists.txt`), a **C++23 compiler**, and **libclang** (bindgen's own dependency — set
 `LIBCLANG_PATH` if it isn't auto-detected; on Windows it ships next to `clang.exe` in an LLVM
-install). No vcpkg toolchain file is needed: `build.rs` configures with `AC3FORGE_BUILD_CAPI` on,
+install). No vcpkg toolchain file is needed: `build.rs` configures with `ICLFORGE_BUILD_CAPI` on,
 the CLI, GUI, tests, examples, fuzzers, ADM bridge, container writers and Hearth off, and the rest at
 their defaults, AC-4 included (a trimmed set like the one `python/pyproject.toml` uses for its own
 extension-module build), and the one dependency that survives that ({fmt}) resolves via
@@ -37,8 +37,8 @@ extension-module build), and the one dependency that survives that ({fmt}) resol
 ```bash
 cargo build --workspace
 cargo test --workspace
-cargo run --example encode_decode_ac3 -p ac3forge
-cargo run --example encode_decode_eac3 -p ac3forge
+cargo run --example encode_decode_ac3 -p iclforge
+cargo run --example encode_decode_eac3 -p iclforge
 ```
 
 The first build compiles the codec core from source (a few minutes); after that, `build.rs`'s
@@ -53,7 +53,7 @@ library instead of independently rediscovering `forge_c_static`'s transitive sta
 the way `find_package()`-based CMake consumer would for free.
 
 That means a runtime shared library, not just a link-time archive. `build.rs` copies the built
-`ac3forge_c.dll`/`libac3forge_c.so`/`.dylib` next to the crate's own build output (`target/
+`iclforge_c.dll`/`libiclforge_c.so`/`.dylib` next to the crate's own build output (`target/
 <profile>/`, plus `deps/` and `examples/` on Windows, where DLL search actually looks) and, on
 Unix, adds an rpath pointing at the same directory — so `cargo test`/`cargo run --example` work
 with no `LD_LIBRARY_PATH`/`PATH` juggling. This is a **local-dev/CI convenience, not a deployment
@@ -66,15 +66,15 @@ AC-3, E-AC-3 and AC-4 encode and decode — solid and tested (synthesized audio,
 frames, per CONTRIBUTING.md's validation discipline), not six surfaces half-covered. The first
 pass was AC-3 and single-substream E-AC-3:
 
-- `ac3forge::ac3` — `Encoder`/`EncoderConfig`, `Decoder`/`DecodedFrame`.
-- `ac3forge::eac3` — `Eac3Encoder`/`Eac3FrameConfig`, `Eac3Decoder`/`DecodedSubstream`.
-- `ac3forge::ac4` — `Encoder`/`EncoderConfig`, `Decoder`/`DecodedFrame`, objects included (see
+- `iclforge::ac3` — `Encoder`/`EncoderConfig`, `Decoder`/`DecodedFrame`.
+- `iclforge::eac3` — `Eac3Encoder`/`Eac3FrameConfig`, `Eac3Decoder`/`DecodedSubstream`.
+- `iclforge::ac4` — `Encoder`/`EncoderConfig`, `Decoder`/`DecodedFrame`, objects included (see
   Coverage below).
 
 Every config type follows the C header's own `_config_init` growth convention: construct with
-`Default::default()` (which calls the raw `ac3forge_*_config_init()` FFI function first) and
+`Default::default()` (which calls the raw `iclforge_*_config_init()` FFI function first) and
 override only the fields you need — never a hand-written Rust-side guess at what the C++ defaults
-are. See `ac3::EncoderConfig::default()`'s doc comment for the mechanics.
+are. See `iclforge::EncoderConfig::default()`'s doc comment for the mechanics.
 
 ### Coverage
 
@@ -94,11 +94,11 @@ closed everything that list deferred:
   stay valid and unmodified" clause instead of documentation asking for it.
 - `meter::LoudnessMeter` (both constructors — acmod/lfe and the BS.1770-5 chanmap form) and
   `meter::dialnorm_from_lkfs`.
-- `ac4::Decoder`/`Encoder` (roadmap plan phases I4 and I4b) — a distinct codec (ETSI TS 103 190),
-  wrapping `ac3forge_ac4_*` unconditionally, with no Cargo feature of its own: the header declares
-  those functions whether or not the library was built with AC-4 (`AC3FORGE_BUILD_AC4`, default ON
+- `iclforge::ac4::Decoder`/`Encoder` (roadmap plan phases I4 and I4b) — a distinct codec (ETSI TS 103 190),
+  wrapping `iclforge_ac4_*` unconditionally, with no Cargo feature of its own: the header declares
+  those functions whether or not the library was built with AC-4 (`ICLFORGE_BUILD_AC4`, default ON
   and left at its default by `build.rs`; with it off the fallible ones return
-  `AC3FORGE_ERROR_UNSUPPORTED`), so this module sits on the same footing `atmos` already did.
+  `ICLFORGE_ERROR_UNSUPPORTED`), so this module sits on the same footing `atmos` already did.
   Channel-based and channel-based-immersive encode/decode (mono, stereo, 5.0, 5.1, 5.0.4, 5.1.4),
   presentations, concealment, loudness metadata and the `Toc`/`sync_frame` container helpers are
   wrapped. `tests/ac4_roundtrip.rs` round-trips stereo and 5.1 (checking the 5.1 speaker order),
@@ -113,7 +113,7 @@ closed everything that list deferred:
 
 Still deliberately out: the caller-buffer `_into` decode forms (a realtime-embedder
 convenience whose Rust ergonomics want `&mut [f32]` scratch the value forms already avoid
-allocating twice for), the level meter (`ac3forge_level_meter_t`) and the QC gates, and a few
+allocating twice for), the level meter (`iclforge_level_meter_t`) and the QC gates, and a few
 scanned-stream, frame-metadata and latency accessors — recorded, not silently missing; the full
 list is [What is not wrapped](https://iainchesworthlabs.github.io/ac3forge/library/rust-api/#what-is-not-wrapped).
 
@@ -123,17 +123,17 @@ The point of AP9, per the roadmap entry, isn't the crate — the C API had never
 boundary before (Python is pybind11-direct C++, WASM is Embind, Android is JNI, all three
 compiling the same C++23 source this binding instead links as a black box). Four things surfaced:
 
-1. **`ac3forge_object_placement_t` had no `_init()`, unlike every sibling config struct.**
-   `ac3::oba::ObjectPlacement` default-member-initializes `gain = 1.0`; the C struct's own doc
+1. **`iclforge_object_placement_t` had no `_init()`, unlike every sibling config struct.**
+   `iclforge::oba::ObjectPlacement` default-member-initializes `gain = 1.0`; the C struct's own doc
    comment says "gain: linear, default 1.0" — but nothing prevented a caller from
    zero-initializing it and silently getting a muted object (`gain = 0.0`), with no
-   `ac3forge_object_placement_init()` to catch the trap the way every other config struct's own
-   `_init()` does. **Fixed with the binding**: `ac3forge_object_placement_init()` added (purely
+   `iclforge_object_placement_init()` to catch the trap the way every other config struct's own
+   `_init()` does. **Fixed with the binding**: `iclforge_object_placement_init()` added (purely
    additive); the default position it sets is room-centre (0.5, 0.5, 0.0), not the origin.
 2. **Four accessors were missing the pointer-lifetime documentation their sibling has.**
-   `ac3forge_decoded_frame_channel_samples()` documents "valid until `frame` is destroyed";
-   `ac3forge_decoded_substream_channel_samples()`, `ac3forge_decoded_access_unit_channel_samples()`,
-   `ac3forge_decoded_substream_object_audio()` and `ac3forge_decoded_access_unit_object_audio()`
+   `iclforge_decoded_frame_channel_samples()` documents "valid until `frame` is destroyed";
+   `iclforge_decoded_substream_channel_samples()`, `iclforge_decoded_access_unit_channel_samples()`,
+   `iclforge_decoded_substream_object_audio()` and `iclforge_decoded_access_unit_object_audio()`
    didn't say so. **Fixed with the binding** (doc-only). This crate's own wrappers tie every such
    slice's lifetime to `&self` regardless, so a wrong assumption here would have shown up as a
    Rust borrow-checker error in this crate, never as a use-after-free in a caller's.
@@ -147,7 +147,7 @@ compiling the same C++23 source this binding instead links as a black box). Four
    binding's author.
 4. **Reported, not changed: no enum in the header says whether it may gain new values in a
    future minor release.** This matters specifically for a strongly-typed binding — a Rust `enum`
-   can't safely represent an FFI discriminant it doesn't recognize. `ac3forge::Error` is
+   can't safely represent an FFI discriminant it doesn't recognize. `iclforge::Error` is
    deliberately open (`Error::Other(u32)`) for exactly this reason rather than a closed set that
    would have to panic or silently misreport on a value from a newer library. Not a header change
    — a design-philosophy question worth recording, not a bug.
@@ -162,9 +162,9 @@ The same header, so the same three questions this crate had to answer apply dire
 - **The `_config_init` convention**: every wrapper needs to call the raw init function first and
   override selectively, exactly like this crate's `EncoderConfig::default()` — a naive
   zero-initialized struct is wrong for several fields (`dialnorm` 0 is invalid; §5.4.2.8 reserves
-  it), and the `ac3forge_object_placement_init()` gap above shows what happens when a struct is
+  it), and the `iclforge_object_placement_init()` gap above shows what happens when a struct is
   missed.
-- **Open vs. closed enums**: `ac3forge_status_t` and friends should map to whatever each
+- **Open vs. closed enums**: `iclforge_status_t` and friends should map to whatever each
   ecosystem's idiomatic "this might be one of these, or something newer" shape is (Node: a string
   union plus a fallback; .NET: `int` plus named constants rather than a strict `enum`; Android/
   Kotlin: a sealed class with an `Unknown(Int)` case) — a closed native enum is the wrong default

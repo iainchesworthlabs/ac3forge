@@ -1,11 +1,11 @@
 # Example programs
 
 Every program in [`examples/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/examples)
-builds by default (`AC3FORGE_BUILD_EXAMPLES=ON`) and registers as a `ctest` entry named
+builds by default (`ICLFORGE_BUILD_EXAMPLES=ON`) and registers as a `ctest` entry named
 `example.<name>`, so "the examples still work" is checked by the same command as everything else
 (`read_adm`, `encode_adm`, and `encode_iab` additionally need
-`-DAC3FORGE_BUILD_ADM=ON`; `decode_ac4` needs `AC3FORGE_BUILD_AC4` and the two C programs
-`AC3FORGE_BUILD_CAPI`, both on by default). These programs are
+`-DICLFORGE_BUILD_ADM=ON`; `decode_ac4` needs `ICLFORGE_BUILD_AC4` and the two C programs
+`ICLFORGE_BUILD_CAPI`, both on by default). These programs are
 also the source the library pages excerpt from — each page's "Full program" link lands on one of
 them.
 
@@ -57,26 +57,26 @@ them.
 | Example | What it shows | Discussed in |
 |---|---|---|
 | [`wav_roundtrip`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/wav_roundtrip.cpp) | Real WAV in → encode → decode → WAV out, crossing the WAV↔A/52 channel order both ways. | [File I/O](file-io.md) |
-| [`read_adm`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/read_adm.cpp) | Open an ADM BW64 file and print the parsed graph — needs `-DAC3FORGE_BUILD_ADM=ON`. | [ADM / BW64 reading](adm.md) |
-| [`encode_adm`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/encode_adm.cpp) | The whole read direction end to end: `parse_bw64` → `admbridge::build` → `AtmosEncoder`, an ADM BWF master out to a DD+ JOC elementary stream. The one example needing `ac3::forge` and the ADM modules together — needs `-DAC3FORGE_BUILD_ADM=ON`. | [ADM → Atmos bridging](adm-bridge.md) |
+| [`read_adm`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/read_adm.cpp) | Open an ADM BW64 file and print the parsed graph — needs `-DICLFORGE_BUILD_ADM=ON`. | [ADM / BW64 reading](adm.md) |
+| [`encode_adm`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/encode_adm.cpp) | The whole read direction end to end: `parse_bw64` → `admbridge::build` → `AtmosEncoder`, an ADM BWF master out to a DD+ JOC elementary stream. The one example needing `iclforge::ac3` and the ADM modules together — needs `-DICLFORGE_BUILD_ADM=ON`. | [ADM → Atmos bridging](adm-bridge.md) |
 | [`read_iab`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/read_iab.cpp) | Parse a bare IAB stream and inspect its frame and element graph. | [IAB reading](iab.md) |
-| [`encode_iab`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/encode_iab.cpp) | Map an IAB master through `admbridge::build_iab` and encode it as DD+ JOC — needs `-DAC3FORGE_BUILD_ADM=ON`. | [ADM → Atmos bridging](adm-bridge.md#bridging-iab) |
+| [`encode_iab`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/encode_iab.cpp) | Map an IAB master through `admbridge::build_iab` and encode it as DD+ JOC — needs `-DICLFORGE_BUILD_ADM=ON`. | [ADM → Atmos bridging](adm-bridge.md#bridging-iab) |
 
 ## C API
 
 | Example | What it shows | Discussed in |
 |---|---|---|
-| [`capi_encode_decode`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/capi_encode_decode.c) | Encode/decode AC-3 through `ac3forge_c/ac3forge.h` — plain C, not C++, so the build itself proves the header is C-usable. | [C API](c-api.md) |
+| [`capi_encode_decode`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/capi_encode_decode.c) | Encode/decode AC-3 through `iclforge_c/iclforge.h` — plain C, not C++, so the build itself proves the header is C-usable. | [C API](c-api.md) |
 | [`capi_encode_eac3`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/capi_encode_eac3.c) | Encode a 5.1.2 E-AC-3 access unit (a bed plus one dependent substream) through the C API and decode it back. | [C API](c-api.md) |
 
 ## Python
 
-Not part of `AC3FORGE_BUILD_EXAMPLES`/`ctest` above — a separate, Python-only program backing
+Not part of `ICLFORGE_BUILD_EXAMPLES`/`ctest` above — a separate, Python-only program backing
 [Python bindings](python-api.md), run directly (`python examples/python/encode_decode_roundtrip.py`)
 rather than built.
 
 | Example | What it shows | Discussed in |
 |---|---|---|
-| [`encode_decode_roundtrip.py`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/python/encode_decode_roundtrip.py) | The same 5.1 encode `encode_ac3.cpp` does, plus decoding it straight back, through the `ac3forge` package. | [Python bindings](python-api.md) |
+| [`encode_decode_roundtrip.py`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/python/encode_decode_roundtrip.py) | The same 5.1 encode `encode_ac3.cpp` does, plus decoding it straight back, through the `iclforge` package. | [Python bindings](python-api.md) |
 | [`encode_eac3.py`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/python/encode_eac3.py) | 7.1 E-AC-3 via `ac3.eac3.access_unit_config_for_layout` — the named-layout convenience, no hand-built chanmap. | [Python bindings](python-api.md) |
 | [`trace_export.py`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/python/trace_export.py) | Decode frames and export the implementation trace as CSV and JSON Lines. | [Python bindings](python-api.md#research-trace-export) |

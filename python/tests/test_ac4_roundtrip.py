@@ -19,7 +19,7 @@ import pytest
 ac4 = ac3.ac4
 
 # frame_rate_index 13: the 2048-sample frame, the one index this decoder needs no internal sample
-# rate converter for (ac4enc/encoder.hpp), so the encoder/decoder delay figures the test aligns by
+# rate converter for (iclforge/ac4enc/encoder.hpp), so the encoder/decoder delay figures the test aligns by
 # are exact sample counts rather than "to the nearest sample".
 FRAME_RATE_INDEX = 13
 FRAME_LEN = 2048

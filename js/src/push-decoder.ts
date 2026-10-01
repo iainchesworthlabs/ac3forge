@@ -1,6 +1,6 @@
 // The reusable push-frame primitive (roadmap UX5): a thin, typed wrapper
 // over the Embind PushDecoder class apps/wasm/decoder_bindings.cpp builds,
-// which itself decodes through ac3::Eac3Decoder::decode_access_unit_into -
+// which itself decodes through iclforge::Eac3Decoder::decode_access_unit_into -
 // the caller-buffer form, so the hot path allocates nothing on the C++ side.
 // Every other piece of this package (the whole-file convenience helper in
 // decode-file.ts, the AudioWorklet pipeline in decoder-worker.ts) is built
@@ -71,7 +71,7 @@ export class PushDecoder {
     return this.#native.channelPcm(index);
   }
 
-  /** The optional §7.8 fold (ac3::OutputStage/DC1) this instance was constructed for - null if `fold.target` was `AsCoded`. */
+  /** The optional §7.8 fold (iclforge::OutputStage/DC1) this instance was constructed for - null if `fold.target` was `AsCoded`. */
   fold(index: number): Float32Array | null {
     if (index >= this.#native.foldChannelCount()) return null;
     return this.#native.foldPcm(index);

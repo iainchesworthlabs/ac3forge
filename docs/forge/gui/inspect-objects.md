@@ -48,7 +48,7 @@ Once a file decodes, the dialog fills with:
 ## Audition
 
 Each object's own **Audition** button plays that object's JOC-reconstructed audio through an
-ordinary output — the same shared-mode playback path (`ac3::audio::MonitorSink`) the Objects tab's
+ordinary output — the same shared-mode playback path (`iclforge::audio::MonitorSink`) the Objects tab's
 own motion preview uses — so it can be judged by ear, not just by position. Only one object
 auditions at a time; **Audition** on the row already playing becomes **Stop**. This is a parametric
 reconstruction, not the original source audio recovered losslessly — see
@@ -58,7 +58,7 @@ apart.
 ## AC-4
 
 An AC-4 file, raw (`*.ac4`) or in an MP4, is recognised by its sync word and opened read-only: the
-dialog shows what `ac4::Decoder` reports of it. Under **Presentations** it lists the table of
+dialog shows what `iclforge::ac4::Decoder` reports of it. Under **Presentations** it lists the table of
 contents' presentations by position, each with its channels as coded, its language and its
 `presentation_id`, and marks the one the decoder chose with no preference; below them, how many
 bed objects and dynamic objects that presentation decoded. A presentation with object audio
@@ -68,7 +68,7 @@ and no objects to place.
 
 This page exports nothing, and says so in its own text: an AC-4 stream's objects are exported from
 [Open stream](open-stream.md) (**Export objects…**), one WAV file a decoded object. An AC-4 file
-the encoder page wrote from its Objects tab, or `ac3cli atmos-encode … codec=ac4` wrote, is read
+the encoder page wrote from its Objects tab, or `forge atmos-encode … codec=ac4` wrote, is read
 here too, each object at the place and the gain it was given.
 
 ## What it does not do

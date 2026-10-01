@@ -1,4 +1,4 @@
-//! The AC-3 surface (`ac3::Encoder`/`Decoder`/`DecodedFrame`, `EncoderConfig`, the shared value
+//! The AC-3 surface (`iclforge::Encoder`/`Decoder`/`DecodedFrame`, `EncoderConfig`, the shared value
 //! types) beyond the stereo happy path roundtrip.rs covers: every acmod/LFE combination, every
 //! AC-3 sample rate, DRC/heavy/mix-level/dual-mono configs, argument validation, latency, and an
 //! aligned SNR check that proves the decoded waveform is the encoded one.
@@ -57,7 +57,7 @@ fn encoder_config_default_mirrors_the_c_initializer() {
 
 /// `CentreMixLevel::default()`/`SurroundMixLevel::default()` are the library's own downmix
 /// defaults - -4.5 dB and -6 dB, what `iclforge_encoder_config_init()` (and so the C++
-/// `ac3::EncoderConfig`, docs/library/encoding-ac3.md) sets - not merely the first variant.
+/// `iclforge::EncoderConfig`, docs/library/encoding-ac3.md) sets - not merely the first variant.
 /// They used to derive `Minus3Db` for both, so a config built field-by-field with
 /// `..Default::default()` on the enum disagreed with `EncoderConfig::default()`.
 #[test]

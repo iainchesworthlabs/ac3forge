@@ -109,7 +109,7 @@
 # fuzz-short's history over the same window was NOT clean - five real
 # UndefinedBehaviorSanitizer reports in fuzz_mp4_demux, all the same root
 # cause (a box using ISOBMFF's 64-bit largesize escape could make
-# mp4::Reader's parse position wrap past its sliding window, underflowing the
+# iclforge::mp4::Reader's parse position wrap past its sliding window, underflowing the
 # next offset computation) - fixed in the same PR that promoted this job,
 # with the crash minimised into fuzz/regressions/fuzz_mp4_demux/. Promote a
 # job again the same way: delete its `continue-on-error: true` line.

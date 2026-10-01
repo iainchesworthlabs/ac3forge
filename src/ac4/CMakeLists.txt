@@ -83,7 +83,7 @@ set_target_properties(iclforge_ac4_objects PROPERTIES
 
 # MSVC's C4251 for the PRIVATE STL-typed members of ICLFORGE_AC4_EXPORT classes - the
 # identical, identically-reasoned suppression src/mpegts/CMakeLists.txt
-# applies for mpegts::Writer; see its comment for why PUBLIC and why here
+# applies for iclforge::mpegts::Writer; see its comment for why PUBLIC and why here
 # rather than header pragmas.
 target_compile_options(iclforge_ac4_objects PUBLIC "$<$<CXX_COMPILER_ID:MSVC>:/wd4251>")
 

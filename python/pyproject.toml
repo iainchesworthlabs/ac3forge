@@ -62,8 +62,8 @@ ICLFORGE_BUILD_ADM = "OFF"
 # manylinux/musllinux/macOS/Windows images never install - see that option's own comment.
 ICLFORGE_BUILD_HEARTH = "OFF"
 # The AC-4 libraries (src/ac4, src/ac4core, src/ac4dec, src/ac4enc) default ON - ON here too since
-# plan phase I4 binds them (planning/ac4.md): the wheel carries iclforge.ac4 (ac4::Decoder/
-# ac4::Encoder bound directly, python/src/iclforge_ext/ac4/present/ac4_module.cpp), the same
+# plan phase I4 binds them (planning/ac4.md): the wheel carries iclforge.ac4 (iclforge::ac4::Decoder/
+# iclforge::ac4::Encoder bound directly, python/src/iclforge_ext/ac4/present/ac4_module.cpp), the same
 # "wheel always carries the full surface" reasoning as the matroska/mp4/mpegts/signing targets
 # below.
 ICLFORGE_BUILD_AC4 = "ON"

@@ -1,7 +1,7 @@
 # Bare metal
 
 A board with no operating system, no C++ runtime to speak of, and a few hundred kilobytes of RAM.
-The library builds for it as `ac3::forge_minimal`: one static archive, no exceptions, no RTTI, and
+The library builds for it as `iclforge::ac3_minimal`: one static archive, no exceptions, no RTTI, and
 none of the direct-form transform tables.
 
 The reference target is `arm-none-eabi` cross-compiled for QEMU's `mps2-an385` machine — a
@@ -17,9 +17,9 @@ target and the first with hardware floating point.
 | E-AC-3 decode | Correct. 5.1, 2/0 and 7.1.4 (a bed and two dependent substreams), including AHT, spectral extension and §7.5.4 rematrixing; 5.1 and 7.1.4 folded to Lo/Ro stereo in line mode; and 5.1 in line mode from a stream carrying dynrng words and dialnorm 24 |
 | E-AC-3 §E3.5 enhanced coupling | Correct, on its own fixture |
 | Atmos bed and objects | Correct. Objects reconstruct here, and are placed onto 7.1.4 by their positions (`eac3_atmos_render`, through the block form's object views); the flat newlib heap makes it easier than on the [ESP32-S3](esp32-s3.md#objects) |
-| Fixed-point decode | `-DAC3FORGE_DECODE_SCALAR=fixed` builds every decode row above in Q7.24 integers under a per-block exponent, for a part with no FPU at all - the plan is [arithmetic-tiers.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/arithmetic-tiers.md). CI runs the probe twice on this leg, and the fixed build's PCM is identical to the x86 host's and to an ESP32-C3's under `qemu-riscv32` - three architectures, one pinned set of hashes (`tests/golden/fixed-probe-pcm-hashes.json`). It costs 0.33x the instructions the default build spends on the same frame: `eac3.instructions_per_frame=4241000` against 12,942,000, integer arithmetic where that one's is software floating point |
-| Encode | A separate encode-only profile, `AC3FORGE_MINIMAL_ENCODER`: six rows (5.1 and 2/0 through each encoder, 2/0 with coupling, spectral extension and AHT, 2/0 §E3.5), each hashed against `encode_fixture.hpp` with its peak and its time per frame; 226,780-byte image, 158,911 peak, 9.1 M to 48.2 M instructions a frame under `--encoder --icount` - see [Building](../../building.md#what-the-encode-direction-costs) |
-| AC-4 decode | A third probe, `run_baremetal_probe.sh --ac4`, for the AC-4 decoder in `float` (`ac4::decoder` with its inspector and core, static, without exceptions; the encoder is not built): six committed streams, 2.0 and 5.1 with and without A-CPL, 5.1.4 and 2.0 with companding, each channel's level exact against `apps/baremetal/ac4_fixture.hpp`, and the PCM bit-identical to the x86-64 host's (`tests/golden/ac4-probe-pcm-hashes.json`). 486,192-byte image, 432 KB to 1.93 MB peak heap by fixture, 52 to 193 allocations a frame, 18.6 to 19.6 KB of stack, 54.5 M to 205.8 M instructions a frame under `--ac4 --icount` - see [the AC-4 rows](#the-ac-4-probe) |
+| Fixed-point decode | `-DICLFORGE_DECODE_SCALAR=fixed` builds every decode row above in Q7.24 integers under a per-block exponent, for a part with no FPU at all - the plan is [arithmetic-tiers.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/arithmetic-tiers.md). CI runs the probe twice on this leg, and the fixed build's PCM is identical to the x86 host's and to an ESP32-C3's under `qemu-riscv32` - three architectures, one pinned set of hashes (`tests/golden/fixed-probe-pcm-hashes.json`). It costs 0.33x the instructions the default build spends on the same frame: `eac3.instructions_per_frame=4241000` against 12,942,000, integer arithmetic where that one's is software floating point |
+| Encode | A separate encode-only profile, `ICLFORGE_MINIMAL_ENCODER`: six rows (5.1 and 2/0 through each encoder, 2/0 with coupling, spectral extension and AHT, 2/0 §E3.5), each hashed against `encode_fixture.hpp` with its peak and its time per frame; 226,780-byte image, 158,911 peak, 9.1 M to 48.2 M instructions a frame under `--encoder --icount` - see [Building](../../building.md#what-the-encode-direction-costs) |
+| AC-4 decode | A third probe, `run_baremetal_probe.sh --ac4`, for the AC-4 decoder in `float` (`iclforge::ac4dec` with its inspector and core, static, without exceptions; the encoder is not built): six committed streams, 2.0 and 5.1 with and without A-CPL, 5.1.4 and 2.0 with companding, each channel's level exact against `apps/baremetal/ac4_fixture.hpp`, and the PCM bit-identical to the x86-64 host's (`tests/golden/ac4-probe-pcm-hashes.json`). 486,192-byte image, 432 KB to 1.93 MB peak heap by fixture, 52 to 193 allocations a frame, 18.6 to 19.6 KB of stack, 54.5 M to 205.8 M instructions a frame under `--ac4 --icount` - see [the AC-4 rows](#the-ac-4-probe) |
 | Image size | 355,709 bytes — 293,092 `.text`, 400 `.data`, 62,217 `.bss` |
 | Peak heap | 195,025 bytes, the height-object fixture placed onto 7.1.4 (`eac3_atmos_render`); 194,655 with Atmos objects reconstructed, 173,794 for the 7.1.4 fixture folded to stereo, 167,386 as coded |
 | Retained after teardown | 12 bytes, one `__cxa_thread_atexit` record; the enhanced-coupling scratch (23,552 bytes while §E3.5 is in use) is handed back between fixtures |
@@ -52,7 +52,7 @@ tools/checks/run_baremetal_probe.sh --ac4 --icount
 `--icount` is the one timing figure this leg can give. QEMU is not cycle-accurate and the probe's
 ordinary clock is semihosting's, which reports the host's time; but under `-icount shift=0` the
 guest's own clock advances one nanosecond per executed instruction, and a build whose clock reads
-the mps2-an385's 25 MHz timer (`AC3FORGE_BAREMETAL_CLOCK=timer`, its own preset and build
+the mps2-an385's 25 MHz timer (`ICLFORGE_BAREMETAL_CLOCK=timer`, its own preset and build
 directory) follows it. Every microsecond the probe then prints is a thousand Thumb-2 instructions,
 identical on every host and every run — `eac3.instructions_per_frame=12942000` — gated per fixture
 with the same headroom rule as the other ceilings, and with `--stage-timers` counted per stage. It
@@ -76,7 +76,7 @@ list if any component needing the full library is still switched on.
 
 | Not compiled | Consequence |
 |---|---|
-| Under `AC3FORGE_MINIMAL_DECODER`: the encoder, container writers, WAV I/O, analysis and QC layers, the object encoder | Decode only. `src/ac3/minimal.cmake` lists what is compiled, with a line on why each file is reachable from a decode. `AC3FORGE_MINIMAL_ENCODER` is the same profile pointed the other way. |
+| Under `ICLFORGE_MINIMAL_DECODER`: the encoder, container writers, WAV I/O, analysis and QC layers, the object encoder | Decode only. `src/ac3/minimal.cmake` lists what is compiled, with a line on why each file is reachable from a decode. `ICLFORGE_MINIMAL_ENCODER` is the same profile pointed the other way. |
 | The direct-form transform tables | 1,900,544 bytes of `.bss` absent from the image rather than merely unused. `DecoderConfig::fast_imdct = false` returns `DecodeError::kNoReferenceTransform` here instead of being served quietly by the fast path. |
 
 ## The probe
@@ -88,7 +88,7 @@ runner gates on: the levels, image size, peak heap, retained bytes and allocatio
 `encode_fixture.hpp`, and `ac4_probe.cpp` the AC-4 decoder's, decoding six streams through
 `Decoder::decode_by_block` and reading the stack the decode used by painting a window of it first.
 
-It is not a unit test — the profile requires `AC3FORGE_BUILD_TESTS=OFF`, since nothing under
+It is not a unit test — the profile requires `ICLFORGE_BUILD_TESTS=OFF`, since nothing under
 `tests/` builds against this archive — and it answers three questions a test could not: does the
 archive link with everything else absent, does it produce the right audio on a 32-bit soft-float
 target, and what did it cost.
@@ -96,8 +96,8 @@ target, and what did it cost.
 Nothing regenerates the fixtures automatically and nothing detects that they have drifted from the
 encoder: the probe decodes a committed bitstream and compares it against committed levels, so both
 moving together is invisible to it. Regenerate with
-`python tools/generators/gen_baremetal_fixture.py --ac3cli <path>`, and the AC-4 fixtures with
-`python tools/generators/gen_baremetal_ac4_fixture.py --ac3cli <path>`.
+`python tools/generators/gen_baremetal_fixture.py --forge <path>`, and the AC-4 fixtures with
+`python tools/generators/gen_baremetal_ac4_fixture.py --forge <path>`.
 
 ### The AC-4 probe
 

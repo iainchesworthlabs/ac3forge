@@ -1,6 +1,6 @@
 # AC-4
 
-This page covers **AC-4** as ac3forge implements it. It assumes the [AC-3 & E-AC-3](ac3-eac3.md)
+This page covers **AC-4** as ICL Forge implements it. It assumes the [AC-3 & E-AC-3](ac3-eac3.md)
 page for the ideas both formats share: frames, transforms, channel beds and the LFE.
 
 ## A different codec
@@ -10,8 +10,8 @@ personalized audio. It shares no bitstream syntax with AC-3 or E-AC-3, so it doe
 them the way E-AC-3 builds on AC-3. A decoder for AC-3 and E-AC-3 cannot read an AC-4 stream, and
 an AC-4 stream carries no AC-3 or E-AC-3 stream inside it for such a decoder to fall back to.
 
-ac3forge's AC-4 libraries, `ac4::decoder` and `ac4::encoder`, were written from the two parts and
-link nothing from `ac3::forge`. [AC-4 decoding and encoding](../library/ac4.md) is their API
+ICL Forge's AC-4 libraries, `iclforge::ac4dec` and `iclforge::ac4enc`, were written from the two parts and
+link nothing from `iclforge::ac3`. [AC-4 decoding and encoding](../library/ac4.md) is their API
 reference.
 
 ## Frames and the table of contents
@@ -80,7 +80,7 @@ playback: an A-JOC substream then decodes to its downmix. The decoder here does 
 
 Rendering objects to loudspeakers is not part of the standard. The decoder hands each object's
 audio and properties (position, gain, size, zone constraints, divergence, snap, timing) to a
-renderer, and ac3forge renders them with the layout renderer Hearth uses for E-AC-3's objects.
+renderer, and ICL Forge renders them with the layout renderer Hearth uses for E-AC-3's objects.
 
 Dolby's tools also write an **immersive stereo** (IMS) mode. Neither part of the standard uses
 the term. Its streams are one stereo A-SPX substream, with a presentation version that Part 2
@@ -112,15 +112,15 @@ choose between presentations.
 | Not decoded, not written | Not decoded: the speech spectral frontend, the 9.X.4 and 22.2 channel elements, the efficient high frame rate mode, presentations spread over several elementary streams, and output at 96 or 192 kHz | Not written: the speech spectral frontend, immersive stereo, 22.2 and 9.X.4, the efficient high frame rate mode, presentations spread over several elementary streams, and 96 or 192 kHz coding (such input is converted to 48 kHz first). 7.X, 3.0, ASPX_ACPL_1 and the 7.X.4 layouts are written only behind experimental options |
 
 No second decoder decodes the object streams this encoder writes: librempeg refuses object
-coding, and Dolby's encoder writes none to compare against. They are checked against ac3forge's
+coding, and Dolby's encoder writes none to compare against. They are checked against ICL Forge's
 own decoder. The standard has no conformance streams and no reference decoder, so
 [Validation: AC-4](../verification.md#ac-4) describes how decoded output is checked: against
 streams from Dolby's encoder, against a second transcription of the syntax, and against each
 control's formula.
 
 A stream can be a raw `.ac4` file, or sit in MP4 (with its `dac4` box), MPEG-TS, or fragmented MP4
-for HLS and DASH. Matroska has no AC-4 codec ID registered, so `ac3cli mkv` refuses it. AC-4 can be
-carried in IEC 61937-14 bursts for S/PDIF and HDMI, which `ac3cli spdif` writes and Hearth sends to
+for HLS and DASH. Matroska has no AC-4 codec ID registered, so `forge mkv` refuses it. AC-4 can be
+carried in IEC 61937-14 bursts for S/PDIF and HDMI, which `forge spdif` writes and Hearth sends to
 network sinks that list it; no receiver found so far accepts it, so playback decodes it.
 
 The [object signing](object-signing.md) tag is an E-AC-3 feature. The AC-4 encoder writes its

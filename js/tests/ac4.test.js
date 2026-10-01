@@ -335,7 +335,7 @@ const tone = (cycles) =>
   Float32Array.from({ length: LOOPBACK_SAMPLES }, (_, n) => 0.1 * Math.sin((2 * Math.PI * cycles * n) / LOOPBACK_SAMPLES));
 
 // What one property's code can hold: X and Y in 62 steps, Z in 15, the gain in 1 dB, the priority
-// and each width in 31 - the steps ac4::ObjectProperties documents.
+// and each width in 31 - the steps iclforge::ac4::ObjectProperties documents.
 function assertNear(got, want, dynamic) {
   assert.equal(got.active, want.active ?? true);
   if (want.active === false) return;

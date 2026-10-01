@@ -159,7 +159,7 @@ target_compile_definitions(iclforge_capi_static PUBLIC ICLFORGE_C_STATIC_DEFINE)
 # Compile-time version macros (AP1) - a plain configure_file rather than
 # GenerateVersion.cmake's restamp-every-build machinery, since PROJECT_VERSION
 # only changes on a reconfigure anyway (unlike the git provenance
-# ac3/version.hpp also carries, which this header does not need).
+# iclforge/ac3/version.hpp also carries, which this header does not need).
 string(REGEX MATCH "^([0-9]+)\\.([0-9]+)\\.([0-9]+)" ICLFORGE_C_VERSION_MATCH "${PROJECT_VERSION}")
 set(ICLFORGE_C_VERSION_MAJOR "${CMAKE_MATCH_1}")
 set(ICLFORGE_C_VERSION_MINOR "${CMAKE_MATCH_2}")

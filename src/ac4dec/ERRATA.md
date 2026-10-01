@@ -90,7 +90,7 @@ depends on the same reading.
 - **Reading:** such a frame has no frame length, so nothing in it that derives from one is read: every
   audio substream and the presentation substream are refused for a reserved `frame_rate_index`, rather
   than read with the 48 kHz length or read until a field that needs the length is reached.
-  `ac4::samples_per_frame()` reads the pair the same way. Both transcriptions derive the length in one
+  `iclforge::ac4::samples_per_frame()` reads the pair the same way. Both transcriptions derive the length in one
   place, which is what keeps the audio and presentation substreams of a frame on the same value.
 - **Evidence:** Text; every stream here is 48 kHz.
 
@@ -1643,7 +1643,7 @@ output level and DRC (5.7.9) and the downmix (6.2.17), and after it, the sample 
   curve of a field it calls `drc_eac3_transcode_curve`, "in table 160". Part 1 has no field of that
   name; Table 160 is `drc_eac3_profile`'s, which 4.3.13.2.2 describes as the (E-)AC-3 profile to use
   when transcoding.
-- **Reading:** the field is `drc_eac3_profile`, the one of the presentation transcoded. `ac3cli
+- **Reading:** the field is `drc_eac3_profile`, the one of the presentation transcoded. `forge
   transcode` (`apps/cli/commands/stream_tools.cpp`) decodes that presentation with no output level, and
   so no DRC, and the AC-3 or E-AC-3 encoder computes its `dynrng` with the profile the field names: 1 to
   5 the five of Table 162, and 0 ("None") and the reserved 6 and 7 none, the re-encode then writing no

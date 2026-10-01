@@ -375,7 +375,7 @@ longer written in those files: the legs are listed in `.github/ci/legs.jsonc`, `
 | `.github/workflows/_ci-macos.yml` | macos-llvm, macos-llvm-x64 | Install Qt6/LLVM/ffmpeg (macOS), Assert Crucible built (shared with Windows), the universal-merge install-tree uploads |
 
 Steps that applied to more than one OS in the original job (`Package`, `Upload package
-artifacts`, `Assert the AC3Forge Crucible was built`, `Assert the CLI man page and completions
+artifacts`, `Assert the Crucible was built`, `Assert the CLI man page and completions
 were packaged (Linux/macOS)`, `Install Ninja`) are reproduced verbatim in every file whose OS
 their own `if:` condition already covers, rather than pulled into a third composite - each one is
 already self-contained (branches on `runner.os`/`matrix.preset` internally), so copying it costs a

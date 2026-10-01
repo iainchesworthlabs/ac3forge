@@ -3,7 +3,7 @@
 Android support is a separate, small, Shield-specific demo app, **Shield Atmos Demo**
 (`apps/android/`), that plays an Atmos/JOC stream out through the Shield's HDMI passthrough
 output to an AV receiver, with a controller or remote moving one of a few objects around the
-room live. Neither `ac3cli` nor `ac3gui` is ported to Android. The app exists to show the
+room live. Neither `forge` nor `forge-gui` is ported to Android. The app exists to show the
 encoder's object audio moving in 3D space on consumer hardware, and is not a general-purpose
 encoding tool. This page covers what is specific to Android; for the core library and the desktop
 platforms, see [Building from source](../building.md) and the other pages in this section.
@@ -12,7 +12,7 @@ platforms, see [Building from source](../building.md) and the other pages in thi
 
 | | |
 |---|---|
-| What runs here | Shield Atmos Demo only. Neither `ac3cli` nor `ac3gui` is ported |
+| What runs here | Shield Atmos Demo only. Neither `forge` nor `forge-gui` is ported |
 | Live Atmos out HDMI passthrough | Confirmed on real 2017 Shield hardware, into an AV receiver |
 | Object motion from the controller | Confirmed moving; nobody has listened to check a flyover arrives overhead |
 | Capture | None. The app plays; it records nothing |
@@ -38,17 +38,17 @@ cd apps/android
 ./gradlew assembleDebug --no-daemon
 adb connect <shield-ip>:5555          # if not on USB
 adb -s <shield-ip>:5555 install -r app/build/outputs/apk/debug/app-debug.apk
-adb -s <shield-ip>:5555 shell am start -n com.ac3forge.shield/.MainActivity
+adb -s <shield-ip>:5555 shell am start -n com.iclforge.shield/.MainActivity
 ```
 
 [Building and running](#building-and-running) below covers the SDK setup and signed builds.
 
 ## What's reused, what's new
 
-`ac3::forge` (`src/ac3/`) — the codec, `AtmosEncoder`, IEC 61937 framing — is fully
+`iclforge::ac3` (`src/ac3/`) — the codec, `AtmosEncoder`, IEC 61937 framing — is fully
 platform-independent and is linked into the app **unmodified**, via a thin wrapper
 `CMakeLists.txt` (`apps/android/app/src/main/cpp/CMakeLists.txt`) that `add_subdirectory()`s
-the real repo root rather than duplicating its target definitions. `ac3::audio` (`src/audio/`)
+the real repo root rather than duplicating its target definitions. `iclforge::audio` (`src/audio/`)
 gains its own backend, `src/audio/src/backend/android/`, alongside `windows`/`alsa`/`pipewire`/
 `posix`/`macos`, selected by CMake's own `ANDROID` variable (set by the NDK toolchain file, a peer check
 to the existing `WIN32`/`LINUX`/`APPLE` blocks in `src/audio/CMakeLists.txt`) — no `#ifdef`
@@ -65,8 +65,8 @@ project the desktop tools build from.
 NDK Gradle resolves" — a build failure should mean something changed, not that a different NDK got
 silently picked. CMake **3.31.6** (the closest available match in the SDK manager's package
 repository to the root project's declared `3.28...4.3` range; there is no 3.28.x package for
-Android). `ANDROID_STL=c++_shared` — the app's `ac3::forge`/`ac3::audio` are static libraries
-linked into one shared object (`ac3forge_jni.so`), and a static STL would duplicate global state
+Android). `ANDROID_STL=c++_shared` — the app's `iclforge::ac3`/`iclforge::audio` are static libraries
+linked into one shared object (`iclforge_jni.so`), and a static STL would duplicate global state
 (locale, iostream init) if anything else in the process ever pulled in libc++ too.
 
 The r26 pin also reaches into the library itself: r26's bundled libc++ does not implement
@@ -75,7 +75,7 @@ this project's Android build passes. Rather than avoiding formatted output file 
 around that, the whole project uses [{fmt}](https://github.com/fmtlib/fmt) — `fmt::format`/
 `fmt::print` in place of `std::format`/`std::print` everywhere — since {fmt} has no
 such gap (see `cmake/Fmt.cmake` and `CONTRIBUTING.md`'s code-conventions section). That single
-choice is also what lets `mp4::mp4`'s HLS/DASH signaling helpers build for Android at all; see the
+choice is also what lets `iclforge::mp4`'s HLS/DASH signaling helpers build for Android at all; see the
 note in `apps/android/app/src/main/cpp/CMakeLists.txt` for why this app still doesn't link them
 regardless (it never muxes a file).
 
@@ -123,7 +123,7 @@ So the backend is split, unlike the other three:
 
 - **`monitor.cpp`** — real AAudio (`AAudioStreamBuilder`, PCM float), for local preview. This is
   exactly what AAudio is good at, and the only place in this backend that uses it.
-- **`passthrough.cpp`** — a JNI shim implementing `ac3::audio::PassthroughSink`. `submit()` hands
+- **`passthrough.cpp`** — a JNI shim implementing `iclforge::audio::PassthroughSink`. `submit()` hands
   each burst to a Kotlin-owned `AudioTrack` via a small round-robin pool of buffers wrapped once
   with `env->NewDirectByteBuffer(...)` and promoted to a `GlobalRef` at startup — one `memcpy` into
   a native buffer per burst, zero further copies, no per-frame `NewDirectByteBuffer`/GC churn.
@@ -146,9 +146,9 @@ So the backend is split, unlike the other three:
 
 ### AC-4
 
-**The app does nothing with AC-4.** Its native library, `ac3forge_jni`, links `ac3::forge`,
-`ac3::audio` and `ac3::signing` and none of the AC-4 libraries (`src/ac4`, `src/ac4core`,
-`src/ac4dec`, `src/ac4enc`). The wrapper `CMakeLists.txt` leaves `AC3FORGE_BUILD_AC4` at its
+**The app does nothing with AC-4.** Its native library, `iclforge_jni`, links `iclforge::ac3`,
+`iclforge::audio` and `iclforge::signing` and none of the AC-4 libraries (`src/ac4`, `src/ac4core`,
+`src/ac4dec`, `src/ac4enc`). The wrapper `CMakeLists.txt` leaves `ICLFORGE_BUILD_AC4` at its
 default, on, so the NDK build compiles those libraries and holds their sources to building under
 NDK r26 (`tools/checks/test_ac4_build_configurations.py` holds it to that default), and nothing
 calls them. The live encode loop makes E-AC-3 only. The `play_file` diagnostic (below) replays
@@ -172,7 +172,7 @@ streams that already-encoded E-AC-3 file through the same `PassthroughSink`
 `AudioTrack` passthrough configuration right" from "is this project's own Atmos output right":
 a known-good commercial Dolby stream either lights the receiver's Atmos indicator through this
 code path or it does not. It groups access units by each frame's `bsid` rather than by
-`ac3::split_access_units`, for the reason the file's header gives, and it ends after five seconds
+`iclforge::split_access_units`, for the reason the file's header gives, and it ends after five seconds
 in which the sink accepts nothing.
 
 ### Partial `AudioTrack` writes are resumed from, not restarted
@@ -230,7 +230,7 @@ gaps instead of a steady stream, which is why the receiver's HDMI link stayed fl
 locked, audio never did). `app/build.gradle.kts`'s `debug` build type now overrides this to
 `-DCMAKE_BUILD_TYPE=RelWithDebInfo` (still debuggable, no separate release signing needed to
 `adb install`) — which bought back only ~1.6x. [Tracy](https://github.com/wolfpld/tracy)
-profiling (`AC3FORGE_ENABLE_TRACY`) traced the rest of the gap to `mdct_forward_core`
+profiling (`ICLFORGE_ENABLE_TRACY`) traced the rest of the gap to `mdct_forward_core`
 recomputing `std::cos()` fresh every iteration inside an O(N²) loop, while the *inverse*
 transform beside it already used a precomputed table; fixing the forward transform to match
 (`ForwardCosTable` in `src/ac3/src/core/mdct.cpp`) gave a further ~3.8x. This is a real
@@ -454,7 +454,7 @@ without the per-frame cost.
 ## OBJECTS OFF: taking the object layer away, live
 
 **X** on a controller, **MENU** on a remote, runs every access unit through
-`ac3::io::strip_objects()` before it is wrapped — live, with nothing else about the stream
+`iclforge::io::strip_objects()` before it is wrapped — live, with nothing else about the stream
 changing. The bed is the same coded bed either way, so what a licensed decoder sees is an object
 programme becoming a plain DD+ one and back again, on a keypress, with the object layer's per-frame
 byte cost (`StrippedStream::bytes_removed`) on screen next to it.
@@ -572,13 +572,13 @@ three separately-tuned screens):
   is — both axes share the same normalized `[0,1]` scale, so a non-square plot would stretch one
   axis relative to the other and turn the (circular) guide into a misleading ellipse.
 - **The soundfield arrow** (top-down panel, drawn from the listener marker) —
-  `ac3::analysis::energy_vector()` over the metered bed, a tapered triangle whose length and opacity
+  `iclforge::analysis::energy_vector()` over the metered bed, a tapered triangle whose length and opacity
   track the vector's magnitude. The room panels plot where the demo *asked* the object to go; this
   shows where a 5.1 decoder's own speakers will actually put the energy. Watching the two agree is
   what shows the panning is real rather than asserted, and it is computed from `AtmosEncoder::bed()`
   — the literal encoded audio — not from the room-position maths that drew the dot.
 - **Measured loudness** (elevation panel header, previously empty) — a BS.1770
-  `ac3::meta::LoudnessMeter` over the same bed, reporting integrated LKFS and the dialnorm it
+  `iclforge::meta::LoudnessMeter` over the same bed, reporting integrated LKFS and the dialnorm it
   implies. Blank until the meter's first gated 400ms block has passed, which is the correct thing to
   show for silence rather than a fabricated number. `loudness_range()` is never called on the encode
   thread; it allocates and sorts on every call.
@@ -589,7 +589,7 @@ three separately-tuned screens):
   position math), with a bottom-to-top color ramp and a slowly-decaying peak-hold line, the same
   "catch the loudest recent moment" behavior a real hardware VU meter has.
 
-    The levels behind those bars come from `ac3::analysis::LevelMeter` — dB-scaled through
+    The levels behind those bars come from `iclforge::analysis::LevelMeter` — dB-scaled through
     `meter_fraction`, with PPM ballistics and a peak hold — rather than the `rms * 4.0` clamp
     that used to drive them, whose only justification was that the meter would otherwise barely
     move. `rms_integration_ms` is dropped to 80ms from the 300ms default deliberately: 300ms is
@@ -679,8 +679,8 @@ receiver into an on-screen accusation.
     audio: a real Dolby-licensed decoder gates JOC object decode on a keyed HMAC over the EMDF
     protection field. The algorithm that produces that tag is in-tree; the key it needs is not.
 
-The signer is `ac3::signing` (`src/signing/`) — committed, clean-room and dependency-free, the
-same library `ac3cli` uses. Its full design (what's signed, why the algorithm is committable but
+The signer is `iclforge::signing` (`src/signing/`) — committed, clean-room and dependency-free, the
+same library `forge` uses. Its full design (what's signed, why the algorithm is committable but
 the key isn't) is in [Object signing](../concepts/object-signing.md); this section covers only what
 is specific to the app. The app's seam is `shield_signing_hook.{hpp,cpp}`, one committed
 translation unit — no stub/enabled split and no CMake option any more, because there is no secret
@@ -693,7 +693,7 @@ env var, but this app signs on-device, so the key has to travel in the APK as an
 CI writes the base64 `ATMOS_SIGNING_KEY` secret verbatim into it (`.github/workflows/_build.yml`),
 or you drop one in by hand for a local signed build. `init_signing()` loads it once through the same
 `AAssetManager` the lead-voice asset uses and decodes it (base64 or raw) via the same
-`ac3::signing::decode_signing_key()` the CLI applies.
+`iclforge::signing::decode_signing_key()` the CLI applies.
 
 **Unsigned builds omit the object container entirely.** An unsigned
 but *present* EMDF container is not a safe degraded mode — per `AtmosConfig::emit_object_metadata`'s
@@ -701,7 +701,7 @@ own comment, a decoder that validates the `emdf_protection` field treats the con
 as a commitment to object decoding and refuses the whole stream if it doesn't validate, rather than
 falling back to plain 5.1. `shield_signing_hook.hpp`'s `signing_available()` (`true` only once a key
 asset actually loaded) lets `live_cursor.cpp` decide this once at startup: `emit_object_metadata`
-is set to `signing_available()`, so a keyless build runs the same `bed51` mode that `ac3cli atmos`
+is set to `signing_available()`, so a keyless build runs the same `bed51` mode that `forge atmos`
 takes as its last argument — no container at all, always safe, on every receiver — while only a
 build carrying the key ever emits and signs one.
 
@@ -725,7 +725,7 @@ cd apps/android
 ./gradlew assembleDebug --no-daemon
 adb connect <shield-ip>:5555          # if not on USB
 adb -s <shield-ip>:5555 install -r app/build/outputs/apk/debug/app-debug.apk
-adb -s <shield-ip>:5555 shell am start -n com.ac3forge.shield/.MainActivity
+adb -s <shield-ip>:5555 shell am start -n com.iclforge.shield/.MainActivity
 ```
 
 `local.properties` needs `sdk.dir` pointing at an Android SDK with NDK 26.1.10909125 and CMake
@@ -751,7 +751,7 @@ before it can be uploaded, so **a published `.apk` is always the unsigned `bed51
 secret, the materialize step is skipped and every build is unsigned.
 
 For an actual release (`release.yml`, `do_package: true`), the same job also builds and stages the
-**release** variant (`CMAKE_BUILD_TYPE=Release`) as `ac3forge-shield-<version>.apk`. A separate,
+**release** variant (`CMAKE_BUILD_TYPE=Release`) as `iclforge-shield-<version>.apk`. A separate,
 independent signature — *APK code-signing* — also applies to it: the APK is signed with a real
 release keystore when `ANDROID_KEYSTORE_BASE64` and its companion secrets are provisioned (see
 `build.gradle.kts`'s `releaseSigningAvailable`), and falls back to the debug keystore otherwise —

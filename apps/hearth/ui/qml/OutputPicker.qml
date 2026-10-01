@@ -13,7 +13,7 @@ import Hearth
 //
 // "This computer · PCM" and "Network · Sendspin" are actionable here:
 // HearthController.outputDevices comes straight from
-// ac3::audio::enumerate_render_devices(), the same enumeration `forge
+// iclforge::audio::enumerate_render_devices(), the same enumeration `forge
 // outputs` prints, and "Play here" pins the engine to whichever row is
 // selected (HearthController.selectOutputDevice); a group row pins it to the
 // group instead (HearthController.selectOutputGroup), whose members each get

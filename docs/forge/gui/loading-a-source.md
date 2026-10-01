@@ -24,11 +24,11 @@ Dragging a WAV file onto the window from Explorer/Finder/the file manager does t
 **Choose WAV…**/**+ Add files…**, without opening the picker — the whole window is a drop target,
 not just the rail. Drop an already-encoded `.ac3`/`.ec3` file instead and it does not become a
 source at all: it opens in the [stream player](open-stream.md) for playback/export, the same as
-picking it from **Open stream…**. `ac3gui` also accepts a file path on the command line
-(`ac3gui recording.wav`, `ac3gui mix.ec3`) and applies the identical WAV-vs-stream distinction at
+picking it from **Open stream…**. `forge-gui` also accepts a file path on the command line
+(`forge-gui recording.wav`, `forge-gui mix.ec3`) and applies the identical WAV-vs-stream distinction at
 launch. The distinction is by suffix, `.ac3` and `.ec3` alone: an `.ac4` file dropped or named on
 the command line is read as a WAV source and refused, and **Open stream…** is the way in for it.
-`ac3gui` claims no file type with the desktop (the `.ac3`/`.ec3` associations belong to
+`forge-gui` claims no file type with the desktop (the `.ac3`/`.ec3` associations belong to
 [Hearth](../../hearth/index.md); the [window overview](index.md) lists what each platform registers),
 so double-clicking an encoded file in the file manager does not start it (a Windows package built
 without Hearth is the one exception).
@@ -48,7 +48,7 @@ same small amount. Live capture rows show no pip — a device's level belongs to
 the Live session tab already reports on, not this reduction.
 
 **Start offset** delays a source's own channels by that many seconds of leading silence — all of
-them shift together, encoded exactly as `ac3cli`'s `offset=` token would (see
+them shift together, encoded exactly as `forge`'s `offset=` token would (see
 [CLI → Options & grammars](../cli/metadata-options.md)), never as a change to the audio itself. It
 is the same field the Objects tab's timeline shows as a draggable clip band (see
 [Objects & motion](objects-and-motion.md#per-source-offsets-and-keyframe-timing)) — editing either

@@ -183,7 +183,7 @@ install(DIRECTORY "${PROJECT_SOURCE_DIR}/src/ac3/include/"
     DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
     COMPONENT library)
 
-# Generated headers - ac3/version.hpp (from ac3/version.hpp.in) and the
+# Generated headers - iclforge/ac3/version.hpp (from iclforge/ac3/version.hpp.in) and the
 # generate_export_header() output - live in the library's own binary dir, not
 # its source tree (see src/ac3/CMakeLists.txt), so the install(DIRECTORY
 # .../include/) call above never sees them. A consumer's
@@ -552,7 +552,7 @@ if(ICLFORGE_BUILD_CAPI)
     # version.h is configure_file()'d from version.h.in (which that install does copy, as the
     # template), each into src/capi's own binary dir. Without version.h, every
     # #include <iclforge_c/iclforge.h> against an installed prefix fails to compile. Same
-    # reason ac3/version.hpp and ac3/export.hpp are installed by name for iclforge::ac3 above.
+    # reason iclforge/ac3/version.hpp and ac3/export.hpp are installed by name for iclforge::ac3 above.
     install(FILES
             "${CMAKE_BINARY_DIR}/src/capi/generated/iclforge_c/export.h"
             "${CMAKE_BINARY_DIR}/src/capi/generated/iclforge_c/version.h"

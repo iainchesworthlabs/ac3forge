@@ -12,7 +12,7 @@ import Hearth
 // backed by apps/hearth/engine/media_info.hpp's MediaInfo off a thread of
 // its own). Defaults to the item playing now; the "Showing" picker can ask
 // about any other queue item instead. An AC-4 item's presentations and
-// metadata are what ac4::Decoder reads of the whole stream
+// metadata are what iclforge::ac4::Decoder reads of the whole stream
 // (apps/common/probe_json.hpp's Ac4Summary; planning/ac4.md, "Media
 // information").
 Item {
@@ -59,7 +59,7 @@ Item {
         return n < 10 ? "0" + n : "" + n;
     }
 
-    // ac3::hearth::codec_token()'s lower-case wire tokens, spelled the way
+    // iclforge::hearth::codec_token()'s lower-case wire tokens, spelled the way
     // the rest of this page's prose does ("AC-3", not "AC3").
     function codecLabel(token) {
         switch (token) {

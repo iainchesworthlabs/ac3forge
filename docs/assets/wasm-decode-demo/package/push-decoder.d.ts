@@ -23,7 +23,7 @@ export declare class PushDecoder {
     push(unit: Uint8Array): PushOutcome;
     /** Zero-copy view into the last push() call's coded/rendered PCM for `channel` - see push()'s own contract. */
     channel(index: number): Float32Array | null;
-    /** The optional §7.8 fold (ac3::OutputStage/DC1) this instance was constructed for - null if `fold.target` was `AsCoded`. */
+    /** The optional §7.8 fold (iclforge::OutputStage/DC1) this instance was constructed for - null if `fold.target` was `AsCoded`. */
     fold(index: number): Float32Array | null;
     get foldChannelCount(): number;
     get objectCount(): number;

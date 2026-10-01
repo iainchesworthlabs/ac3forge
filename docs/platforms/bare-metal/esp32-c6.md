@@ -26,7 +26,7 @@ again, so the memory and fit figures below are those of 2026-09-15.
 | Memory, no network | Every fixture fits: 383,416 bytes free before the decode, largest block 352,256, against a largest peak of 234,070 (7.1.4 folded to stereo) |
 | Memory, with WiFi and a stream | About 236,000 bytes free before the decode, largest block 217,088 to 221,184. Everything up to the Atmos objects rows (212,253 bytes of peak) fits, and leaves 18,152 bytes free at the lowest; 7.1.4 (227,662) does not. With ESP-IDF's WiFi IRAM options off every fixture fits, 7.1.4 included, and the decode is slower |
 | Encode | Not measured. Both encoders are floating-point, which on this part is software floating point |
-| AC-4 | Not built for this part. `CONFIG_AC3FORGE_AC4` is offered only where ESP-IDF sets `SOC_CPU_HAS_FPU`, which the C6 does not, and the AC-4 decoder has no fixed-point tier yet: that is phase D14d of [`planning/ac4.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/ac4.md#d14-ac-4-on-the-esp32s), core decoding first. The sink decodes AC-3 and E-AC-3 only, and no ESP32 sink takes AC-4 in a Sendspin group |
+| AC-4 | Not built for this part. `CONFIG_ICLFORGE_AC4` is offered only where ESP-IDF sets `SOC_CPU_HAS_FPU`, which the C6 does not, and the AC-4 decoder has no fixed-point tier yet: that is phase D14d of [`planning/ac4.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/ac4.md#d14-ac-4-on-the-esp32s), core decoding first. The sink decodes AC-3 and E-AC-3 only, and no ESP32 sink takes AC-4 in a Sendspin group |
 | QEMU | Not emulated, see [QEMU](#qemu) |
 | CI | The component pack builds for `esp32c6` from its archive, and the `build-esp32c3` job builds this probe with both network loads and `hearth_sink` for the part with 4 MB and with 16 MB of flash. Nothing runs. Both are in the `esp` lane of `ci.yml`, which runs after a merge to main that changes the ESP32 trees or a tree its component ships (the [lane table](../../ci-lanes.md#lane-table) lists them), and nightly ([CI for many agents](../../ci-agentic.md#the-tiers)) |
 
@@ -65,7 +65,7 @@ not check levels. Fixed-point tier; the WiFi column is the slower of two runs.
 
 An ESP32-C6 in the QFN40 package, chip revision v0.2, with 16 MB of flash read in DIO mode at
 80 MHz, reached over its USB-Serial/JTAG port. ESP-IDF v6.1 and GCC esp-15.2.0_20251204, `-Os`
-with the decode-critical sources at `-O2` (`AC3FORGE_MINIMAL_HOT_O2`, the project's default),
+with the decode-critical sources at `-O2` (`ICLFORGE_MINIMAL_HOT_O2`, the project's default),
 the task watchdog off, and 160 MHz as the probe measures it against `esp_timer`.
 
 The probe decodes six frames of each fixture. Its timing is the decoder's own: the level and hash
@@ -95,7 +95,7 @@ others, and each WiFi cell is the slowest run.
 | `eac3_line` 5.1, line mode | 36,650 (1.15x) | 44,294 (1.38x) | 111,316 (3.48x) | 131,286 (4.10x) |
 | `eac3_atmos_render` onto 7.1.4 | 184,477 (5.76x) | 214,565 (6.71x) | 231,213 (7.23x) | 269,475 (8.42x) |
 
-"Not run" is the WiFi build's heap budget (`AC3FORGE_PROBE_HEAP_BUDGET_BYTES`, 215,000) skipping
+"Not run" is the WiFi build's heap budget (`ICLFORGE_PROBE_HEAP_BUDGET_BYTES`, 215,000) skipping
 a fixture: `eac3_714` ran out of heap on a 1,692-byte request in the first WiFi run made without
 one.
 
@@ -106,7 +106,7 @@ the fixed-point decode takes 16% to 53% longer, the smallest fixtures the most.
 ### Where the time goes
 
 Self time per frame in microseconds, fixed-point tier, no network, from a build with
-`-DAC3FORGE_STAGE_TIMERS=ON`. A pair of stage markers costs 3.0 microseconds on this part.
+`-DICLFORGE_STAGE_TIMERS=ON`. A pair of stage markers costs 3.0 microseconds on this part.
 
 | Stage | `ac3` 5.1 | `ac3_stereo` | `eac3` 5.1 | `eac3_atmos_bed` | `eac3_stereo` |
 |---|---:|---:|---:|---:|---:|
@@ -205,7 +205,7 @@ same bytes whatever else runs:
 
 ### The network load
 
-`CONFIG_AC3FORGE_PROBE_NETWORK_WIFI` (`apps/baremetal/platform/esp32c6/main/net/wifi/`) joins the
+`CONFIG_ICLFORGE_PROBE_NETWORK_WIFI` (`apps/baremetal/platform/esp32c6/main/net/wifi/`) joins the
 access point, turns modem sleep off, listens on TCP port 4953 and reads what arrives from a task
 at priority 5: above the decode on the main task at priority 1, below WiFi and lwIP. That is the
 load a Sendspin player carries, since the Sendspin server connects to the player. The probe
@@ -294,7 +294,7 @@ Those two add to 12,992 in isolation, which is the figure to hold a whole sink a
 streaming example playing a 7.1 stream onto eight 16-bit slots on this board reports
 `sink_us_per_frame` of 12,309, where the same sink converting in `float` reported 20,875. The
 end-to-end figure comes in under the sum because a plain build compiles the sink's own source at
-`-O2` (`AC3FORGE_MINIMAL_HOT_O2`) and the conversion inlines into the interleave's loop, where
+`-O2` (`ICLFORGE_MINIMAL_HOT_O2`) and the conversion inlines into the interleave's loop, where
 this benchmark at `-Os` called it once a sample. That is the general rule for these numbers: a
 conversion's cost depends on whether it inlines where it is called, and in this benchmark the
 24-in-32 form inlined and the 16-bit one did not.
@@ -309,7 +309,7 @@ from a 5.1 stream, with the two slots it has nothing for zeroed, come to 31,875 
 frame over eight laps: 17,131 of decode, 2,762 of render, 11,982 of sink. That is 0.996 of real
 time, and it plays, with 24 of its 1,536 writes finding the queue empty - 16 milliseconds in all,
 against 2,086 for the 7.1 stream. Both runs are the same build of the streaming example from the
-same board, `CONFIG_AC3FORGE_EXAMPLE_I2S_SLOT_BITS=16` onto `7.1`, from the FAT partition with no
+same board, `CONFIG_ICLFORGE_EXAMPLE_I2S_SLOT_BITS=16` onto `7.1`, from the FAT partition with no
 network.
 
 ## QEMU
@@ -328,12 +328,12 @@ the board.
 cd apps/baremetal/platform/esp32c6
 idf.py set-target esp32c6
 idf.py build                                  # fixed-point tier, no network
-idf.py -DAC3FORGE_DECODE_SCALAR=float build   # the float tier
+idf.py -DICLFORGE_DECODE_SCALAR=float build   # the float tier
 idf.py -p <PORT> flash monitor
 ```
 
-The WiFi load is `sdkconfig.wifi`, with the credentials (`CONFIG_AC3FORGE_PROBE_WIFI_SSID` and
-`CONFIG_AC3FORGE_PROBE_WIFI_PASSWORD`) in a file of their own outside the repository:
+The WiFi load is `sdkconfig.wifi`, with the credentials (`CONFIG_ICLFORGE_PROBE_WIFI_SSID` and
+`CONFIG_ICLFORGE_PROBE_WIFI_PASSWORD`) in a file of their own outside the repository:
 
 ```bash
 idf.py -B build-wifi -DSDKCONFIG=build-wifi/sdkconfig \

@@ -14,7 +14,7 @@ AC-4 vector (see [What it does not prove](#what-it-does-not-prove)).
 ## Getting it
 
 Attached to every [GitHub release](https://github.com/iainchesworthlabs/ac3forge/releases) as
-`ac3forge-conformance-vectors-<version>.tar.gz`, alongside the packages, the SPDX SBOM, the
+`iclforge-conformance-vectors-<version>.tar.gz`, alongside the packages, the SPDX SBOM, the
 `SHA512SUMS` and the Sigstore provenance attestations — it is signed, checksummed and attested
 exactly like every other release asset (see [Releasing](releasing.md#what-gets-published)).
 
@@ -131,7 +131,7 @@ the bundle's other encodes are pinned too, it records exactly what built it.
 ```bash
 cmake --preset config-linux-gcc && cmake --build --preset build-linux-gcc
 python tools/generators/gen_conformance_vectors.py \
-    --cli build/config-linux-gcc/bin/ac3cli \
+    --cli build/config-linux-gcc/bin/forge \
     --out dist/conformance-vectors \
     --check-determinism --archive
 ```
@@ -148,15 +148,15 @@ so it cannot drift out of step with what the oracle table says.
 The *list* is hand-maintained, though. `tools/checks/check_matrix_coverage.py` asks whether
 `tools/ci/run_codec_matrix.sh` names every CLI token the binary knows about; nothing asks that of
 this set, so a new layout or tool token can land without gaining a vector. What CI does catch is
-the other direction — the generator drives real `ac3cli` command lines in the Linux GCC leg of
+the other direction — the generator drives real `forge` command lines in the Linux GCC leg of
 every run on `main`, after a merge and nightly, so a token that changes spelling turns that run
 red rather than the release. The pull-request gate does not run it.
 
-To include the signed Atmos vector, supply a key — the same environment `ac3cli` itself reads:
+To include the signed Atmos vector, supply a key — the same environment `forge` itself reads:
 
 ```bash
-AC3FORGE_SIGNING_KEY_FILE=/path/to/key python tools/generators/gen_conformance_vectors.py \
-    --cli build/config-linux-gcc/bin/ac3cli --out dist/conformance-vectors --sign
+ICLFORGE_SIGNING_KEY_FILE=/path/to/key python tools/generators/gen_conformance_vectors.py \
+    --cli build/config-linux-gcc/bin/forge --out dist/conformance-vectors --sign
 ```
 
 Without a key `--sign` is refused outright rather than silently producing an unsigned stream

@@ -369,7 +369,7 @@ config ICLFORGE_EXAMPLE_HTTP_URL
 
 # THE OUTPUT LAYOUT - src/render/include/iclforge/render/layout.hpp. The
 # speakers the room has, one per output slot; the stream is rendered onto them
-# whatever it was coded as (ac3/render/render.hpp). A stereo or mono layout is
+# whatever it was coded as (iclforge/render/render.hpp). A stereo or mono layout is
 # the decoder's own §7.8 fold; anything else is placed channel by channel, and
 # a layout with height speakers has the stream's objects reconstructed and
 # placed by their own positions.

@@ -171,7 +171,7 @@ endif()
 # archive holds weak definitions of fmt::v12::vprint and vformat, and a weak definition in an
 # archive member satisfies every other object's reference to the same name: iclforge-tests, which
 # compiles cpu_features.cpp a second time, had the archive's cpu_features.cpp.o pulled in for
-# fmt::v12::vprint and stopped at a duplicate ac3::internal::cpu::has_avx2, in the static build and
+# fmt::v12::vprint and stopped at a duplicate iclforge::internal::cpu::has_avx2, in the static build and
 # in the BUILD_SHARED_LIBS=ON pass alike. A member pulled in without a clash would put a copy of
 # this library's code in a test binary that is meant to run against libiclforge_ac3.so. The private
 # copy answers to this library's own code alone, and a consumer's {fmt}, of any version, never

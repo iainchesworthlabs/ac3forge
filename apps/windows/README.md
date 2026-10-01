@@ -1,4 +1,4 @@
-# apps/windows: the Windows-only pieces of AC3Forge Crucible
+# apps/windows: the Windows-only pieces of Crucible
 
 The application itself moved to [`apps/crucible/`](../crucible/) when it was promoted from a
 Windows demo to a cross-platform product (Crucible cross-platform promotion,
@@ -8,7 +8,7 @@ that cannot move, because it is Windows and nothing else:
 | Directory | What it is |
 |---|---|
 | [`driver/`](driver/) | `Ac3ForgeNullSink`, the silent render endpoint applications play into. A kernel-mode ACX driver, **separately licensed** (MS-PL, derived from Microsoft's ACX AudioCodec sample) — see its own `LICENSE` and `README`. Nothing in it is included, linked or copied anywhere else in the repository. |
-| [`driver-vm/`](driver-vm/) | The throwaway VMware guest the driver is verified in: create, install, test and verify scripts, plus `Deploy-Desk.ps1`, which pushes a built `ac3crucible` into that guest. |
+| [`driver-vm/`](driver-vm/) | The throwaway VMware guest the driver is verified in: create, install, test and verify scripts, plus `Deploy-Desk.ps1`, which pushes a built `crucible` into that guest. |
 
 ## Why the driver did not move with the application
 
@@ -29,7 +29,7 @@ The renaming of the programs (stage N1A of the re-layout) left the driver's iden
 for the same reason and because copies of it are installed: the hardware id `ROOT\Ac3ForgeNullSink`,
 the service `Ac3ForgeNullSink`, the INF, SYS and CAT file names, the endpoint and device names
 ("Desktop Atmos"), the names in the scripts that install and remove it, and the .NET namespace
-`Ac3Forge` those scripts compile for themselves. A new hardware id would leave every installed
+`ForgeGui` those scripts compile for themselves. A new hardware id would leave every installed
 copy orphaned, and Crucible finds the device by its names. What stage N1A did change is text that
 no code reads and no installed device is matched by: the INF's provider and manufacturer strings,
 the version resource's description and copyright line, and the notices, which now say "ICL Forge".

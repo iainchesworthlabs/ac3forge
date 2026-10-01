@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-ac3forge is pre-1.0 and under active development. Security fixes are made against the
+ICL Forge is pre-1.0 and under active development. Security fixes are made against the
 `main` branch and included in the next release; there are no long-term-support branches
 to backport to yet.
 
@@ -34,7 +34,7 @@ Include, where relevant:
 If you found it while embedding the library, two things speed a fix up most: the input itself
 (a fuzzer corpus file is ideal — it becomes a permanent regression case under
 `fuzz/regressions/`), and which entry point you called, since the allocating and `_into` decode
-forms have different contracts. `ac3cli --version` prints the version, commit and toolchain, which
+forms have different contracts. `forge --version` prints the version, commit and toolchain, which
 says whether what you hit is already fixed. See
 [Reporting an issue](https://iainchesworthlabs.github.io/ac3forge/threat-model/#reporting-an-issue).
 

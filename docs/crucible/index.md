@@ -1,4 +1,4 @@
-# AC3Forge Crucible
+# Crucible
 
 Crucible captures applications separately and places each one in a Dolby Atmos scene. You can
 position an application in the room, send it to the fixed 5.1 bed, or split its stereo channels
@@ -7,7 +7,7 @@ into two objects. Output follows the selected audio device.
 !!! note "Status: Windows and Linux have run on hardware; macOS builds and has never made a sound"
     Windows and Linux have run on real hardware. macOS compiles and runs its test suites in CI;
     the application has not been launched on a Mac, captured macOS audio, or produced macOS
-    audio, and its process tap is off unless `AC3FORGE_MACOS_PROCESS_TAP` is set. CI builds a
+    audio, and its process tap is off unless `ICLFORGE_MACOS_PROCESS_TAP` is set. CI builds a
     macOS archive of it, and no release publishes that archive. See
     [Where each platform stands](#where-each-platform-stands) and the
     [promotion record](design/promotion.md).
@@ -47,9 +47,9 @@ differences.
 
 | | Windows | Linux | macOS |
 |---|---|---|---|
-| Enumerate and tap | yes | yes, confirmed on hardware | compiles; the tap is refused unless `AC3FORGE_MACOS_PROCESS_TAP` is set, and nothing has been captured |
+| Enumerate and tap | yes | yes, confirmed on hardware | compiles; the tap is refused unless `ICLFORGE_MACOS_PROCESS_TAP` is set, and nothing has been captured |
 | Silence | a source-built kernel driver, test-signed only, [see below](#the-silent-device) | a PipeWire node, nothing to install | the tap mutes where it taps; no device needed — compiles; no tap has been created |
-| Bitstream to a receiver | the underlying `PassthroughSink` is, via `ac3cli` — [see Windows](../platforms/windows.md#audio-backend-wasapi); Crucible itself hasn't been run against a receiver yet | yes, read off the receiver: 5.1 DD+, and Atmos/DD+ with objects | nothing has been played |
+| Bitstream to a receiver | the underlying `PassthroughSink` is, via `forge` — [see Windows](../platforms/windows.md#audio-backend-wasapi); Crucible itself hasn't been run against a receiver yet | yes, read off the receiver: 5.1 DD+, and Atmos/DD+ with objects | nothing has been played |
 | The window | yes | yes, run on the Pi | builds in CI and its suites run there; never launched on a Mac |
 
 **Windows** has the longest record: the room, the tray, and the driver have run. Its silent
@@ -69,7 +69,7 @@ desktop has a StatusNotifier host, and says so where there is none
 **macOS** uses Core Audio process taps, which mute applications when captured. The code compiles
 and runs its test suites on both macOS CI legs. On a hosted Apple Silicon runner the first tap
 never returned from `AudioDeviceCreateIOProcID`, so the backend refuses the tap unless
-`AC3FORGE_MACOS_PROCESS_TAP` is set in the environment: on macOS Crucible lists the applications
+`ICLFORGE_MACOS_PROCESS_TAP` is set in the environment: on macOS Crucible lists the applications
 using sound, draws them in the room, and taps none of them. It has not been launched on a Mac or
 tested with audio hardware. That requires a Mac with a desktop session and an audio device, and
 a Developer ID certificate for the operating system to show the capture consent prompt.
@@ -126,7 +126,7 @@ receiver tried with an unsigned container did play the 5.1 bed
 ([Raspberry Pi passthrough](../platforms/raspberry-pi.md#live-hdmi-passthrough-to-a-real-receiver)).
 
 The key is resolved at runtime, from a path in Settings or the same environment variables
-`ac3cli` reads. It is never built in, never shipped in a package, and never written to a log;
+`forge` reads. It is never built in, never shipped in a package, and never written to a log;
 the [diagnostics file](troubleshooting.md#saving-a-diagnostics-file) withholds both the key and
 the path to it. See [Object signing](../concepts/object-signing.md).
 

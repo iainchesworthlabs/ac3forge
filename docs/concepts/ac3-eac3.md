@@ -145,7 +145,7 @@ file or a bigger slice of a broadcast pipe's bandwidth.
 
 **E-AC-3 additionally supports VBR (variable bit rate).** Unlike AC-3, E-AC-3 states its frame
 size directly (`frmsiz`, an 11-bit word count) rather than indexing a table, so nothing stops a
-frame from being a different size than the one before it. ac3forge's E-AC-3 encoder can use this
+frame from being a different size than the one before it. ICL Forge's E-AC-3 encoder can use this
 either way:
 
 - **CBR** (the default): every frame is sized from a fixed `bitrate_kbps`, same as AC-3.
@@ -214,7 +214,7 @@ swinging over 3× around it — a mux can plan around that and cannot plan aroun
 much longer than the default cost real quality: at a 64-frame window the same encode drops 5 dB
 against CBR, where 8–32 frames stay within 1.5 dB.
 
-**Against FFmpeg's E-AC-3 encoder at the same rate, ac3forge's VBR is ahead everywhere**, by
+**Against FFmpeg's E-AC-3 encoder at the same rate, ICL Forge's VBR is ahead everywhere**, by
 about 11 dB from quality 0.4 upward. Read that alongside `README.md`'s CBR numbers rather than
 instead of them — the comparison here is one encoder's VBR against another's CBR, because FFmpeg
 has no E-AC-3 VBR mode to race.

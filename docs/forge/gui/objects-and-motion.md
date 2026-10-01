@@ -122,7 +122,7 @@ Each loaded source gets its own **clip band** at the top of the timeline, spanni
 range (`offset … offset + duration`), and its own numeric **start offset** field on the rail's
 source row (see [Loading a source](loading-a-source.md#01-input)). Drag a clip band (or edit the
 rail field directly) to shift when that source's channels start — encoded as leading silence
-ahead of its own audio, never as a change to the audio itself, the same way `ac3cli`'s `offset=`
+ahead of its own audio, never as a change to the audio itself, the same way `forge`'s `offset=`
 token works (see [CLI → Options & grammars](../cli/metadata-options.md)).
 
 **Keyframe times are programme-absolute, on purpose.** Sliding a clip band does *not* move that
@@ -146,12 +146,12 @@ authored keeps the preset's name in the object table until a hand edit makes it 
 ### Export paths
 
 **Export paths…** writes every dynamic object's current motion — or, for a path-less object, its
-static position as a single time-0 keyframe — to a file `ac3cli atmos-path` and `atmos-encode`
+static position as a single time-0 keyframe — to a file `forge atmos-path` and `atmos-encode`
 read. Which form depends on the name you save under: a `.json` name writes the
-`ac3::oba::ObjectScene` form (named objects, per-segment interpolation, a scene orientation — see
+`iclforge::oba::ObjectScene` form (named objects, per-segment interpolation, a scene orientation — see
 [Spatial & Atmos objects](../../library/spatial-and-atmos.md#the-serialised-form)), and anything else
 writes the keyframe columns this export has always produced (`object_index time_s x y z gain
-lfe_send`, one line per keyframe, addressed by each object's flat WAV channel index). `ac3cli`
+lfe_send`, one line per keyframe, addressed by each object's flat WAV channel index). `forge`
 tells the two apart by their first character rather than their suffix, so either file works
 wherever the other does. JSON identifies an object by its position in the array rather than by an
 index column, so where the column form simply skips a bed-pinned channel, the JSON form writes it
@@ -164,11 +164,11 @@ placement. See [CLI → `atmos-encode`](../cli/commands.md) for the argument its
 ### Signed output
 
 Forge GUI Atmos output is unsigned. To produce signed output, export the object paths and rerun
-the equivalent `ac3cli atmos-encode` command shown in the command bar with `sign-objects` and a
+the equivalent `forge atmos-encode` command shown in the command bar with `sign-objects` and a
 runtime-provided key:
 
 ```bash
-ac3cli atmos-encode in.wav out.ec3 448 0 paths.json sign-objects signing-key=/path/to/key
+forge atmos-encode in.wav out.ec3 448 0 paths.json sign-objects signing-key=/path/to/key
 ```
 
 Keep the command bar's source, bit rate, object count, paths, `src=`, and `map=` arguments when
@@ -196,7 +196,7 @@ they do for E-AC-3, with what follows different.
 The **AC-4** tab keeps its place in the tab bar, in place of Coding tools and Metadata, and
 carries what an object stream takes:
 
-| Control | `ac3cli atmos-encode … codec=ac4` option | Default |
+| Control | `forge atmos-encode … codec=ac4` option | Default |
 |---|---|---|
 | Coding: A-JOC, or direct-coded object substreams | `coding=ajoc`, `coding=direct` | A-JOC |
 | dialnorm, in whole dB from 1 to 31 | `dialnorm=` | 31 |
@@ -236,7 +236,7 @@ the objects panned to 5.1, as a monitor would. An object with no path keeps the 
 E-AC-3 gives it, which AC-4 codes in whole dB.
 
 **The command.** The command bar echoes one command,
-`ac3cli atmos-encode <source> out.ac4 <kbps> <objects> <name>-paths.json [src=… map=… offset=…]
+`forge atmos-encode <source> out.ac4 <kbps> <objects> <name>-paths.json [src=… map=… offset=…]
 codec=ac4 [coding=direct] [dialnorm=…] [crc=off]`, with `out.mp4` for MP4, since `atmos-encode`
 writes the MP4 file itself. Encoding writes `<name>-paths.json` beside the stream, the scene the
 command reads (the file **Export paths…** writes when the name ends in `.json`, listing the
@@ -252,7 +252,7 @@ under AC-4, and Guided's Movement step writes E-AC-3 objects. **Preview** plays 
 through the E-AC-3 object encoder's 5.1 bed, the first fifteen of them, whichever codec is
 chosen, which shows the motion the objects follow; the file the encode writes opens in Open stream
 and Inspect objects. The page reads audio files. An ADM BWF or IAB master goes through
-`ac3cli atmos-adm` or `atmos-iab`, which write AC-4 with `codec=ac4`.
+`forge atmos-adm` or `atmos-iab`, which write AC-4 with `codec=ac4`.
 
 ## Next
 

@@ -4,7 +4,7 @@ This page has two series. The first, from here to "Where the data lives", is the
 [gold-reference
 gate](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/checks/verify_gold_reference.sh)'s
 (encode the checked-in golden 5.1 WAV, strict-decode with FFmpeg and with
-`ac3cli`'s own decoder, delay-compensated SNR between the two), which covers
+`forge`'s own decoder, delay-compensated SNR between the two), which covers
 AC-3 and E-AC-3, and its measure is Decode accuracy: how closely this decoder agrees with
 FFmpeg's. [AC-4 decode quality](#ac-4-decode-quality) is the second, scored
 against the source instead.
@@ -96,7 +96,7 @@ that question — see [Landscape](landscape.md) and
   const REGRESSION_WINDOW = 10;
   const REGRESSION_DROP_DB = 0.5;
   const TABLE_ROWS = 40;
-  // WAV channel order ac3::io::ac3_layout_for(6) expects - see
+  // WAV channel order iclforge::io::ac3_layout_for(6) expects - see
   // tools/generators/gen_gold_reference_wav.py - and so the order compare_wav.py's
   // channels_db is written in. Only meaningful for the current 6-channel 5.1
   // golden reference; anything else (e.g. a future Atmos-bed layout with a
@@ -704,7 +704,7 @@ commit SHA already in quality-history, not a separate data source.
 ## The fixed-point decode has its own series too
 
 `_fixed`-suffixed checks are the gate run against a decoder built with
-`-DAC3FORGE_DECODE_SCALAR=fixed` - Q7.24 integer arithmetic under a block
+`-DICLFORGE_DECODE_SCALAR=fixed` - Q7.24 integer arithmetic under a block
 exponent, the tier for a part with no FPU
 ([`planning/arithmetic-tiers.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/arithmetic-tiers.md)).
 It differs from the double decode at 121 dB and above on the gold streams
@@ -718,7 +718,7 @@ makes, so the series has a point a night rather than one for each run after a me
 ## The float32 decode has its own series
 
 `_float32`-suffixed checks are the same gate run against a decoder built with
-`-DAC3FORGE_DECODE_SCALAR=float` — the arithmetic the minimum-footprint profile
+`-DICLFORGE_DECODE_SCALAR=float` — the arithmetic the minimum-footprint profile
 uses, and the arithmetic every fixture on both bare-metal legs is decoded
 through. Until that option existed the float32 path could not be built into
 anything with a CLI, so nothing here had ever measured it: `docs/building.md`
@@ -744,7 +744,7 @@ of the nightly run's `scalar_variants`.
 direct-form transforms in place of the fast paths
 ([Validation](verification.md#performance-and-reference-modes)). The `linux-gcc` leg makes
 this pass in the run after a merge as well as in the nightly run. `_encfloat`-suffixed
-checks are the gate run against an encoder built with `-DAC3FORGE_ENCODE_SCALAR=float`, the
+checks are the gate run against an encoder built with `-DICLFORGE_ENCODE_SCALAR=float`, the
 arithmetic the ESP32-S3's minimum-footprint profile encodes in. A float encoder makes its
 own decisions and produces a different, equally valid stream, so these rows are held to the
 same floors as the double encoder's and `tools/checks/check_encode_scalar_quality.py` holds

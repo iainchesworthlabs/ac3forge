@@ -148,7 +148,7 @@ class IclforgeConan(ConanFile):
         # cli_args -D, like vcpkg_cmake_configure()'s OPTIONS in
         # portfile.cmake, is visible immediately instead. Confirmed by
         # running the toolchain-file version first: it silently fell back to
-        # "0.0.0-dev" in the installed ac3/version.hpp.
+        # "0.0.0-dev" in the installed iclforge/ac3/version.hpp.
         cmake.configure(cli_args=[f"-DDERIVED_VERSION_OVERRIDE=v{self.version}"])
         cmake.build()
 

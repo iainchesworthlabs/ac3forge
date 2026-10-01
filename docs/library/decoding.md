@@ -1,26 +1,26 @@
 # Decoding
 
-This page covers AC-3 and E-AC-3. AC-4 has a decoder of its own, `ac4::Decoder`, with its own
-controls, presentations and objects, and none of `ac3::io` reads it: see [AC-4](ac4.md).
+This page covers AC-3 and E-AC-3. AC-4 has a decoder of its own, `iclforge::ac4::Decoder`, with its own
+controls, presentations and objects, and none of `iclforge::io` reads it: see [AC-4](ac4.md).
 
-## Reading a stream: `ac3::io::scan`
+## Reading a stream: `iclforge::io::scan`
 
-`ac3/io/elementary.hpp`. Finds access-unit boundaries in raw bytes and reports what the stream
+`iclforge/ac3/io/elementary.hpp`. Finds access-unit boundaries in raw bytes and reports what the stream
 carries, without being told. This is what a muxer needs, and deriving it from the bitstream
 beats asking a caller who can be wrong.
 
 ```cpp
 // Spans in the result point into `stream`, so it has to outlive them.
-const auto scanned = ac3::io::scan(stream);
+const auto scanned = iclforge::io::scan(stream);
 if (!scanned) {
     fmt::printf("scan failed: %.*s\n",
-                static_cast<int>(ac3::io::describe(scanned.error()).size()),
-                ac3::io::describe(scanned.error()).data());
+                static_cast<int>(iclforge::io::describe(scanned.error()).size()),
+                iclforge::io::describe(scanned.error()).data());
     return 1;
 }
 fmt::printf("%s, %u Hz, %d channels, %zu access units\n",
-            scanned->kind == ac3::io::StreamKind::kAc3 ? "AC-3" : "E-AC-3",
-            ac3::sample_rate_hz(scanned->sample_rate), scanned->channels,
+            scanned->kind == iclforge::io::StreamKind::kAc3 ? "AC-3" : "E-AC-3",
+            iclforge::sample_rate_hz(scanned->sample_rate), scanned->channels,
             scanned->access_units.size());
 ```
 
@@ -30,22 +30,22 @@ span per AC-3 syncframe, or per E-AC-3 independent substream together with the d
 following it.
 
 Both formats put `bsid` at bit 40 deliberately, so a reader can tell them apart before
-committing to a layout. `ac3::stream_bsid` exposes that on its own.
+committing to a layout. `iclforge::stream_bsid` exposes that on its own.
 
-## A stream that arrives in pieces: `ac3::io::AccessUnitAccumulator`
+## A stream that arrives in pieces: `iclforge::io::AccessUnitAccumulator`
 
-`ac3/io/stream_accumulator.hpp`. `scan`, `split_frames` and `split_access_units` take the whole
+`iclforge/ac3/io/stream_accumulator.hpp`. `scan`, `split_frames` and `split_access_units` take the whole
 stream as one span. `AccessUnitAccumulator` applies the same boundary rule incrementally, for an
 HTTP body, a file read a block at a time or a flash partition read a page at a time. The caller
 owns the storage, appends through `writable()` and `commit()`, and takes each whole access unit
 from `next()`; nothing is allocated.
 
 ```cpp
-std::array<std::byte, ac3::io::kRecommendedBuffer> storage;
-ac3::io::AccessUnitAccumulator accumulator{storage};
+std::array<std::byte, iclforge::io::kRecommendedBuffer> storage;
+iclforge::io::AccessUnitAccumulator accumulator{storage};
 for (;;) {
     const auto next = accumulator.next();
-    if (next.status == ac3::io::AccessUnitAccumulator::Status::kNeedMoreInput) {
+    if (next.status == iclforge::io::AccessUnitAccumulator::Status::kNeedMoreInput) {
         const std::size_t got = read_from_somewhere(accumulator.writable());
         if (got == 0) {
             accumulator.finish();
@@ -54,7 +54,7 @@ for (;;) {
         }
         continue;
     }
-    if (next.status != ac3::io::AccessUnitAccumulator::Status::kUnit) {
+    if (next.status != iclforge::io::AccessUnitAccumulator::Status::kUnit) {
         break;  // kEndOfStream, kBufferTooSmall or kError
     }
     // next.bytes is one access unit, valid until the next call
@@ -66,10 +66,10 @@ hold the largest access unit and the start of the frame after it: `kMinimumBuffe
 suits a stream whose access units are one syncframe, and `kRecommendedBuffer` (16 384) an
 independent substream with three dependents. A buffer that is too small gives `kBufferTooSmall`,
 and `error()` says which `ScanError` a `kError` was. `resynchronised_bytes()` counts the bytes
-skipped looking for a sync word. `ac4::SyncFrameSplitter` is the AC-4 counterpart
+skipped looking for a sync word. `iclforge::ac4::SyncFrameSplitter` is the AC-4 counterpart
 ([AC-4](ac4.md#the-inspector)).
 
-## Where access unit *i* starts: `ac3::io::access_unit_timing`
+## Where access unit *i* starts: `iclforge::io::access_unit_timing`
 
 Same header. `ScannedStream::access_unit_samples` records how many samples each access unit
 codes, parallel to `access_units`. That is always 1536 for AC-3 (§5.3.1: six blocks of 256, no
@@ -78,7 +78,7 @@ other option), but E-AC-3's `numblkscod` lets an independent substream code 1, 2
 mix lengths.
 
 ```cpp
-const auto at = ac3::io::access_unit_timing(*scanned, index);
+const auto at = iclforge::io::access_unit_timing(*scanned, index);
 at->start_sample;                     // samples from the start of the stream
 at->duration_samples;
 at->start_seconds();
@@ -103,14 +103,14 @@ Three lookups go with it:
 | `uniform_access_unit_samples` | The one length every unit shares, or nothing when they differ |
 
 That last one is exactly the question a fixed-duration container track can answer and a variable
-one cannot: `mp4::AudioTrack`, `mpegts::AudioTrack` and `matroska::AudioTrack` each hold a single
+one cannot: `iclforge::mp4::AudioTrack`, `iclforge::mpegts::AudioTrack` and `iclforge::matroska::AudioTrack` each hold a single
 `samples_per_frame`, so a stream it returns nothing for cannot be described to them without
-per-sample durations they do not model. `ac3cli`'s `mkv`/`mp4`/`fmp4`/`ts` take the figure from
+per-sample durations they do not model. `forge`'s `mkv`/`mp4`/`fmp4`/`ts` take the figure from
 here and refuse such a stream rather than muxing it to a silently wrong timeline.
 
-## Changing metadata without re-encoding: `ac3::io::metadata_edit`
+## Changing metadata without re-encoding: `iclforge::io::metadata_edit`
 
-`ac3/io/metadata_edit.hpp`. `dialnorm`, `compr`, `bsmod` and `dsurmod` are delivery decisions —
+`iclforge/ac3/io/metadata_edit.hpp`. `dialnorm`, `compr`, `bsmod` and `dsurmod` are delivery decisions —
 what a receiver is told the dialogue level is, how hard to compress on an RF output, what kind of
 service this is, whether the surrounds were matrixed. All four live in `bsi`, ahead of the first
 `audblk`, and none of them changes a coded coefficient. Re-encoding a programme to correct one
@@ -118,7 +118,7 @@ costs a whole generation of lossy coding for nothing.
 
 ```cpp
 std::vector<std::byte> stream = /* an AC-3 or E-AC-3 elementary stream */;
-const auto summary = ac3::io::edit_stream_metadata(stream, {.dialnorm = 24, .bsmod = 2});
+const auto summary = iclforge::io::edit_stream_metadata(stream, {.dialnorm = 24, .bsmod = 2});
 // summary->syncframes visited, summary->changed actually different afterwards
 ```
 
@@ -129,9 +129,9 @@ all.
 The CRCs are the part that is not obvious. `crc2` is an ordinary trailing CRC. `crc1` is not:
 A/52 §7.10.1 puts it **before** the region it protects and requires the register to read zero
 once the first 5/8 of the syncframe has been shifted through, so it has to be *solved* rather
-than computed — `ac3::solve_leading_crc` (`ac3/core/crc16.hpp`) does that with a GF(2)
+than computed — `iclforge::solve_leading_crc` (`iclforge/ac3/core/crc16.hpp`) does that with a GF(2)
 polynomial inverse, and is the same function the encoder itself uses. `restamp_crc` is public
-for a caller doing its own bsi surgery (`ac3::signing::sign_atmos_frame` is the in-project
+for a caller doing its own bsi surgery (`iclforge::signing::sign_atmos_frame` is the in-project
 precedent) so nobody has to reimplement that solve.
 
 Stated as limits rather than left to be discovered:
@@ -147,7 +147,7 @@ Stated as limits rather than left to be discovered:
   repurposes that bit to mark the last dependent of the programme. Its eight bits are still
   skipped correctly; they are simply not a `compr` word.
 - `strmtyp 2` (a convertible substream, §E2.3.1.1) is refused outright, matching
-  `ac3::plan::validate`'s own stance.
+  `iclforge::plan::validate`'s own stance.
 
 A field named in an edit that **no** syncframe in the stream carries fails before anything is
 written, so the stream is either fully rewritten or left byte-for-byte alone — a metadata option
@@ -157,18 +157,18 @@ that silently did nothing is indistinguishable from one that does not work.
 re-derive: `bsid`, `bsmod` (with `bsmod_present`, since Annex E carries it only inside
 `infomdate`), `bit_rate_code`, `dsurmod`, `mix_metadata`, `oba_complexity_index`, and — for
 E-AC-3 — `independent_substreams` plus a `SubstreamService` for substreams 1–3. Those feed
-`ac3::io::build_codec_config_box`'s `dac3`/`dec3` payload and the MPEG-TS PMT descriptors of
-both broadcast profiles (see [Muxing & sinks](muxing-and-sinks.md#muxing-mpegtsmux)).
+`iclforge::io::build_codec_config_box`'s `dac3`/`dec3` payload and the MPEG-TS PMT descriptors of
+both broadcast profiles (see [Muxing & sinks](muxing-and-sinks.md#muxing-iclforgempegtsmux)).
 `independent_substreams` is an *observation* of which substream ids appear; it deliberately does
 not change how `scan` groups access units, which stays one-programme.
 
 ## Object-layer strip
 
-`ac3/io/object_strip.hpp`. The inverse of the object encoder, at the bitstream level: it takes
+`iclforge/ac3/io/object_strip.hpp`. The inverse of the object encoder, at the bitstream level: it takes
 the EMDF/JOC object layer out of a Dolby Digital Plus stream without decoding anything.
 
 ```cpp
-const auto stripped = ac3::io::strip_objects(joc_stream);
+const auto stripped = iclforge::io::strip_objects(joc_stream);
 if (!stripped) {
     // describe(stripped.error()) says why
 }
@@ -204,33 +204,33 @@ carries objects or omits the container entirely (see [Atmos & JOC](../concepts/a
 Frames with no object layer pass through byte for byte — including frames of a bitstream shape
 this build cannot rewrite, since a frame with neither the `addbsi` marker nor a skip field has
 nothing to strip whatever its shape. A frame that *does* carry an object layer in a shape the
-frame walker (`ac3/emdf/frame_layout.hpp`) does not map is refused with `kUnsupportedFrame`
+frame walker (`iclforge/ac3/emdf/frame_layout.hpp`) does not map is refused with `kUnsupportedFrame`
 rather than passed through, because passing it through would hand back a stream still carrying
 the objects this function promises to remove. An AC-3 stream is refused outright
 (`kNotEac3`): Annex E is where substreams and skip fields live.
 
-This is the inverse of `ac3::signing`'s in-place EMDF rewrite and, like it, needs no key —
+This is the inverse of `iclforge::signing`'s in-place EMDF rewrite and, like it, needs no key —
 taking a container out is not authenticating one. Both share one bit-accurate frame walk
-(`ac3::emdf::walk_frame`) so the two cannot drift apart.
+(`iclforge::emdf::walk_frame`) so the two cannot drift apart.
 
-`ac3cli strip-objects in.ec3 out.ec3` is the command-line front end, and `ac3cli fmp4 …
+`forge strip-objects in.ec3 out.ec3` is the command-line front end, and `forge fmp4 …
 fallback-51` uses it to write the paired 5.1 HLS rendition Apple's authoring requirements ask
 for beside an Atmos one.
 
 ## Decoding
 
-`ac3/decoder/decoder.hpp`. Two classes, one per generation.
+`iclforge/ac3/decoder/decoder.hpp`. Two classes, one per generation.
 
 ```cpp
-// AC-3: one syncframe per access unit. For E-AC-3 use ac3::Eac3Decoder and
+// AC-3: one syncframe per access unit. For E-AC-3 use iclforge::Eac3Decoder and
 // decode_access_unit, which applies the §E3.8.2 render across substreams.
-ac3::FrameDecoder decoder;
+iclforge::FrameDecoder decoder;
 for (const auto unit : scanned->access_units) {
     const auto decoded = decoder.decode_frame(unit);
     if (!decoded) {
         fmt::printf("decode failed: %.*s\n",
-                    static_cast<int>(ac3::describe(decoded.error()).size()),
-                    ac3::describe(decoded.error()).data());
+                    static_cast<int>(iclforge::describe(decoded.error()).size()),
+                    iclforge::describe(decoded.error()).data());
         return 1;
     }
     samples += decoded->channels.front().size();
@@ -252,17 +252,17 @@ decoder as a check on the encoder: a test can assert on the `dynrng` words the e
 |---|---|---|
 | `drc_scale` | 0.0 | §7.7.1 partial compression. 0 ignores `dynrng`; 1 applies it as encoded. A/52 says a consumer decoder should default to applying it — this one defaults to 0 because a reference that silently rescales its output is not a reference. |
 | `drc_boost_scale` | none | `std::optional<double>`: the same scaling for boost alone (a `dynrng` word above unity), where it should differ from the cut's. For example, boost 0 keeps quiet passages quiet while `drc_scale` 1 still brings loud ones down. Unset, boost is scaled by `drc_scale` too. Like `drc_scale`, it applies under `OperatingMode::kCustom` only. |
-| `fast_imdct` | `true` | The fast inverse MDCT — the same fold the encoder's forward fast path uses — instead of the pseudocode's direct O(N²) sum against a 320 KiB tabulated matrix. Covers every inverse a decode runs: both decoders' PCM reconstruction, the three per-block inverses inside `eac3::ecpl_channel_spectrum`, and `oba::joc::reconstruct`'s per-object synthesis. Decodes 4.5–4.7× faster, agreeing with the direct form to 214.9 dB SNR (AC-3) / 284.7 dB (E-AC-3) over 180 s of stream. It never reaches an encoder — the encoder-internal inverses read `eac3::FrameConfig`'s own `fast_mdct` — so nothing about *encoded* output depends on it. `false` selects the direct reference form, the oracle the fast path's tests validate against; `ac3cli` exposes the pair as `mode=performance` / `mode=reference`. |
+| `fast_imdct` | `true` | The fast inverse MDCT — the same fold the encoder's forward fast path uses — instead of the pseudocode's direct O(N²) sum against a 320 KiB tabulated matrix. Covers every inverse a decode runs: both decoders' PCM reconstruction, the three per-block inverses inside `eac3::ecpl_channel_spectrum`, and `oba::joc::reconstruct`'s per-object synthesis. Decodes 4.5–4.7× faster, agreeing with the direct form to 214.9 dB SNR (AC-3) / 284.7 dB (E-AC-3) over 180 s of stream. It never reaches an encoder — the encoder-internal inverses read `eac3::FrameConfig`'s own `fast_mdct` — so nothing about *encoded* output depends on it. `false` selects the direct reference form, the oracle the fast path's tests validate against; `forge` exposes the pair as `mode=performance` / `mode=reference`. |
 | `heavy_compression` | `false` | §7.7.2: prefer `compr` where it exists, falling back on `dynrng` for syncframes that carry none. |
 | `output` | all off | The §7.8 output stage — dialnorm, downmix, operating mode. See below. |
 | `concealment` | `kNone` | §7.10: what to do with a frame that will not decode. See below. |
 | `fast_mdct` | `true` | The §7.9.4 *forward* MDCT fold, for JOC bed analysis under `oba::joc::Domain::kMdctBand` only — the one place a decode runs a forward transform, since §6.6.6's matrix combines the transmitted coefficients against the bed re-expressed in the domain the matrix was estimated in. No effect under the default `kQmf`, whose filterbank has only the one evaluation. `false` selects the direct §8.2.3.2 form, which is `oba::joc::reconstruct`'s own default and what its fast-path tests validate against. |
 | `joc_domain` | `oba::joc::Domain::kQmf` | Which domain JOC object reconstruction (above) runs §6.6.6's matrix in: `kQmf` is §7.1's 64-band complex filterbank, what the clause describes and what a licensed decoder runs; `kMdctBand` is the cheaper 512-sample-MDCT approximation this project used before the filterbank existed, correct only against a matrix estimated the same way (`AtmosConfig::joc_domain` on the encode side). The two have different algorithmic delay — `oba::joc::reconstruction_delay(domain)` — so a caller comparing `object_audio` against a known source has to shift by it. |
-| `trace` | `nullptr` | AC-3 self-check (`FrameDecoder`): where the decoder records what it derived per block, for `ac3::verify` to diff against the encoder's own model. See below. |
+| `trace` | `nullptr` | AC-3 self-check (`FrameDecoder`): where the decoder records what it derived per block, for `iclforge::verify` to diff against the encoder's own model. See below. |
 | `eac3_trace` | `nullptr` | The E-AC-3 counterpart (`Eac3Decoder`), one whole access unit rather than one frame. See below. |
 | `programme` | none | `std::optional<int>` (§E2.3.1.2). Which independent substream's programme `decode_access_unit` renders when a stream carries several — they are alternatives, not layers. `std::nullopt` renders whichever programme each call's access unit belongs to; set to an id and an access unit belonging to any other is skipped without being decoded at all. Ignored by `decode_substream`, which sits below the programme layer. See below. |
-| `syntax` | `nullptr` | `FrameSyntax*` (`ac3/decoder/syntax_trace.hpp`): which coding tools each block used and what exponent strategy each stream carried, recorded on the way past. Written by **both** decoders, unlike `trace`/`eac3_trace` — the Annex E tools are most of what makes it worth having. Filled incrementally, so a refused frame still leaves behind everything read before the refusal. |
-| `skip_reconstruction` | `false` | Parse every field exactly as a full decode does, but stop short of turning the coefficients into audio: no inverse transform, no overlap-add, no JOC object reconstruction, and no per-access-unit channel combination. The metadata (and any trace above) is identical to a full decode's; `channels` and `object_audio` come back empty. What `ac3cli probe` runs a whole file through. Note what it does *not* skip: the mantissas are still read, because the bit position of every field after them depends on it. |
+| `syntax` | `nullptr` | `FrameSyntax*` (`iclforge/ac3/decoder/syntax_trace.hpp`): which coding tools each block used and what exponent strategy each stream carried, recorded on the way past. Written by **both** decoders, unlike `trace`/`eac3_trace` — the Annex E tools are most of what makes it worth having. Filled incrementally, so a refused frame still leaves behind everything read before the refusal. |
+| `skip_reconstruction` | `false` | Parse every field exactly as a full decode does, but stop short of turning the coefficients into audio: no inverse transform, no overlap-add, no JOC object reconstruction, and no per-access-unit channel combination. The metadata (and any trace above) is identical to a full decode's; `channels` and `object_audio` come back empty. What `forge probe` runs a whole file through. Note what it does *not* skip: the mantissas are still read, because the bit position of every field after them depends on it. |
 | `skip_object_reconstruction` | `false` | Decode the bed and leave the objects alone: no JOC reconstruction, `object_audio` and `object_indices` come back empty, and everything else (the bed's PCM, `object_metadata`, the trace) is what a full decode gives. Unlike `skip_reconstruction` it still renders audio, the 5.1 downmix the objects were coded against. It exists for memory: the reconstruction state is 147,504 bytes on a 32-bit target, more than the largest contiguous block an ESP32-S3 decode leaves free. |
 | `diagnostics`, `diagnostics_context` | `nullptr`, `nullptr` | A plain function pointer and the pointer passed to it, called for the recoverable events the return value does not carry: a CRC that failed, and an EMDF payload id the decoder does not interpret. One branch per occurrence when unset. |
 
@@ -278,8 +278,8 @@ run. The samples are the `_into` form's exactly, and a downmix arrives as one or
 spans view the decoder's own storage and are valid only inside the call that hands them over.
 
 ```cpp
-ac3::Eac3Decoder decoder;
-const auto sink = [&](const ac3::PcmBlock& block) {
+iclforge::Eac3Decoder decoder;
+const auto sink = [&](const iclforge::PcmBlock& block) {
     // block.index of block.blocks; block.channels[slot] is 256 samples of
     // the rendered layout's slot. Interleave it into a DMA ring one block deep.
     ring.push(block.channels);
@@ -307,12 +307,12 @@ output onto the unit's own reconstruction, cut to the block, and `object_indices
 a bed-only decode (`skip_object_reconstruction`) and for a unit with no object layer. A sink
 placing objects on loudspeakers therefore needs no frame of anything - the value form's
 `object_audio` is a frame of copies per object, and this is none. The probe's
-`eac3_atmos_render` row is that sink: `ac3::spatial::pan_direction` for the gains, once per
+`eac3_atmos_render` row is that sink: `iclforge::spatial::pan_direction` for the gains, once per
 object per unit, and a block of float sums per target.
 
 ## The output stage
 
-`ac3/decoder/output.hpp`. Everything between "the coded channels have been reconstructed" and
+`iclforge/ac3/decoder/output.hpp`. Everything between "the coded channels have been reconstructed" and
 "these are the samples a listener hears": dialnorm normalisation, the §7.8 downmix, and §7.7's two
 named operating modes. It is off by default — a decoder configured the way the examples above
 configure it emits the coded channels untouched, sample for sample — because the decoders exist
@@ -320,8 +320,8 @@ first as a check on the encoder, and a stage that silently re-levelled or re-fol
 would destroy that.
 
 ```cpp
-ac3::FrameDecoder decoder{{
-    .output = {.target = ac3::DownmixTarget::kLoRo, .mode = ac3::OperatingMode::kLine},
+iclforge::FrameDecoder decoder{{
+    .output = {.target = iclforge::DownmixTarget::kLoRo, .mode = iclforge::OperatingMode::kLine},
 }};
 // decoded->channels now holds two channels, Lo then Ro, at the -31 dBFS
 // reference. acmod/lfe still describe what was CODED.
@@ -348,19 +348,19 @@ carries two coarse levels in bsi (`cmixlev`, `surmixlev`; §5.4.2.4/§5.4.2.5) a
 richer group inside `mixmdate` — separate Lt/Rt and Lo/Ro centre and surround levels plus an LFE
 mix level. Both decoders now keep those and report them (`DecodedFrame::cmixlev`/`surmixlev`,
 `DecodedSubstream::mixing`), distinguishing "absent" from "present, and says the default";
-`ac3::mix_levels()` turns either into the coefficients the stage needs, applying §7.8's own
+`iclforge::mix_levels()` turns either into the coefficients the stage needs, applying §7.8's own
 fallbacks where a field is simply not there.
 
 `MixLevels::preferred` passes on `dmixmod`, the fold the content was mixed for (Table D2.2) —
 E-AC-3's `mixmdate`, or an Annex D stream's `xbsi1` (see below) — without acting on it: `target` is
 always what the caller asked for. A caller that
-wants to follow the stream uses `ac3::automatic_stereo_target(acmod, preferred)`, A/52 §D3.1.1's
+wants to follow the stream uses `iclforge::automatic_stereo_target(acmod, preferred)`, A/52 §D3.1.1's
 automatic selection: `kLtRt` when the stream prefers Lt/Rt, `kLoRo` for every other code —
 `kNotIndicated`, and `kReserved` (Table D2.2's `11`, which A/52:2018 and ETSI TS 102 366 V1.4.1
 both leave reserved for AC-3 and E-AC-3 alike, and which §D2.3.1.2 allows a decoder to read as
 "not indicated"). `acmod` gates the whole field the same way: Table D2.2's own note leaves
 dmixmod's meaning reserved below `3/0` — at `1+1`, `1/0` and `2/0` — whatever code it carries, so
-those acmods get `kLoRo` regardless of `preferred`. `ac3cli`'s `downmix=auto` is built on it.
+those acmods get `kLoRo` regardless of `preferred`. `forge`'s `downmix=auto` is built on it.
 
 §7.8.1's normalisation — "attenuating all downmix coefficients equally, such that the sum of
 coefficients used to create any single output channel never exceeds 1" — means a fold of plain
@@ -463,7 +463,7 @@ the acmods Table D2.2 defines it for. A surround level Tables D2.4/D2.6 reserve 
 as §D2.3.1.4/§D2.3.1.6 direct, and `DecodedFrame::alternate_bsi` reports it that way. Annex D adds
 no LFE mix level, so `mix_lfe` folds the LFE in at §7.8's +10 dB for either `bsid`. A caller
 folding a `DecodedFrame` itself gets the same levels from
-`ac3::mix_levels(acmod, cmixlev, surmixlev, alternate_bsi)`.
+`iclforge::mix_levels(acmod, cmixlev, surmixlev, alternate_bsi)`.
 
 Not covered: Annex C's karaoke downmix rules for `bsmod` 7. The mode's `cmixlev`/`surmixlev` are
 re-purposed as vocal-channel levels there, so it is a different matrix rather than a variation on
@@ -495,7 +495,7 @@ reaches up to 1528 samples back from its transient, which a frame may place in a
 to 4092 samples past that origin. The Dolby Encoding Engine does exactly that at its lower stereo
 and 5.1 rates, putting most of its transients in the next frame; Dolby's own decoder corrects
 them on the same origin, which is how the origin was settled (see
-`ac3/decoder/transient_prenoise.hpp`). This decoder applies each correction once the frame its
+`iclforge/ac3/decoder/transient_prenoise.hpp`). This decoder applies each correction once the frame its
 transient falls in has decoded, so every reach the syntax can express decodes.
 
 Transient pre-noise processing has one API consequence worth knowing: once a stream turns it on,
@@ -568,7 +568,7 @@ object order (bed channels, then ISF, then dynamic objects), which is what
 `oba::joc_object_indices()` computes for the programme. For a dynamic-object-only programme —
 what this project's own encoder writes — entry *i* is `object_metadata->objects[i]`; for a bed
 programme it names the bed channel instead, which `oba::bed_labels()` turns into a speaker
-label. `ac3cli decode <in> <out.wav> <objects_dir>` writes one WAV per entry.
+label. `forge decode <in> <out.wav> <objects_dir>` writes one WAV per entry.
 
 What the parsers read is deliberately much wider than what the encoder writes, because real
 streams are wider. On the OAMD side: any number of metadata update blocks at any sample offset
@@ -626,7 +626,7 @@ and is still reported either way.
 
 ## The mirror self-check
 
-`ac3/verify/mirror.hpp` and `ac3/verify/eac3_mirror.hpp`. Both decoders can record what they
+`iclforge/ac3/verify/mirror.hpp` and `iclforge/ac3/verify/eac3_mirror.hpp`. Both decoders can record what they
 derived from the wire, so it can be diffed against the encoder's own model of the same frame —
 per block, per coded stream, and for E-AC-3 per substream. It exists because a desync is
 invisible at the field that causes it: every mantissa's *width* comes out of that model, so the
@@ -637,7 +637,7 @@ to trip first.
 ```cpp
 // The driver most callers want: a drop-in for eac3::AccessUnitEncoder that also
 // decodes every access unit it emits and diffs the two models.
-ac3::verify::Eac3MirrorEncoder encoder{config};
+iclforge::verify::Eac3MirrorEncoder encoder{config};
 const auto checked = encoder.encode_access_unit(channels);
 if (checked && !checked->ok()) {
     std::puts(encoder.last_report().c_str());
@@ -645,10 +645,10 @@ if (checked && !checked->ok()) {
 }
 ```
 
-`ac3::verify::MirrorEncoder` is the AC-3 sibling, over `FrameEncoder`. What each compares is in
+`iclforge::verify::MirrorEncoder` is the AC-3 sibling, over `FrameEncoder`. What each compares is in
 its own header; the E-AC-3 side adds what Annex E adds — per-substream and per-block bit offsets
 across an independent substream and its dependents, AHT gain mode and per-bin gains, and the
-coupling, enhanced-coupling and spectral-extension coordinates. `ac3cli eac3-encode … verify`
+coupling, enhanced-coupling and spectral-extension coordinates. `forge eac3-encode … verify`
 is the same check over a whole file.
 
 Both trace pointers are null by default and cost one branch per block when they are: attaching
@@ -663,7 +663,7 @@ compared in the call that decoded it like any other.
 
 ## Recovering from a damaged frame
 
-`ac3::split_frames` delimits syncframes by sync word and declared size alone — it does not
+`iclforge::split_frames` delimits syncframes by sync word and declared size alone — it does not
 validate a frame's CRC, so it still finds every boundary correctly even when one frame's payload
 is corrupt. That means a caller can decode frame by frame, catch the one bad `decode_frame`
 call, and keep going rather than losing the rest of the stream over a single damaged frame — the
@@ -671,15 +671,15 @@ shape real capture/transport corruption takes, since a torn or bit-flipped frame
 usually take its neighbours down with it.
 
 ```cpp
-const auto frames = ac3::split_frames(stream);
+const auto frames = iclforge::split_frames(stream);
 
-ac3::FrameDecoder decoder;
+iclforge::FrameDecoder decoder;
 int recovered = 0;
 int failed = 0;
 for (std::size_t i = 0; i < frames->size(); ++i) {
     const auto decoded = decoder.decode_frame((*frames)[i]);
     if (!decoded) {
-        const auto message = ac3::describe(decoded.error());
+        const auto message = iclforge::describe(decoded.error());
         fmt::printf("frame %zu: decode failed (%.*s) - skipping\n", i,
                     static_cast<int>(message.size()), message.data());
         ++failed;
@@ -700,7 +700,7 @@ PCM where that frame should have been. §7.10's answer is to substitute somethin
 `DecoderConfig::concealment` opts into it:
 
 ```cpp
-ac3::FrameDecoder decoder{{.concealment = ac3::ConcealmentPolicy::kRepeatFade}};
+iclforge::FrameDecoder decoder{{.concealment = iclforge::ConcealmentPolicy::kRepeatFade}};
 for (const auto unit : scanned->access_units) {
     const auto decoded = decoder.decode_frame(unit);
     if (!decoded) { /* only at the head of a stream - see below */ }
@@ -743,7 +743,7 @@ than the stream promised — and the result reports `ConcealmentAction::kBedOnly
 *independent* substream is a different matter, and is concealed (or refused) like any other frame,
 because without it there is no programme at all.
 
-`ac3cli decode` and `ac3cli monitor` expose all of this as `conceal=repeat|mute`, and report how
+`forge decode` and `forge monitor` expose all of this as `conceal=repeat|mute`, and report how
 many frames or access units were concealed.
 
 `split_access_units` is the E-AC-3 sibling for `Eac3Decoder::decode_access_unit`, delimiting by
@@ -760,8 +760,8 @@ here is the part a decoder controls, which is smaller than it looks:
 
 | | Adds |
 |---|---|
-| `ac3::FrameDecoder::latency_samples()` | **0**, always. |
-| `ac3::Eac3Decoder::latency_samples()` | **0**, or 1536 once §3.7 engages, whatever the syncframe length. |
+| `iclforge::FrameDecoder::latency_samples()` | **0**, always. |
+| `iclforge::Eac3Decoder::latency_samples()` | **0**, or 1536 once §3.7 engages, whatever the syncframe length. |
 
 `FrameDecoder`'s zero is structural rather than lucky: `decode_frame` returns a frame's full
 1536 samples per channel from the same call that supplies that frame's bytes. The IMDCT overlap
@@ -790,7 +790,7 @@ waveform lags its original input by **832** samples, not 256. JOC does not code 
 codes a matrix that pulls them back out of the *decoded bed*, and TS 103 420 §7.1 puts that
 reconstruction in a 64-band complex QMF filterbank rather than the MDCT domain — a critically
 sampled real transform relies on time-domain alias cancellation between neighbouring blocks, an
-assumption a per-frame matrix breaks (see `ac3/dsp/qmf.hpp`). Analysis plus synthesis costs the
+assumption a per-frame matrix breaks (see `iclforge/dsp/qmf.hpp`). Analysis plus synthesis costs the
 filterbank's own `dsp::kQmfDelay` (576 samples) on top of the bed's 256, for 832 total. The bed
 in the same `DecodedAccessUnit` still lags by 256, so **objects and bed are not aligned with each
 other** — anything mixing the two has to delay the bed by 576 samples. `oba::AtmosEncoder::latency()`
@@ -799,7 +799,7 @@ reports the object path's budget and `bed_latency()` the bed's; the 832 is measu
 
 With `DecoderConfig::joc_domain` set to `kMdctBand`, the reconstruction costs 256 samples rather
 than 576, so objects lag their input by 512 and the bed has to be delayed by 256.
-`ac3::render::LayoutRenderer` does this delaying for the one bed channel it plays beside placed
+`iclforge::render::LayoutRenderer` does this delaying for the one bed channel it plays beside placed
 objects, the LFE, once `set_joc_domain()` has told it the decoder's domain;
 [`tests/render/test_object_lfe_timing.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tests/render/test_object_lfe_timing.cpp)
 measures the rendered feeds.
@@ -817,8 +817,8 @@ consecutive entries are consecutive *programmes*, not consecutive frames — fee
 through would splice two unrelated pieces of audio together.
 
 ```cpp
-const auto ids = ac3::programme_ids(stream);          // e.g. {0, 1}
-const auto units = ac3::split_access_units(stream, ids->front());
+const auto ids = iclforge::programme_ids(stream);          // e.g. {0, 1}
+const auto units = iclforge::split_access_units(stream, ids->front());
 ```
 
 `split_access_units(stream, programme)` keeps only that programme's units, and an empty result
@@ -828,7 +828,7 @@ The decoder can do the selecting instead, which is what a caller already walking
 wants:
 
 ```cpp
-ac3::Eac3Decoder decoder{{.programme = 1}};
+iclforge::Eac3Decoder decoder{{.programme = 1}};
 // A unit belonging to another programme returns std::nullopt, skipped before
 // any decoding — no per-substream state advances for a programme you did not
 // ask for. (std::nullopt also means the §3.7 hold-back; both call for the
@@ -839,7 +839,7 @@ Leaving `DecoderConfig::programme` unset renders whatever arrives, which is what
 before the field existed and is right for the single-programme case;
 `DecodedAccessUnit::programme` then says which programme each result came from.
 
-`ac3::io::scan` reports the same thing for a muxer: `ScannedStream::programmes` describes each
+`iclforge::io::scan` reports the same thing for a muxer: `ScannedStream::programmes` describes each
 programme's layout, channel count, `bsmod` and access units, and `ScannedStream::access_units`
 is the **first** programme's units alone rather than all of them spliced into one track.
 
@@ -872,6 +872,6 @@ manifest of what each exercises, for checking an independent implementation.
 
 See also: [Encoding AC-3](encoding-ac3.md) and [Encoding E-AC-3](encoding-eac3.md) — what
 `decode_frame`/`decode_access_unit` are undoing, and the full latency budget;
-[Muxing & sinks](muxing-and-sinks.md) — pairing `ac3::io::scan` with `matroska::mux` is what
+[Muxing & sinks](muxing-and-sinks.md) — pairing `iclforge::io::scan` with `iclforge::matroska::mux` is what
 keeps a container's track header accurate; [Building](../building.md) — the minimum-footprint
 decoder profile for set-top and DSP targets.

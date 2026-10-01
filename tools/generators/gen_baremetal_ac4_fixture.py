@@ -31,7 +31,7 @@ The streams are the table STREAMS below. What each is for:
 
 The levels are the WAV that `forge decode` writes, read back per channel and put
 in the order the decoder hands its channels over in (the speakers of
-ac4::DecodedFrame). For the three layouts here that is the file's own order (a
+iclforge::ac4::DecodedFrame). For the three layouts here that is the file's own order (a
 WAV's channel mask puts L R C LFE, the surround pair and the four heights in it),
 and LAYOUTS says where each coded channel sits in the file, for a layout where it
 is not.

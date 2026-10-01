@@ -13,7 +13,7 @@ been run, and ViSQOL's MOS-LQO — the closest thing here to a perceptual score
 
 | | |
 |---|---|
-| `gen_listening_stimuli.py` | builds the stimulus set for every leg of `tests/golden/external-baseline/manifest.json`: encodes with `ac3cli`, decodes everything with FFmpeg, aligns, blinds, and writes the trials key. Needs numpy and an `ffmpeg` binary. |
+| `gen_listening_stimuli.py` | builds the stimulus set for every leg of `tests/golden/external-baseline/manifest.json`: encodes with `forge`, decodes everything with FFmpeg, aligns, blinds, and writes the trials key. Needs numpy and an `ffmpeg` binary. |
 | `score_listening_test.py` | reads the key plus one response CSV per listener and prints the results table with confidence intervals. Stdlib-only — no build, no numpy, no FFmpeg. |
 | `responses/` | where filled-in response CSVs go. See its own README for the schema and for what has been run so far. |
 
@@ -23,10 +23,10 @@ what the BS.1534-3 anchors are for). This file is the operator's sequence.
 
 ## Running a session
 
-**1. Build `ac3cli`**, then generate the stimuli:
+**1. Build `forge`**, then generate the stimuli:
 
 ```bash
-AC3CLI=build/config-linux-llvm/bin/ac3cli python3 tools/listening/gen_listening_stimuli.py --out listening-session
+ICLFORGE_CLI=build/config-linux-llvm/bin/forge python3 tools/listening/gen_listening_stimuli.py --out listening-session
 ```
 
 Read what it prints. Two things it reports decide how the results can be

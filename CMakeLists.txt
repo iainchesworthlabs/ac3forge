@@ -556,7 +556,7 @@ endif()
 # ICLFORGE_BUILD_ADM (default OFF, unlike the three above - see the option() itself for why).
 if(ICLFORGE_BUILD_ADM)
     # IAB reader bridge, phase 3: iclforge::admbridge's own IAB mapping (src/admbridge/src/iab_bridge.cpp)
-    # names ac3iab::IABitstreamFrame in a public header, so it needs the src/iab add_subdirectory()
+    # names iclforge::iab::IABitstreamFrame in a public header, so it needs the src/iab add_subdirectory()
     # above to have actually run. ICLFORGE_BUILD_IAB defaults ON, unlike ICLFORGE_BUILD_ADM, so this
     # is the one combination that can silently fail to configure without an explicit guard - every
     # other ICLFORGE_BUILD_ADM consequence below only ever depends on flags that are already
@@ -569,7 +569,7 @@ if(ICLFORGE_BUILD_ADM)
     add_subdirectory(src/adm)
 
     # iclforge::admbridge - ADM BWF → JOC bridge, phase 2: maps ac3adm's parsed ADM graph onto
-    # ac3::oba::AtmosEncoder. Depends on iclforge::ac3 (added above), iclforge::adm (just added) and
+    # iclforge::oba::AtmosEncoder. Depends on iclforge::ac3 (added above), iclforge::adm (just added) and
     # (IAB reader phase 3) iclforge::iab (added earlier, guarded above), so it is meaningless
     # without ICLFORGE_BUILD_ADM - gated by the same flag rather than a new option of its own; see
     # src/admbridge/CMakeLists.txt's own header comment for the full reasoning, including why this

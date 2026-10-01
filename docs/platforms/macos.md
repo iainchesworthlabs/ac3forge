@@ -31,14 +31,14 @@
 
 | | |
 |---|---|
-| What runs here | The library, `ac3cli` and `ac3gui`. Hearth's window builds, and Crucible's macOS half compiles and its suites run |
+| What runs here | The library, `forge` and `forge-gui`. Hearth's window builds, and Crucible's macOS half compiles and its suites run |
 | Build | Two CI legs, Apple Silicon after each merge and native Intel nightly; neither is experimental |
 | Minimum OS | macOS 13.3 (Ventura): the deployment target `cmake/toolchains/macos.llvm.toolchain.cmake` sets for C++23 libc++ features, which the Homebrew cask also requires. The Core Audio process tap needs 14.2 |
 | Sound | **Nothing on macOS has captured or played anything.** No Mac host is available to this project. A hosted runner has a virtual output device (`Apple Virtual Sound Device`) and a window session, but no audio hardware and no way to grant a consent prompt |
 | Core Audio process tap | Written, compiled, **never created at runtime** |
 | Crucible | Compiles and is exercised by the CI suites; the application has never been launched on a Mac |
-| AC-4 | Decoded and encoded by `ac3cli` and `ac3gui` in the same code the other platforms run. Core Audio defines no AC-4 format, so AC-4 can reach an output only as decoded PCM, and nothing on macOS has played a sound. v0.10.0-beta.1, the latest release, predates the AC-4 decoder and encoder |
-| Packaging | A universal `.dmg` carrying `ac3cli` and `ac3gui`, a Homebrew cask for the GUI and a source formula for the CLI; the cask has not been installed end to end on a Mac. Hearth and Crucible are in no macOS release package |
+| AC-4 | Decoded and encoded by `forge` and `forge-gui` in the same code the other platforms run. Core Audio defines no AC-4 format, so AC-4 can reach an output only as decoded PCM, and nothing on macOS has played a sound. v0.10.0-beta.1, the latest release, predates the AC-4 decoder and encoder |
+| Packaging | A universal `.dmg` carrying `forge` and `forge-gui`, a Homebrew cask for the GUI and a source formula for the CLI; the cask has not been installed end to end on a Mac. Hearth and Crucible are in no macOS release package |
 
 The two build variants feed one universal end-user package. Entries marked **Source** or
 **In development** remain unconfirmed for sound hardware.
@@ -62,10 +62,10 @@ A release's macOS package is a single **universal (arm64 + x86_64) `.dmg`**, not
 ones. `macos-llvm` and `macos-llvm-x64` each build and `cmake --install` their own single-arch
 tree; a separate `package-macos-universal` job (also CI-only — it runs on `macos-latest`, any
 macOS label works since `lipo`/`hdiutil` are the only tools it needs) `lipo -create`s every
-Mach-O file the two trees have in common — `ac3cli`, `ac3gui`, and every dylib/framework binary
-`qt_generate_deploy_qml_app_script` copies into `ac3gui.app/Contents/Frameworks/` — and packages
+Mach-O file the two trees have in common — `forge`, `forge-gui`, and every dylib/framework binary
+`qt_generate_deploy_qml_app_script` copies into `forge-gui.app/Contents/Frameworks/` — and packages
 the merged tree with `hdiutil` directly, the same call CPack's own DragNDrop generator makes under
-the hood. Proven for real in CI: `lipo -info` on the merged `ac3cli`/`ac3gui` binaries and at
+the hood. Proven for real in CI: `lipo -info` on the merged `forge`/`forge-gui` binaries and at
 least one bundled Qt framework binary reports both `x86_64` and `arm64` present in the same file —
 see that job's own log, not just its exit code. This was a deliberate reversal of the original
 earlier plan, which called a macOS universal binary "a separate decision, not a given" on the
@@ -78,7 +78,7 @@ Each leg's own single-arch `.dmg` still exists as a packaging smoke test (`packa
 never went away; the nightly run does it, since the run after a merge leaves that pass out), it
 just isn't what a release publishes any more — see [Packaging](#packaging) below and
 [docs/releasing.md](../releasing.md#what-gets-published). The two install trees the universal
-job merges are the `runtime` component only, `ac3cli` and `ac3gui`, so the release `.dmg` carries
+job merges are the `runtime` component only, `forge` and `forge-gui`, so the release `.dmg` carries
 neither Hearth nor Crucible. v0.10.0-beta.1 (2026-09-01) is the first release built by that job.
 
 ## Audio backend: CoreAudio
@@ -107,22 +107,22 @@ with `kUnsupportedFormat`, and `supports_ac4_passthrough` is false on every devi
 
 Passthrough **capture** — an input carrying somebody else's bitstream — needs none of that
 machinery, on macOS or anywhere else: IEC 61937 bursts arrive as ordinary PCM samples, and
-recognising them is `ac3::iec61937::PassthroughDetector`, which works off whatever interleaved
-floats the backend delivers rather than off any HAL property. `ac3cli record` uses it to write
-the elementary stream instead of encoding the bursts as audio, `ac3cli live` to stop rather than
-encode a session of noise, and `ac3cli unspdif` does the same job on a capture already saved to
+recognising them is `iclforge::iec61937::PassthroughDetector`, which works off whatever interleaved
+floats the backend delivers rather than off any HAL property. `forge record` uses it to write
+the elementary stream instead of encoding the bursts as audio, `forge live` to stop rather than
+encode a session of noise, and `forge unspdif` does the same job on a capture already saved to
 disk. That part is platform-independent and shares the verification the framing has — see
 [Windows](windows.md#passthrough-capture) for what is and is not confirmed.
 
 The backend is CI-verified only: the parts that need no live device — enumeration on a machine
-with none, format matching, sample conversion — run under `ac3tests` on the hosted runner, same
+with none, format matching, sample conversion — run under `iclforge-tests` on the hosted runner, same
 as everywhere else without hardware, but no Mac has ever run this code against a digital
 output, and no receiver has been asked to lock onto its output.
 
-**No EDID/ELD backend here either.** `ac3cli play` asks a chosen sink what it
+**No EDID/ELD backend here either.** `forge play` asks a chosen sink what it
 actually accepts before committing to a format (see
 [CLI → Following the sink](../forge/cli/commands.md#following-the-sink)), and that read
-(`ac3::audio::sink_capabilities`) exists today for ALSA and for PipeWire (see
+(`iclforge::audio::sink_capabilities`) exists today for ALSA and for PipeWire (see
 [Linux](linux.md#reading-a-sinks-own-edideld)). CoreAudio's device properties and
 IOKit's `IODisplayEDID` exist here, but neither is documented to expose the CEA-861
 Short Audio Descriptor block for an HDMI *audio* endpoint specifically, and a pure optical
@@ -131,7 +131,7 @@ output has no display EDID to read in the first place. `play` falls back to the 
 
 ## Per-application capture: the Core Audio process tap
 
-`ac3cli devices` never lists a loopback entry here, and the capture class refuses
+`forge devices` never lists a loopback entry here, and the capture class refuses
 `DeviceKind::kLoopback` outright rather than silently opening a microphone instead — unlike
 [Windows](windows.md) (any render endpoint reopened via WASAPI loopback) or
 [Linux/PipeWire](linux.md#audio-backend-alsa-or-pipewire) (a sink's monitor), the Audio HAL this
@@ -199,10 +199,10 @@ have, and has not written it.
 
 `process_loopback_available()` is **two** gates, and `audio_backend().process_loopback` reports
 the same answer with the matching reason — both go through
-`ac3::coreaudio::system_audio_tap_refusal()`, so the two reports of one fact cannot drift apart.
+`iclforge::coreaudio::system_audio_tap_refusal()`, so the two reports of one fact cannot drift apart.
 
 The first is the OS version. The floor is pinned in one place —
-`ac3::coreaudio::kSystemAudioTapMinimumOs` in
+`iclforge::coreaudio::kSystemAudioTapMinimumOs` in
 `src/audio/src/backend/macos/coreaudio_names.hpp` — and it is **14.2** rather than the 14.4 some
 third-party write-ups require. Apple's SDK annotates the API `API_AVAILABLE(macos(14.2))`, which
 is what `@available` and the weak-linked symbols are keyed to, and taking 14.4 would mean
@@ -217,7 +217,7 @@ inside `HALC_ProxyIOContext::_TellServerAboutStreamUsage`, waiting on a `coreaud
 hadn't come 300 seconds later (`sample` caught it in three separate processes). With that request
 outstanding the whole process's HAL client was unusable, so the application froze rather than
 reporting a failed tap. `Capture::start_process_loopback()` now refuses before it reaches that
-call; `AC3FORGE_MACOS_PROCESS_TAP` in the environment turns the path back on for whoever has a Mac
+call; `ICLFORGE_MACOS_PROCESS_TAP` in the environment turns the path back on for whoever has a Mac
 to settle it on, read once at first use.
 
 The macOS 15.7.9 Intel leg ran the same code without hanging on the same day, which is why this
@@ -246,7 +246,7 @@ one.
 **So what is claimed is that it compiles, that its version gate answers, and that everything up
 to `AudioDeviceCreateIOProcID` succeeds on one hosted runner while that call does not return.**
 The first macOS CI attempt at any of it never reached a compiler: it stopped during configure, at
-an `install(TARGETS ac3crucible)` rule that named no `BUNDLE DESTINATION` for a target with
+an `install(TARGETS crucible)` rule that named no `BUNDLE DESTINATION` for a target with
 `MACOSX_BUNDLE` on. With that fixed, both legs compiled `process_tap.mm` and linked it into
 `ac3audio`. Their `ctest` runs cover the version gate
 (`tests/audio/backend/macos/test_macos_support.cpp`, the one place the `__builtin_available` lowering
@@ -256,7 +256,7 @@ Quick suites run there — the engine driving the platform seams and being told 
 
 ## Device notifications
 
-`DeviceWatcher` (`ac3/audio/device_watcher.hpp`) is implemented here over HAL property listeners
+`DeviceWatcher` (`iclforge/audio/device_watcher.hpp`) is implemented here over HAL property listeners
 on `kAudioObjectSystemObject`: `kAudioHardwarePropertyDevices` for endpoints arriving and
 leaving, and `kAudioHardwarePropertyDefaultOutputDevice`/`…DefaultInputDevice` for the two
 defaults moving. Core Audio says only "the device list changed", so the watcher keeps the
@@ -272,7 +272,7 @@ device that goes away leaves the device list altogether and is already reported 
 Callbacks arrive on the HAL's own notification thread rather than a realtime one, so the property
 reads the diff makes are allowed there. The watcher does **not** set
 `kAudioHardwarePropertyRunLoop`, and the file says why at length: the older listener API delivered
-on the main run loop, which a program that never runs one — `ac3cli`, Crucible's console runner, a
+on the main run loop, which a program that never runs one — `forge`, Crucible's console runner, a
 test binary — would register for and then never hear, but that property is process-wide, the newer
 `AudioObjectAddPropertyListener` used here delivers on a HAL thread of its own, and the selector
 carries a deprecation annotation in recent SDKs that nobody here can check against a `-Werror`
@@ -301,14 +301,14 @@ each chain the same three steps in one command. Homebrew's `llvm` formula must b
 runs `brew install llvm`), and `VCPKG_ROOT` must point at a vcpkg checkout — it supplies Catch2
 and {fmt}, mbedTLS, cpp-httplib, libFLAC, Opus and mdns through the `hearth` feature the desktop
 presets select, and Boost and Tracy only if you opt into the `adm`/`profiling` features (see
-[building.md](../building.md)). `AC3FORGE_BUILD_GUI` defaults **OFF** on both presets, as on Linux
+[building.md](../building.md)). `ICLFORGE_BUILD_GUI` defaults **OFF** on both presets, as on Linux
 — see [GUI on macOS](#gui-on-macos) below to opt in.
 
 ## GUI on macOS
 
-`config-macos-llvm`/`config-macos-llvm-x64` both default `AC3FORGE_BUILD_GUI` to `OFF` for the
+`config-macos-llvm`/`config-macos-llvm-x64` both default `ICLFORGE_BUILD_GUI` to `OFF` for the
 same reason the Linux presets do (see [GUI on Linux](../building.md#gui-on-linux)): a Qt kit
-isn't assumed present on every Mac, not because `ac3gui` cannot be built here. `cmake/FindQt6.cmake`
+isn't assumed present on every Mac, not because `forge-gui` cannot be built here. `cmake/FindQt6.cmake`
 already searches both Homebrew prefixes (`/opt/homebrew/opt/qt`/`/opt/homebrew/opt/qt6` on Apple
 Silicon, `/usr/local/opt/qt`/`/usr/local/opt/qt6` on Intel), and `apps/gui/CMakeLists.txt`'s
 `APPLE` branch — `MACOSX_BUNDLE`, the `.icns` bundle icon, and `qt_generate_deploy_qml_app_script()`
@@ -317,7 +317,7 @@ for packaging — was written for this from the start; it was never exercised un
 
 ```bash
 brew install qt
-cmake --preset config-macos-llvm-debug -DAC3FORGE_BUILD_GUI=ON
+cmake --preset config-macos-llvm-debug -DICLFORGE_BUILD_GUI=ON
 ```
 
 Homebrew's `qt` formula is the umbrella Qt6 package — one install pulls in QtDeclarative/QtQuick
@@ -330,10 +330,10 @@ QtQuick/Controls plugin in a Homebrew-Qt-packaged `.app`, `Fusion` included, so 
 load QML at all once shipped. CI installs the official Qt kit instead (`_ci-macos.yml`'s
 "Install Qt (prebuilt)" step has the full story, including the upstream Homebrew issues this
 matches). The built app is a bundle,
-`build/config-macos-llvm/bin/ac3gui.app` (or `build/config-macos-llvm-x64/...` on Intel);
-`ac3gui --smoke` (the same headless check the other platforms run — see
+`build/config-macos-llvm/bin/forge-gui.app` (or `build/config-macos-llvm-x64/...` on Intel);
+`forge-gui --smoke` (the same headless check the other platforms run — see
 [Verified configuration](../building.md#verified-configuration)) lives at
-`ac3gui.app/Contents/MacOS/ac3gui`, not directly under `bin/`, because `MACOSX_BUNDLE` relocates
+`forge-gui.app/Contents/MacOS/forge-gui`, not directly under `bin/`, because `MACOSX_BUNDLE` relocates
 the executable there — the same property Windows' `WIN32_EXECUTABLE` sits beside but which only
 takes effect on `APPLE`.
 
@@ -353,26 +353,26 @@ macOS package — see [Universal binaries](#universal-binaries) above and
 [docs/releasing.md](../releasing.md#what-gets-published). That path has been exercised for real on
 the arm64 half: nine beta releases, v0.2.0-beta.1 through v0.9.0-beta.1, shipped a macOS package
 through the tag-triggered workflow before the universal merge existed, and v0.10.0-beta.1 shipped
-the first universal `.dmg`. `cmake/Packaging.cmake` needed no change for `ac3gui` to join either
+the first universal `.dmg`. `cmake/Packaging.cmake` needed no change for `forge-gui` to join either
 leg's own `.dmg`: which targets end up in a package is decided entirely by which `install()`
-rules ran, and `ac3gui`'s already runs whenever `AC3FORGE_BUILD_GUI` is `ON` — the DragNDrop
+rules ran, and `forge-gui`'s already runs whenever `ICLFORGE_BUILD_GUI` is `ON` — the DragNDrop
 generator itself is unconditional on `APPLE`, GUI or not. No stable (non-beta) release has been
 tagged yet. See [Packaging](../building.md#packaging).
 
 Through Homebrew, the personal tap `iainchesworthlabs/ac3forge` (the `homebrew-ac3forge`
 repository, [staged here](https://github.com/iainchesworthlabs/ac3forge/tree/main/packaging/homebrew))
-carries the source formula `ac3forge` for the CLI and the cask `ac3gui` for the GUI:
-`brew tap iainchesworthlabs/ac3forge`, then `brew install ac3forge` or `brew install --cask
-ac3gui`. The app is neither code-signed nor notarized, so Gatekeeper refuses it on first launch
+carries the source formula `iclforge` for the CLI and the cask `forge-gui` for the GUI:
+`brew tap iainchesworthlabs/ac3forge`, then `brew install iclforge` or `brew install --cask
+forge-gui`. The app is neither code-signed nor notarized, so Gatekeeper refuses it on first launch
 until it is opened from Finder's context menu or `xattr -dr com.apple.quarantine` is run on it.
 Neither route has been run end to end on a Mac.
 
-`ac3hearth.app` declares `CFBundleDocumentTypes`/`UTExportedTypeDeclarations` for `.ac3` and
+`hearth.app` declares `CFBundleDocumentTypes`/`UTExportedTypeDeclarations` for `.ac3` and
 `.ec3` — a custom `Info.plist.in` (`apps/hearth/ui/`) rather than CMake's default template, since
 neither extension is a system-known UTI and each needs its own `UTTypeConformsTo: public.audio`
 declaration tying it to `audio/ac3`/`audio/eac3` — and claims them with `LSHandlerRank Owner`.
 `apps/gui/Info.plist.in` no longer does either, because a UTI with two owners leaves Launch
-Services to pick one. The release `.dmg` carries `ac3gui.app` and not Hearth, so it registers no
+Services to pick one. The release `.dmg` carries `forge-gui.app` and not Hearth, so it registers no
 `.ac3` or `.ec3` handler today, and nothing on macOS declares `.ac4`. Configure/build-verified
 only, like the rest of this file's GUI coverage below — nobody has opened an `.ac3` file from
 Finder on a Mac yet.
@@ -382,7 +382,7 @@ Finder on a Mac yet.
 Build, `ctest` (see [Verified configuration](../building.md#verified-configuration) for how the
 suite's composition differs from Windows/Linux) and the [gold-reference correctness
 gate](../building.md#gold-reference-correctness-gate) all pass on GitHub-hosted runners, on
-`macos-llvm`. `ac3gui_qmltests` registers and passes there too. In the leg's first GUI run,
+`macos-llvm`. `forge_gui_qmltests` registers and passes there too. In the leg's first GUI run,
 confirmed clean on a second push after two fixes, 582 ctest entries all passed, and that one entry
 took 39.74 s of a 56.81 s total run. The fixes were `QSG_RENDER_LOOP=basic` for a Qt Quick
 render-loop deadlock, and forcing the `Fusion` style in the test binary for a
@@ -406,7 +406,7 @@ value ([One floor per
 channel](../verification.md#one-floor-per-channel-not-one-per-file)).
 
 **Crucible on macOS, as of 2026-09-06.** Both legs build it — every `.mm`, every file under
-`apps/crucible/engine/platform/macos/`, and `bin/ac3crucible.app/Contents/MacOS/ac3crucible` —
+`apps/crucible/engine/platform/macos/`, and `bin/crucible.app/Contents/MacOS/crucible` —
 and both run its Qt Quick suites: eleven on that date, and sixteen `tst_*.qml` files are in the
 tree on 2026-09-30. Of the eleven, eight drive the macOS platform seams themselves rather than
 fakes: `Main.qml` starts the engine whenever the window is built, so the session monitor, the
@@ -414,7 +414,7 @@ foreground, the default device, the virtual device and the output stage all exec
 runner.
 
 That is how the one hang this platform half has produced was found. The Apple Silicon leg
-(`macos-latest`, macOS 26.6.2) timed out at 300 s on `ac3crucible_qml_tests_firstrun`, `_room`
+(`macos-latest`, macOS 26.6.2) timed out at 300 s on `crucible_qml_tests_firstrun`, `_room`
 and `_shell`, which the Intel leg (`macos-15-intel`, macOS 15.7.9) passed. A temporary CI step
 ran each of the three alone and took a `sample` of the stuck process: the engine's frame thread
 was inside `AudioDeviceCreateIOProcID` on a process tap's aggregate device, and the window's own
@@ -433,7 +433,7 @@ The application itself has never been launched on either leg.
 
 ---
 
-If you have a Mac, running these instructions on local hardware, or launching `ac3gui.app` and
+If you have a Mac, running these instructions on local hardware, or launching `forge-gui.app` and
 using it, would be new information for this project. CI's `--smoke` run shows that the app starts,
 loads its QML and drives an encode headlessly, and does not show that the interactive experience
 is right. Consider filing an issue with what you found.

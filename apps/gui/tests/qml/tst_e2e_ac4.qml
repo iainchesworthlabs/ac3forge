@@ -207,7 +207,7 @@ TestCase {
 
         runEchoedLineAndCompare(run.cliLine, "out.ac4", rawOutUrl);
 
-        // The player decodes what the page wrote through ac4::Decoder.
+        // The player decodes what the page wrote through iclforge::ac4::Decoder.
         click(findByName(win.contentItem, "streamPlayerOpenButton"));
         tryVerify(() => win.streamPlayerDialogRef.opened);
         click(findByName(win.streamPlayerDialogRef.contentItem, "spChooseFileButton"));

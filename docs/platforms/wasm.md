@@ -1,6 +1,6 @@
 # WebAssembly (browser demos and package)
 
-WASM support is `ac3::forge` compiled to WebAssembly, reached three ways. Two small demo apps
+WASM support is `iclforge::ac3` compiled to WebAssembly, reached three ways. Two small demo apps
 under **`apps/wasm/`** run it client-side in a static HTML page: a **decode** demo
 loads an elementary stream, plays the decoded bed through the Web Audio API, and shows
 per-channel energy on a speaker-ring visualization; for a stream carrying Atmos objects, each
@@ -13,14 +13,14 @@ subdirectory of the same demo (`apps/wasm/atmos/`) is an **Atmos object-authorin
 audio objects around a room canvas while the page encodes, each drag becoming that frame's OAMD
 placement in an E-AC-3 + JOC stream. The third surface is
 **[`js/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/js)**, the
-`ac3forge-wasm-decoder` npm package that turns the same decode path into a
+`iclforge-wasm-decoder` npm package that turns the same decode path into a
 push-frame API, a realtime AudioWorklet pipeline, and an hls.js/MSE bridge, answering the fact
 that a browser cannot be relied on to decode EC-3: [Chrome reports a decoder error](https://github.com/videojs/http-streaming/issues/1297)
 when an EC-3 track turns up in an MPD, in a report that has been open since 2023.
 That package is named but **not published**: this repository has never released it to npm, so
 building it from `js/` is the only way to get it — see [Publishing](#publishing)
 below. A fourth piece, the [AC-4 module](#ac-4-module), wraps the AC-4 decoder and encoder over
-the `ac4::` libraries rather than `ac3::forge`; it has no demo page, and the package exports its
+the `ac4::` libraries rather than `iclforge::ac3`; it has no demo page, and the package exports its
 typed wrapper as `./ac4`.
 The decode demo consumes the package (see "What's reused, what's new" below) rather than
 reimplementing it — see [js/README.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/js/README.md)
@@ -35,10 +35,10 @@ pages in this section.
 
 | | |
 |---|---|
-| What runs here | The decode and encode modules over `ac3::forge` compiled to WebAssembly |
+| What runs here | The decode and encode modules over `iclforge::ac3` compiled to WebAssembly |
 | Decode demo | Built and [published live](../wasm-demo.md) |
 | Encode demo, and the Atmos authoring page | Built and [published live](../wasm-encode-demo.md) |
-| `ac3forge-wasm-decoder` npm package | **Never released to npm.** Building it from `js/` is the only way to get it |
+| `iclforge-wasm-decoder` npm package | **Never released to npm.** Building it from `js/` is the only way to get it |
 | AC-4 module | Decodes and encodes AC-4, objects included. Built in the same CI job as the two modules above, and the package's Node tests drive its wrapper against a fake module; no test runs the compiled module, and there is no demo page yet |
 | Why the package exists | A browser cannot be relied on to decode EC-3 |
 | Correctness | CI asserts stream properties and known-signal measurements (channel count, sample rate, object count and movement, non-silent output, a 997 Hz tone's true peak, a decode round trip). It does not compare the WebAssembly decoder's samples with the native decoder's |
@@ -53,9 +53,9 @@ it deliberately out of scope, reasoning from first principles about "real-time M
 JOC matrix work in a browser thread." That was measured rather than assumed, on the same
 WSL2/Emscripten 6.0.6 toolchain `build-wasm` uses:
 
-- **Binary size.** A module binding the AC-3 encoder (`ac3::FrameEncoder`), the E-AC-3 encoder
-  (`ac3::eac3::FrameEncoder`), the Atmos/JOC bed encoder (`ac3::oba::AtmosEncoder`) and the QC
-  loudness meter (`ac3::meta::LoudnessMeter`/`evaluate_qc_gate`) together — everything
+- **Binary size.** A module binding the AC-3 encoder (`iclforge::FrameEncoder`), the E-AC-3 encoder
+  (`iclforge::eac3::FrameEncoder`), the Atmos/JOC bed encoder (`iclforge::oba::AtmosEncoder`) and the QC
+  loudness meter (`iclforge::meta::LoudnessMeter`/`evaluate_qc_gate`) together — everything
   `encoder_bindings.cpp` binds, not a cut-down subset — compiles to **390 KB raw / 153 KB gzip**,
   against the decode module's own **372 KB raw / 133 KB gzip**. Comparable order of magnitude, not
   the multi-megabyte blow-up "much larger undertaking" implied; a third module split (e.g. Atmos
@@ -72,8 +72,8 @@ WSL2/Emscripten 6.0.6 toolchain `build-wasm` uses:
   why the encode module needs no `pthreads`/`SharedArrayBuffer` — everything above runs on the main
   thread (or a plain `postMessage`-fed Worker) with room to spare, which also means a future
   real-time (microphone-capture) product is a plumbing problem, not a CPU one.
-- **QC needs no new DSP.** `ac3::meta::LoudnessMeter` and `ac3::meta::evaluate_qc_gate`/
-  `qc_preset()` are the exact functions `ac3cli qc` calls — pure, third-party-dependency-free,
+- **QC needs no new DSP.** `iclforge::meta::LoudnessMeter` and `iclforge::meta::evaluate_qc_gate`/
+  `qc_preset()` are the exact functions `forge qc` calls — pure, third-party-dependency-free,
   streaming (`push()` per block). One real nuance: `integrated_lkfs()` is a gated, whole-programme
   measure (`std::nullopt` until BS.1770's absolute gate has seen enough), so the delivery-preset
   pass/fail table is necessarily an end-of-file readout, not a live one — `momentaryLkfs()`/
@@ -85,15 +85,15 @@ WSL2/Emscripten 6.0.6 toolchain `build-wasm` uses:
 
 ## AC-4 module
 
-`apps/wasm/ac4_bindings.cpp` is a third Embind module, `ac3forge_wasm_ac4`
-(`ac3forge_ac4.js`/`.wasm`, `-sEXPORT_NAME=createAc3ForgeAc4Module`), wrapping `ac4::Decoder` and
-`ac4::Encoder` (ETSI TS 103 190) beside the decode and encode modules above. Unlike those two, it
+`apps/wasm/ac4_bindings.cpp` is a third Embind module, `iclforge_wasm_ac4`
+(`iclforge_ac4.js`/`.wasm`, `-sEXPORT_NAME=createIclForgeAc4Module`), wrapping `iclforge::ac4::Decoder` and
+`iclforge::ac4::Encoder` (ETSI TS 103 190) beside the decode and encode modules above. Unlike those two, it
 is one combined decode-and-encode module: AC-4's decoder and encoder share one table-of-contents/
 framing library regardless of which side needs it, so a second executable had less to gain here
 than splitting AC-3's decode-only and encode-only builds did. The encoder writes channel-based and
 channel-based-immersive content (mono, stereo, 5.0, 5.1, 5.0.4, 5.1.4) and one object substream of
 A-JOC or direct-coded objects; the decoder returns each object's properties, in every field
-`ac4::ObjectProperties` has, and the block updates within the frame.
+`iclforge::ac4::ObjectProperties` has, and the block updates within the frame.
 
 `Ac4Encoder`'s constructor takes one plain JS object: the core fields, `iframes` and
 `fragmentStarts`, the `experimental` flags that need no nested group, and `objects`, the object
@@ -113,9 +113,9 @@ pipeline, there is no existing realtime precedent to extend on the AC-4 side, an
 covers both decode and encode with a wider decoder surface (presentations, concealment, object
 audio) that does not fit that pipeline's shape. It compiles into `js/dist/ac4.js`, and
 `package.json`'s `exports` map has it as `./ac4` (`import { Ac4Encoder } from
-"ac3forge-wasm-decoder/ac4"`), with its declarations.
+"iclforge-wasm-decoder/ac4"`), with its declarations.
 
-Guarded on `AC3FORGE_BUILD_AC4` (default on; the `wasm-emscripten` preset no longer forces it
+Guarded on `ICLFORGE_BUILD_AC4` (default on; the `wasm-emscripten` preset no longer forces it
 off). Unlike the decode and encode modules above, no demo directory or page exists for it yet, so
 the build produces the compiled module in its own `bin/wasm_ac4_demo/` output directory with
 nothing to serve it. It builds in the same CI job
@@ -126,10 +126,10 @@ harness `decoder-worker.test.js` uses for the decode side. The fake records what
 encoder is handed (the options, the updates) and, in a loopback codec model that quantises each
 property to the steps its code has, round-trips an A-JOC scene and a direct-coded one through the
 wrapper with their metadata within the codec's tolerance; it holds the wrapper's traffic with the
-native module, not the codec, which the C API's, Rust's and Python's tests hold to `ac4::Encoder`.
+native module, not the codec, which the C API's, Rust's and Python's tests hold to `iclforge::ac4::Encoder`.
 `js/tests/package-exports.test.js` holds the `exports` map to the files the build writes and
 imports `./ac4` through the package's own name. `ac4_bindings.cpp` itself is built by `build-wasm`
-in CI: the run on `main` of 2026-09-29 linked `bin/wasm_ac4_demo/ac3forge_ac4.js`, and the
+in CI: the run on `main` of 2026-09-29 linked `bin/wasm_ac4_demo/iclforge_ac4.js`, and the
 package's suite passed 102 tests. No test runs the compiled module, so what the wrapper does with
 the compiled module is not verified by CI.
 
@@ -175,27 +175,27 @@ sets both, and doubles as exactly that.
 
 ## What's reused, what's new
 
-`ac3::forge` (`src/ac3/`) — the codec, `FrameDecoder`/`Eac3Decoder`, elementary-stream scanning — is
+`iclforge::ac3` (`src/ac3/`) — the codec, `FrameDecoder`/`Eac3Decoder`, elementary-stream scanning — is
 fully platform-independent and is linked into both demos **unmodified**, the same way `apps/wasm/CMakeLists.txt`
-links it as any other consumer would: `add_executable` + `target_link_libraries(... ac3::forge ...)`,
+links it as any other consumer would: `add_executable` + `target_link_libraries(... iclforge::ac3 ...)`,
 no fork, no `#ifdef`. Unlike `apps/android/`, this doesn't need a separate build system reached
 from the other direction — WASM is a plain CMake cross-compile, so `apps/wasm/` is a normal
 `add_subdirectory()` from the root `CMakeLists.txt`, gated on `EMSCRIPTEN` (set by
-`cmake/toolchains/wasm.emscripten.toolchain.cmake`) rather than an `AC3FORGE_BUILD_*` option.
-`ac3::audio` (`src/audio/`) gains **no** WASM backend — there is no live-capture/passthrough
+`cmake/toolchains/wasm.emscripten.toolchain.cmake`) rather than an `ICLFORGE_BUILD_*` option.
+`iclforge::audio` (`src/audio/`) gains **no** WASM backend — there is no live-capture/passthrough
 equivalent to add; a browser gets audio playback from the Web Audio API in JavaScript instead, and
 `src/audio` is skipped from the configure entirely under `EMSCRIPTEN` (the skip lives in the root
 `CMakeLists.txt`'s `add_subdirectory` gate; `src/audio/CMakeLists.txt` itself hard-fails otherwise,
 for having no browser platform directory).
 
 `decoder_bindings.cpp` (the Embind wrapper) is new, but is now deliberately minimal: `scanStream()`
-(a thin wrapper over `ac3::io::scan`) and `PushDecoder`, one `ac3::Eac3Decoder` per instance
+(a thin wrapper over `iclforge::io::scan`) and `PushDecoder`, one `iclforge::Eac3Decoder` per instance
 decoding through `decode_access_unit_into`'s caller-buffer form - buffers allocated once at
 construction, reused for every call, so the hot path allocates nothing on the C++ side.
-`Eac3Decoder` alone handles every `ac3::io::StreamKind` - a plain AC-3
+`Eac3Decoder` alone handles every `iclforge::io::StreamKind` - a plain AC-3
 syncframe "comes back as substream (kIndependent, 0)" per `decode_access_unit`'s own doc comment -
 so `scanStream()`'s reported kind is informational only, not something `PushDecoder` branches on.
-The optional §7.8 fold (`ac3::OutputStage`/DC1, never a hand-rolled one) is applied over a small
+The optional §7.8 fold (`iclforge::OutputStage`/DC1, never a hand-rolled one) is applied over a small
 reused copy of the just-decoded channels, so both the coded channels and the fold are available
 from one decode - see `decoder_bindings.cpp`'s own `apply_fold()` comment for why it can't be done
 in place. Everything the OLD whole-file Embind `Decoder` class used to accumulate itself (per-file
@@ -211,7 +211,7 @@ AudioWorklet pipeline - decode runs in a Worker, since `AudioWorkletGlobalScope`
 `SharedArrayBuffer` ring-buffer drain runs on the audio thread itself), and `fmp4.ts`/
 `hls-bridge.ts` (the hls.js/MSE bridge - see [js/README.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/js/README.md)
 for what that bridge does and does not cover). The package embeds no compiled `.wasm`/`.js`
-binary of its own; every API takes the `createAc3ForgeModule` factory (or a URL to it) as a
+binary of its own; every API takes the `createIclForgeModule` factory (or a URL to it) as a
 parameter, so a consumer controls their own hosting/CORS story for the binary this page's build
 step produces.
 
@@ -220,14 +220,14 @@ visualizations ported from `apps/gui/qml/SoundfieldView.qml` and Main.qml's Obje
 one remaining piece specific to the demo, and are now a *consumer* of `js/` - they hold no decode
 logic, no WASM-module loading, and no hand-rolled fold. The object visualization/audio is a thin
 JS-facing surface over `Eac3Decoder`'s own real `object_metadata` (OAMD positions/gain,
-`ac3::forge#168`) and `object_audio` (JOC-reconstructed per-object audio, `ac3::forge#169`) fields,
+`iclforge::ac3#168`) and `object_audio` (JOC-reconstructed per-object audio, `iclforge::ac3#169`) fields,
 reached through the package rather than directly.
 
 The encode demo follows the identical shape, one level down: `encoder_bindings.cpp` is a second,
 independent Embind wrapper (its own `add_executable`, its own `EMSCRIPTEN_BINDINGS` block, its own
-`EXPORT_NAME` so the two modules can load on one page without colliding), linking `ac3::forge`
+`EXPORT_NAME` so the two modules can load on one page without colliding), linking `iclforge::ac3`
 **unmodified** the same way the decode target does — no fork, no `#ifdef`, confirming the "encoders
-are already proven platform-free" premise this depended on (the same `ac3::forge` target already
+are already proven platform-free" premise this depended on (the same `iclforge::ac3` target already
 links unmodified into `apps/android`'s NDK build and `python/`'s pybind11 module). `apps/wasm/encode/`
 (`index.html`/`app.js`) is the page: a drop zone and file picker, format (AC-3/E-AC-3)/sample-rate/
 bitrate controls (the channel layout is derived from the dropped WAV itself), a
@@ -236,7 +236,7 @@ dropped WAV's WAVEFORMATEXTENSIBLE channel order into AC-3's Table 5.8 order bef
 see `app.js`'s own comment on the exact mapping — and resamples via the browser's own
 `AudioContext`, rather than writing a sample-rate converter. The wide layouts (8 channels read as
 7.1, 10 as 5.1.4, 12 as 7.1.4) take a different path: the module routes the source through
-`ac3::plan::route`/`render` — the same direction-based placement `ac3cli` uses — so `app.js`
+`iclforge::plan::route`/`render` — the same direction-based placement `forge` uses — so `app.js`
 hands those over in plain WAV order and the channel-order knowledge stays in the plan code that
 defines it (`QcMeter.meterOrderForWav()` likewise hands the page the BS.1770-5 metering order
 instead of a second JS-side table). Encoding is two-pass: the whole programme is metered first
@@ -251,14 +251,14 @@ loads the very same modules via `../`) drives the already-bound `AtmosBedEncoder
 as objects, encode cadence locked to real time so the room is *performed*, and the same
 scan/push round-trip preview so the pan drawn on the canvas is what plays back.
 
-What counts as "an object" in the decode demo's room view is every JOC output, which `ac3::oba::describe_objects()` spells
+What counts as "an object" in the decode demo's room view is every JOC output, which `iclforge::oba::describe_objects()` spells
 out: a dynamic object supplies its own position, size and gain, and a bed channel — what
 channel-based-immersive third-party content carries — is drawn at the nominal room position of the
 speaker its label names, with that label on its solo button. Each object's per-frame record also
 carries TS 103 420 §5.6.1.2's extent, so a sized object draws bigger than a point source.
 
 One wrinkle worth knowing when previewing locally: `docs/assets/wasm-decode-demo/` holds a
-*committed* `ac3forge_decode.wasm` (and a committed `package/`, `js/dist`'s own copy) that only the
+*committed* `iclforge_decode.wasm` (and a committed `package/`, `js/dist`'s own copy) that only the
 docs deploy job rebuilds, so a local `mkdocs serve` can be running an older module/package pair
 than the checked-in `demo.js`. Both sides of that pairing are rebuilt and committed together by
 whoever last refreshed this directory, precisely so they stay a matched pair rather than drifting
@@ -270,7 +270,7 @@ once.
 ## Toolchain
 
 No vcpkg. Every other platform preset in `CMakePresets.json` chainloads through vcpkg for
-consistency, but the one third-party library `ac3::forge` takes in this build is {fmt}, which
+consistency, but the one third-party library `iclforge::ac3` takes in this build is {fmt}, which
 `cmake/Fmt.cmake` builds from source with `FetchContent`, so `config-wasm-emscripten`'s toolchain
 file goes straight to Emscripten's own `Emscripten.cmake` — see that toolchain file's own header for
 why going through vcpkg's community `wasm32-emscripten` triplet would be pure cost for nothing this
@@ -283,7 +283,7 @@ pin against yet; whatever `$EMSDK` resolves to is what gets used. CI pins it in
 
 ## Publishing
 
-`ac3forge-wasm-decoder` has **never been published to npm**, so there is no release of it to
+`iclforge-wasm-decoder` has **never been published to npm**, so there is no release of it to
 install; the two things holding that are set out at the end of this section. What the CI does
 today is build, test and `npm pack` the tarball (the `npm` job of `ci.yml`, not on a pull request)
 in the run after a merge to `main` that touches `js/` and in the nightly run, and upload it as an
@@ -298,7 +298,7 @@ run above). A reader who only wants to see the decoder work needs neither: the [
 demo](../wasm-demo.md) runs it in the browser with nothing installed.
 
 The versioning machinery is in place for the day publishing is turned on: the package would
-version from the same release tag the `ac3forge` PyPI package uses (see
+version from the same release tag the `iclforge` PyPI package uses (see
 [docs/releasing.md](../releasing.md#publishing-to-npm)) — `js/package.json` carries a
 `0.0.0-dev` placeholder in the tree, and `npm.yml`'s `publish` job stamps the release version
 immediately before publishing, mirroring CMake's own untagged-build fallback.
@@ -392,7 +392,7 @@ would never trigger a redeploy at all, and the live demo would silently drift fr
     after the demo artifact uploads: two projects, one per demo, each serving its own just-built
     directory (seven tests in the run of 2026-09-29).
     `decode.spec.js` loads `index.html` in a headless Chromium and drives the packaged decoder
-    (`js/`'s `decodeFile()` and `Ac3ForgeDecoderNode` — the same calls `demo.js` itself
+    (`js/`'s `decodeFile()` and `IclForgeDecoderNode` — the same calls `demo.js` itself
     makes) to decode the bundled fixture and assert on its values — `48000 Hz, 6 channels,
     3 Atmos objects, 8.0s`, that the same object's decoded position differs between its
     first and last frame, and that the AudioWorklet pipeline (a Worker

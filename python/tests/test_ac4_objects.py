@@ -2,13 +2,13 @@
 encoded and decoded back, the metadata update ramps the decoder now reports, the object
 configuration's limits, the I-frame lists and the experimental flags.
 
-Python binds ac4::EncoderConfig, ac4::ObjectsConfig and the rest pybind11-direct, so there is no
+Python binds iclforge::ac4::EncoderConfig, iclforge::ac4::ObjectsConfig and the rest pybind11-direct, so there is no
 conversion layer whose output could differ from the C++ API's: what the bindings add is the
 keyword constructors, the property accessors and the `objects` view of the encoder configuration's
 one object substream. Each scene is therefore configured twice, by keywords and by assigning
 attributes, and the two streams have to be the same bytes; the decoder then reads every object back
 within what each field's code can hold, with its own tone, and a metadata update at the sample its
-input sample comes out. tests/capi/test_capi.cpp holds the C API to ac4::Encoder byte for byte.
+input sample comes out. tests/capi/test_capi.cpp holds the C API to iclforge::ac4::Encoder byte for byte.
 """
 
 import iclforge as ac3

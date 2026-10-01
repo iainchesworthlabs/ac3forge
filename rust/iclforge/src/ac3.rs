@@ -1,4 +1,4 @@
-//! AC-3 encode and decode — `ac3::FrameEncoder`/`ac3::FrameDecoder` via
+//! AC-3 encode and decode — `iclforge::FrameEncoder`/`iclforge::FrameDecoder` via
 //! `iclforge_encoder_t`/`iclforge_decoder_t`.
 
 use iclforge_sys as sys;
@@ -115,7 +115,7 @@ impl Default for EncoderConfig {
     }
 }
 
-/// An AC-3 encoder — `ac3::FrameEncoder` via `iclforge_encoder_t`.
+/// An AC-3 encoder — `iclforge::FrameEncoder` via `iclforge_encoder_t`.
 pub struct Encoder {
     raw: ptr::NonNull<sys::iclforge_encoder_t>,
     channel_count: usize,
@@ -193,7 +193,7 @@ impl Drop for Encoder {
     }
 }
 
-/// An AC-3 decoder — `ac3::FrameDecoder` via `iclforge_decoder_t`.
+/// An AC-3 decoder — `iclforge::FrameDecoder` via `iclforge_decoder_t`.
 pub struct Decoder {
     raw: ptr::NonNull<sys::iclforge_decoder_t>,
 }
@@ -243,7 +243,7 @@ impl Drop for Decoder {
     }
 }
 
-/// One decoded AC-3 syncframe — `ac3::DecodedFrame` via `iclforge_decoded_frame_t`. Owns its
+/// One decoded AC-3 syncframe — `iclforge::DecodedFrame` via `iclforge_decoded_frame_t`. Owns its
 /// PCM; every accessor borrows from `&self`.
 pub struct DecodedFrame {
     raw: ptr::NonNull<sys::iclforge_decoded_frame_t>,

@@ -1,17 +1,17 @@
-# ac3forge
+# ICL Forge
 
-Python bindings for [ac3forge](https://github.com/iainchesworthlabs/ac3forge), a clean-room
+Python bindings for [ICL Forge](https://github.com/iainchesworthlabs/ac3forge), a clean-room
 AC-3/E-AC-3 (Dolby Digital/Digital Plus) and AC-4 encoder and decoder written in C++23, including
 the Atmos-in-DD+ object layer (OAMD + JOC). The AC-4 (ETSI TS 103 190) decoder and encoder, objects
-included, are in the `ac3forge.ac4` submodule.
+included, are in the `iclforge.ac4` submodule.
 
 ```bash
-pip install ac3forge      # or, from a checkout of the repository: pip install ./python
+pip install iclforge      # or, from a checkout of the repository: pip install ./python
 ```
 
 ```python
 import numpy as np
-import ac3forge as ac3
+import iclforge as ac3
 
 encoder = ac3.FrameEncoder(ac3.EncoderConfig(acmod=ac3.Acmod.k2_0, bitrate_kbps=192))
 tone = 0.2 * np.sin(2 * np.pi * 440 * np.arange(ac3.SAMPLES_PER_FRAME) / 48000).astype(np.float32)
@@ -22,7 +22,7 @@ decoded = decoder.decode_frame(frame)
 print(decoded.channels[0].shape)  # (1536,)
 ```
 
-`ac3forge.ac4` is in a wheel built from a release that has it; the wheels for 0.10.0b1 and earlier
+`iclforge.ac4` is in a wheel built from a release that has it; the wheels for 0.10.0b1 and earlier
 predate it, and `pip install ./python` from a checkout builds it. PyPI carries 0.10.0b1's wheels for
 Windows x64, Linux x86_64 and macOS on Apple Silicon; on Linux aarch64 and macOS Intel, where no
 release has carried a wheel, install from a checkout.

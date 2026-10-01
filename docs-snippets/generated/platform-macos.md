@@ -11,6 +11,6 @@
 | Hearth desktop player | **In development**<br>built and tested in CI<br>Qt/QML window with six pages, built in CI; no macOS release package | **In development**<br>built and tested in CI<br>Qt/QML window with six pages, built in CI; no macOS release package | **Unavailable**<br>no package |
 | Live capture and PCM monitor | **Source**<br>build only<br>Core Audio; no audio run | **Source**<br>build only<br>Core Audio; no audio run | **Unavailable** |
 | IEC 61937 output | **Source**<br>build only<br>no receiver run | **Source**<br>build only<br>no receiver run | **Unavailable** |
-| AC-4 decode and encode | **Source**<br>built and tested in CI<br>ac3cli and ac3gui; audio untested | **Source**<br>built and tested in CI<br>ac3cli and ac3gui; audio untested | **Next release**<br>built and tested in CI<br>the DMG carries ac3cli and ac3gui |
+| AC-4 decode and encode | **Source**<br>built and tested in CI<br>forge and forge-gui; audio untested | **Source**<br>built and tested in CI<br>forge and forge-gui; audio untested | **Next release**<br>built and tested in CI<br>the DMG carries forge and forge-gui |
 | AC-4 IEC 61937 output | **Unavailable**<br>Core Audio has no AC-4 format | **Unavailable**<br>Core Audio has no AC-4 format | **Unavailable** |
 | Per-application capture | **In development**<br>not run<br>disabled by default after a CI hang | **In development**<br>not run<br>creation path unconfirmed | **Unavailable** |

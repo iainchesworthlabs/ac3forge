@@ -104,7 +104,7 @@ target_compile_features(iclforge_jni PRIVATE cxx_std_23)
 # android: android/asset_manager_jni.h (AAssetManager_fromJava), used by
 # live_cursor.cpp to load the bundled lead-object voice sample and by
 # shield_signing_hook.cpp to load the bundled signing key.
-# ac3::signing: the committed clean-room EMDF object signer (built by the repo
+# iclforge::signing: the committed clean-room EMDF object signer (built by the repo
 # root add_subdirectory above, dependency-free). Always linked now - the signer
 # has no embedded secret to keep out of the tree; whether it actually signs
 # depends on the runtime key asset, not on a build variant. See

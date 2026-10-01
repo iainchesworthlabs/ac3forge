@@ -1,6 +1,6 @@
 # The null-sink driver on ACX: plan and record
 
-AC3Forge Crucible's silent output device ([windows-demo.md](windows-demo.md), "Routing:
+Crucible's silent output device ([windows-demo.md](windows-demo.md), "Routing:
 separation and silencing") is a kernel driver because Windows offers no other way to make an
 audio endpoint. The driver in the tree is an ACX driver, about 1,800 lines of C++. On 2026-09-04
 it replaced a PortCls/WaveRT miniport derived from Microsoft's Simple Audio Sample, which held

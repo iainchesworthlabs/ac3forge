@@ -1,61 +1,61 @@
 # Commands
 
 The command list from the usage text, reproduced rather than paraphrased — 44 commands, as
-a Windows build without `-DAC3FORGE_BUILD_ADM=ON` prints them. The two ADM commands read
+a Windows build without `-DICLFORGE_BUILD_ADM=ON` prints them. The two ADM commands read
 `UNAVAILABLE HERE` because that flag is off; `spatial` does not, because Windows is the one
 platform with a spatial backend. Nothing in the build compares this block against the binary, so
-`ac3cli help` on your own build is the authority wherever the two disagree:
+`forge help` on your own build is the authority wherever the two disagree:
 
 ```text
-Forge — the AC3Forge encoder tools: clean-room AC-3 / E-AC-3 (ATSC A/52) and AC-4 (ETSI TS 103 190) encoder/decoder
+Forge — the ICL Forge encoder tools: clean-room AC-3 / E-AC-3 (ATSC A/52) and AC-4 (ETSI TS 103 190) encoder/decoder
 
 Usage:
-  ac3cli --version    print version and git provenance, then exit
-  ac3cli help [<command>|exit-codes]   this list, or one command's own help
-  ac3cli silence       <out.ac3> [seconds] [bitrate_kbps]
-  ac3cli sine          <out.ac3> [seconds] [bitrate_kbps] [freq_hz] [amp_pct] [layout]
-  ac3cli orbit         <out.ac3> [seconds] [bitrate_kbps] [orbit_seconds]
-  ac3cli atmos         <out.ec3> [seconds] [bitrate_kbps] [objects] [orbit_seconds] [mode]
-  ac3cli atmos-path    <out.ec3> <paths.txt> [seconds] [bitrate_kbps] [objects] (objects driven by an authored scene file instead of the built-in orbit)
-  ac3cli atmos-encode  <in.wav> <out.ec3|out.ac4|out.mp4> [bitrate_kbps] [objects] [paths.txt] (every source channel as an object; optional: authored per-object motion from a scene file (same formats as atmos-path), objects it doesn't mention keep their default placement; with codec=ac4, AC-4 objects (A-JOC, or coding=direct) in a raw stream or an MP4 file)
-  ac3cli atmos-adm     <in.adm.wav> <out.ec3|out.ac4> [bitrate_kbps] [programme_id] (UNAVAILABLE HERE)
-  ac3cli atmos-iab     <in.iab|in.mxf> <out.ec3|out.ac4> [bitrate_kbps] (UNAVAILABLE HERE)
-  ac3cli atmos-cbi     <in.wav> <out.ec3> [bitrate_kbps] [layout] (a channel-based-immersive bed (Dolby's dee_ddpjoc_encoder --input-format cbi_wav shape) straight to DD+ JOC E-AC-3 with program.bed != 0 and 0 dynamic objects; layout is one of 5.1.4, 7.1.4, 9.1.6 (default: inferred from the file's channel count))
-  ac3cli strip-objects <in.ec3> <out.ec3>                     (remove the JOC/OAMD object layer from a DD+ stream, leaving a bit-identical 5.1 bed)
-  ac3cli record        <out.ac3|out.ec3|out.ac4> [seconds] [bitrate_kbps] [device_index] (capture straight to a file; layout=/codec=/container= decide its shape, codec=ac4 encoding AC-4)
-  ac3cli live          <out.ac3|out.ec3|out.ac4> <capture_device> [seconds] [bitrate_kbps] [monitor_device] [passthrough_device] [mode] (capture -> encode -> live monitor and/or passthrough; codec=ac4 encodes AC-4, which its monitor decodes and a receiver gets as a 5.1 AC-3 leg)
-  ac3cli encode        <in.wav> <out.ac3> [bitrate_kbps] [layout] [in2.wav] (in2.wav: layout 1+1's Ch2, when Ch1 is a separate mono file; or use src=/map= for more than one source)
-  ac3cli eac3-silence  <out.ec3> [seconds] [bitrate_kbps] [layout]
-  ac3cli eac3-sine     <out.ec3> [seconds] [bitrate_kbps] [freq_hz] [amp_pct] [layout]
-  ac3cli eac3-encode   <in.wav> <out.ec3> [bitrate_kbps] [tools] [layout] [vbr] [in2.wav] (in2.wav: layout 1+1's Ch2, when Ch1 is a separate mono file; or use src=/map= for more than one source. programme2= (up to programme8=) is a different thing entirely - another independent E-AC-3 substream (its own layout/bitrate/dialnorm and metadata via programmeN-layout=/-bitrate=/-<field>=), not another channel of this one)
-  ac3cli ac4-encode    <in.wav> <out.ac4|out.mp4> [bitrate_kbps] (mono, stereo, 5.0, 5.1, 5.0.4 or 5.1.4 at 48 or 44.1 kHz, in the WAV order decode writes, to AC-4: raw sync frames with CRC, or an MP4 with the 'ac-4' sample entry when the output is .mp4/.m4a/.mov. In 5.X, ASPX_ACPL_3 (a Lo/Ro downmix and A-CPL) below 22.4 kbps a channel and ASPX_ACPL_2 (downmixes of each side and C, and A-CPL) below 33.6; the ASPX codec mode (A-SPX above a crossover, with companding at the lower rates in mono and stereo) below 96 kbps a channel, 76.8 in 5.X, and SIMPLE from there. 5.1.4 takes the immersive element in ASPX_ACPL_2 below 480 kbps, ASPX_SCPL below 640 and SCPL from there, as DEE's 5.1.4 streams do. The options below set the codec mode, the frame rate, the rate mode, the I-frames, the CRC, and the loudness, DRC, downmix and dialogue enhancement metadata; substreamN= and presentationN= add substreams, each an input of its own, and the presentations that play them; syntax-trace=<file> writes what the encoder writes)
-  ac3cli decode        <in.ac3|in.ec3|in.ac4|in.mkv|in.mp4|in.ts> <out.wav> [objects_dir] [adm_out] (AC-3, E-AC-3 or AC-4, bare or inside a container; the stream decides. AC-4: every layout up to 7.1.4 and the immersive element in every codec mode; a presentation with A-JOC or direct-coded objects renders them to the output's speakers as coded (7.1.4 by default), and syntax-trace=<file> writes what the decoder reads. objects_dir: export each object's own PCM as its own object_NN.wav there - JOC-reconstructed for E-AC-3 Atmos, D10's decoded objects for AC-4. adm_out (needs -DAC3FORGE_BUILD_ADM=ON): write a Dolby Atmos Master ADM Profile BW64 there (legacy item IM2 for E-AC-3; for AC-4, every bed and dynamic object with its own decoded Annex F properties) - bed/LFE channels pinned to their speaker, dynamic objects positioned by their own timeline)
-  ac3cli probe         <in.ac3|in.ec3|in.ac4|in.mkv|in.mp4|in.ts> [json=1] [detail=frames|blocks] (inspect AC-3/E-AC-3 layout, substreams, metadata, objects, tools and CRC, or AC-4 TOC/presentations/substream groups, bare or inside a container, and what the container says of its track; table or documented JSON)
-  ac3cli transcode     <in.ac3|in.ec3|in.ac4> <out.ac3|out.ec3|out.ac4> [bitrate_kbps] [layout] (decode and re-encode, carrying dialnorm, compr and the mix metadata across - the DD+-to-DD path for optical and AC-3-only HDMI sinks - or between AC-4 and AC-3 or E-AC-3 either way: an AC-4 presentation, chosen as decode chooses one, becomes the programme, decoded without DRC and re-encoded with its drc_eac3_profile, dialnorm and downmix values; an AC-3 or E-AC-3 source's dialnorm and downmix values go to AC-4, and drc= names its DRC profile. The output codec comes from the output name's suffix, or from codec=; the bitrate defaults to 448 kbps, or 192 for AC-4)
-  ac3cli metadata      <in.ac3|in.ec3> <out.ac3|out.ec3>      (rewrite dialnorm/compr/bsmod/dsurmod on an existing stream and re-stamp its CRCs; the audio is copied through untouched, not re-encoded)
-  ac3cli normalize     <in.ac3|in.ec3> <out.ac3|out.ec3>      (measure BS.1770-4 loudness and write the dialnorm it implies (ATSC A/85 §8), audio untouched)
-  ac3cli cut           <in.ac3|in.ec3> <out.ac3|out.ec3> [start_seconds] [duration_seconds] (extract on access-unit boundaries; nothing is re-encoded)
-  ac3cli cat           <out.ac3|out.ec3> <in1> <in2> [in3...] (join streams end to end (output FIRST, since the input list is variadic); refuses inputs whose codec, rate, layout or substream shape differ)
-  ac3cli levels        <in.wav|in.ac3|in.ec3|in.ac4|in.mkv|in.mp4|in.ts> (per-channel peak/RMS report; an AC-4 presentation as coded)
-  ac3cli loudness      <in.wav|in.ac3|in.ec3|in.ac4|in.mkv|in.mp4|in.ts> (BS.1770-4 loudness -> dialnorm, beside a stream's own: an AC-3 or E-AC-3 stream's first programme, or an AC-4 presentation as coded, in AC-4's steps of 0.25 dB)
-  ac3cli qc            <in.ac3|in.ec3|in.ac4|in.mkv|in.mp4|in.ts> [preset=<name>|all] [layout=bed|rendered] [objects=<71|512|514|714>] (bitstream-aware loudness QC: measured loudness vs. embedded dialnorm/compr, optional preset gate, optional BS.1770-5 Annex 4 object re-render; an AC-4 presentation as coded, against its dialnorm and the loudness it states)
-  ac3cli spdif         <in.ac3|in.ec3|in.ac4> <out.wav>       (IEC 61937 wrap as playable PCM16 WAV; AC-4 in IEC 61937-14's bursts)
-  ac3cli unspdif       <in.wav|in.raw|-> <out.ac3|out.ec3|out.ac4|-> (the inverse: recover the elementary stream from IEC 61937 bursts, as captured from an S/PDIF or HDMI input or written by 'spdif'. '-' pipes either end)
-  ac3cli mkv           <in.ac3|in.ec3> <out.mkv>              (wrap as a playable Matroska file; AC-4 is refused, Matroska registering no codec ID for it)
-  ac3cli mp4           <in.ac3|in.ec3|in.ac4> <out.mp4>       (wrap as playable MP4 with dac3/dec3 for AC-3/E-AC-3 or dac4 for AC-4)
-  ac3cli fmp4          <in.ac3|in.ec3|in.ac4|in.mkv|in.mp4|in.ts> <out_dir> [frames_per_fragment] (fragmented MP4/CMAF + HLS/DASH manifests, ready for a packager; fallback-51 also writes an object-stripped 5.1 companion rendition. AC-4 as TS 103 190-2 Annex H has it: each fragment starting at an I-frame, the timescale Table E.1 gives, the ca4m and ca4s brands and the DASH descriptors of Annex G)
-  ac3cli ts            <in.ac3|in.ec3|in.ac4> <out.ts> [dvb|atsc] (wrap as MPEG-2 TS; AC-4 supports DVB only)
-  ac3cli demux         <in.mkv|in.mp4|in.ts> <out.ac3|out.ec3|out.ac4> (the inverse of 'mkv': unwrap the elementary stream a container carries. The container is identified by its own magic bytes, not by the file name)
-  ac3cli remux         <in.mkv|in.mp4|in.ts> <out.mkv|out.mp4|out.ts> [dvb|atsc] (container-to-container: the input is identified by its magic bytes, the output by its extension, and everything either declares is re-derived from the bitstream - the dec3-repair case)
-  ac3cli devices                                              (input and loopback capture endpoints)
-  ac3cli outputs                                              (render endpoints + AC-3/E-AC-3 passthrough support)
-  ac3cli identify      [device_index] [layout] [seconds] [routing] [level_db] (walk the identify tone across an output's speakers - pink noise on one rendered channel at a time, placed by the routing patch, so a room's wiring can be heard (layout "-" is the device's own speakers; routing 1,0,2,3,4,5 swaps the front pair))
-  ac3cli play          <in.ac3|in.ec3|in.ac4|in.mkv|in.mp4|in.ts> [device_index] (exclusive-mode IEC 61937 passthrough, following the sink (bsid decides the source format; a named device that rejects it gets an automatic AC-3/PCM fallback - follow=off for the plain refusal). AC-4, which no receiver takes over IEC 61937 yet, is decoded and played as PCM, as 'monitor' plays it)
-  ac3cli monitor       <in.ac3|in.ec3|in.ac4|in.mkv|in.mp4|in.ts> [device_index] (decode and play on an ordinary (non-bitstreamed) output)
-  ac3cli spatial       <in.ec3> [device_index]                (decode the object layer onto Windows Spatial Sound - dynamic objects at their OAMD positions, the bed's LFE static (Windows spatial object renderer))
-  ac3cli help          [<command>|exit-codes]                 (one command's own arguments and grammars, not the whole manual)
-  ac3cli man                                                  (the generated groff man page, on stdout)
-  ac3cli completions   <bash|zsh|fish|powershell>             (the generated completion script for that shell, on stdout)
+  forge --version    print version and git provenance, then exit
+  forge help [<command>|exit-codes]   this list, or one command's own help
+  forge silence       <out.ac3> [seconds] [bitrate_kbps]
+  forge sine          <out.ac3> [seconds] [bitrate_kbps] [freq_hz] [amp_pct] [layout]
+  forge orbit         <out.ac3> [seconds] [bitrate_kbps] [orbit_seconds]
+  forge atmos         <out.ec3> [seconds] [bitrate_kbps] [objects] [orbit_seconds] [mode]
+  forge atmos-path    <out.ec3> <paths.txt> [seconds] [bitrate_kbps] [objects] (objects driven by an authored scene file instead of the built-in orbit)
+  forge atmos-encode  <in.wav> <out.ec3|out.ac4|out.mp4> [bitrate_kbps] [objects] [paths.txt] (every source channel as an object; optional: authored per-object motion from a scene file (same formats as atmos-path), objects it doesn't mention keep their default placement; with codec=ac4, AC-4 objects (A-JOC, or coding=direct) in a raw stream or an MP4 file)
+  forge atmos-adm     <in.adm.wav> <out.ec3|out.ac4> [bitrate_kbps] [programme_id] (UNAVAILABLE HERE)
+  forge atmos-iab     <in.iab|in.mxf> <out.ec3|out.ac4> [bitrate_kbps] (UNAVAILABLE HERE)
+  forge atmos-cbi     <in.wav> <out.ec3> [bitrate_kbps] [layout] (a channel-based-immersive bed (Dolby's dee_ddpjoc_encoder --input-format cbi_wav shape) straight to DD+ JOC E-AC-3 with program.bed != 0 and 0 dynamic objects; layout is one of 5.1.4, 7.1.4, 9.1.6 (default: inferred from the file's channel count))
+  forge strip-objects <in.ec3> <out.ec3>                     (remove the JOC/OAMD object layer from a DD+ stream, leaving a bit-identical 5.1 bed)
+  forge record        <out.ac3|out.ec3|out.ac4> [seconds] [bitrate_kbps] [device_index] (capture straight to a file; layout=/codec=/container= decide its shape, codec=ac4 encoding AC-4)
+  forge live          <out.ac3|out.ec3|out.ac4> <capture_device> [seconds] [bitrate_kbps] [monitor_device] [passthrough_device] [mode] (capture -> encode -> live monitor and/or passthrough; codec=ac4 encodes AC-4, which its monitor decodes and a receiver gets as a 5.1 AC-3 leg)
+  forge encode        <in.wav> <out.ac3> [bitrate_kbps] [layout] [in2.wav] (in2.wav: layout 1+1's Ch2, when Ch1 is a separate mono file; or use src=/map= for more than one source)
+  forge eac3-silence  <out.ec3> [seconds] [bitrate_kbps] [layout]
+  forge eac3-sine     <out.ec3> [seconds] [bitrate_kbps] [freq_hz] [amp_pct] [layout]
+  forge eac3-encode   <in.wav> <out.ec3> [bitrate_kbps] [tools] [layout] [vbr] [in2.wav] (in2.wav: layout 1+1's Ch2, when Ch1 is a separate mono file; or use src=/map= for more than one source. programme2= (up to programme8=) is a different thing entirely - another independent E-AC-3 substream (its own layout/bitrate/dialnorm and metadata via programmeN-layout=/-bitrate=/-<field>=), not another channel of this one)
+  forge ac4-encode    <in.wav> <out.ac4|out.mp4> [bitrate_kbps] (mono, stereo, 5.0, 5.1, 5.0.4 or 5.1.4 at 48 or 44.1 kHz, in the WAV order decode writes, to AC-4: raw sync frames with CRC, or an MP4 with the 'ac-4' sample entry when the output is .mp4/.m4a/.mov. In 5.X, ASPX_ACPL_3 (a Lo/Ro downmix and A-CPL) below 22.4 kbps a channel and ASPX_ACPL_2 (downmixes of each side and C, and A-CPL) below 33.6; the ASPX codec mode (A-SPX above a crossover, with companding at the lower rates in mono and stereo) below 96 kbps a channel, 76.8 in 5.X, and SIMPLE from there. 5.1.4 takes the immersive element in ASPX_ACPL_2 below 480 kbps, ASPX_SCPL below 640 and SCPL from there, as DEE's 5.1.4 streams do. The options below set the codec mode, the frame rate, the rate mode, the I-frames, the CRC, and the loudness, DRC, downmix and dialogue enhancement metadata; substreamN= and presentationN= add substreams, each an input of its own, and the presentations that play them; syntax-trace=<file> writes what the encoder writes)
+  forge decode        <in.ac3|in.ec3|in.ac4|in.mkv|in.mp4|in.ts> <out.wav> [objects_dir] [adm_out] (AC-3, E-AC-3 or AC-4, bare or inside a container; the stream decides. AC-4: every layout up to 7.1.4 and the immersive element in every codec mode; a presentation with A-JOC or direct-coded objects renders them to the output's speakers as coded (7.1.4 by default), and syntax-trace=<file> writes what the decoder reads. objects_dir: export each object's own PCM as its own object_NN.wav there - JOC-reconstructed for E-AC-3 Atmos, D10's decoded objects for AC-4. adm_out (needs -DICLFORGE_BUILD_ADM=ON): write a Dolby Atmos Master ADM Profile BW64 there (legacy item IM2 for E-AC-3; for AC-4, every bed and dynamic object with its own decoded Annex F properties) - bed/LFE channels pinned to their speaker, dynamic objects positioned by their own timeline)
+  forge probe         <in.ac3|in.ec3|in.ac4|in.mkv|in.mp4|in.ts> [json=1] [detail=frames|blocks] (inspect AC-3/E-AC-3 layout, substreams, metadata, objects, tools and CRC, or AC-4 TOC/presentations/substream groups, bare or inside a container, and what the container says of its track; table or documented JSON)
+  forge transcode     <in.ac3|in.ec3|in.ac4> <out.ac3|out.ec3|out.ac4> [bitrate_kbps] [layout] (decode and re-encode, carrying dialnorm, compr and the mix metadata across - the DD+-to-DD path for optical and AC-3-only HDMI sinks - or between AC-4 and AC-3 or E-AC-3 either way: an AC-4 presentation, chosen as decode chooses one, becomes the programme, decoded without DRC and re-encoded with its drc_eac3_profile, dialnorm and downmix values; an AC-3 or E-AC-3 source's dialnorm and downmix values go to AC-4, and drc= names its DRC profile. The output codec comes from the output name's suffix, or from codec=; the bitrate defaults to 448 kbps, or 192 for AC-4)
+  forge metadata      <in.ac3|in.ec3> <out.ac3|out.ec3>      (rewrite dialnorm/compr/bsmod/dsurmod on an existing stream and re-stamp its CRCs; the audio is copied through untouched, not re-encoded)
+  forge normalize     <in.ac3|in.ec3> <out.ac3|out.ec3>      (measure BS.1770-4 loudness and write the dialnorm it implies (ATSC A/85 §8), audio untouched)
+  forge cut           <in.ac3|in.ec3> <out.ac3|out.ec3> [start_seconds] [duration_seconds] (extract on access-unit boundaries; nothing is re-encoded)
+  forge cat           <out.ac3|out.ec3> <in1> <in2> [in3...] (join streams end to end (output FIRST, since the input list is variadic); refuses inputs whose codec, rate, layout or substream shape differ)
+  forge levels        <in.wav|in.ac3|in.ec3|in.ac4|in.mkv|in.mp4|in.ts> (per-channel peak/RMS report; an AC-4 presentation as coded)
+  forge loudness      <in.wav|in.ac3|in.ec3|in.ac4|in.mkv|in.mp4|in.ts> (BS.1770-4 loudness -> dialnorm, beside a stream's own: an AC-3 or E-AC-3 stream's first programme, or an AC-4 presentation as coded, in AC-4's steps of 0.25 dB)
+  forge qc            <in.ac3|in.ec3|in.ac4|in.mkv|in.mp4|in.ts> [preset=<name>|all] [layout=bed|rendered] [objects=<71|512|514|714>] (bitstream-aware loudness QC: measured loudness vs. embedded dialnorm/compr, optional preset gate, optional BS.1770-5 Annex 4 object re-render; an AC-4 presentation as coded, against its dialnorm and the loudness it states)
+  forge spdif         <in.ac3|in.ec3|in.ac4> <out.wav>       (IEC 61937 wrap as playable PCM16 WAV; AC-4 in IEC 61937-14's bursts)
+  forge unspdif       <in.wav|in.raw|-> <out.ac3|out.ec3|out.ac4|-> (the inverse: recover the elementary stream from IEC 61937 bursts, as captured from an S/PDIF or HDMI input or written by 'spdif'. '-' pipes either end)
+  forge mkv           <in.ac3|in.ec3> <out.mkv>              (wrap as a playable Matroska file; AC-4 is refused, Matroska registering no codec ID for it)
+  forge mp4           <in.ac3|in.ec3|in.ac4> <out.mp4>       (wrap as playable MP4 with dac3/dec3 for AC-3/E-AC-3 or dac4 for AC-4)
+  forge fmp4          <in.ac3|in.ec3|in.ac4|in.mkv|in.mp4|in.ts> <out_dir> [frames_per_fragment] (fragmented MP4/CMAF + HLS/DASH manifests, ready for a packager; fallback-51 also writes an object-stripped 5.1 companion rendition. AC-4 as TS 103 190-2 Annex H has it: each fragment starting at an I-frame, the timescale Table E.1 gives, the ca4m and ca4s brands and the DASH descriptors of Annex G)
+  forge ts            <in.ac3|in.ec3|in.ac4> <out.ts> [dvb|atsc] (wrap as MPEG-2 TS; AC-4 supports DVB only)
+  forge demux         <in.mkv|in.mp4|in.ts> <out.ac3|out.ec3|out.ac4> (the inverse of 'mkv': unwrap the elementary stream a container carries. The container is identified by its own magic bytes, not by the file name)
+  forge remux         <in.mkv|in.mp4|in.ts> <out.mkv|out.mp4|out.ts> [dvb|atsc] (container-to-container: the input is identified by its magic bytes, the output by its extension, and everything either declares is re-derived from the bitstream - the dec3-repair case)
+  forge devices                                              (input and loopback capture endpoints)
+  forge outputs                                              (render endpoints + AC-3/E-AC-3 passthrough support)
+  forge identify      [device_index] [layout] [seconds] [routing] [level_db] (walk the identify tone across an output's speakers - pink noise on one rendered channel at a time, placed by the routing patch, so a room's wiring can be heard (layout "-" is the device's own speakers; routing 1,0,2,3,4,5 swaps the front pair))
+  forge play          <in.ac3|in.ec3|in.ac4|in.mkv|in.mp4|in.ts> [device_index] (exclusive-mode IEC 61937 passthrough, following the sink (bsid decides the source format; a named device that rejects it gets an automatic AC-3/PCM fallback - follow=off for the plain refusal). AC-4, which no receiver takes over IEC 61937 yet, is decoded and played as PCM, as 'monitor' plays it)
+  forge monitor       <in.ac3|in.ec3|in.ac4|in.mkv|in.mp4|in.ts> [device_index] (decode and play on an ordinary (non-bitstreamed) output)
+  forge spatial       <in.ec3> [device_index]                (decode the object layer onto Windows Spatial Sound - dynamic objects at their OAMD positions, the bed's LFE static (Windows spatial object renderer))
+  forge help          [<command>|exit-codes]                 (one command's own arguments and grammars, not the whole manual)
+  forge man                                                  (the generated groff man page, on stdout)
+  forge completions   <bash|zsh|fish|powershell>             (the generated completion script for that shell, on stdout)
 ```
 
 ## By category
@@ -81,7 +81,7 @@ so either works wherever the other does:
   columns `object_index time_s x y z gain lfe_send`; `#` starts a comment and blank lines are
   skipped. Unchanged, including its diagnostics. It is still what the GUI's timeline exports by
   default — see [GUI → Objects & motion](../gui/objects-and-motion.md).
-- **An object scene in JSON**, the `ac3::oba::ObjectScene` form: named objects, a bed
+- **An object scene in JSON**, the `iclforge::oba::ObjectScene` form: named objects, a bed
   assignment, per-segment interpolation (`hold`, `linear`, `smooth`) and a scene orientation,
   none of which the columns have anywhere to put. Documented in
   [Library → Spatial & Atmos](../../library/spatial-and-atmos.md#the-serialised-form); the GUI
@@ -96,7 +96,7 @@ placement — room centre for `atmos-path`, that channel's fanned-out static pos
 `atmos-encode`.
 
 ```bash
-ac3cli eac3-sine out.ec3 5 384 1000 50 714
+forge eac3-sine out.ec3 5 384 1000 50 714
 ```
 
 Five seconds at 50% amplitude, 384 kbps, one tone per coded channel — 14 of them for a 7.1.4
@@ -116,7 +116,7 @@ so a misrouted channel is identifiable by ear.)
 | `ac4-encode` | WAV → AC-4: mono, stereo, 5.0, 5.1, 5.0.4 or 5.1.4 (7.0, 7.1, 7.0.4, 7.1.4 and 3.0 experimental), at 48 kHz at every frame rate of Part 1 Table 83 or at 44.1 kHz at the native one, as raw sync frames with their CRC (or without, `crc=off`) or, for `.mp4`, `.m4a` or `.mov`, an MP4 file with the `ac-4` sample entry and its `dac4`. The codec mode follows the rate: SIMPLE from 96 kbps a channel (76.8 in 5.X), the ASPX mode below, in 5.X the A-CPL modes lower still, and in the immersive layouts ASPX_ACPL_2, ASPX_SCPL and SCPL by the rate. The frame rate, the rate mode, the I-frames, the metadata, and further substreams and the presentations that play them are options: see [`ac4-encode`](#ac4-encode) below |
 
 ```bash
-ac3cli encode in.wav out.ac3 448 couple
+forge encode in.wav out.ac3 448 couple
 ```
 
 448 kbps, channel coupling on, layout inferred from the WAV's channel count.
@@ -126,8 +126,8 @@ has to be named explicitly) takes its two channels either as one two-channel fil
 ones:
 
 ```bash
-ac3cli encode both.wav out.ac3 192 1+1                    # Ch1/Ch2 = channels 0/1 of both.wav
-ac3cli encode narration_en.wav out.ac3 192 1+1 narration_fr.wav  # Ch1, Ch2 as separate files
+forge encode both.wav out.ac3 192 1+1                    # Ch1/Ch2 = channels 0/1 of both.wav
+forge encode narration_en.wav out.ac3 192 1+1 narration_fr.wav  # Ch1, Ch2 as separate files
 ```
 
 See [Options & grammars](metadata-options.md) for `dialnorm2=` — Ch2's own dialnorm, alongside
@@ -139,7 +139,7 @@ under [Conventions](index.md#conventions-shared-across-commands)), so a pipeline
 a temporary file:
 
 ```bash
-ac3cli encode - - 448 couple < in.wav > out.ac3
+forge encode - - 448 couple < in.wav > out.ac3
 ```
 
 The status text these commands normally print (frame count, routing, per-channel levels,
@@ -147,10 +147,10 @@ The status text these commands normally print (frame count, routing, per-channel
 `-`, so it never ends up inside the piped stream — `src=`/`map=` multi-source runs included.
 
 ```bash
-ac3cli atmos-cbi bed_714.wav out.ec3 448 7.1.4
+forge atmos-cbi bed_714.wav out.ec3 448 7.1.4
 ```
 
-`bed_714.wav`'s 12 channels are read in `ac3::oba::bed_labels()`'s own Table 12 order — L, R, C,
+`bed_714.wav`'s 12 channels are read in `iclforge::oba::bed_labels()`'s own Table 12 order — L, R, C,
 LFE, Ls, Rs, Lb, Rb, Tfl, Tfr, Tbl, Tbr for 7.1.4 — which is also Dolby's own `cbi_wav` channel
 order (confirmed against a real DEE-produced 5.1.4 stream; 7.1.4/9.1.6 extend it by the same
 Table 12 rule, unverified against DEE itself). `[layout]` is one of `5.1.4`, `7.1.4`, `9.1.6` and
@@ -208,7 +208,7 @@ takes three channels, L R C, as 3.0, the dialogue of a music and effects present
 **Objects.** With `experimental=objects`, `objects=<scene file>` takes the WAV file's channels as the
 objects of one object substream, written as a raw stream. The scene file is text, one directive a
 line, `#` starting a comment; channels count from 0, and one the file does not name is a dynamic
-object at the room's centre. It is written in the library's terms (`ac4::ObjectsConfig`, `ac4::ObjectProperties`);
+object at the room's centre. It is written in the library's terms (`iclforge::ac4::ObjectsConfig`, `iclforge::ac4::ObjectProperties`);
 reading ADM BWF, IAB and object scenes into them belongs to the applications (`atmos-encode`,
 `atmos-adm` and `atmos-iab` below write AC-4 objects from those). An object stream reads
 `frame-rate=`, `rate-mode=`, `iframe-interval=`, `crc=`, `dialnorm=` (a number, not `auto`),
@@ -324,22 +324,22 @@ one per line. The summary names the codec mode, the frame rate and the rate mode
 decoder's output lags the input, to the nearest sample away from the native frame rate.
 
 ```bash
-ac3cli ac4-encode in.wav out.mp4 128 frame-rate=29.97 rate-mode=average iframe-interval=15
-ac3cli ac4-encode in_51.wav out.ac4 384 loudness=ebu-r128 drc=film-light dmixmod=loro dialogue-channels=c
-ac3cli ac4-encode me_51.wav out.mp4 448 substream1-content=music-and-effects \
+forge ac4-encode in.wav out.mp4 128 frame-rate=29.97 rate-mode=average iframe-interval=15
+forge ac4-encode in_51.wav out.ac4 384 loudness=ebu-r128 drc=film-light dmixmod=loro dialogue-channels=c
+forge ac4-encode me_51.wav out.mp4 448 substream1-content=music-and-effects \
     substream2=english.wav substream2-content=dialogue substream2-language=en \
     substream3=german.wav substream3-content=dialogue substream3-language=de \
     presentation1=1,2 presentation1-config=0 presentation2=1,3 presentation2-config=0
 ```
 ### ADM ingest — professional master files (opt-in)
 
-**Only *runnable* in a build with `-DAC3FORGE_BUILD_ADM=ON`** — but always *listed*, the same
+**Only *runnable* in a build with `-DICLFORGE_BUILD_ADM=ON`** — but always *listed*, the same
 "a command a build cannot run is shown, not hidden" treatment the live-audio commands below get
 (see that section's own note): a default build's usage block at the top of this page shows this
 row as `UNAVAILABLE HERE` instead of the description below, and running it prints a clear reason
-(`ac3cli atmos-adm ...` → `error: 'atmos-adm' is unavailable on this platform: this build was not
-configured with -DAC3FORGE_BUILD_ADM=ON ...`) rather than "unknown command". Three things in the
-tool need `ac3adm::ac3adm`/`ac3::admbridge`, this project's sole opt-in, Boost-requiring module
+(`forge atmos-adm ...` → `error: 'atmos-adm' is unavailable on this platform: this build was not
+configured with -DICLFORGE_BUILD_ADM=ON ...`) rather than "unknown command". Three things in the
+tool need `iclforge::adm`/`iclforge::admbridge`, this project's sole opt-in, Boost-requiring module
 (default **off** — see [ADM / BW64 reading](../../library/adm.md#why-opt-in)): this command,
 `atmos-iab` below, and `decode`'s optional `adm_out` argument. Everything else builds and works
 identically whether that flag is on or off. What the row looks like in a build configured
@@ -347,35 +347,35 @@ with the flag on (the usage block at the top of this page is from a *default* bu
 this row instead reads `UNAVAILABLE HERE`):
 
 ```text
-  ac3cli atmos-adm    <in.adm.wav> <out.ec3|out.ac4> [bitrate_kbps] [programme_id] (a real ADM BWF master (BS.2076-2 ADM XML + BW64/RF64, ADM BWF reader) straight to DD+ JOC E-AC-3 (default) or, with codec=ac4, to an AC-4 A-JOC or direct-coded object substream (coding=ajoc, the default, or coding=direct); every bed/object channel the resolved audioProgramme names becomes a dynamic object, driven by the file's own authored automation - no scene file needed. Only in builds with -DAC3FORGE_BUILD_ADM=ON)
+  forge atmos-adm    <in.adm.wav> <out.ec3|out.ac4> [bitrate_kbps] [programme_id] (a real ADM BWF master (BS.2076-2 ADM XML + BW64/RF64, ADM BWF reader) straight to DD+ JOC E-AC-3 (default) or, with codec=ac4, to an AC-4 A-JOC or direct-coded object substream (coding=ajoc, the default, or coding=direct); every bed/object channel the resolved audioProgramme names becomes a dynamic object, driven by the file's own authored automation - no scene file needed. Only in builds with -DICLFORGE_BUILD_ADM=ON)
 ```
 
 | Command | What it does |
 |---|---|
-| `atmos-adm` | A real ADM BWF master (professional delivery format Netflix's and Apple's own Atmos ingest pipelines require) straight to DD+ JOC E-AC-3 — no WAV, no hand-authored keyframe file: [`ac3::admbridge::build`](../../library/adm-bridge.md) classifies every channel as a bed speaker feed or a dynamic object and builds its own `ac3::oba::ObjectPath` straight from the file's authored BS.2076-2 §10.3 position/gain automation, driven frame by frame the same way `atmos-encode` drives an authored `[paths.txt]`. With `codec=ac4` (planning/ac4.md, I5), every bed/object channel becomes an AC-4 dynamic object instead (A-JOC by default, `coding=direct` for direct-coded object substreams), its position sampled once a frame (frame_rate_index 13 is the object substream's only rate) |
+| `atmos-adm` | A real ADM BWF master (professional delivery format Netflix's and Apple's own Atmos ingest pipelines require) straight to DD+ JOC E-AC-3 — no WAV, no hand-authored keyframe file: [`iclforge::admbridge::build`](../../library/adm-bridge.md) classifies every channel as a bed speaker feed or a dynamic object and builds its own `iclforge::oba::ObjectPath` straight from the file's authored BS.2076-2 §10.3 position/gain automation, driven frame by frame the same way `atmos-encode` drives an authored `[paths.txt]`. With `codec=ac4` (planning/ac4.md, I5), every bed/object channel becomes an AC-4 dynamic object instead (A-JOC by default, `coding=direct` for direct-coded object substreams), its position sampled once a frame (frame_rate_index 13 is the object substream's only rate) |
 
 ```bash
-ac3cli atmos-adm master.wav out.ec3 448
+forge atmos-adm master.wav out.ec3 448
 ```
 
 448 kbps, the file's lowest-ID `audioProgramme` (BS.2076-2 §5.8's own default-selection rule).
 Pass a fourth argument to pick a different one by ID:
 
 ```bash
-ac3cli atmos-adm master.wav out.ec3 448 APR_1002
+forge atmos-adm master.wav out.ec3 448 APR_1002
 ```
 
 `codec=ac4` writes AC-4 instead of E-AC-3, its objects A-JOC-coded unless `coding=direct` asks for
 direct-coded object substreams:
 
 ```bash
-ac3cli atmos-adm master.wav out.ac4 256 codec=ac4
-ac3cli atmos-adm master.wav out.ac4 256 codec=ac4 coding=direct
-ac3cli decode out.ac4 out.wav objects_dir adm_out.wav
+forge atmos-adm master.wav out.ac4 256 codec=ac4
+forge atmos-adm master.wav out.ac4 256 codec=ac4 coding=direct
+forge decode out.ac4 out.wav objects_dir adm_out.wav
 ```
 
 That `decode` line closes the round trip: `objects_dir` writes each object's own PCM, and
-`adm_out.wav` (needs `-DAC3FORGE_BUILD_ADM=ON`) writes a fresh ADM BWF master back out, its
+`adm_out.wav` (needs `-DICLFORGE_BUILD_ADM=ON`) writes a fresh ADM BWF master back out, its
 objects' positions, gains and timing read from what the AC-4 stream's own Annex F metadata says.
 
 #### AC-4 objects from a WAV
@@ -388,8 +388,8 @@ unless `crc=off`) or, for an `.mp4`, `.m4a` or `.mov` output name, an MP4 file.
 two write the same bytes.
 
 ```bash
-ac3cli atmos-encode stems.wav out.ac4 256 codec=ac4
-ac3cli atmos-encode stems.wav out.mp4 256 0 scene.json src=vo.wav \
+forge atmos-encode stems.wav out.ac4 256 codec=ac4
+forge atmos-encode stems.wav out.mp4 256 0 scene.json src=vo.wav \
     map=0.0:obj,0.1:obj@-3,1.0:L,1.1:LFE offset=1:0.02 codec=ac4 coding=direct dialnorm=27
 ```
 
@@ -418,8 +418,8 @@ ac3cli atmos-encode stems.wav out.mp4 256 0 scene.json src=vo.wav \
 channels have no single fixed layout to measure loudness against the way `atmos-encode`'s WAV
 input does, so `atmos-adm` refuses it with a clear error rather than silently keeping the default.
 
-Every failure — a container/XML parse error (`ac3adm::AdmError`) or a graph-resolution error
-(`ac3::admbridge::BridgeError`, e.g. no `audioProgramme`, an unresolved reference, an unsupported
+Every failure — a container/XML parse error (`iclforge::adm::AdmError`) or a graph-resolution error
+(`iclforge::admbridge::BridgeError`, e.g. no `audioProgramme`, an unresolved reference, an unsupported
 pack type) — prints a real diagnosis via that error's own `describe()`, never an opaque crash or a
 bare non-zero exit.
 
@@ -430,36 +430,36 @@ for the same pipeline as a minimal, standalone, self-fixturing program.
 
 ### IAB ingest — Dolby Atmos cinema/IMF masters (opt-in)
 
-**Only *runnable* in a build with `-DAC3FORGE_BUILD_ADM=ON`** — the identical gate and the same
+**Only *runnable* in a build with `-DICLFORGE_BUILD_ADM=ON`** — the identical gate and the same
 `UNAVAILABLE HERE`/clear-error treatment `atmos-adm` above gets, and for the same underlying
-reason even though `ac3iab::ac3iab` itself is on by default: this command needs
-[`ac3::admbridge`'s own IAB mapping](../../library/adm-bridge.md#bridging-iab)
-(`build_iab()`), and that whole module rides `AC3FORGE_BUILD_ADM` (see
-[ADM / BW64 reading](../../library/adm.md#why-opt-in)) since it PUBLIC-links `ac3adm::ac3adm`
-alongside `ac3iab::ac3iab`. What the row looks like in a build configured with the flag on (the
+reason even though `iclforge::iab` itself is on by default: this command needs
+[`iclforge::admbridge`'s own IAB mapping](../../library/adm-bridge.md#bridging-iab)
+(`build_iab()`), and that whole module rides `ICLFORGE_BUILD_ADM` (see
+[ADM / BW64 reading](../../library/adm.md#why-opt-in)) since it PUBLIC-links `iclforge::adm`
+alongside `iclforge::iab`. What the row looks like in a build configured with the flag on (the
 usage block at the top of this page is from a *default* build, where this row instead reads
 `UNAVAILABLE HERE`):
 
 ```text
-  ac3cli atmos-iab     <in.iab|in.mxf> <out.ec3|out.ac4> [bitrate_kbps] (a real Dolby Atmos cinema/IMF master (SMPTE ST 2098-2 Immersive Audio Bitstream, a bare elementary .iab file or a real MXF Track File alike - IAB reader) straight to DD+ JOC E-AC-3 (default) or, with codec=ac4, to an AC-4 A-JOC or direct-coded object substream (coding=ajoc, the default, or coding=direct); every Bed channel/Object the file names becomes a dynamic object, driven by the file's own authored panning - no scene file needed. Only in builds with -DAC3FORGE_BUILD_ADM=ON)
+  forge atmos-iab     <in.iab|in.mxf> <out.ec3|out.ac4> [bitrate_kbps] (a real Dolby Atmos cinema/IMF master (SMPTE ST 2098-2 Immersive Audio Bitstream, a bare elementary .iab file or a real MXF Track File alike - IAB reader) straight to DD+ JOC E-AC-3 (default) or, with codec=ac4, to an AC-4 A-JOC or direct-coded object substream (coding=ajoc, the default, or coding=direct); every Bed channel/Object the file names becomes a dynamic object, driven by the file's own authored panning - no scene file needed. Only in builds with -DICLFORGE_BUILD_ADM=ON)
 ```
 
 | Command | What it does |
 |---|---|
-| `atmos-iab` | A real Immersive Audio Bitstream (SMPTE ST 2098-2) master — a bare elementary `.iab` file or a real MXF Track File alike, sniffed automatically by its first byte — straight to DD+ JOC E-AC-3: [`ac3::admbridge::build_iab`](../../library/adm-bridge.md#bridging-iab) classifies every Bed channel/Object and builds its own `ac3::oba::ObjectPath` from the file's own per-frame panning, driven frame by frame the same way `atmos-adm` drives an ADM master. `codec=ac4`/`coding=` work exactly as `atmos-adm`'s own do (planning/ac4.md, I5) |
+| `atmos-iab` | A real Immersive Audio Bitstream (SMPTE ST 2098-2) master — a bare elementary `.iab` file or a real MXF Track File alike, sniffed automatically by its first byte — straight to DD+ JOC E-AC-3: [`iclforge::admbridge::build_iab`](../../library/adm-bridge.md#bridging-iab) classifies every Bed channel/Object and builds its own `iclforge::oba::ObjectPath` from the file's own per-frame panning, driven frame by frame the same way `atmos-adm` drives an ADM master. `codec=ac4`/`coding=` work exactly as `atmos-adm`'s own do (planning/ac4.md, I5) |
 
 ```bash
-ac3cli atmos-iab master.iab out.ec3 448
+forge atmos-iab master.iab out.ec3 448
 ```
 
 The same command reads a real MXF Track File too, no different invocation:
 
 ```bash
-ac3cli atmos-iab master.mxf out.ec3 448
+forge atmos-iab master.mxf out.ec3 448
 ```
 
 ```bash
-ac3cli atmos-iab master.iab out.ac4 256 codec=ac4 coding=direct
+forge atmos-iab master.iab out.ac4 256 codec=ac4 coding=direct
 ```
 
 `dialnorm=` works the same as every other encoding command (see
@@ -467,8 +467,8 @@ ac3cli atmos-iab master.iab out.ac4 256 codec=ac4 coding=direct
 channels have no single fixed layout to measure loudness against the way `atmos-encode`'s WAV
 input does, so `atmos-iab` refuses it with a clear error rather than silently keeping the default.
 
-Every failure — a bitstream/MXF parse error (`ac3iab::IabError`) or a graph-resolution error
-(`ac3::admbridge::BridgeError`, e.g. a Table 19 `ChannelID` with no `BedLabel` equivalent, or
+Every failure — a bitstream/MXF parse error (`iclforge::iab::IabError`) or a graph-resolution error
+(`iclforge::admbridge::BridgeError`, e.g. a Table 19 `ChannelID` with no `BedLabel` equivalent, or
 essence that never resolved) — prints a real diagnosis via that error's own `describe()`, never an
 opaque crash or a bare non-zero exit.
 
@@ -485,7 +485,7 @@ for the same pipeline as a minimal, standalone, self-fixturing program.
 | `strip-objects` | Takes the JOC/OAMD object layer **out** of a Dolby Digital Plus stream without decoding it, leaving a plain DD+ 5.1 stream whose bed audio is bit-identical |
 
 ```bash
-ac3cli strip-objects atmos.ec3 bed51.ec3
+forge strip-objects atmos.ec3 bed51.ec3
 ```
 
 ```text
@@ -519,21 +519,21 @@ requirements ask for beside an Atmos one.
 
 | Command | What it does |
 |---|---|
-| `decode` | AC-3, E-AC-3 or AC-4 → WAV; the stream decides which decoder runs (for AC-4, mono, stereo, 3.0, 5.X and 7.X in the SIMPLE, ASPX and A-CPL codec modes, and 7.0.4 and 7.1.4 in every immersive codec mode, in [full or core decoding and to the layout `speakers=` names](#ac-4-immersive-speakers-and-decoding), written in WAV speaker order, and of a stream of several presentations the one [`presentation=`, `language=` and `associated=`](#ac-4-presentations-presentation-language-associated) choose, its substreams mixed; a presentation with A-JOC or direct-coded objects renders them to the output's speakers as coded, 7.1.4 by default). The input may be a Matroska/MP4/MPEG-TS container as well as a bare elementary stream, sniffed by content rather than by name — the same three readers `demux` uses. For an Atmos E-AC-3 stream or an AC-4 stream with objects, reports the object count found and, with `objects_dir`, exports each decoded object as its own `object_NN.wav` there — JOC-reconstructed for E-AC-3, D10's own decoded objects for AC-4. With `adm_out` (needs `-DAC3FORGE_BUILD_ADM=ON`), also writes a Dolby Atmos Master ADM Profile BW64 there: for E-AC-3, the bed's LFE plus every dynamic object, positioned by its own decoded OAMD automation; for AC-4, every bed and dynamic object with its own decoded Annex F properties |
-| `probe` | What a stream *declares*, without rendering its audio: bsid, sample rate, layout, substream map, counts, duration, bit rate, metadata ranges, EMDF/OAMD/JOC, authenticity, per-frame CRC and coding-tool usage. Human table by default, or the `ac3forge.probe/1` JSON document with `json=1`. An AC-4 stream gets its table of contents, frame rate, bit rate, I-frames and splices, and each presentation with the metadata the decoder reads of it. The input may be a Matroska, MP4 or MPEG-TS container, sniffed by content: the report then also says what the container declares of the track (codec ID, sample entry or descriptor, time scale, language), in the JSON document as `container`, which is `null` for a bare stream |
+| `decode` | AC-3, E-AC-3 or AC-4 → WAV; the stream decides which decoder runs (for AC-4, mono, stereo, 3.0, 5.X and 7.X in the SIMPLE, ASPX and A-CPL codec modes, and 7.0.4 and 7.1.4 in every immersive codec mode, in [full or core decoding and to the layout `speakers=` names](#ac-4-immersive-speakers-and-decoding), written in WAV speaker order, and of a stream of several presentations the one [`presentation=`, `language=` and `associated=`](#ac-4-presentations-presentation-language-associated) choose, its substreams mixed; a presentation with A-JOC or direct-coded objects renders them to the output's speakers as coded, 7.1.4 by default). The input may be a Matroska/MP4/MPEG-TS container as well as a bare elementary stream, sniffed by content rather than by name — the same three readers `demux` uses. For an Atmos E-AC-3 stream or an AC-4 stream with objects, reports the object count found and, with `objects_dir`, exports each decoded object as its own `object_NN.wav` there — JOC-reconstructed for E-AC-3, D10's own decoded objects for AC-4. With `adm_out` (needs `-DICLFORGE_BUILD_ADM=ON`), also writes a Dolby Atmos Master ADM Profile BW64 there: for E-AC-3, the bed's LFE plus every dynamic object, positioned by its own decoded OAMD automation; for AC-4, every bed and dynamic object with its own decoded Annex F properties |
+| `probe` | What a stream *declares*, without rendering its audio: bsid, sample rate, layout, substream map, counts, duration, bit rate, metadata ranges, EMDF/OAMD/JOC, authenticity, per-frame CRC and coding-tool usage. Human table by default, or the `iclforge.probe/1` JSON document with `json=1`. An AC-4 stream gets its table of contents, frame rate, bit rate, I-frames and splices, and each presentation with the metadata the decoder reads of it. The input may be a Matroska, MP4 or MPEG-TS container, sniffed by content: the report then also says what the container declares of the track (codec ID, sample entry or descriptor, time scale, language), in the JSON document as `container`, which is `null` for a bare stream |
 | `levels` | Per-channel peak/RMS report — takes a WAV, a bare encoded stream, or a Matroska/MP4/MPEG-TS container carrying one; of an AC-4 stream, the presentation [`presentation=` and the rest](#ac-4-presentations-presentation-language-associated) choose, as coded |
 | `loudness` | BS.1770-4 gated loudness, reported as the `dialnorm` it implies: of a WAV; of an AC-3 or E-AC-3 stream's first programme, beside the `dialnorm` it carries; or of an AC-4 presentation as coded, in AC-4's steps of 0.25 dB, beside the stream's own. Bare or inside a container |
 | `qc` | Bitstream-aware loudness QC: decodes an already-encoded AC-3, E-AC-3 or AC-4 stream — bare, or inside a Matroska/MP4/MPEG-TS container — measures it with the real BS.1770-4/EBU Tech 3342 meter — the Table 5.8 bed by default, the whole rendered program with `layout=rendered`, or a dynamic-object-only programme's objects re-rendered onto a named layout with `objects=<layout>` (BS.1770-5 Annex 4) — and compares the result against the stream's own embedded `dialnorm`/`compr` and, optionally, a named delivery-spec gate. An AC-4 presentation is measured as coded (no output level, so no DRC) against its `dialnorm` and the loudness it states; `layout=` takes it too, and `objects=` does not (see below) |
 
 ```bash
-ac3cli decode out.ec3 out.wav
+forge decode out.ec3 out.wav
 ```
 
 `decode` takes `-` for either path too, the same convention the encoding commands above (and the
 five stream tools below) use:
 
 ```bash
-ac3cli decode - - < out.ac3 > out.wav
+forge decode - - < out.ac3 > out.wav
 ```
 
 It decodes on the fast (FFT) inverse-transform path by default; `mode=reference` or
@@ -548,22 +548,22 @@ there. See [Options & grammars](metadata-options.md) for the token, and `eac3-en
 `programme2=` for authoring such a stream.
 
 ```bash
-ac3cli decode out.ec3 commentary.wav programme=1
+forge decode out.ec3 commentary.wav programme=1
 ```
 
 For an Atmos stream, add `objects_dir` to also export each object's reconstructed audio:
 
 ```bash
-ac3cli decode atmos.ec3 bed.wav objects/
+forge decode atmos.ec3 bed.wav objects/
 ```
 
 Or add a fourth argument (`objects_dir` empty or not) to write an ADM BWF master instead —
 positions come from the stream's own decoded OAMD, so `master.wav` round-trips through
-`ac3cli atmos-adm` (needs `-DAC3FORGE_BUILD_ADM=ON`; without that flag an `adm_out`
+`forge atmos-adm` (needs `-DICLFORGE_BUILD_ADM=ON`; without that flag an `adm_out`
 on an E-AC-3 input is refused before the decode starts, exit `2`, naming the flag):
 
 ```bash
-ac3cli decode atmos.ec3 bed.wav "" master.wav
+forge decode atmos.ec3 bed.wav "" master.wav
 ```
 
 The object export works for a bed programme too, which is what channel-based-immersive
@@ -583,9 +583,9 @@ what a verification tool should do, and not what a listener wants. `channels=` t
 output stage:
 
 ```bash
-ac3cli decode surround.ac3 stereo.wav channels=2
-ac3cli decode surround.ac3 stereo.wav downmix=ltrt      # implies channels=2
-ac3cli decode surround.ac3 mono.wav   channels=1
+forge decode surround.ac3 stereo.wav channels=2
+forge decode surround.ac3 stereo.wav downmix=ltrt      # implies channels=2
+forge decode surround.ac3 mono.wav   channels=1
 ```
 
 `channels=2` produces §7.8.1's Lo/Ro fold, `downmix=ltrt` §7.8.2's Dolby Surround compatible
@@ -601,7 +601,7 @@ the LFE in as well — §7.8 makes that optional and this decoder drops it by de
 independent substream sends, and the choice is printed:
 
 ```bash
-ac3cli decode surround.ec3 stereo.wav downmix=auto
+forge decode surround.ec3 stereo.wav downmix=auto
 ```
 
 ```text
@@ -620,8 +620,8 @@ allows a decoder to read it as "not indicated". A later `downmix=`, `channels=1`
 switches:
 
 ```bash
-ac3cli decode programme.ec3 out.wav channels=2 drcmode=line   # §7.7.1
-ac3cli decode programme.ec3 out.wav channels=2 drcmode=rf     # §7.7.2, overload-protected
+forge decode programme.ec3 out.wav channels=2 drcmode=line   # §7.7.1
+forge decode programme.ec3 out.wav channels=2 drcmode=rf     # §7.7.2, overload-protected
 ```
 
 `drcmode=line` puts dialogue at −31 dBFS. `drcmode=rf` applies each `compr` word with 11 dB on
@@ -639,9 +639,9 @@ speakers from −16 to 0), `home-theatre`, `flat-panel-tv`, `portable-speakers` 
 `portable-headphones` name one, and `off` applies the level alone:
 
 ```bash
-ac3cli decode stream.ac4 out.wav output-level=-31                  # home theatre
-ac3cli decode stream.ac4 out.wav output-level=-14 drcmode=portable-headphones
-ac3cli decode stream.ac4 out.wav output-level=-24 drcmode=off      # the level, no compression
+forge decode stream.ac4 out.wav output-level=-31                  # home theatre
+forge decode stream.ac4 out.wav output-level=-14 drcmode=portable-headphones
+forge decode stream.ac4 out.wav output-level=-24 drcmode=off      # the level, no compression
 ```
 
 `headphones` says the listener is on headphones: at an output level in the portable range,
@@ -661,8 +661,8 @@ processing before encoding. The LFE goes into the fold at the stream's `lfe_mixg
 7.X stream's extra pair folded into its 5.X channels by Table 219, and any other stream as coded.
 
 ```bash
-ac3cli decode stream.ac4 out.wav channels=2 mix-lfe=off   # Lo/Ro or Lt/Rt without the LFE
-ac3cli decode stream_71.ac4 out.wav channels=5.1
+forge decode stream.ac4 out.wav channels=2 mix-lfe=off   # Lo/Ro or Lt/Rt without the LFE
+forge decode stream_71.ac4 out.wav channels=5.1
 ```
 
 `monitor` takes all of the same tokens, and additionally folds on its own initiative when the
@@ -688,9 +688,9 @@ decoder's compatibility level (`md_compat`) are never chosen, and the status out
 presentation decoded:
 
 ```bash
-ac3cli decode broadcast.ac4 out.wav language=de
-ac3cli decode broadcast.ac4 out.wav associated=audio-description
-ac3cli decode broadcast.ac4 out.wav presentation-id=3
+forge decode broadcast.ac4 out.wav language=de
+forge decode broadcast.ac4 out.wav associated=audio-description
+forge decode broadcast.ac4 out.wav presentation-id=3
 ```
 
 `associated=` takes `visually-impaired`, `hearing-impaired` and `commentary` (ETSI TS 103 190-1
@@ -707,8 +707,8 @@ up to the maximum the stream allows (0 dB where it allows none, and at most 12),
 was mixed in before encoding:
 
 ```bash
-ac3cli decode broadcast.ac4 out.wav language=en dialogue-gain=6
-ac3cli decode broadcast.ac4 out.wav associated=audio-description associated-gain=-6
+forge decode broadcast.ac4 out.wav language=en dialogue-gain=6
+forge decode broadcast.ac4 out.wav associated=audio-description associated-gain=-6
 ```
 
 ### AC-4 immersive: `speakers=` and `decoding=`
@@ -722,9 +722,9 @@ or `7.1.4`, the LFE where the stream has one. `channels=2`, `channels=1` and `do
 renderer's 5.1 to the stereo fold above, and win over `speakers=`:
 
 ```bash
-ac3cli decode film_514.ac4 out.wav                     # 5.1.4, the source's layout
-ac3cli decode film_514.ac4 out.wav speakers=5.1        # the heights into the fronts and sides
-ac3cli decode film_514.ac4 out.wav speakers=7.1.4      # the silent backs as well
+forge decode film_514.ac4 out.wav                     # 5.1.4, the source's layout
+forge decode film_514.ac4 out.wav speakers=5.1        # the heights into the fronts and sides
+forge decode film_514.ac4 out.wav speakers=7.1.4      # the silent backs as well
 ```
 
 `decoding=core` decodes the element's core instead, 5.1.2, as a low-complexity decoder does (clause
@@ -743,15 +743,15 @@ An intermediate spatial format is rendered by the decoder itself (ETSI TS 103 19
 to the same layouts.
 
 ```bash
-ac3cli decode ajoc.ac4 out.wav                   # 7.1.4
-ac3cli decode ajoc.ac4 out.wav speakers=5.1      # 5.1
-ac3cli decode ajoc.ac4 out.wav channels=2        # two channels
-ac3cli decode ajoc.ac4 out.wav decoding=core     # the downmix's signals as the objects
+forge decode ajoc.ac4 out.wav                   # 7.1.4
+forge decode ajoc.ac4 out.wav speakers=5.1      # 5.1
+forge decode ajoc.ac4 out.wav channels=2        # two channels
+forge decode ajoc.ac4 out.wav decoding=core     # the downmix's signals as the objects
 ```
 
 `decode`'s objects directory and ADM output take an AC-4 stream's objects as they take E-AC-3's,
 beside the rendered file: `objects_dir` gets each object's own decoded PCM as `object_NN.wav`, and
-`adm_out` (needs `-DAC3FORGE_BUILD_ADM=ON`, as for E-AC-3) an ADM BWF master of every bed and
+`adm_out` (needs `-DICLFORGE_BUILD_ADM=ON`, as for E-AC-3) an ADM BWF master of every bed and
 dynamic object with the properties (Annex F) it decoded, its bed and LFE objects on their
 speakers and the dynamic ones on their own timelines. The status output says how many objects it
 wrote. A presentation without objects writes no `object_NN.wav`, and an `adm_out` on it draws a
@@ -777,8 +777,8 @@ audio for it instead, reconstructed from the previous block's overlap so there i
 at either join:
 
 ```bash
-ac3cli decode recovered.ac3 out.wav conceal=repeat   # repeat-and-fade
-ac3cli decode recovered.ac3 out.wav conceal=mute     # window-ramped silence
+forge decode recovered.ac3 out.wav conceal=repeat   # repeat-and-fade
+forge decode recovered.ac3 out.wav conceal=mute     # window-ramped silence
 ```
 
 Either way the run reports how many frames or access units were concealed. Off by default: a
@@ -799,7 +799,7 @@ the other question — what the bitstream *declares* — and answers it without 
 single sample:
 
 ```bash
-ac3cli probe programme.ec3
+forge probe programme.ec3
 ```
 
 ```text
@@ -846,7 +846,7 @@ the tool lines show what the encoder used: coupling, spectral extension and AHT 
 `probe` works as a pipeline gate without anything having to read its output:
 
 ```bash
-ac3cli probe delivery.ec3 || echo "stream is not clean"
+forge probe delivery.ec3 || echo "stream is not clean"
 ```
 
 Every failure exits `1`, an unreadable file or bytes that are no stream among them; the `2` that
@@ -866,7 +866,7 @@ tools and exponent strategies underneath: the C++ counterpart of `tools/referenc
 and what a codec bug report actually needs.
 
 ```bash
-ac3cli probe programme.ec3 detail=blocks
+forge probe programme.ec3 detail=blocks
 ```
 
 ```text
@@ -885,14 +885,14 @@ real substream map is the natural next consumer), so the rules below are commitm
 description.
 
 ```bash
-ac3cli probe programme.ec3 json=1
+forge probe programme.ec3 json=1
 ```
 
 The switch is the `json=1` token. There is no `--json`: a bare token the command line does not
 recognise as an option is taken for a positional argument and never read, so
-`ac3cli probe programme.ec3 --json` exits 0 and prints the table.
+`forge probe programme.ec3 --json` exits 0 and prints the table.
 
-**Versioning.** The top-level `schema` member names the contract: `"ac3forge.probe/1"`. Within
+**Versioning.** The top-level `schema` member names the contract: `"iclforge.probe/1"`. Within
 one version, members are only ever *added*; an existing member never changes its type, its units
 or its meaning, and never disappears. A member that does not apply to a given stream is present
 and `null` (or `false`/`[]`), never omitted — a consumer must not have to tell "no such key"
@@ -914,8 +914,8 @@ Top level:
 
 | Member | Type | Meaning |
 |---|---|---|
-| `schema` | string | `"ac3forge.probe/1"` |
-| `generator` | string | The `ac3cli` version that wrote it |
+| `schema` | string | `"iclforge.probe/1"` |
+| `generator` | string | The `forge` version that wrote it |
 | `file` | string | The input path as given |
 | `container` | object or `null` | What a Matroska, MP4 or MPEG-TS input says of its audio track; `null` for a bare stream |
 | `access_units` | array | Present only with `detail=` — see below |
@@ -974,18 +974,18 @@ coded channel, LFE last) and `coupling_exponent_strategy`.
 
 ##### AC-4
 
-`probe` auto-detects AC-4 (`ac4::ac4`) by its first byte — `0xAC` rather than AC-3/
-E-AC-3's `0x0B` — so `ac3cli probe stream.ac4` needs no extra flag, and works on `-` (stdin) the
+`probe` auto-detects AC-4 (`iclforge::ac4`) by its first byte — `0xAC` rather than AC-3/
+E-AC-3's `0x0B` — so `forge probe stream.ac4` needs no extra flag, and works on `-` (stdin) the
 same way. It reads the sync frame, table of contents, presentation and substream-group framing —
 channel-coded, A-JOC-coded, direct-coded-object and OAMD substream groups alike — and has every
-frame read by the decoder (`ac4::decoder`) without decoding its audio, for what only the
+frame read by the decoder (`iclforge::ac4dec`) without decoding its audio, for what only the
 substreams carry: each presentation as the decoder sees it, and the metadata of the one it would
 decode. There is no `detail=frames`/`detail=blocks` equivalent (see
 [Verification](../../verification.md#ac-4) for what the inspector's reading does and does not
 cover, including the narrower evidence behind the A-JOC/object/OAMD path).
 
 ```bash
-ac3cli probe tests/golden/external-baseline/ac4-51-film-96/dee.ac4
+forge probe tests/golden/external-baseline/ac4-51-film-96/dee.ac4
 ```
 
 That is a stream DEE encoded, committed with the tests:
@@ -1089,7 +1089,7 @@ rule as AC-3/E-AC-3: 0 only when every sync frame's CRC passed and every frame p
 `qc` is `loudness`'s bitstream-aware counterpart: `loudness` measures a *source* WAV before encoding, `qc` measures what a stream actually *delivers* after encoding and decoding it back, and checks that against what the stream's own metadata claims:
 
 ```bash
-ac3cli qc programme.ec3
+forge qc programme.ec3
 ```
 
 ```text
@@ -1113,7 +1113,7 @@ Add `preset=<name>` (or `preset=all`) to gate that same measurement against a na
 `layout=` chooses which soundfield is metered. The default, `layout=bed`, measures the independent substream's own Table 5.8 bed through BS.1770 Annex 1's basic algorithm — which is all `qc` has ever measured, and on an Atmos or 7.1.4 stream that leaves every dependent substream's height, wide and rear channel out. It now says so rather than reporting the bed as though it were the whole programme. `layout=rendered` measures the assembled program instead, through BS.1770-5 (11/2023) Annex 3's extended algorithm, which weights each channel by its position and so has a weight for every Table E2.5 location:
 
 ```bash
-ac3cli qc atmos.ec3 layout=rendered preset=apple-music-atmos
+forge qc atmos.ec3 layout=rendered preset=apple-music-atmos
 ```
 
 ```text
@@ -1126,7 +1126,7 @@ For a plain 5.1 stream both settings give the same number, by construction — s
 Neither `layout=` setting sees a dynamic object's own *position* — both meter channels, and this project's own encoder folds every object onto the flat 5.1 ring at encode time regardless of where it was authored. `objects=<layout>` re-renders a dynamic-object-only programme's objects by their own OAMD position instead, onto a chosen layout, per ITU-R BS.1770-5 Annex 4:
 
 ```bash
-ac3cli qc atmos.ec3 objects=514
+forge qc atmos.ec3 objects=514
 ```
 
 ```text
@@ -1134,15 +1134,15 @@ qc: atmos.ec3 (E-AC-3, 3/2 + LFE, 48000 Hz, 62 access unit(s), 1.98 s)
   layout=bed  (BS.1770 Annex 1, Table 3 weights over the Table 5.8 bed)
   ...
   objects=5.1.4  (BS.1770-5 Annex 4: objects re-rendered by their own OAMD
-  position, via ac3::spatial's direction panner, then Annex 3)
+  position, via iclforge::spatial's direction panner, then Annex 3)
 ```
 
 See [Options & grammars](metadata-options.md#objectslayout) for why this needs a dynamic-object-only programme and what a bed-and-objects one gets instead. It reads an E-AC-3 stream's JOC objects: `qc` given `objects=` with an AC-4 stream refuses the run (exit `1`), and an AC-3 stream is refused too (exit `2`). `layout=` and `preset=` work on AC-4 as on the other two.
 
-`qc`'s exit code is 0 only when the file decodes cleanly **and** (if a preset was given) every requested gate passes, which is what makes it usable as an actual CI/pipeline QC step: `ac3cli qc out.ec3 preset=ebu-r128-s2 || echo "loudness QC failed"`. With no `preset=` at all it only ever measures and reports (no verdict to fail), so a plain `ac3cli qc <file>` is non-zero solely on an input error. The two non-zero halves are now distinct: `6` means a gate failed (a result), `2` means the stream could not be read (a fault) — see [Exit codes](#exit-codes) below, so a pipeline can react differently to each:
+`qc`'s exit code is 0 only when the file decodes cleanly **and** (if a preset was given) every requested gate passes, which is what makes it usable as an actual CI/pipeline QC step: `forge qc out.ec3 preset=ebu-r128-s2 || echo "loudness QC failed"`. With no `preset=` at all it only ever measures and reports (no verdict to fail), so a plain `forge qc <file>` is non-zero solely on an input error. The two non-zero halves are now distinct: `6` means a gate failed (a result), `2` means the stream could not be read (a fault) — see [Exit codes](#exit-codes) below, so a pipeline can react differently to each:
 
 ```bash
-ac3cli qc out.ec3 preset=ebu-r128-s2
+forge qc out.ec3 preset=ebu-r128-s2
 case $? in
   0) echo "in spec" ;;
   6) echo "out of spec" ;;
@@ -1164,11 +1164,11 @@ Everything above takes PCM. These five take an already-encoded AC-3/E-AC-3 eleme
 | `cat` | Join streams end to end |
 
 ```bash
-ac3cli transcode programme.ec3 programme.ac3 448
+forge transcode programme.ec3 programme.ac3 448
 ```
 
 ```bash
-ac3cli metadata programme.ac3 delivered.ac3 dialnorm=24 bsmod=2
+forge metadata programme.ac3 delivered.ac3 dialnorm=24 bsmod=2
 ```
 
 `transcode` carries the source's metadata across rather than resetting it:
@@ -1239,8 +1239,8 @@ presentations for), 32 kHz, and the AC-3 and E-AC-3 options with no AC-4 counter
 kbps for AC-4 and 448 for AC-3 and E-AC-3.
 
 ```bash
-ac3cli transcode broadcast.ac4 optical.ac3 448 language=en
-ac3cli transcode programme.ec3 programme.ac4 256 drc=film-light
+forge transcode broadcast.ac4 optical.ac3 448 language=en
+forge transcode programme.ec3 programme.ac4 256 drc=film-light
 ```
 
 `cut` and `cat` move whole access units — an E-AC-3 access unit being an independent substream
@@ -1248,9 +1248,9 @@ ac3cli transcode programme.ec3 programme.ac4 256 drc=film-light
 cut is never a split. That makes the round trip exact:
 
 ```bash
-ac3cli cut programme.ac3 head.ac3 0 0.512
-ac3cli cut programme.ac3 tail.ac3 0.512
-ac3cli cat rejoined.ac3 head.ac3 tail.ac3
+forge cut programme.ac3 head.ac3 0 0.512
+forge cut programme.ac3 tail.ac3 0.512
+forge cat rejoined.ac3 head.ac3 tail.ac3
 cmp programme.ac3 rejoined.ac3   # identical
 ```
 
@@ -1260,7 +1260,7 @@ channel count or substream-per-unit count differ from the first — a decoder wa
 no way to be told the format changed.
 
 **Out of scope for all five:** `strmtyp 2` convertible streams — the spec's own no-re-encode
-path to AC-3 — which `ac3::plan::validate` already refuses. Nothing here produces or consumes
+path to AC-3 — which `iclforge::plan::validate` already refuses. Nothing here produces or consumes
 one.
 
 **AC-4 and the four that copy.** `metadata`, `normalize`, `cut` and `cat` frame AC-3 and E-AC-3
@@ -1294,7 +1294,7 @@ ATSC and DVB both register AC-3/E-AC-3 for MPEG-TS carriage, with different, non
 signalling — so a stream satisfies one of them, never a bit of each:
 
 ```bash
-ac3cli ts programme.ec3 programme.ts atsc
+forge ts programme.ec3 programme.ts atsc
 ```
 
 | | `dvb` (default) | `atsc` |
@@ -1319,11 +1319,11 @@ descriptor that quietly says the wrong thing.
 | `asvc=<mask>` | Which main services an **associated** service may be reproduced with, one bit each — decimal, `0xNN`, or a comma-separated list of main-service numbers (`asvc=0,2`) |
 
 ```bash
-ac3cli ts commentary.ac3 commentary.ts atsc asvc=0,2
+forge ts commentary.ac3 commentary.ts atsc asvc=0,2
 ```
 
-Reading a `.ts` back out (`mpegts::demux`/`Reader`) decodes the same descriptor into
-`ReadStream::service` — see [muxing-and-sinks.md](../../library/muxing-and-sinks.md#demuxing-mpegtsdemux-mpegtsreader)
+Reading a `.ts` back out (`iclforge::mpegts::demux`/`Reader`) decodes the same descriptor into
+`ReadStream::service` — see [muxing-and-sinks.md](../../library/muxing-and-sinks.md#demuxing-iclforgempegtsdemux-iclforgempegtsreader)
 for what does and does not survive the round trip.
 
 ### Live & hardware
@@ -1453,7 +1453,7 @@ sock.sendto(osc_xyz(0, 0.8, 0.2, 0.0), ("127.0.0.1", 9000))
 ```
 
 ```bash
-ac3cli live out.ec3 0 60 192 -2 -2 atmos positions=osc:9000
+forge live out.ec3 0 60 192 -2 -2 atmos positions=osc:9000
 ```
 
 That starts a 60-second object session listening on loopback port 9000; the Python snippet above
@@ -1474,15 +1474,15 @@ a subwoofer is not asked for midrange — and prints which channel and which out
 to:
 
 ```bash
-ac3cli identify                       # the default endpoint, its own speakers, 2 s each
-ac3cli identify 0 7.1.4 3             # endpoint 0 from 'outputs', a 7.1.4 layout, 3 s each
-ac3cli identify 0 - 2 1,0,2,3,4,5     # the same, with the front pair swapped
-ac3cli identify 0 5.1 2 - -30         # quieter: -30 dB RMS instead of -20
+forge identify                       # the default endpoint, its own speakers, 2 s each
+forge identify 0 7.1.4 3             # endpoint 0 from 'outputs', a 7.1.4 layout, 3 s each
+forge identify 0 - 2 1,0,2,3,4,5     # the same, with the front pair swapped
+forge identify 0 5.1 2 - -30         # quieter: -30 dB RMS instead of -20
 ```
 
 The stream is opened at the **device's own** channel count rather than the programme's, and each
 rendered channel is placed at the output a routing patch names
-(`ac3::audio::PcmOutput`, `ac3::render::Routing`). That is what makes the check meaningful: an
+(`iclforge::audio::PcmOutput`, `iclforge::render::Routing`). That is what makes the check meaningful: an
 eight-channel HDMI endpoint is driven as eight outputs, not as six channels for a mixer to
 spread, and a channel with nowhere to go is reported as `not patched` instead of vanishing
 silently.
@@ -1502,15 +1502,15 @@ each an output index or `-`.
 `spatial` decodes an E-AC-3 stream's object layer and submits each reconstructed
 object to the operating system's own spatial renderer at the position its OAMD carries, instead
 of folding the objects into a bed first. On Windows that renderer is
-`ISpatialAudioObjectRenderStream`, reached through `ac3::audio::SpatialObjectSink`; no other
+`ISpatialAudioObjectRenderStream`, reached through `iclforge::audio::SpatialObjectSink`; no other
 backend in the tree implements one, so on Linux, macOS and Android the command is listed and
 reports itself unavailable — the same treatment the capture and passthrough commands get where
 their backends are missing (`Needs::kSpatial` in `apps/cli/main.cpp`, answered by
 `src/audio/src/backend/<os>/audio_backend.cpp`).
 
 ```bash
-ac3cli spatial programme.ec3       # the default endpoint
-ac3cli spatial programme.ec3 2     # an index from 'ac3cli outputs'
+forge spatial programme.ec3       # the default endpoint
+forge spatial programme.ec3 2     # an index from 'forge outputs'
 ```
 
 Two refusals come before anything is decoded. A plain AC-3 input is rejected because only E-AC-3
@@ -1532,7 +1532,7 @@ than a measured one. Moving an object moves it in the right direction by the rig
 an approximate absolute distance. The session prints its object count and endpoint at the start,
 and the access units played, active dynamic objects and underruns at the end.
 
-`spatial` builds its `ac3::DecoderConfig` from the same options `decode` and `monitor` do, so the
+`spatial` builds its `iclforge::DecoderConfig` from the same options `decode` and `monitor` do, so the
 decode-side tokens above (`drc=`, `heavy`, `conceal=`, `fast-imdct=off`) reach it, and
 `verify-objects` checks each frame's object signature here as it does there. Two do not reach it:
 `run_spatial` leaves `fast-mdct=off` and `joc-domain=` out of the config it builds, so the JOC
@@ -1561,13 +1561,13 @@ fallback instead of a plain refusal:
 
 - **E-AC-3 on an AC-3-only sink** is transcoded to AC-3 first (`transcode`, run
   against a temporary file and cleaned up afterwards — dialnorm, `compr` and the mix metadata
-  carry across exactly as a direct `ac3cli transcode` call would), then that AC-3 plays the way
+  carry across exactly as a direct `forge transcode` call would), then that AC-3 plays the way
   a plain AC-3 source file always has. This is the "no 5.1 PCM over optical" case: an optical
   link can carry compressed AC-3 up to 640 kbit/s but never multichannel PCM, so a 5.1 E-AC-3
-  source has no other way through — what used to take `ac3cli transcode in.ec3 tmp.ac3 448`
-  followed by `ac3cli play tmp.ac3 <device_index>` is now one command.
+  source has no other way through — what used to take `forge transcode in.ec3 tmp.ac3 448`
+  followed by `forge play tmp.ac3 <device_index>` is now one command.
 - **A sink that bitstreams neither AC-3 nor E-AC-3** falls back to decoded PCM instead —
-  `ac3cli monitor`'s own path, which folds a wide programme down to the endpoint's real channel
+  `forge monitor`'s own path, which folds a wide programme down to the endpoint's real channel
   count per §7.8 rather than handing it to a shared-mode mixer to average down however it sees
   fit.
 - **A sink that accepts neither a bitstream fallback nor PCM** gets the plain refusal `play` has
@@ -1583,7 +1583,7 @@ AC-4 stream to PCM on an ordinary output whatever the sink accepts, and with `fo
 asks for passthrough alone, it refuses the stream (exit `4`).
 
 ```bash
-ac3cli play programme.ec3 2 follow=off   # refuse instead of adapting
+forge play programme.ec3 2 follow=off   # refuse instead of adapting
 ```
 
 `live container=fmp4`: the output path names a **folder**, written as the session runs rather than
@@ -1633,10 +1633,10 @@ muxer as an independent oracle.
 | Command | What it does |
 |---|---|
 | `help` | With no argument, the whole usage listing. With a command name, just that command's row and the option grammars it actually uses — not the ~130 lines of prose an argument error used to print. `help exit-codes` prints the exit-code table below. |
-| `man` | A section-1 groff man page on stdout, generated from the same command table. `cmake --build` writes it to `ac3cli.1` and `cmake --install` puts it under `share/man/man1`. |
+| `man` | A section-1 groff man page on stdout, generated from the same command table. `cmake --build` writes it to `forge.1` and `cmake --install` puts it under `share/man/man1`. |
 | `completions` | A completion script for `bash`, `zsh`, `fish` or `powershell` on stdout, generated from the same table plus the option list. Installed under the conventional per-shell directories; the Homebrew formula places the bash and fish halves through Homebrew's own helpers. |
 
-`ac3cli <command> --help` (or `-h`) is `ac3cli help <command>` spelled the other way round, and
+`forge <command> --help` (or `-h`) is `forge help <command>` spelled the other way round, and
 works even when the rest of the command line would not have satisfied that command.
 
 Every command also takes `quiet` (no status output at all — errors and, for a `-` output, the
@@ -1656,7 +1656,7 @@ payload) and `verbose` (the stderr progress line whatever the run's length). See
 | `6` | A QC gate failed |
 | `7` | Internal — an exception escaped a command |
 
-`ac3cli help exit-codes` prints the same table with a sentence on each; see
+`forge help exit-codes` prints the same table with a sentence on each; see
 [Options & grammars](metadata-options.md#exit-codes) for the full descriptions and a worked
 `qc` example.
 

@@ -1,8 +1,8 @@
-# ac3forge-wasm-decoder
+# iclforge-wasm-decoder
 
 A streaming AC-3/E-AC-3 (Dolby Digital/Digital Plus) decoder for the browser, compiled from
-[`ac3::forge`](https://github.com/iainchesworthlabs/ac3forge) to WebAssembly. The
-`ac3forge-wasm-decoder/ac4` export decodes and encodes AC-4 ([AC-4](#ac-4)).
+[`iclforge::ac3`](https://github.com/iainchesworthlabs/ac3forge) to WebAssembly. The
+`iclforge-wasm-decoder/ac4` export decodes and encodes AC-4 ([AC-4](#ac-4)).
 Built because a browser cannot be relied on to decode EC-3:
 [Chrome reports a decoder error](https://github.com/videojs/http-streaming/issues/1297) when an EC-3
 track turns up in an MPD, in a report that has been open since 2023. This package is an embeddable
@@ -10,19 +10,19 @@ decoder for it.
 
 Four pieces for AC-3 and E-AC-3:
 
-- **A push-frame decode API** (`PushDecoder`) over `ac3::Eac3Decoder::decode_access_unit_into`'s
+- **A push-frame decode API** (`PushDecoder`) over `iclforge::Eac3Decoder::decode_access_unit_into`'s
   caller-buffer form - the hot path allocates nothing on the C++ side.
-- **An `Ac3ForgeDecoderNode`**: an `AudioWorkletNode`. Decoding runs in a Worker (off the
+- **An `IclForgeDecoderNode`**: an `AudioWorkletNode`. Decoding runs in a Worker (off the
   main thread); the audio-rendering thread itself only drains a `SharedArrayBuffer` ring buffer.
-- **Multichannel output, or the §7.8 downmix** (Lo/Ro, Lt/Rt, mono) - `ac3::OutputStage`, the
+- **Multichannel output, or the §7.8 downmix** (Lo/Ro, Lt/Rt, mono) - `iclforge::OutputStage`, the
   library's own output stage, never a hand-rolled fold.
 - **An hls.js/MSE bridge** for playing EC-3 in browsers that cannot decode it natively.
 
 This package embeds no compiled `.wasm`/`.js` binary of its own - every API here takes the
-`createAc3ForgeModule` factory (or a URL to it) as a parameter. Build it from
+`createIclForgeModule` factory (or a URL to it) as a parameter. Build it from
 [`apps/wasm/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/apps/wasm) in the main
 repository (see [docs/platforms/wasm.md](https://iainchesworthlabs.github.io/ac3forge/platforms/wasm/))
-and host the resulting `ac3forge_decode.js`/`.wasm` yourself - the same way most WASM packages let
+and host the resulting `iclforge_decode.js`/`.wasm` yourself - the same way most WASM packages let
 you control your own CORS/CDN story instead of assuming a bundler will do it for you.
 
 ## Install
@@ -32,7 +32,7 @@ install the directory:
 
 ```bash
 git clone https://github.com/iainchesworthlabs/ac3forge
-cd ac3forge/js
+cd iclforge/js
 npm ci          # TypeScript is the only dependency
 npm run build   # compiles src/ to dist/
 npm test        # optional: the unit tests, under the coverage floors listed below
@@ -41,20 +41,20 @@ npm test        # optional: the unit tests, under the coverage floors listed bel
 then, in your own project:
 
 ```bash
-npm install /path/to/ac3forge/js
+npm install /path/to/iclforge/js
 ```
 
 ## Loading the WASM module
 
-Load `ac3forge_decode.js` as a classic script (it defines a global `createAc3ForgeModule`
-factory - see `apps/wasm/CMakeLists.txt`'s `-sMODULARIZE=1 -sEXPORT_NAME=createAc3ForgeModule`):
+Load `iclforge_decode.js` as a classic script (it defines a global `createIclForgeModule`
+factory - see `apps/wasm/CMakeLists.txt`'s `-sMODULARIZE=1 -sEXPORT_NAME=createIclForgeModule`):
 
 ```html
-<script src="/path/to/ac3forge_decode.js"></script>
+<script src="/path/to/iclforge_decode.js"></script>
 ```
 
 ```ts
-const module = await createAc3ForgeModule();
+const module = await createIclForgeModule();
 ```
 
 ## Whole-file decode
@@ -63,7 +63,7 @@ For a complete file already in memory - scrubbing, per-object solo playback, any
 random access into the whole programme:
 
 ```ts
-import { decodeFile, DownmixTarget } from "ac3forge-wasm-decoder";
+import { decodeFile, DownmixTarget } from "iclforge-wasm-decoder";
 
 const bytes = new Uint8Array(await (await fetch("clip.ec3")).arrayBuffer());
 const program = decodeFile(module, bytes, {
@@ -80,7 +80,7 @@ const program = decodeFile(module, bytes, {
 For a live/streaming source (your own transport, a container demuxer, the hls.js bridge below):
 
 ```ts
-import { PushDecoder, scanStream, DownmixTarget } from "ac3forge-wasm-decoder";
+import { PushDecoder, scanStream, DownmixTarget } from "iclforge-wasm-decoder";
 
 const decoder = new PushDecoder(module, { target: DownmixTarget.AsCoded });
 // unit: one AC-3 syncframe, or one E-AC-3 access unit (an independent substream plus its
@@ -98,13 +98,13 @@ decoder.close(); // release the underlying WASM object when done
 ## Realtime playback (AudioWorklet)
 
 ```ts
-import { Ac3ForgeDecoderNode, DownmixTarget } from "ac3forge-wasm-decoder";
+import { IclForgeDecoderNode, DownmixTarget } from "iclforge-wasm-decoder";
 
 const audioContext = new AudioContext();
-const node = await Ac3ForgeDecoderNode.create(audioContext, {
-  workletProcessorUrl: new URL("ac3forge-wasm-decoder/worklet-processor", import.meta.url),
-  workerUrl: new URL("ac3forge-wasm-decoder/decoder-worker", import.meta.url),
-  wasmGlueUrl: "/path/to/ac3forge_decode.js",
+const node = await IclForgeDecoderNode.create(audioContext, {
+  workletProcessorUrl: new URL("iclforge-wasm-decoder/worklet-processor", import.meta.url),
+  workerUrl: new URL("iclforge-wasm-decoder/decoder-worker", import.meta.url),
+  wasmGlueUrl: "/path/to/iclforge_decode.js",
   fold: { target: DownmixTarget.LoRo, applyDialnorm: true },
 });
 node.node.connect(audioContext.destination);
@@ -117,28 +117,28 @@ node.pushAccessUnit(unit);
 
 `workletProcessorUrl`/`workerUrl` need to resolve to actual servable URLs for this package's
 compiled `worklet-processor.js`/`decoder-worker.js` - a bundler resolves
-`new URL("ac3forge-wasm-decoder/...", import.meta.url)` into a real asset automatically; a plain
-static site can instead copy `node_modules/ac3forge-wasm-decoder/dist/*` next to its own script
+`new URL("iclforge-wasm-decoder/...", import.meta.url)` into a real asset automatically; a plain
+static site can instead copy `node_modules/iclforge-wasm-decoder/dist/*` next to its own script
 and point directly at those files.
 
 **Requires cross-origin isolation** (`Cross-Origin-Opener-Policy: same-origin`,
 `Cross-Origin-Embedder-Policy: require-corp` response headers) - `SharedArrayBuffer` is
-unavailable otherwise, and `Ac3ForgeDecoderNode.create()` throws a clear error rather than
+unavailable otherwise, and `IclForgeDecoderNode.create()` throws a clear error rather than
 failing silently when it's missing.
 
 ## AC-4
 
-The `ac3forge-wasm-decoder/ac4` subpath exports `Ac4Decoder` and `Ac4Encoder`, typed wrappers over
-the AC-4 Embind module `apps/wasm/` builds as `ac3forge_ac4.js` (`loadAc4Module(glueUrl)` loads
+The `iclforge-wasm-decoder/ac4` subpath exports `Ac4Decoder` and `Ac4Encoder`, typed wrappers over
+the AC-4 Embind module `apps/wasm/` builds as `iclforge_ac4.js` (`loadAc4Module(glueUrl)` loads
 it). The encoder writes channel-based content or one object substream of A-JOC or direct-coded
 objects, with each object's metadata and the changes to it given beside the PCM; the decoder
 returns each object's properties and the block updates within a frame. Every field an options
 object leaves out keeps the C++ default.
 
 ```ts
-import { Ac4Encoder, Ac4Decoder, loadAc4Module } from "ac3forge-wasm-decoder/ac4";
+import { Ac4Encoder, Ac4Decoder, loadAc4Module } from "iclforge-wasm-decoder/ac4";
 
-const module = await loadAc4Module("/wasm/ac3forge_ac4.js");
+const module = await loadAc4Module("/wasm/iclforge_ac4.js");
 const encoder = new Ac4Encoder(module, {
   bitrateKbps: 256,
   experimental: { objects: true },
@@ -173,9 +173,9 @@ normally, diverting the real segment bytes to this package's decoder instead of 
 `SourceBuffer`:
 
 ```ts
-import { attachHlsAudioBridge, Ac3ForgeDecoderNode } from "ac3forge-wasm-decoder";
+import { attachHlsAudioBridge, IclForgeDecoderNode } from "iclforge-wasm-decoder";
 
-const decoderNode = await Ac3ForgeDecoderNode.create(audioContext, { /* ... */ });
+const decoderNode = await IclForgeDecoderNode.create(audioContext, { /* ... */ });
 decoderNode.node.connect(audioContext.destination);
 
 // Install the shim BEFORE constructing Hls - it needs to see MediaSource.isTypeSupported
@@ -206,13 +206,13 @@ hls.attachMedia(videoElement); // video still decodes natively; only audio is di
   stub (`hls-bridge.test.js`), and `attachHlsAudioBridge` against the same fMP4 fixture split into
   init and media segments (`hls-bridge-attach.test.js`).
 - The TypeScript around the WASM module - `PushDecoder`, `decodeFile`, the decode worker, the
-  worklet processor and `Ac3ForgeDecoderNode` - unit-tested in Node against a scripted stand-in for
+  worklet processor and `IclForgeDecoderNode` - unit-tested in Node against a scripted stand-in for
   the Embind module and fake Worker/Web Audio globals (`tests/fake-embind.js`). These check the
   wrappers' own logic; decoding itself is covered by the C++ suite.
 - The AC-4 wrappers (`loadAc4Module`, `Ac4Decoder`, `Ac4Encoder`): unit-tested in Node against the
   same kind of stand-in for the AC-4 Embind module (`ac4.test.js`), and `package-exports.test.js`
   checks the `exports` map, `./ac4` included. No browser test loads the compiled
-  `ac3forge_ac4.wasm` yet.
+  `iclforge_ac4.wasm` yet.
 - `npm test` fails under 95% line, 90% branch or 95% function coverage of `dist/`.
 
 **Not yet verified**: a live hls.js instance against an HLS manifest and segment server carrying
@@ -234,14 +234,14 @@ image, so it is worth stating plainly.
 
 ## Versioning and publishing
 
-**Not published to npm.** The package name `ac3forge-wasm-decoder` is not on the registry;
+**Not published to npm.** The package name `iclforge-wasm-decoder` is not on the registry;
 consume it from source (`js/`, see [Install](#install)). When publishing is enabled its version will track the
 main repository's own release
-tags exactly the way the `ac3forge` PyPI package does (see
+tags exactly the way the `iclforge` PyPI package does (see
 [docs/releasing.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/releasing.md)) -
 this package's `package.json` carries only a `0.0.0-dev` placeholder; `npm.yml`'s `publish` job
 stamps the release version immediately before publishing.
 
 ## License
 
-GPL-3.0-only, same as the rest of [ac3forge](https://github.com/iainchesworthlabs/ac3forge).
+GPL-3.0-only, same as the rest of [ICL Forge](https://github.com/iainchesworthlabs/ac3forge).

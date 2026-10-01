@@ -1,8 +1,8 @@
 # ---------------------------------------------------------------------------
 # iclforge::arithmetic - the scalar building blocks the decoder's arithmetic tiers
-# share: Fixed32 (ac3/internal/fixed32.hpp, the Q7.24 fixed-point tier's
+# share: Fixed32 (iclforge/arithmetic/fixed32.hpp, the Q7.24 fixed-point tier's
 # type) and the project's own cross-platform-identical float transcendentals
-# (ac3/internal/scalar_math.hpp). Header-only, so there is nothing to
+# (iclforge/arithmetic/scalar_math.hpp). Header-only, so there is nothing to
 # compile here - just a target that carries the include path.
 #
 # Why this is its own target rather than living inside iclforge::ac3, where both
@@ -79,7 +79,7 @@ endif()
 #
 # The mechanism src/internal/profiling/tracy_{enabled,disabled}/ uses for the
 # profiling seam, on the architecture axis: arch/{generic,x86_64,aarch64}/ each
-# hold an identically-pathed ac3/internal/arch/simd.hpp, one of them goes on the
+# hold an identically-pathed iclforge/arithmetic/detail/simd.hpp, one of them goes on the
 # include path, and every `#include "iclforge/arithmetic/detail/simd.hpp"` in the
 # codec resolves to it. No translation unit ever asks what it is being
 # compiled for - the rule tools/checks/check_platform_macros.ps1 enforces -

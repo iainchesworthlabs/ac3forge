@@ -1,10 +1,10 @@
-# AC-4 (ETSI TS 103 190): `ac4::decoder` and `ac4::encoder`
+# AC-4 (ETSI TS 103 190): `iclforge::ac4dec` and `iclforge::ac4enc`
 
-`ac4dec/decoder.hpp`, library `ac4::decoder`, and `ac4enc/encoder.hpp`, library `ac4::encoder`,
-with the inspector both work through, `ac4/ac4.hpp` in library `ac4::ac4`. An AC-4 decoder and
+`iclforge/ac4dec/decoder.hpp`, library `iclforge::ac4dec`, and `iclforge/ac4enc/encoder.hpp`, library `iclforge::ac4enc`,
+with the inspector both work through, `iclforge/ac4/ac4.hpp` in library `iclforge::ac4`. An AC-4 decoder and
 encoder written from ETSI TS 103 190-1 V1.4.1 (channel-based coding) and TS 103 190-2 V1.3.1
 (immersive and personalized audio). The libraries are in namespace `ac4` and link nothing from
-`ac3::forge`: AC-4 shares no bitstream syntax with AC-3 or E-AC-3. The encoder is described under
+`iclforge::ac3`: AC-4 shares no bitstream syntax with AC-3 or E-AC-3. The encoder is described under
 [Encoding a stream](#encoding-a-stream), and the [AC-4 concepts page](../concepts/ac4.md)
 explains the format.
 
@@ -24,26 +24,26 @@ is checked.
 
 ## Decoding a stream
 
-A player's stream arrives in pieces. `ac4::SyncFrameSplitter` hands over each sync frame once all
-of it has arrived, and `ac4::Decoder::decode_by_block` turns it into PCM for one presentation, in
+A player's stream arrives in pieces. `iclforge::ac4::SyncFrameSplitter` hands over each sync frame once all
+of it has arrived, and `iclforge::ac4::Decoder::decode_by_block` turns it into PCM for one presentation, in
 blocks of 256 samples. The settings a television offers go in the configuration:
 
 ```cpp
-ac4::DecoderConfig config;
+iclforge::ac4::DecoderConfig config;
 config.output.output_level_dbfs = -24.0;     // Lout: the dialogue level the output is taken to
-config.output.drc = ac4::DrcMode::kDefault;  // the mode that output level selects
-config.output.downmix = ac4::DownmixTarget::kStereo;
+config.output.drc = iclforge::ac4::DrcMode::kDefault;  // the mode that output level selects
+config.output.downmix = iclforge::ac4::DownmixTarget::kStereo;
 config.output.dialogue_enhancement_db = 6.0;  // up to the stream's cap
 config.presentation.language = "en";          // where the stream offers a choice
-ac4::Decoder decoder(config);
+iclforge::ac4::Decoder decoder(config);
 
 // The splitter owns no memory: this holds the frame being assembled.
-std::vector<std::byte> storage(ac4::kSplitterRecommendedBuffer);
-ac4::SyncFrameSplitter splitter{storage};
+std::vector<std::byte> storage(iclforge::ac4::kSplitterRecommendedBuffer);
+iclforge::ac4::SyncFrameSplitter splitter{storage};
 std::size_t frames = 0;
 for (;;) {
     const auto next = splitter.next();
-    if (next.status == ac4::SyncFrameSplitter::Status::kNeedMoreInput) {
+    if (next.status == iclforge::ac4::SyncFrameSplitter::Status::kNeedMoreInput) {
         const std::span<std::byte> space = splitter.writable();
         const std::size_t want = std::min<std::size_t>(space.size(), 4096);
         in.read(reinterpret_cast<char*>(space.data()), static_cast<std::streamsize>(want));
@@ -55,7 +55,7 @@ for (;;) {
         }
         continue;
     }
-    if (next.status != ac4::SyncFrameSplitter::Status::kFrame) {
+    if (next.status != iclforge::ac4::SyncFrameSplitter::Status::kFrame) {
         break;  // kEndOfStream, or kTruncated at a cut-off last frame
     }
     ++frames;
@@ -74,13 +74,13 @@ Full program: [`examples/decode_ac4.cpp`](https://github.com/iainchesworthlabs/a
 decodes the stream it is given to stereo, then prints the presentations it found and the metadata
 of the one it decoded. `ctest` runs it on a committed DEE stream.
 
-`sink` is any callable taking a `const ac4::PcmBlock&`: one span per channel, the speakers they
-are for, the sample rate and the block's position in the output. `ac4::BlockSink` refers to it
+`sink` is any callable taking a `const iclforge::ac4::PcmBlock&`: one span per channel, the speakers they
+are for, the sample rate and the block's position in the output. `iclforge::ac4::BlockSink` refers to it
 without copying it, so it has to outlive the call, which a lambda named before the loop does. A
 frame's samples rarely divide into 256 (2 002 at 23.976 fps), so each call hands over the whole
 blocks it has and holds the rest for the next frame, and `flush()` hands over what is left at the
 end. Once the layout is set, decoding this way allocates nothing per frame. `decode()` returns the
-same output a frame at a time instead, as an `ac4::DecodedFrame` of planar channels.
+same output a frame at a time instead, as an `iclforge::ac4::DecodedFrame` of planar channels.
 
 A frame that produces no output, such as the frames of a stream joined before its first I-frame,
 returns nothing rather than an error. A frame that does not decode returns its error, and
@@ -107,13 +107,13 @@ to the next, and a new layout starts its channels' synthesis from silence.
 `DecoderConfig` holds the rest: `output`, `presentation` (below), `concealment`, `level` (the
 `md_compat` level the decoder claims, 3 by default; presentations above it are not chosen),
 `decoding` (full or core decoding, Part 2 clause 4.7, full by default), and `syntax`, a trace of
-every syntax element read. `syntax` is an `ac4::SyntaxTrace`, a
+every syntax element read. `syntax` is an `iclforge::ac4::SyntaxTrace`, a
 `std::function` the configuration owns, and the decoder keeps a copy of its own, so a lambda
 written in place, in a class's constructor for instance, stays valid; what it captures by
 reference has to outlive the decoder. The records are described under
 [Validation](../verification.md#the-decoders-syntax).
 
-`ac3cli decode` spells each control as an option (`output-level=`, `drcmode=`, `headphones`,
+`forge decode` spells each control as an option (`output-level=`, `drcmode=`, `headphones`,
 `dialogue-enhancement=`, `channels=`, `downmix=`, `speakers=`, `mix-lfe=`, `dialogue-gain=`,
 `associated-gain=`, `md-compat=`, `decoding=`, `conceal=`); see
 [Commands](../forge/cli/commands.md#the-output-stage-channels-downmix-drcmode).
@@ -137,15 +137,15 @@ needs no I-frame; its signal starts from silence.
 
 Of the presentations this decoder can decode, the stream has not disabled and whose `md_compat` is
 within the decoder's level, the one that meets the choice is decoded, the first in the table of
-contents among equals. `ac4::select_presentation(toc, choice, level)` makes the same choice from a
+contents among equals. `iclforge::ac4::select_presentation(toc, choice, level)` makes the same choice from a
 table of contents alone. Where the text leaves the choice open, `src/ac4dec/ERRATA.md` records the
-reading taken. `ac3cli decode` takes the choice as `presentation=` (the position),
+reading taken. `forge decode` takes the choice as `presentation=` (the position),
 `presentation-id=`, `language=`, `associated=` and `headphones`.
 
 ## What the decoder reports
 
 - `presentations()`: each presentation of the last frame's table of contents, as
-  `ac4::PresentationInfo`: its `presentation_id`, version, configuration and `md_compat`, whether
+  `iclforge::ac4::PresentationInfo`: its `presentation_id`, version, configuration and `md_compat`, whether
   it is enabled, an alternative or pre-virtualized, its name (Part 2 clause 6.3.3.1.4; a name sent
   in chunks over several frames once the decoder has all of it), its language, the channels it
   decodes to, its substreams with the role each plays, and whether this decoder decodes it and may
@@ -155,7 +155,7 @@ reading taken. `ac3cli decode` takes the choice as `presentation=` (the position
   configuration with each decoder mode and the one applied, dialogue enhancement's method, channels
   and cap, and the downmix gains and preferred method. Values a stream sends only in I-frames are
   kept until a change of source.
-- `parse()`: a frame read without decoding, as an `ac4::FrameReport`: every substream of its
+- `parse()`: a frame read without decoding, as an `iclforge::ac4::FrameReport`: every substream of its
   `substream_index_table()` in index order, what it turned out to be, how many bits the syntax
   took of it, and, for one not read to its end, the error and the reason. A substream that no
   element of the table of contents this decoder reads names, an HSF extension substream that
@@ -165,7 +165,7 @@ reading taken. `ac3cli decode` takes the choice as `presentation=` (the position
   `frame_rate_index` 13 and at the other indices the same at the internal rate plus the sample rate
   converter's delay. `decode_by_block()` holds back up to 255 samples more.
 
-`ac3cli probe json=1` writes the same reports for a stream: see
+`forge probe json=1` writes the same reports for a stream: see
 [Commands](../forge/cli/commands.md#ac-4).
 
 ## Objects
@@ -197,15 +197,15 @@ spatial format, into `channels`: 7.X.4 as coded and the `downmix` layout otherwi
 of objects alone has no channels besides; `decode_by_block()` hands over channels only, so a player
 of objects takes them from `decode()`.
 
-`ac3cli decode` renders a presentation with objects to speakers through the layout renderer Hearth
-plays E-AC-3's objects with (`ac3::render::LayoutRenderer`, by way of
+`forge decode` renders a presentation with objects to speakers through the layout renderer Hearth
+plays E-AC-3's objects with (`iclforge::render::LayoutRenderer`, by way of
 `apps/common/ac4_object_render.hpp`): each object panned from its position at its gain, moving to
 each update over its ramp, to the layout `speakers=`, `channels=` or `downmix=` names, 7.1.4
 without them. Width, divergence, zones and the screen factor are not rendered.
 
 ## Encoding a stream
 
-`ac4::Encoder` writes mono, stereo, 5.0 and 5.1, and 5.0.4 and 5.1.4 in Part 2's immersive element
+`iclforge::ac4::Encoder` writes mono, stereo, 5.0 and 5.1, and 5.0.4 and 5.1.4 in Part 2's immersive element
 (and, as experimental options, 7.0, 7.1, 7.0.4, 7.1.4 and a 3.0 dialogue substream), at 48 kHz at
 every frame rate of Part 1 Table 83, or at 44.1 kHz in frames of 2 048 samples, in the SIMPLE, ASPX
 and A-CPL codec modes and, in the immersive layouts, S-CPL and A-SPX with S-CPL, at a constant,
@@ -213,27 +213,27 @@ average or variable rate. It takes planar samples at full scale 1.0, in the orde
 writes them, and returns raw AC-4 frames:
 
 ```cpp
-ac4::EncoderConfig config{
+iclforge::ac4::EncoderConfig config{
     .channels = 6,          // 5.1: L R C LFE Ls Rs
     .frame_rate_index = 2,  // 25 fps; 13, the default, is the 2 048-sample frame
     .bitrate_kbps = 384,
     .dialnorm_db = -24.0,
-    .drc = ac4::DrcConfig{.profile = ac4::DrcProfile::kFilmStandard},
+    .drc = iclforge::ac4::DrcConfig{.profile = iclforge::ac4::DrcProfile::kFilmStandard},
 };
-auto encoder = ac4::Encoder::create(config);
+auto encoder = iclforge::ac4::Encoder::create(config);
 if (!encoder) {
-    const std::string_view why = ac4::Encoder::refusal_reason(config);
+    const std::string_view why = iclforge::ac4::Encoder::refusal_reason(config);
     fmt::println("refused: {}", why);  // e.g. "a rate outside 8 to 3 000 kbps"
     return 1;
 }
 for (const auto& block : input) {  // any number of samples at a time
     auto frames = encoder->encode(block.channels);
-    for (const ac4::EncodedFrame& frame : *frames) {
-        write(ac4::sync_frame(frame.raw_ac4_frame, true));  // a raw .ac4 file's sync frame
+    for (const iclforge::ac4::EncodedFrame& frame : *frames) {
+        write(iclforge::ac4::sync_frame(frame.raw_ac4_frame, true));  // a raw .ac4 file's sync frame
     }
 }
-for (const ac4::EncodedFrame& frame : *encoder->flush()) {
-    write(ac4::sync_frame(frame.raw_ac4_frame, true));
+for (const iclforge::ac4::EncodedFrame& frame : *encoder->flush()) {
+    write(iclforge::ac4::sync_frame(frame.raw_ac4_frame, true));
 }
 ```
 
@@ -268,11 +268,11 @@ enhancement, the dialogue beside another substream), and presentations that play
 Part 2 Table 53's roles:
 
 ```cpp
-ac4::EncoderConfig config{.bitrate_kbps = 448};
+iclforge::ac4::EncoderConfig config{.bitrate_kbps = 448};
 config.substreams = {
-    {.channels = 6, .content = ac4::ContentClassifier::kMusicAndEffects},
-    {.channels = 1, .content = ac4::ContentClassifier::kDialogue, .language = "en"},
-    {.channels = 1, .content = ac4::ContentClassifier::kDialogue, .language = "de"},
+    {.channels = 6, .content = iclforge::ac4::ContentClassifier::kMusicAndEffects},
+    {.channels = 1, .content = iclforge::ac4::ContentClassifier::kDialogue, .language = "en"},
+    {.channels = 1, .content = iclforge::ac4::ContentClassifier::kDialogue, .language = "de"},
 };
 config.presentations = {
     {.config = 0, .substreams = {0, 1}},  // music and effects with English dialogue
@@ -290,23 +290,23 @@ encoder refuses there, and why, is in the header and `src/ac4enc/ERRATA.md`.
 
 With `experimental.objects`, a substream codes objects in place of channels: each object's PCM, one
 input channel each, and its metadata over time in the `ObjectProperties` the decoder reports
-(`ac4/ac4.hpp`). The applications convert object scenes, ADM BWF and IAB masters into these
-(`ac3cli atmos-encode`, `atmos-adm` and `atmos-iab` with `codec=ac4`, and the Forge GUI's encoder
+(`iclforge/ac4/ac4.hpp`). The applications convert object scenes, ADM BWF and IAB masters into these
+(`forge atmos-encode`, `atmos-adm` and `atmos-iab` with `codec=ac4`, and the Forge GUI's encoder
 page, through `apps/common/ac4_objects_core.hpp`); the library reads no scene format.
 
 ```cpp
-ac4::EncoderConfig config{.bitrate_kbps = 256};
+iclforge::ac4::EncoderConfig config{.bitrate_kbps = 256};
 config.experimental.objects = true;
-ac4::ObjectsConfig objects;
+iclforge::ac4::ObjectsConfig objects;
 objects.objects = {
     {.properties = {.position = {0.0, 0.0, 0.0}}},  // a dynamic object at the front left
-    {.bed = ac4::BedChannel::kCentre},              // a bed object on C
+    {.bed = iclforge::ac4::BedChannel::kCentre},              // a bed object on C
     {.lfe = true},                                  // the LFE
 };
 config.substreams = {{.objects = objects}};
-auto encoder = ac4::Encoder::create(config);
+auto encoder = iclforge::ac4::Encoder::create(config);
 // Object 0 moves to the front right over 2 048 samples from input sample 48 000 on.
-const ac4::ObjectMetadataUpdate move{
+const iclforge::ac4::ObjectMetadataUpdate move{
     .object = 0, .sample = 48000, .ramp_samples = 2048,
     .properties = {.position = {1.0, 0.0, 0.0}}};
 auto frames = encoder->encode(channels, std::span(&move, 1));
@@ -330,62 +330,62 @@ Part 1's elements, with the LFE in the first and an OAMD substream for the group
 An update at input sample n comes out of the decoder at n + `delay_samples()` +
 `decoder_delay_samples()`, to within 32 samples. The object substream is the stream's one, at
 `frame_rate_index` 13, played by presentations of it alone; an A-JOC presentation takes md_compat 3,
-and 7 above 17 objects. `ac3cli ac4-encode objects=` takes a scene file of these terms: see
+and 7 above 17 objects. `forge ac4-encode objects=` takes a scene file of these terms: see
 [Commands](../forge/cli/commands.md#ac4-encode).
 
 ### Containers
 
-`ac4::sync_frame()` wraps a frame for a raw `.ac4` file or an MPEG-2 transport stream, with Part 2
+`iclforge::ac4::sync_frame()` wraps a frame for a raw `.ac4` file or an MPEG-2 transport stream, with Part 2
 Annex G's CRC or without it. An MP4 sample holds the raw frame as it is, and the sample entry's
-`dac4` box comes from the table of contents the encoder reports: `ac4::build_dac4(encoder->toc())`
-describes every presentation, and `ac4::media_timing()` gives the track's time scale. A CMAF track
-keeps TS 103 190-2 Annex H.1.2's rules, which `ac4::cmaf_refusal()` checks: a presentation of
+`dac4` box comes from the table of contents the encoder reports: `iclforge::ac4::build_dac4(encoder->toc())`
+describes every presentation, and `iclforge::ac4::media_timing()` gives the track's time scale. A CMAF track
+keeps TS 103 190-2 Annex H.1.2's rules, which `iclforge::ac4::cmaf_refusal()` checks: a presentation of
 configuration 6, EMDF payloads alone, has no field for the `presentation_id` each presentation of
 a CMAF track carries.
 
 MPEG-TS carries AC-4 under the DVB profile only, and Matroska registers no codec ID for it, so
-`ac3cli mkv` refuses an AC-4 stream. `ac3cli ac4-encode` spells each setting as an option, raw or
-MP4 by the output's name: see [Commands](../forge/cli/commands.md#ac4-encode); `ac3cli mp4`, `ts`
-and `fmp4` package a stream that already exists, and [Muxing & sinks](muxing-and-sinks.md#muxing-mp4mux)
+`forge mkv` refuses an AC-4 stream. `forge ac4-encode` spells each setting as an option, raw or
+MP4 by the output's name: see [Commands](../forge/cli/commands.md#ac4-encode); `forge mp4`, `ts`
+and `fmp4` package a stream that already exists, and [Muxing & sinks](muxing-and-sinks.md#muxing-iclforgemp4mux)
 has the library's side.
 
 ## The inspector
 
-`ac4::ac4` reads the framing the decoder starts from, and works on its own for a muxer or a
+`iclforge::ac4` reads the framing the decoder starts from, and works on its own for a muxer or a
 probe:
 
-- `ac4::scan(data)` walks the sync frames of a whole buffer, checking each frame's CRC (Annex G).
+- `iclforge::ac4::scan(data)` walks the sync frames of a whole buffer, checking each frame's CRC (Annex G).
   The frames it returns view `data`, so the buffer has to outlive them.
-- `ac4::SyncFrameSplitter` does the same for a stream that arrives in pieces, in storage the caller
+- `iclforge::ac4::SyncFrameSplitter` does the same for a stream that arrives in pieces, in storage the caller
   owns (`kSplitterRecommendedBuffer` holds every frame shorter than 64 KiB). Where the stream does
   not start on a sync word, or something between frames is not a frame, it skips to the next sync
   word, counts the bytes it skipped (`resynchronised_bytes()`) and hands over the frame it found
   only once another sync word follows it.
-- `ac4::parse_raw_frame()` reads a frame's table of contents: the presentations, the substream
+- `iclforge::ac4::parse_raw_frame()` reads a frame's table of contents: the presentations, the substream
   groups and the substream index table.
-- `ac4::frame_rate(toc)` gives Part 1 Tables 83 and 84's frame rate, frame length and internal
-  sample rate; `ac4::build_dac4(toc)` and `ac4::rfc6381_codec_string(toc)` give an MP4 sample
+- `iclforge::ac4::frame_rate(toc)` gives Part 1 Tables 83 and 84's frame rate, frame length and internal
+  sample rate; `iclforge::ac4::build_dac4(toc)` and `iclforge::ac4::rfc6381_codec_string(toc)` give an MP4 sample
   entry's `dac4` box and the codec string HLS and DASH signal. The box describes every
   presentation (Part 2 Annex E.10), or is empty where the table of contents holds something it
-  cannot describe whole, and `ac4::dac4_refusal(toc)` says what; `ac4::cmaf_refusal(toc)` names
+  cannot describe whole, and `iclforge::ac4::dac4_refusal(toc)` says what; `iclforge::ac4::cmaf_refusal(toc)` names
   the rule of Annex H.1.2.1 a stream breaks for a CMAF track.
-- What a manifest says of a track (Part 2 Annex G): `ac4::signalled_presentation(toc)` is the
+- What a manifest says of a track (Part 2 Annex G): `iclforge::ac4::signalled_presentation(toc)` is the
   presentation it describes, the one with the widest compatibility, the lowest `md_compat` (G.2.3;
-  the codec string names it too); `ac4::presentation_channel_count(toc)` its channels, for HLS's
-  `CHANNELS`; `ac4::dash_channel_configuration(toc)` its DASH AudioChannelConfiguration (Table
-  G.1, or the Dolby 2015 scheme's word); and `ac4::dash_supplemental_properties(toc)` the frame
-  rate and a pre-virtualized presentation's descriptors (G.3). `ac4::configuration_difference(a,
+  the codec string names it too); `iclforge::ac4::presentation_channel_count(toc)` its channels, for HLS's
+  `CHANNELS`; `iclforge::ac4::dash_channel_configuration(toc)` its DASH AudioChannelConfiguration (Table
+  G.1, or the Dolby 2015 scheme's word); and `iclforge::ac4::dash_supplemental_properties(toc)` the frame
+  rate and a pre-virtualized presentation's descriptors (G.3). `iclforge::ac4::configuration_difference(a,
   b)` names the Annex H.1.2.4 parameter in which two tables of contents differ, empty where every
   sample of a CMAF track may carry both. `src/ac4enc/ERRATA.md` ("Manifests and CMAF tracks") has
   the readings these take.
 
 ## Errors
 
-Nothing throws for a stream or a configuration. `ac4::Error` (`kTruncated`, `kLostSync`,
-`kUnsupportedBitstreamVersion`) is the inspector's, `ac4::DecodeError` (`kTruncated`, `kInvalidToc`,
-`kInvalidStream`, `kUnsupported`, `kMissingIFrame`) the decoder's and `ac4::EncodeError`
+Nothing throws for a stream or a configuration. `iclforge::ac4::Error` (`kTruncated`, `kLostSync`,
+`kUnsupportedBitstreamVersion`) is the inspector's, `iclforge::ac4::DecodeError` (`kTruncated`, `kInvalidToc`,
+`kInvalidStream`, `kUnsupported`, `kMissingIFrame`) the decoder's and `iclforge::ac4::EncodeError`
 (`kInvalidConfig`, `kInvalidInput`) the encoder's, each an `std::expected` error with a
-`describe()` overload. `ac4::DecodeError` is a different type from `ac3::DecodeError`, and the
+`describe()` overload. `iclforge::ac4::DecodeError` is a different type from `iclforge::DecodeError`, and the
 namespace tells them apart. A decoder or an encoder that refuses says why in words through
 `Decoder::refusal_reason()` and `Encoder::refusal_reason()`.
 
@@ -394,22 +394,22 @@ namespace tells them apart. A decoder or an encoder that refuses says why in wor
 **In-tree:**
 
 ```cmake
-target_link_libraries(your_target PRIVATE ac4::decoder)   # brings ac4::ac4 with it
-target_link_libraries(your_target PRIVATE ac4::encoder)   # likewise
+target_link_libraries(your_target PRIVATE iclforge::ac4dec)   # brings iclforge::ac4 with it
+target_link_libraries(your_target PRIVATE iclforge::ac4enc)   # likewise
 ```
 
-**Installed package** (`find_package(ac3forge)`, see [Using ac3::forge](index.md)):
+**Installed package** (`find_package(iclforge)`, see [Using iclforge::ac3](index.md)):
 
 ```cmake
-find_package(ac3forge REQUIRED)
-target_link_libraries(your_target PRIVATE ac4::decoder_static)   # or ac4::decoder_shared
-target_link_libraries(your_target PRIVATE ac4::encoder_static)   # or ac4::encoder_shared
+find_package(iclforge REQUIRED)
+target_link_libraries(your_target PRIVATE iclforge::ac4dec_static)   # or iclforge::ac4dec_shared
+target_link_libraries(your_target PRIVATE iclforge::ac4enc_static)   # or iclforge::ac4enc_shared
 ```
 
-Each decoder and encoder library links the inspector of its own kind, `ac4::ac4_static` or
-`ac4::ac4_shared`. A package installed with one linkage, as a vcpkg or Conan one is, also defines
-the bare `ac4::decoder`, `ac4::encoder` and `ac4::ac4`. The static decoder and encoder call into
-`ac4::core`, a static archive of the tables and transforms the two share (`libac4core_static.a`,
+Each decoder and encoder library links the inspector of its own kind, `iclforge::ac4_static` or
+`iclforge::ac4_shared`. A package installed with one linkage, as a vcpkg or Conan one is, also defines
+the bare `iclforge::ac4dec`, `iclforge::ac4enc` and `iclforge::ac4`. The static decoder and encoder call into
+`iclforge::ac4core`, a static archive of the tables and transforms the two share (`libac4core_static.a`,
 no headers), which their exported targets name as a link-only dependency; each shared library
 carries the part of it that it uses. Through pkg-config the decoder is `ac4dec` and the encoder
 `ac4enc`, each of which requires `ac4`, and whose static-only forms require `ac4core` privately:
@@ -419,12 +419,12 @@ c++ -std=c++23 player.cpp $(pkg-config --cflags --libs ac4dec)
 c++ -std=c++23 packager.cpp $(pkg-config --cflags --libs ac4enc)
 ```
 
-`AC3FORGE_BUILD_AC4`, on by default, builds the AC-4 libraries. The vcpkg port and the Conan
-recipe install them where asked for, off by default: `vcpkg install ac3forge[ac4]`, or
-`-o "ac3forge/*:ac4=True"` (see [Using ac3::forge](index.md)). The C API, Python, Rust and
+`ICLFORGE_BUILD_AC4`, on by default, builds the AC-4 libraries. The vcpkg port and the Conan
+recipe install them where asked for, off by default: `vcpkg install iclforge[ac4]`, or
+`-o "iclforge/*:ac4=True"` (see [Using iclforge::ac3](index.md)). The C API, Python, Rust and
 WebAssembly bindings wrap the decoder and the encoder, the object encoder included ([C
 API](c-api.md#ac-4), [Python API](python-api.md#ac-4), [Rust API](rust-api.md#ac-4) and
 [WebAssembly](../platforms/wasm.md#ac-4-module)). Android's CMake build compiles the libraries and
 links them into nothing in the app. The ESP-IDF component builds the inspector, core and decoder
-behind `CONFIG_AC3FORGE_AC4`, off by default and offered on parts with a floating-point unit, in
+behind `CONFIG_ICLFORGE_AC4`, off by default and offered on parts with a floating-point unit, in
 single precision, and never the encoder ([ESP32-P4](../platforms/bare-metal/esp32-p4.md#ac-4)).

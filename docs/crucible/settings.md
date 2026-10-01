@@ -8,7 +8,7 @@ is not, and every block wraps inside its column.
 
 Nothing here has an Apply button. Each control writes its setting as you change it, and the
 settings live in Qt's own per-user store — the registry on Windows, an INI file under
-`~/.config/ac3forge/` on Linux — under the organisation `ac3forge` and the application
+`~/.config/iclforge/` on Linux — under the organisation `iclforge` and the application
 `Crucible`. A machine that ran the Desktop Atmos demo has that tree copied across the first time
 Crucible starts with nothing of its own, and the demo's tree is left where it is rather than
 deleted.
@@ -85,9 +85,9 @@ a restart: the encoder is rebuilt and the output re-probed in place, so the mode
 the next probe.
 
 Only the **path** is stored, under the settings prefix `signing/`; the key material stays in its
-file. With no file chosen here the environment is honoured instead — `AC3FORGE_SIGNING_KEY_FILE`
-names a key file and `AC3FORGE_SIGNING_KEY` carries the key itself, the same two variables
-`ac3cli` reads. Neither the key nor the path reaches a log or the diagnostics file; see
+file. With no file chosen here the environment is honoured instead — `ICLFORGE_SIGNING_KEY_FILE`
+names a key file and `ICLFORGE_SIGNING_KEY` carries the key itself, the same two variables
+`forge` reads. Neither the key nor the path reaches a log or the diagnostics file; see
 [block 07](#07-diagnostics) and
 [Saving a diagnostics file](troubleshooting.md#saving-a-diagnostics-file).
 

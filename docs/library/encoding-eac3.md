@@ -1,8 +1,8 @@
 # Encoding E-AC-3
 
-## E-AC-3: `ac3::eac3::FrameEncoder`
+## E-AC-3: `iclforge::eac3::FrameEncoder`
 
-`ac3/encoder/eac3_frame.hpp`. Same shape, different container. E-AC-3 is not an AC-3 variant:
+`iclforge/ac3/encoder/eac3_frame.hpp`. Same shape, different container. E-AC-3 is not an AC-3 variant:
 no `crc1`, an arbitrary 11-bit `frmsiz` instead of a size table (so the 44.1 kHz padding
 alternation disappears), exponent strategies planned per frame and written in whichever of Annex
 E's two forms the plan needs (a Table E2.10 code per channel, or per-block), and a syncframe
@@ -11,12 +11,12 @@ that can carry fewer than six blocks.
 ```cpp
 // Heap-allocated: FrameEncoder carries several KB of MDCT scratch/history
 // state (PREfast's C6262).
-auto encoder = std::make_unique<ac3::eac3::FrameEncoder>(ac3::eac3::FrameConfig{
+auto encoder = std::make_unique<iclforge::eac3::FrameEncoder>(iclforge::eac3::FrameConfig{
     .bitrate_kbps = 192,
-    .acmod = ac3::Acmod::k2_0,
+    .acmod = iclforge::Acmod::k2_0,
 });
 
-std::vector<std::vector<float>> pcm(2, std::vector<float>(ac3::kSamplesPerFrame));
+std::vector<std::vector<float>> pcm(2, std::vector<float>(iclforge::kSamplesPerFrame));
 const auto views = views_of(pcm);
 
 std::vector<std::byte> stream;
@@ -48,7 +48,7 @@ One field widens instead: `FrameConfig::sample_rate` also accepts the three Anne
 `k24000`, `k22050`, `k16000` (24/22.05/16 kHz). For those the encoder writes `fscod2` in place
 of `numblkscod` (§E2.3.1.3, the block count is then implicitly six), and the reduced rate reuses
 its double-rate parent's bit-allocation tables (§E2.3.1.4). The CLI maps the plain rate numbers
-onto them. Classic AC-3 has no `frmsizecod` row for a reduced rate, so `ac3::FrameEncoder`
+onto them. Classic AC-3 has no `frmsizecod` row for a reduced rate, so `iclforge::FrameEncoder`
 rejects them outright.
 
 | Field | Default | Notes |
@@ -61,11 +61,11 @@ rejects them outright.
 | `enhanced` | `false` | §E3.5: enhanced coupling instead of standard — 22 sub-bands, amplitude/angle/chaos-quantized coordinates and a phase-restoring reconstruction built on a full DFT, rather than a single per-band scale factor. Only meaningful with `coupling` also set (`cpl+ecpl`); combines with `spx` the same way standard coupling does. This encoder fits real amplitude/angle coordinates per band (an exact 2-variable linear least squares, since §3.5.5.4's reconstruction is linear in the complex gain the pair expresses) and chooses chaos by searching its 8 legal codes against the decoder's own deterministic de-correlation sequence. Two different channels forced into one narrow coupling band still cost quality — a single coordinate per band has a real, structural limit on what it can separate — but it is no longer the amplitude-only fit's all-or-nothing loss. |
 | `transient_prenoise` | `false` | §3.7 (`tpn`): a post-IMDCT correction that overwrites the pre-echo ahead of a detected transient with a synthesized copy of the clean audio just before it. Reuses the same transient detector block switching relies on, so it only has an effect on channels/frames that also block-switch. See [Decoding](decoding.md) for the 1536-sample decoder-side latency this introduces and the `flush()` call it requires. |
 | `delta_allocation` | `true` | §7.2.2.6 delta bit allocation, as for AC-3: the corrections chosen per run and the second fit that weighs them. `false` skips both - the first level of the encoders' effort axis, measured on the ESP32-S3 page - and the stream has `dbaflde` clear. The CLI accepts the command-wide `delta=off` option; inside `eac3-encode`'s fourth positional `[tools]` argument, the spelling is `nodelta`, not `tools=nodelta`. |
-| `fast_mdct` | `true` | The §7.9.4 fast N/4-FFT forward MDCT instead of the direct §8.2.3.2 evaluation — a performance choice, not a coding tool: nothing in the bitstream's syntax changes, only how the coefficients were computed (verified ~3e-12 max relative error against the direct form; 0.000 dB SNR delta against an independent oracle at 192–448 kbps). `false` forces the direct reference form, which stays maintained as the oracle the fast path is validated against — the CLI spells that `tools=nofastmdct`. All three forward transforms accelerate — the long one and both halves of a block-switched pair, each down its own independently-derived fold (`ac3/core/mdct.hpp`), and `FrameConfig::fast_mdct` reaches all of them. |
+| `fast_mdct` | `true` | The §7.9.4 fast N/4-FFT forward MDCT instead of the direct §8.2.3.2 evaluation — a performance choice, not a coding tool: nothing in the bitstream's syntax changes, only how the coefficients were computed (verified ~3e-12 max relative error against the direct form; 0.000 dB SNR delta against an independent oracle at 192–448 kbps). `false` forces the direct reference form, which stays maintained as the oracle the fast path is validated against — the CLI spells that `tools=nofastmdct`. All three forward transforms accelerate — the long one and both halves of a block-switched pair, each down its own independently-derived fold (`iclforge/ac3/core/mdct.hpp`), and `FrameConfig::fast_mdct` reaches all of them. |
 | `fgaincod` | -1 | §7.2.2.4 fast gain, Table 7.11. -1 leaves Table E1.4's implied `0x4` and writes no `fgaincode` element; 0–7 pins the code, which opens that element in every block (132 bits a frame at 5.1 with coupling), where AC-3 carries the code on the `snroffst` element it sends anyway. `search` moves it as one of its two axes. |
 | `dither` | `true` | §7.3.4 `dithflag`, decided per channel per block from content as for AC-3, except that a frame using spectral extension always dithers off; `false` pins it at 0. |
-| `info` | none | `std::optional<meta::BsiInfo>`: the `infomdat` group (Table E1.2), the informational fields AC-3 carries in bsi — see [Bit stream information](metadata.md#bit-stream-information-ac3metabsihpp). |
-| `search` | `kNone` | Per-frame search over §7.2.2's transmitted bit-allocation parameters against `ac3::quality`'s decoded-domain distortion, instead of the fixed `dbpbcod` 3 EQ3 measured its way to on average. CBR only (`FrameConfig::vbr` unset) - silently inert under VBR/ABR, the same documented boundary EQ5 draws around AHT streams, not a rejected configuration. `kDistortion` only: `kPerceptual` is accepted but inert too, on the same grounds [Decision search](encoding-ac3.md#decision-search) already found it for AC-3. Two axes, the same pair AC-3's search moves: `dbpbcod` over `{kAllocCodes' 3, Table E1.4's 2}`, and `fgaincod` over `ac3::rate_adaptive_fgaincod`'s measured code plus §8.2.12's own default. Unlike AC-3's, the `fgaincod` candidates are not free - `baie` carries no fast gain, so a non-default code opens the per-block `fgaincode` element (`frmfgaincode` 1) and buys its masking curve out of the mantissa budget - so each candidate is scored after a refit against its own side-info cost rather than against the incumbent's. Measured on real CC0 stereo material at 96-640 kbit/s, `dbpbcod` alone was negligible everywhere tried, which is what this axis was added to move. CLI: `search=distortion`/`search=perceptual`/`search=off`. |
+| `info` | none | `std::optional<meta::BsiInfo>`: the `infomdat` group (Table E1.2), the informational fields AC-3 carries in bsi — see [Bit stream information](metadata.md#bit-stream-information-iclforgeac3metabsihpp). |
+| `search` | `kNone` | Per-frame search over §7.2.2's transmitted bit-allocation parameters against `iclforge::quality`'s decoded-domain distortion, instead of the fixed `dbpbcod` 3 EQ3 measured its way to on average. CBR only (`FrameConfig::vbr` unset) - silently inert under VBR/ABR, the same documented boundary EQ5 draws around AHT streams, not a rejected configuration. `kDistortion` only: `kPerceptual` is accepted but inert too, on the same grounds [Decision search](encoding-ac3.md#decision-search) already found it for AC-3. Two axes, the same pair AC-3's search moves: `dbpbcod` over `{kAllocCodes' 3, Table E1.4's 2}`, and `fgaincod` over `iclforge::rate_adaptive_fgaincod`'s measured code plus §8.2.12's own default. Unlike AC-3's, the `fgaincod` candidates are not free - `baie` carries no fast gain, so a non-default code opens the per-block `fgaincode` element (`frmfgaincode` 1) and buys its masking curve out of the mantissa budget - so each candidate is scored after a refit against its own side-info cost rather than against the incumbent's. Measured on real CC0 stereo material at 96-640 kbit/s, `dbpbcod` alone was negligible everywhere tried, which is what this axis was added to move. CLI: `search=distortion`/`search=perceptual`/`search=off`. |
 | `mixing` | none | The `mixmdate` group (Table E1.2). E-AC-3 dropped `cmixlev`/`surmixlev` from `bsi` entirely, so without this the stream carries no downmix levels at all. |
 | `strmtyp`, `substreamid`, `chanmap`, `last_dependent` | independent, 0, none, false | Substream identity. Set by `AccessUnitEncoder`; you rarely touch these directly. |
 | `oba_complexity_index` | none | TS 103 420 §8.3 object count in `addbsi`. This is the marker FFmpeg keys its "Dolby Digital Plus + Dolby Atmos" report off. |
@@ -206,10 +206,10 @@ AC-3 a frame is free to be a different size than the one before it. Setting `vbr
 chosen quality):
 
 ```cpp
-ac3::eac3::FrameEncoder encoder{{
+iclforge::eac3::FrameEncoder encoder{{
     .bitrate_kbps = 192,  // not read once vbr is set — see below
-    .acmod = ac3::Acmod::k2_0,
-    .vbr = ac3::eac3::VbrConfig{
+    .acmod = iclforge::Acmod::k2_0,
+    .vbr = iclforge::eac3::VbrConfig{
         .quality = 0.4,
         .max_kbps = 320,  // optional ceiling
     },
@@ -252,7 +252,7 @@ Silent frames (`build_silent_frame`) and AC-3 (`plan::Codec::kAc3`) both reject 
 outright: silence has no content to size a quality target against, and AC-3's `frmsizecod` has no
 free word count to vary in the first place.
 
-## Wide layouts: `ac3::eac3::AccessUnitEncoder`
+## Wide layouts: `iclforge::eac3::AccessUnitEncoder`
 
 Anything past 5.1 rides in *dependent substreams* beside a self-sufficient 5.1 bed. Every
 substream codes the same 1536 samples of the same programme; a dependent contributes only its
@@ -261,10 +261,10 @@ own channels, its `chanmap`, and its share of the bit rate.
 ```cpp
 // The bed is self-sufficient: a decoder that reads only the independent
 // substream gets a complete 5.1 programme.
-ac3::eac3::AccessUnitConfig config;
+iclforge::eac3::AccessUnitConfig config;
 config.independent = {
     .bitrate_kbps = 384,
-    .acmod = ac3::Acmod::k3_2,
+    .acmod = iclforge::Acmod::k3_2,
     .lfe = true,
 };
 // Each dependent gets its own slice of the rate — substreams share a frame
@@ -273,16 +273,16 @@ config.independent = {
 // and the rest extend the layout.
 config.dependents.push_back({
     .bitrate_kbps = 192,
-    .acmod = ac3::Acmod::k2_2,
-    .chanmap = ac3::eac3::chanmap::k71Rear,  // Ls, Rs, Lrs, Rrs
+    .acmod = iclforge::Acmod::k2_2,
+    .chanmap = iclforge::eac3::chanmap::k71Rear,  // Ls, Rs, Lrs, Rrs
 });
 config.dependents.push_back({
     .bitrate_kbps = 192,
-    .acmod = ac3::Acmod::k2_2,
-    .chanmap = ac3::eac3::chanmap::kTopQuad,  // Vhl, Vhr, Lts, Rts
+    .acmod = iclforge::Acmod::k2_2,
+    .chanmap = iclforge::eac3::chanmap::kTopQuad,  // Vhl, Vhr, Lts, Rts
 });
 
-ac3::eac3::AccessUnitEncoder encoder{config};
+iclforge::eac3::AccessUnitEncoder encoder{config};
 ```
 
 Channels are grouped by substream in transmission order: the independent's first in Table 5.8
@@ -303,7 +303,7 @@ rate; and the locations a `chanmap` names must add up to the channels its `acmod
 actually code, or you get `FrameError::kInvalidChannelMap`. A single dependent codes at most 5
 full-bandwidth channels, which is why 7.1.4 — six channels beyond the bed — needs two.
 
-Useful `chanmap` constants (`ac3/core/eac3_tables.hpp`, Table E2.5):
+Useful `chanmap` constants (`iclforge/ac3/core/eac3_tables.hpp`, Table E2.5):
 
 | Constant | Channels | Gives you |
 |---|---|---|
@@ -330,9 +330,9 @@ samples whatever the syncframe length, permanently, from the first frame that ac
 tool onward:
 
 ```cpp
-ac3::eac3::FrameConfig config{.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true};
+iclforge::eac3::FrameConfig config{.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true};
 config.transient_prenoise = true;
-ac3::eac3::FrameEncoder encoder{config};
+iclforge::eac3::FrameEncoder encoder{config};
 encoder.latency_samples();  // 3328 = 1536 frame + 256 transform + 1536 hold-back
 ```
 
@@ -383,12 +383,12 @@ programme; each entry of `additional` is a `ProgrammeConfig` with an independent
 dependents of its own.
 
 ```cpp
-ac3::eac3::AccessUnitConfig config;
-config.independent = {.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2,
+iclforge::eac3::AccessUnitConfig config;
+config.independent = {.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2,
                       .lfe = true, .dialnorm = 27};
 // I1: a mono commentary, levelled independently of the mix it plays against.
 config.additional.push_back({.independent = {.bitrate_kbps = 96,
-                                             .acmod = ac3::Acmod::k1_0,
+                                             .acmod = iclforge::Acmod::k1_0,
                                              .dialnorm = 20}});
 ```
 
@@ -409,7 +409,7 @@ A programme with dependents (`ProgrammeConfig::dependents`, or the top-level `de
 gets a second, independent `HeavyCompressor` when `heavy` is set: §E3.8.5 gives the LAST
 dependent's `compr` to the whole programme, so that word has to answer for every rendered
 channel, not the independent substream's own five — `AccessUnitEncoder` measures it from the
-complete rendered programme, folded the way `ac3::OutputStage`'s rendered-layout overload seats a
+complete rendered programme, folded the way `iclforge::OutputStage`'s rendered-layout overload seats a
 wide layout (see [Decoding](decoding.md#the-output-stage)). The independent's own word, from its
 own channels alone, still goes out too, for a receiver that decodes only the 5.1 bed.
 

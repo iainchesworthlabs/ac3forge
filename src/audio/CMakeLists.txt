@@ -2,7 +2,7 @@
 # iclforge::audio - live capture, IEC 61937 passthrough delivery, shared-mode
 # monitor playback, and a live object-position source over OSC (roadmap
 # UX4). Almost all the OS-specific code in the project lives here rather than
-# in ac3::forge: WASAPI/ALSA/PipeWire/CoreAudio for the three capabilities
+# in iclforge::ac3: WASAPI/ALSA/PipeWire/CoreAudio for the three capabilities
 # above, and (a second, independent platform axis - see the net/ block below)
 # Winsock/Berkeley sockets for the position source's UDP listener.
 #
@@ -16,11 +16,11 @@
 # `positions=osc:<port>` - it is not part of the distributed iclforge-dev
 # package (see docs/library/index.md).
 #
-# PUBLIC-links ac3::forge: live_positions.hpp names ac3::oba::SceneCursor in
+# PUBLIC-links iclforge::ac3: live_positions.hpp names iclforge::oba::SceneCursor in
 # its own public interface (LivePositionSource::drain_into), so forge is a
 # genuine usage requirement for anything that includes this library's
 # headers, not merely something the .cpp files reach for privately the way
-# the passthrough backends reuse ac3::iec61937's burst-size constants and
+# the passthrough backends reuse iclforge::iec61937's burst-size constants and
 # framer to size and pack S/PDIF bursts. Free to widen from the PRIVATE this
 # used to be: this target is never installed or exported (see above), so
 # there is no install(EXPORT) graph for the wider dependency to leak into.
@@ -43,8 +43,8 @@ target_include_directories(iclforge_audio
         "$<INSTALL_INTERFACE:include>")
 
 # The one platform-independent piece of the backend tree below: describe()
-# for ac3::audio::EdidError. Compiled unconditionally, the same reasoning as
-# ac3::iec61937 staying platform-independent while PassthroughSink is not -
+# for iclforge::audio::EdidError. Compiled unconditionally, the same reasoning as
+# iclforge::iec61937 staying platform-independent while PassthroughSink is not -
 # see sink_capabilities.hpp's own header comment. Each platform's own
 # read_sink_capabilities() is added alongside that platform's other four
 # backend files, below.
@@ -78,7 +78,7 @@ target_link_libraries(iclforge_audio PUBLIC iclforge::render iclforge::iec61937 
 target_link_libraries(iclforge_audio PRIVATE iclforge::warnings iclforge::coverage iclforge::fmt)
 
 # live_positions.cpp: platform-independent by construction (it names
-# UdpSocket and ac3::oba, never a socket API directly), and the first source
+# UdpSocket and iclforge::oba, never a socket API directly), and the first source
 # in this library that is not part of a backend/ directory - said here
 # rather than left to look misfiled.
 target_sources(iclforge_audio PRIVATE src/live_positions.cpp)

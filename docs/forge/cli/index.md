@@ -1,36 +1,36 @@
-# ac3cli
+# forge
 
-`ac3cli` is the command-line front end over the ac3forge library — 44 commands covering
+`forge` is the command-line front end over the ICL Forge library — 44 commands covering
 synthesis, file encoding/decoding, container wrapping, inspection, live capture/playback, and the
 tool's own self-description (`help`, `man`, `completions`). It reads and writes AC-3, E-AC-3 (with
 the Atmos object layer) and AC-4; the [Commands](commands.md) page says which command takes which.
 Two of the 44 (`atmos-adm` and `atmos-iab`) only *run* in a build configured with
-`-DAC3FORGE_BUILD_ADM=ON`, but are always *listed* — the same "shown, not hidden" treatment
+`-DICLFORGE_BUILD_ADM=ON`, but are always *listed* — the same "shown, not hidden" treatment
 this page's own live-audio commands get when the platform can't run them either (see
 [Commands](commands.md)'s own ADM section). Every command it can run is backed by the same public
 library documented under [Library](../../library/index.md); every codec and format decision lives in
 the library, and the CLI keeps only small local helpers of its own (the DASH MPD document wrapper
 `fmp4` writes; the scene files behind `atmos-path`/`atmos-encode` are parsed by the library's
-own `ac3::oba::read_scene`).
+own `iclforge::oba::read_scene`).
 
 Run it with no arguments for the full usage text — the command list in [Commands](commands.md)
 is transcribed from it by hand. Nothing in the build compares the two, so the binary is the
-authority where they disagree; `ac3cli help` on your own build settles any question either page
+authority where they disagree; `forge help` on your own build settles any question either page
 raises.
 
 ```bash
-ac3cli
+forge
 ```
 
 ## Installing
 
-`ac3cli` installs as part of Forge. See [Installing Forge](../index.md#installing) for the
+`forge` installs as part of Forge. See [Installing Forge](../index.md#installing) for the
 prebuilt archives, Homebrew, winget, and source-build paths.
 
 ## Version
 
 ```bash
-ac3cli --version
+forge --version
 ```
 
 Prints the semantic version plus git provenance — commit, branch, the build target, the vector
@@ -81,8 +81,8 @@ command's own help (or the full listing when no command was named).
   WAV or stream never needs to touch a disk at all:
 
   ```bash
-  ac3cli encode - - 448 couple < in.wav > out.ac3
-  ac3cli decode - - < out.ac3 > out.wav
+  forge encode - - 448 couple < in.wav > out.ac3
+  forge decode - - < out.ac3 > out.wav
   ```
 
   Everything else about the command is unchanged; only the argument's meaning changes from "open
@@ -96,7 +96,7 @@ command's own help (or the full listing when no command was named).
   `atmos-cbi`, `decode`, `transcode`, `metadata`, `normalize`, `cut`, `cat`, `strip-objects`,
   `unspdif`, `demux` and the generators (`silence`, `sine`, `orbit`, `atmos`, `atmos-path`,
   `eac3-silence`, `eac3-sine`). `mp4`, `mkv`, `ts` and `spdif` take `-` as the name of a file to
-  write, and `remux` refuses it. Windows needs no special handling on the caller's part — ac3cli
+  write, and `remux` refuses it. Windows needs no special handling on the caller's part — forge
   puts stdin/stdout into binary mode itself before the first byte crosses either one.
 - **Metadata options** (`drc=`, `heavy`, `dialnorm=`, `cmixlev=`, …) can follow the positional
   arguments of any encoding command, in any order — see
@@ -107,7 +107,7 @@ command's own help (or the full listing when no command was named).
   paths' summary/routing/levels report included) to stderr, so it never lands in the middle of
   the piped stream.
 - **Exit codes are documented and distinct**: `0` success, `1` usage, `2` input, `3` output,
-  `4` unavailable here, `5` runtime, `6` a failed QC gate, `7` internal. `ac3cli help exit-codes`
+  `4` unavailable here, `5` runtime, `6` a failed QC gate, `7` internal. `forge help exit-codes`
   prints the table; [Options & grammars](metadata-options.md#exit-codes) explains each.
 - **`quiet` and `verbose`** follow the positional arguments of any command: `quiet` silences the
   status output (never the errors, never a reporting command's report, never a `-` payload), and
@@ -130,7 +130,7 @@ command's own help (or the full listing when no command was named).
 ## Next
 
 - [Commands](commands.md) — all 44 commands, grouped and with the usage text they print
-  (`atmos-adm` and `atmos-iab` only *run* with `-DAC3FORGE_BUILD_ADM=ON`, but are listed either
+  (`atmos-adm` and `atmos-iab` only *run* with `-DICLFORGE_BUILD_ADM=ON`, but are listed either
   way), plus the exit-code table.
 - [Options & grammars](metadata-options.md) — the `drc=`/`heavy`/`dialnorm=`/… options grammar,
   the `tools` argument grammar, and the full layout/location-list grammar.
