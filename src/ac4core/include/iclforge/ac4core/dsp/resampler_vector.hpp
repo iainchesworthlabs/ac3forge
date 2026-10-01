@@ -22,6 +22,12 @@
 //
 // At double the converter's sum stays a sequential loop, as it always was: the encoder's
 // converters and the default build's decoder keep their output.
+//
+// A table that keeps half its phases (dsp/resampler.hpp) gives the others as a phase read from its
+// last coefficient to its first, and dot_four_lanes_reversed() is the same sum of that: tap k is
+// coefficients[taps - 1 - k] times samples[k], taken in the order above, so it gives bit for bit
+// what dot_four_lanes() gives on a copy of the phase written out backwards. The seam has no
+// reversing load, so the four coefficients of a vector are four scalar loads.
 
 namespace iclforge::ac4::detail::dsp {
 
@@ -36,6 +42,24 @@ namespace iclforge::ac4::detail::dsp {
     float sum = (lanes.lane0() + lanes.lane1()) + (lanes.lane2() + lanes.lane3());
     for (; k < taps; ++k) {
         sum += coefficients[k] * samples[k];
+    }
+    return sum;
+}
+
+[[nodiscard]] inline float dot_four_lanes_reversed(const float* coefficients, const float* samples,
+                                                   std::size_t taps) noexcept {
+    namespace arch = iclforge::internal::arch;
+    arch::f32x4 lanes = arch::f32x4::broadcast(0.0F);
+    std::size_t k = 0;
+    for (; k + 4 <= taps; k += 4) {
+        // Tap k + j takes coefficients[taps - 1 - k - j].
+        const float* last = coefficients + (taps - 1 - k);
+        lanes = lanes + arch::f32x4::set(last[0], last[-1], last[-2], last[-3]) *
+                            arch::f32x4::load(samples + k);
+    }
+    float sum = (lanes.lane0() + lanes.lane1()) + (lanes.lane2() + lanes.lane3());
+    for (; k < taps; ++k) {
+        sum += coefficients[taps - 1 - k] * samples[k];
     }
     return sum;
 }

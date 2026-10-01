@@ -173,6 +173,39 @@ if(ICLFORGE_MINIMAL_DECODER AND ICLFORGE_MINIMAL_HOT_O2)
         PROPERTIES COMPILE_OPTIONS "-O2")
 endif()
 
+# The float tables of the sample rate converter are built by the compiler, in
+# src/dsp/resampler.cpp and in no other translation unit and only in a build whose
+# scalar is float (dsp/resampler_design.hpp: the three ratios the decoder uses, 1001/960
+# the long one, 47,094 coefficients each designed with a Kaiser window and a sinc,
+# planning/ac4.md, D14a5). A compiler's limit on what its constant evaluator may do
+# in one constant expression is set for small computations and this is not one: the
+# three tables take about 8 million steps in MSVC, 10.6 million in Clang and 78 million
+# operations in GCC 15 (32 million in GCC 16, which counts them differently), and the
+# defaults are 100,000 steps, 1,048,576 steps and 33,554,432 operations. Each compiler
+# has its own flag for it; the limits below are about three to eight times what the
+# tables need. The evaluation costs the translation unit 6 to 25 seconds, by compiler
+# (planning/ac4.md). The ESP-IDF component reaches this file through the root
+# CMakeLists.txt, so the same limits apply there. APPEND, since the block above sets
+# this file's compile options as well when it applies.
+if(_ac4core_scalar_dir STREQUAL "float")
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+        set(_ac4core_constexpr_limit "/constexpr:steps67108864")
+    elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND
+           CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+        # clang-cl accepts /constexpr:steps and ignores it, with a warning; its own
+        # option goes through the /clang: escape, as -ffp-contract=off does.
+        set(_ac4core_constexpr_limit "/clang:-fconstexpr-steps=67108864")
+    elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        set(_ac4core_constexpr_limit "-fconstexpr-steps=67108864")
+    elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        set(_ac4core_constexpr_limit "-fconstexpr-ops-limit=268435456")
+    endif()
+    if(_ac4core_constexpr_limit)
+        set_property(SOURCE src/dsp/resampler.cpp APPEND PROPERTY
+            COMPILE_OPTIONS "${_ac4core_constexpr_limit}")
+    endif()
+endif()
+
 # In the minimum-footprint profile (ICLFORGE_MINIMAL_AC4, planning/ac4.md, D14b):
 # the profile's own compile options - no exceptions, no RTTI, a section for each
 # function and datum - PUBLIC, as iclforge::ac3_minimal links them, since a
