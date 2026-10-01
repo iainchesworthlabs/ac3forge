@@ -3,8 +3,8 @@
 Proves the data is genuinely reachable from Python in the form the roadmap asks for: CSV parsed
 by the stdlib csv module, JSON Lines parsed line by line with the stdlib json module - neither
 test depends on pandas/pyarrow, which are not a declared dependency of this package (see
-iclforge/ac3/verify/trace_export.hpp's own note on why Parquet is left to Python's own ecosystem rather
-than grown here), but the output is exactly the shape pandas.read_csv/read_json(lines=True)
+iclforge/ac3/verify/trace_export.hpp's own note on why Parquet is left to Python's own ecosystem
+rather than grown here), but the output is exactly the shape pandas.read_csv/read_json(lines=True)
 expects: one row per (frame, substream, block, stream, kind, index, value).
 """
 

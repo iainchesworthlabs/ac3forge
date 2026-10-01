@@ -1,7 +1,7 @@
 """ac3.scan() and friends - reading an elementary stream's shape without decoding
 any audio, mirroring iclforge::io::scan/read_frame_header/access_unit_timing and friends
-(iclforge/ac3/io/elementary.hpp). Every scanned access unit is also decoded here, proving scan() didn't
-just report plausible-looking numbers but the actual byte ranges a decoder can consume.
+(iclforge/ac3/io/elementary.hpp). Every scanned access unit is also decoded here, proving scan()
+didn't just report plausible-looking numbers but the actual byte ranges a decoder can consume.
 """
 
 import iclforge as ac3
