@@ -133,8 +133,8 @@ on:
         default: all
       legs:
         description: >-
-          Optional, comma-separated presets (`linux-gcc,windows-msvc`). Only those legs run,
-          whatever their tier. Empty means the tier decides.
+          Optional, comma-separated presets (`linux-gcc,windows-msvc`), and `windows-driver` for
+          the driver job. Only those run, whatever their tier. Empty means the tier decides.
         type: string
         default: ""
     secrets:
@@ -369,6 +369,8 @@ jobs:
       windows_any: ${{ steps.plan.outputs.windows_any }}
       macos_matrix: ${{ steps.plan.outputs.macos_matrix }}
       macos_any: ${{ steps.plan.outputs.macos_any }}
+      # The jobs that are not legs but that `legs` can name (plan_legs.py's SATELLITES).
+      windows_driver: ${{ steps.plan.outputs.windows_driver }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1858,8 +1860,11 @@ jobs:
   # signing on, and shipping it waits on the EV certificate (Phase 6).
   windows-driver:
     name: Windows null-sink driver (WDK NuGet)
-    # Not when the run named exact legs (`legs`): those are the only builds it asked for.
-    if: inputs.run_windows && inputs.legs == ''
+    needs: plan-legs
+    # A run that named exact legs (`legs`) gets only the builds it named, and `windows-driver`
+    # is a name it can give (`-f legs=windows-driver`: plan_legs.py's SATELLITES, which also
+    # turns the Windows lane on for it). Without `legs` it runs with the Windows lane.
+    if: inputs.run_windows && needs.plan-legs.outputs.windows_driver == 'true'
     runs-on: windows-latest
     # Newest main commit only (linux-appimage's concurrency comment).
     concurrency:

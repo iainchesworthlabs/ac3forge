@@ -18,24 +18,30 @@ Reads .github/ci/legs.jsonc (its header describes the fields) and prints, for
     linux_any, windows_any, macos_any
         `true` when the platform has a leg to run. A matrix with no legs is an
         error in Actions, so the caller skips the job instead.
+    windows_driver
+        `true` when _build.yml's `windows-driver` job runs: always, unless `LEGS`
+        names something and does not name it. The job is not a matrix leg (it is
+        built on a hosted runner from the WDK's NuGet packages), and SATELLITES
+        lists it, and any other job of its kind, so that `LEGS` can ask for it.
 
 Environment:
 
     TIER      `all` (the default) is every leg; `t2` the legs of the run on main after
               a merge, each without the flags it lists in `deep_only` (its slow extra
               passes); `deep` the legs that run only in the scheduled run.
-    LEGS      optional, comma-separated presets (`linux-gcc,windows-msvc`). Only
-              those legs run, whatever their tier. It is how a dispatch asks for
-              exactly the legs it wants. TIER still decides their extra passes: with
-              `t2` they run as the run after a merge would run them.
+    LEGS      optional, comma-separated presets (`linux-gcc,windows-msvc`) and the
+              names in SATELLITES (`windows-driver`). Only those run, whatever their
+              tier. It is how a dispatch asks for exactly the legs it wants. TIER
+              still decides their extra passes: with `t2` the legs run as the run
+              after a merge would run them.
     LINUX_RUNNER_1 ..., WINDOWS_RUNNER_1 ...
               check-runners' outputs: the labels a `runner_slot` leg runs on, as JSON
               text. A leg that needs one and finds it unset is an error, because a
               wrong guess would send it to the wrong pool without a word.
 
 `--lanes` prints `<lane>=true|false` for every lane classify_changes.py knows, for a run that
-asked for exact legs (`LEGS`): the platforms those legs are on are true and everything else is
-false, so nothing but the requested builds runs.
+asked for exact legs (`LEGS`): the platforms those legs and jobs are on are true and everything
+else is false, so nothing but the requested builds runs.
 
 The catalogue is plain JSON except for comment lines, which start with `//` and
 stand alone on their line. Keeping the legs' long comments there, beside the fields
@@ -59,6 +65,13 @@ PLATFORMS = ("linux", "windows", "macos")
 TIERS = ("t2", "deep")
 SELECTIONS = ("all", *TIERS)
 SLOT = re.compile(r"^(linux|windows|macos)_runner_[1-9][0-9]*$")
+
+# Jobs of _build.yml that are not matrix legs and that `LEGS` can still name, each with the
+# platform whose lane it belongs to. Naming one turns that lane on, so that `run_<platform>`
+# reaches _build.yml, and runs none of the platform's legs unless they are named too. A name
+# is the job's id in _build.yml and, with its dashes as underscores, the planner's output
+# that the job's `if:` reads (`windows_driver`).
+SATELLITES = {"windows-driver": "windows"}
 
 # Fields the planner consumes; everything else is passed through to the matrix.
 PLANNER_FIELDS = ("tier", "runner_slot", "deep_only")
@@ -113,6 +126,8 @@ def problems(catalogue: Any) -> list[str]:
             else:
                 if preset in presets:
                     found.append(f"{where}: preset {preset!r} already used by {presets[preset]}")
+                if preset in SATELLITES:
+                    found.append(f"{where}: preset {preset!r} is the name of a satellite job")
                 presets[preset] = where
             if leg.get("tier") not in TIERS:
                 found.append(
@@ -172,11 +187,12 @@ def select(
         raise CatalogueError(f"TIER must be one of {list(SELECTIONS)}, got {tier!r}")
     if only:
         known = {leg["preset"] for legs in catalogue.values() for leg in legs}
-        unknown = [p for p in only if p not in known]
+        unknown = [p for p in only if p not in known and p not in SATELLITES]
         if unknown:
             raise CatalogueError(
                 f"unknown preset(s) in LEGS: {', '.join(unknown)}; the legs are: "
                 + ", ".join(sorted(known))
+                + f"; the jobs it can also name are: {', '.join(sorted(SATELLITES))}"
             )
         return {p: [leg for leg in legs if leg["preset"] in only] for p, legs in catalogue.items()}
     if tier == "all":
@@ -234,6 +250,11 @@ def drops_deep_flags(tier: str) -> bool:
     return tier == "t2"
 
 
+def satellite_runs(job: str, only: Sequence[str]) -> bool:
+    """A satellite job runs with its platform's lane, unless the run names others and not it."""
+    return not only or job in only
+
+
 def plan(
     catalogue: Mapping[str, Sequence[Mapping[str, Any]]],
     env: Mapping[str, str],
@@ -247,6 +268,8 @@ def plan(
         legs = [resolve(leg, env, drop_deep=drop_deep) for leg in chosen[platform]]
         out[f"{platform}_matrix"] = json.dumps({"include": legs}, separators=(",", ":"))
         out[f"{platform}_any"] = "true" if legs else "false"
+    for job in SATELLITES:
+        out[job.replace("-", "_")] = "true" if satellite_runs(job, only) else "false"
     return out
 
 
@@ -266,17 +289,27 @@ def describe(catalogue: Mapping[str, Sequence[Mapping[str, Any]]], env: Mapping[
         lines.append(f"  {platform}: {', '.join(run) or 'none'}")
         if skipped:
             lines.append(f"    not in this run: {', '.join(skipped)}")
+    jobs = [job for job in SATELLITES if satellite_runs(job, only)]
+    lines.append(f"  jobs that are not legs: {', '.join(jobs) or 'none'}")
     return "\n".join(lines)
 
 
 def lanes(
     catalogue: Mapping[str, Sequence[Mapping[str, Any]]], env: Mapping[str, str]
 ) -> dict[str, bool]:
-    """Lane flags for a run that named exact legs: their platforms, and nothing else."""
-    chosen = select(catalogue, *request(env))
+    """Lane flags for a run that named exact legs: their platforms, and nothing else.
+
+    A satellite job the run names turns its platform on as well, though the platform may have
+    no leg in the run: `build-windows` is skipped for want of one, and the job runs.
+    """
+    tier, only = request(env)
+    chosen = select(catalogue, tier, only)
     flags = dict.fromkeys(classify_changes.LANES, False)
     for platform in PLATFORMS:
         flags[platform] = bool(chosen[platform])
+    for job, platform in SATELLITES.items():
+        if job in only:
+            flags[platform] = True
     return flags
 
 
