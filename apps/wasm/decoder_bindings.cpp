@@ -12,7 +12,7 @@
 //     unit per call through decode_access_unit_into's caller-buffer form -
 //     the PCM buffers are allocated ONCE at construction and reused for
 //     every call (apps/baremetal/probe.cpp established the same
-//     caller-buffer pattern for the bare-metal PF7 profile), so the hot path
+//     caller-buffer pattern for the bare-metal minimum-footprint profile), so the hot path
 //     never allocates on the C++ side. Eac3Decoder alone is enough for every
 //     iclforge::ac3::io::StreamKind - decode_access_unit's own doc comment: a plain
 //     AC-3 syncframe "comes back as substream (kIndependent, 0)" - so

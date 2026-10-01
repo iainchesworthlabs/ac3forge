@@ -81,8 +81,8 @@ namespace iclforge::admbridge {
 [[nodiscard]] ICLFORGE_ADMBRIDGE_EXPORT iclforge::oba::Position adm_position_to_room(
     const iclforge::adm::Position& position);
 
-// The write-direction inverse of adm_cartesian_to_room() above, for roadmap item IM2 (the JOC ->
-// ADM BWF writer): x_adm = 2*x_room - 1, y_adm = 1 - 2*y_room, z_adm = z_room - the algebraic
+// The write-direction inverse of adm_cartesian_to_room() above, for the JOC ->
+// ADM BWF writer: x_adm = 2*x_room - 1, y_adm = 1 - 2*y_room, z_adm = z_room - the algebraic
 // inverse of the affine remap this header's own top comment derives, not a second, independently
 // checked formula. This writer only ever emits cartesian ADM (the Dolby Atmos Master ADM Profile's
 // own shape), so unlike the read side there is no matching room_to_adm_polar()/room_position_to_adm()

@@ -9,7 +9,7 @@
 
 #include "iclforge/objects/oamd.hpp"
 
-// Roadmap item IM2 ("JOC -> ADM BWF writer") - the write-direction sibling of atmos_adm.hpp's
+// The JOC -> ADM BWF writer - the write-direction sibling of atmos_adm.hpp's
 // AdmAtmosSource/load_adm_atmos_source. Same reason for existing: decode.cpp cannot
 // #include "ac3adm/ac3adm.hpp" or "ac3/admbridge/bridge.hpp" itself, not even behind a
 // preprocessor guard (tools/checks/check_platform_macros.ps1 refuses ANY #if/#ifdef/#ifndef

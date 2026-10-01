@@ -4,7 +4,7 @@
 
 #include "../support.hpp"
 
-// `forge probe` (legacy item IO1): what an elementary stream declares about
+// `forge probe`: what an elementary stream declares about
 // itself, as a human-readable table or as the JSON document docs/forge/cli/
 // commands.md documents as a stable contract.
 //

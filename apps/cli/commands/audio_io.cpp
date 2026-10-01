@@ -435,7 +435,7 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
     // `pending` holds the handful of units encoded during that window, which
     // either get discarded (a bitstream after all - they were noise) or
     // flushed into the sink once opened (see below). Bounded to a fraction of
-    // a second's worth of frames, not the whole session, so IO9's
+    // a second's worth of frames, not the whole session, so the
     // bounded-memory property still holds for everything after this window.
     iclforge::iec61937::PassthroughDetector detector;
     std::uint64_t frames_written = 0;
@@ -919,7 +919,7 @@ int submit_units_to_sink(iclforge::audio::PassthroughSink& sink,
     return static_cast<bool>(claim);
 }
 
-// play/monitor follow mode's transcode-to-passthrough leg: DC9's transcode produces an
+// play/monitor follow mode's transcode-to-passthrough leg: the transcode produces an
 // AC-3 file the sink already confirmed it accepts, then that file plays
 // exactly the way a plain AC-3 source file already does - the two commands
 // this was "two commands and knowing why" before, run back to back with the

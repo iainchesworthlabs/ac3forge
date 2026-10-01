@@ -25,7 +25,7 @@ constexpr double kPi = std::numbers::pi;
 
 // §7.9.4.1 step 2: xcos1[k] = -cos(2pi(8k+1)/8N), xsin1[k] = -sin(2pi(8k+1)/8N).
 //
-// Scalar (minimum-footprint decoder profile's float32 gap): the type the twiddles are STORED in.
+// Scalar (float32 for the minimum-footprint profile): the type the twiddles are STORED in.
 // Computed in double and narrowed once on the way in, for the same reason
 // fft_kernel.hpp's FftTables does it - the angle here is small and exact and
 // deserves the library call at full precision whatever the table holds.
@@ -347,7 +347,7 @@ void mdct512_forward(std::span<const double, 512> windowed, std::span<double, 25
     }
 }
 
-// The float32 forms of the two above (minimum-footprint decoder profile's float32 gap), for the
+// The float32 forms of the two above, for the
 // object reconstruction in src/oba/joc.cpp - which runs a FORWARD transform in
 // a decode, analysing the bed it is about to un-mix (PF8). Every other forward
 // caller is the encoder, and the encoder stays double: the fifteen bitstream

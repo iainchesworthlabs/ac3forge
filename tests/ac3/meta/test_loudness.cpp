@@ -259,7 +259,7 @@ TEST_CASE("true peak is undefined before any sample is pushed", "[loudness][true
 }
 
 
-// --- BS.1770-5 Annex 3 positional weighting (legacy item IO10) --------------------
+// --- BS.1770-5 Annex 3 positional weighting --------------------
 
 namespace {
 
@@ -480,7 +480,7 @@ TEST_CASE("the two algorithms disagree only about the lone surround of 2/1 and 3
 
 TEST_CASE("widening 5.1 to 7.1.4 adds channels the meter counts but does not surround-weight",
           "[loudness][bs1770-5]") {
-    // The IO10 headline, as one measurement: the same six-channel bed plus
+    // The headline, as one measurement: the same six-channel bed plus
     // six more channels carrying the same tone. Every added channel (Lrs,
     // Rrs, Vhl, Vhr, Lts, Rts) is unity-weighted, so the 7.1.4 reading must
     // sit above the 5.1 one by exactly the power those six unity terms add -

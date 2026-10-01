@@ -676,7 +676,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // from FIR-smoothed noise), so discarding the top 9 kHz costs almost
     // nothing there while freeing bits everywhere else.
     //
-    // What EQ7's own pass added is that this is NOT a property of that
+    // What the fast-gain pass added is that this is NOT a property of that
     // fixture. Re-swept 2026-08-23 on real programme material (CC0/public-
     // domain piano, thunderstorm, church bells, speech and samba - see the
     // PR), waveform SNR still rises monotonically as the band narrows,
@@ -846,7 +846,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // The other three are left alone deliberately. floorcod turns out to be
     // inert - the floor never binds at any rate on any material tried, so all
     // eight values encode identically. sdcycod and fdcycod move the result by
-    // tenths, and EQ7's re-check confirms that on real programme material
+    // tenths, and the fast-gain re-check confirms that on real programme material
     // with a perceptual score too: over their whole legal range at 192 kbit/s
     // 5.1, sdcycod spans 3.219-3.234 MOS and fdcycod 3.202-3.226, with the
     // §8.2.12 defaults inside 0.008 of the best either way.

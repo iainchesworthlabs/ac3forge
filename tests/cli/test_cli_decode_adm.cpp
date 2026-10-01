@@ -19,9 +19,9 @@
 #include "iclforge/ac3/io/wav.hpp"
 #include "iclforge/adm/ac3adm.hpp"
 
-// forge's 'decode ... adm_out=' path (legacy item IM2's write direction - apps/cli/commands/decode.cpp's
+// forge's 'decode ... adm_out=' path (the ADM write direction - apps/cli/commands/decode.cpp's
 // accumulate_adm/run_decode_eac3). Real, subprocess-level integration test: the same "run the actual
-// built binary, inspect what it wrote" shape tests/cli/test_cli_atmos_adm.cpp (IM2's read direction)
+// built binary, inspect what it wrote" shape tests/cli/test_cli_atmos_adm.cpp (the read direction)
 // and tests/cli/test_cli.cpp's own atmos-encode tests use, and for the same reason - see
 // test_cli_atmos_adm.cpp's own top comment on why decode.cpp's own logic cannot be linked into this
 // test binary and called directly. A separate file for the same two-part reason as that file's own top

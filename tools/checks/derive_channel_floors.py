@@ -17,7 +17,7 @@ channel's lowest value across every leg and every commit in the file.
 HEADROOM_DB covers commit-to-commit noise and NOTHING ELSE, because
 min_observed has already absorbed everything else.
 
-That is the correction VX11 produced. The first version of this script used
+That is the correction the 6.02 dB investigation produced. The first version of this script used
 6.02 dB, on the reasoning that a floor tighter than the cross-platform split
 would risk a new platform tripping it. But min_observed is a minimum across
 EVERY leg, so for any channel where the split appears it is already the arm64

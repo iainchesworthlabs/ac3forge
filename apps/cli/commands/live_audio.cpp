@@ -949,8 +949,8 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
     }
 
     // Object mode: every slot is one object, bound to capture channels by
-    // map= or one-to-one by default, against a budget fixed here (roadmap
-    // IO9 - `live` used to pan exactly one object per capture channel with no
+    // map= or one-to-one by default, against a budget fixed here (`live`
+    // used to pan exactly one object per capture channel with no
     // way to say otherwise). Channel mode: the captured channels are routed
     // onto take's coded channels by direction, the same plan::route model
     // 'encode' and the GUI's own live session use.
@@ -1398,8 +1398,8 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
             // used to be described as "the hook a real live position source
             // drops into once one exists" (see live_audio.hpp's own header):
             // positions= is that source now, sampled through the same
-            // SceneCursor seam iclforge::oba::SceneCursor was built for (roadmap
-            // UX4), at the frame-end time `t` either path already needs.
+            // SceneCursor seam iclforge::oba::SceneCursor was built for, at the frame-end time
+            // `t` either path already needs.
             const double t = static_cast<double>(n0) / static_cast<double>(rate_hz);
             if (position_source) {
                 position_source->drain_into(*position_cursor, t);

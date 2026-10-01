@@ -49,7 +49,7 @@ namespace {
 // their units into one track is not something a player can undo - so a stream
 // carrying more than one loses the rest here. Said out loud rather than left
 // for someone to notice a missing commentary later; carrying every programme,
-// a track each, is container readers (mkv/mp4/ts)/IO6.
+// a track each, is the job of the container readers (mkv/mp4/ts) and MPEG-TS profiles.
 void warn_if_programmes_dropped(const iclforge::ac3::io::ScannedStream& scanned) {
     if (scanned.programmes.size() <= 1) {
         return;

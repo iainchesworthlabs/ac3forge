@@ -26,7 +26,7 @@
 // rather than round-tripping data this same code produced - the same
 // reasoning test_mpegts.cpp and test_matroska.cpp document for their own
 // independent readers/writers. iclforge::adm began as a reader only (phase 1
-// of roadmap item B1); roadmap item IM2 later gave it write_bw64(), and the
+// of the ADM reader work); the writer later gave it write_bw64(), and the
 // write tests at the end of this file keep the same rule from the other side:
 // they check the bytes write_bw64() put on disk directly, not only what the
 // same two libraries read back from them.
