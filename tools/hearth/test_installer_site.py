@@ -96,7 +96,7 @@ class InstallerSite(unittest.TestCase):
         self.assertEqual(index["tag"], "v0.11.0")
         self.assertEqual(index["page"], "https://github.com/example/releases/tag/v0.11.0")
         self.assertEqual(index["published"], "2026-10-01T09:30:00Z")
-        self.assertEqual(index["repository"], ota.REPOSITORY)
+        self.assertEqual(index["repository"], ota.repository())
         self.assertEqual(index["manifest"], ota.MANIFEST_NAME)
         # The page lists every chip; each image says which it is for.
         self.assertEqual(
@@ -142,7 +142,7 @@ class InstallerSite(unittest.TestCase):
         self.assertEqual(index, installer_site.empty_index())
         self.assertEqual(index["images"], [])
         # Still enough for the page to ask GitHub whether a release has firmware since.
-        self.assertEqual(index["repository"], ota.REPOSITORY)
+        self.assertEqual(index["repository"], ota.repository())
         self.assertEqual(index["manifest"], ota.MANIFEST_NAME)
 
     def test_a_directory_of_images_fills_the_installer_as_a_release_does(self) -> None:

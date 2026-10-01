@@ -80,7 +80,12 @@ that question — see [Landscape](landscape.md) and
 
 <script>
 (function () {
-  const REPO = "iainchesworthlabs/iclforge";
+  // The site is served under the repository's name, so the repository is read off the address:
+  // it is right before and after the repository is renamed. A local preview, and the stub
+  // tools/ci/render_measurement_tiles.js runs the scripts in, have no such address.
+  const REPO = typeof location !== "undefined" && location.hostname.endsWith(".github.io")
+    ? location.hostname.split(".")[0] + "/" + location.pathname.split("/")[1]
+    : "iainchesworthlabs/iclforge";
   const HISTORY_BRANCH = "quality-history";
   const MAIN_COLOR = "#00acc1";
   // Muted and dashed (see buildChart) rather than a third saturated colour -
@@ -826,7 +831,12 @@ its race against the Dolby encoder runs locally, so neither has a series; nor do
 
 <script>
 (function () {
-  const REPO = "iainchesworthlabs/iclforge";
+  // The site is served under the repository's name, so the repository is read off the address:
+  // it is right before and after the repository is renamed. A local preview, and the stub
+  // tools/ci/render_measurement_tiles.js runs the scripts in, have no such address.
+  const REPO = typeof location !== "undefined" && location.hostname.endsWith(".github.io")
+    ? location.hostname.split(".")[0] + "/" + location.pathname.split("/")[1]
+    : "iainchesworthlabs/iclforge";
   const HISTORY_BRANCH = "quality-history";
   const HISTORY_FILE = "ac4-quality-main";
   // Mirrors tools/ci/append_ac4_quality_history.py's thresholds - a display

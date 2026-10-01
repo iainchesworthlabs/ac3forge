@@ -50,7 +50,12 @@ a history to show here ([Validation: AC-4](verification.md#the-encoder)).
 
 <script>
 (function () {
-  const REPO = "iainchesworthlabs/iclforge";
+  // The site is served under the repository's name, so the repository is read off the address:
+  // it is right before and after the repository is renamed. A local preview, and the stub
+  // tools/ci/render_measurement_tiles.js runs the scripts in, have no such address.
+  const REPO = typeof location !== "undefined" && location.hostname.endsWith(".github.io")
+    ? location.hostname.split(".")[0] + "/" + location.pathname.split("/")[1]
+    : "iainchesworthlabs/iclforge";
   const HISTORY_BRANCH = "quality-history";
   // Releases only ever happen on main, which since the 2026-08 move to
   // trunk-based development is the only branch there is - tagging IS the

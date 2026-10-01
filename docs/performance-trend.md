@@ -242,7 +242,12 @@ follow the same convention, table-only (no chart to style).
   // are the only ones on the same page repeating each other - the sibling
   // pages' own near-duplication is across separate documents, not something
   // a page-local script can reach anyway.
-  const PERF_TREND_REPO = "iainchesworthlabs/iclforge";
+  // The site is served under the repository's name, so the repository is read off the address:
+  // it is right before and after the repository is renamed. A local preview, and the stub
+  // tools/ci/render_measurement_tiles.js runs the scripts in, have no such address.
+  const PERF_TREND_REPO = typeof location !== "undefined" && location.hostname.endsWith(".github.io")
+    ? location.hostname.split(".")[0] + "/" + location.pathname.split("/")[1]
+    : "iainchesworthlabs/iclforge";
   const PERF_TREND_HISTORY_BRANCH = "quality-history";
   const PERF_TREND_MAIN_COLOR = "#7c4dff";
   // Muted and dashed (see each section's buildChart) rather than a second

@@ -95,8 +95,9 @@ jobs:
     name: SonarCloud scan
     needs: [preflight, toolchain-versions]
     # Forks never have SONAR_TOKEN and schedules do not run on them anyway; the
-    # repository check keeps a fork's manual dispatch from failing confusingly.
-    if: needs.preflight.outputs.configured == 'true' && github.repository == 'iainchesworthlabs/ac3forge'
+    # owner check keeps a fork's manual dispatch from failing confusingly. It names the owner
+    # and not the repository, so it holds before and after the repository is renamed.
+    if: needs.preflight.outputs.configured == 'true' && github.repository_owner == 'iainchesworthlabs'
     runs-on: ubuntu-latest
     # Same image and container ci.yml's coverage job builds this preset in, so
     # the GCC 16 toolchain script and the vcpkg cache behave identically here.

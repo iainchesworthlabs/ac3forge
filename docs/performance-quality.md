@@ -226,7 +226,12 @@ ceiling) fails the build rather than merely being recorded.
   // Self-contained, like every other trend page here - see the note at the top
   // of performance-trend.md's script on why these pages deliberately do not
   // share a docs/javascripts asset.
-  const REPO = "iainchesworthlabs/iclforge";
+  // The site is served under the repository's name, so the repository is read off the address:
+  // it is right before and after the repository is renamed. A local preview, and the stub
+  // tools/ci/render_measurement_tiles.js runs the scripts in, have no such address.
+  const REPO = typeof location !== "undefined" && location.hostname.endsWith(".github.io")
+    ? location.hostname.split(".")[0] + "/" + location.pathname.split("/")[1]
+    : "iainchesworthlabs/iclforge";
   const HISTORY_BRANCH = "quality-history";
 
   // Every badge on this page is decided by a threshold the project ALREADY
