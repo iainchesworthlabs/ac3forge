@@ -82,6 +82,7 @@ checked. The table is of `main` at `5ef9eeafc`.
 | D14a | the scalar and the decoder's size, on the host | #1096, #1102, #1123, 2026-09-29 | merged; exit met |
 | D14b | AC-4 on the ESP32-P4 | #1118, 2026-09-29 | merged; the P4 decodes 2.0 in real time and nothing wider; decision 26's identical output does not hold on the five plays with companding |
 | D14a4 | libm parity and the frame-rate converter at `float` | open, 2026-09-30 | exit met: the `float` PCM equal on the host, the Cortex-M3 leg and the P4 for D14b's twenty plays; the converter takes 7.3 ms a frame at 24 and 25 fps, and 1001/960 still has a 5.9 s first frame |
+| D14a5 | the converter's `float` tables at compile time | open, 2026-10-01 | exit met: the P4's first frame at 1001/960 takes 0.31 s from 5.9 s and the converter 16.5 ms a frame at 23.976 fps from 22.4; no `float` pin moved and the `double` output is byte-identical |
 | D14c | the S3 | | not built |
 | D14d | the C6, fixed point | | not built |
 | E1 | the encoder library, the frame writer, SIMPLE mono and stereo | #1011, 2026-09-25 | merged; exit met |
@@ -116,7 +117,7 @@ twice as long as at the commit it is queued on, or doubles its heap churn.
 Left to the user, each with its options in the pull request or section named: N1's steps outside
 the repository and what to do with the open vcpkg pull request ([N1](#n1-the-names)); D14b's four, of which the libm change and the frame-rate converter were taken on
 2026-09-30 and are D14a4, and the allocation policy and what comes next on the P4 are still open (#1118);
-D14a4's, which are what to do about the 1001/960 table's 5.9 s first frame and PSRAM reads;
+D14a4's, of which the 1001/960 table was taken on 2026-09-30 and is D14a5, and the allocation policy is still open;
 I5's two, whether to spend a check on the `zone_mask` reading and a native
 check of the Arabic, Hebrew and Yiddish strings (#1100); I5b's four, which are an ADM or IAB master
 as a source on the encoder page, static beds for channels assigned to speakers, a Preview from a
@@ -2211,6 +2212,71 @@ CLI; the converter's time on the P4 before and after. Met.
 **Verified by:** `ac3tests` at both scalars on MSVC; the WSL GCC 16 and Clang 22 gates at both scalars and the
 assertion-checked Clang tree; `run_baremetal_probe.sh --ac4` on the Cortex-M3 and on the host; the board.
 
+#### D14a5: the converter's float tables at compile time
+
+After D14a4. D14a4 left the frame-rate converter's table at 1001/960, 94,094 coefficients each a Kaiser window and a
+sinc, to be designed in `double` on the P4's soft-float routines at the first frame, which took 5.9 s, and read from
+PSRAM, which cost the converter 22 to 98 ms a frame. The user took it on 2026-09-30: generate the `float` table at
+compile time, with C++23 `constexpr` and `consteval`, "idiomatic". One pull request.
+
+- **The design as a constexpr function.** `dsp/resampler_design.hpp` holds the design once (the filter's length from
+  Kaiser's estimate, the window, the sinc, each phase's normalisation) over a `Math` that supplies `ceil`, `sqrt`,
+  `sin` and the window's I0. The `double` filter, the encoder's and the default build's decoder's, instantiates it
+  with the C library's functions, so its table keeps the bytes it had; the `float` tables are instantiated with
+  `PortableMath`.
+- **Portable math.** `dsp/portable_math.hpp` has `ceil` by truncation; `sqrt` by Heron's iteration from half the
+  exponent and a step of Newton's method on the residual, which Dekker's product computes exactly (the double nearest
+  the root on every argument tried, the arguments one unit below a power of four, where a root lies within 2^-56 of a
+  midpoint, included); and `sin` and `cos` by a Cody-Waite reduction with pi / 2 in three pieces and Taylor series to
+  r^19 and r^18 (within three units in the last place of the C library's over |x| <= 2^20). `bessel_i0` moved to
+  `dsp/kbd.hpp` as a `constexpr` function with the same statements. Plain `double` operations in a fixed order, so the
+  compiler's evaluation, an x86-64 host, a Cortex-M3 and an ESP32's soft-float `double` give the same bits (the build
+  pins `-ffp-contract=off`).
+- **The tables.** 25/24, 15/16 and 1001/960 are `constexpr` variable templates built by a `consteval` function,
+  evaluated when `dsp/resampler.cpp` is compiled at the `float` scalar and not in a `double` build, which names none. A table keeps phases 0 to up / 2: phase
+  up - p is phase p read from its last coefficient to its first, since the window and the sinc are even, so 1001/960 is
+  188 KB and not 376 KB; `dot_four_lanes_reversed()` is the four-lane sum of a phase read backwards, bit for bit what
+  `dot_four_lanes()` gives on a copy written out. A float filter of any other ratio is designed when it is made, with
+  the same functions.
+- **A copy.** The constants are in flash, which on the board is DIO at 80 MHz behind a 128 KB cache, where the PSRAM
+  is hex at 200 MHz. Read in place the half table took the converter 60.5 ms a frame at 23.976 fps (the whole 376 KB
+  table 110 ms), against the 22.4 ms of the table designed at run time and read from PSRAM; the filter copies the
+  table into its own memory when it is made, and the converter takes 16.5 ms.
+- **Limits.** One translation unit evaluates the tables, only in a `float` build, and `src/ac4core/CMakeLists.txt`
+  raises the constant evaluator's limit for it by compiler: `/constexpr:steps` for MSVC, `/clang:-fconstexpr-steps`
+  for clang-cl (which accepts and ignores `/constexpr:steps`), `-fconstexpr-steps` for Clang and
+  `-fconstexpr-ops-limit` for GCC, which ESP-IDF's component takes through the same file.
+
+**Built in D14a5.** `dsp/portable_math.hpp` and `dsp/resampler_design.hpp` in `src/ac4core`, `bessel_i0` in
+`dsp/kbd.hpp`, the filter and kernel in `dsp/resampler.{hpp,cpp}` and `dsp/resampler_vector.hpp`, the compile limits,
+and `tests/ac4core/test_ac4core_portable_math.cpp` with the converter's tests (the table's FNV-1a image three ways, the
+compiler's evaluation against the machine's, the mirrored phases, the reversed kernel). The three tables equal the C
+library's design rounded to `float` in every coefficient, so no `float` PCM hash moved; the tests pin the FNV-1a image
+of each table, which is new here. The Cortex-M3 probe's image is 683,448 bytes from 485,032, which its ceiling follows (750,000).
+
+**Exit, as measured.** On the P4, in the default allocation policy, the four IMS streams of D14b, with D14a4's tree built and measured the same
+way in the same session beside D14a5's image (the converter's microseconds a frame, D14a4's then D14a5's): 7,283 and
+7,389 at 24 fps (25/24), 7,184 and 7,285 at 25 fps (15/16), 22,369 and 16,520 at 23.976 fps (1001/960) and 98,508 and
+93,761 at 29.97 fps (1001/960). The frame is 1.11 of its duration at 23.976 fps, from 1.25, and 3.51 at 29.97 fps, from
+3.65; at 24 and 25 fps it is 0.91 and 0.82, as before. The first frame takes 0.31 s at 24, 25 and 23.976 fps and 0.42 s at
+29.97 fps, from 0.43, 0.40, 5.87 and 5.97 s, and the 23.976 fps play's peak of PSRAM falls from 632 to 435 KB. Under the
+512-byte policy the converter takes 7.5, 7.3, 15.3 and 12.2 ms. The `float` PCM hashes of the 84 plays and cuts of D14a4's
+lists are the same on the host (MSVC, GCC 16 and Clang 22), in the Cortex-M3 program and on the board, and equal to
+D14a4's, so no pin moved; the `double` output is byte-identical (360 decodes and 6 encodes). The image grows by 199,696
+bytes, 196,464 of them the tables, the Cortex-M3 probe's by 198,416 bytes, and `dsp/resampler.cpp` takes 5 to 24 s
+longer to compile at `float`, by compiler (MSVC 24.5 s from 0.7, GCC 16 6.1 s from 0.8, ESP-IDF's RISC-V GCC 13.0 s from 1.9). The 29.97 fps play's
+converter still takes 77 ms more than the 23.976 fps play's with the same table and code, and the allocation policy's
+open question stands.
+
+**Exit:** the P4's first frame at 1001/960 from 5.9 s to the 0.31 s of the first frame at 24 and 25 fps, no run-time
+design on any target, no change to the `double` output, and the `float` PCM equal across the host, the Cortex-M3 leg
+and the board. Met.
+
+**Verified by:** the whole `iclforge-tests` at both scalars on MSVC, clang-cl, GCC 16 and Clang 22 (at `float` one
+Hearth test, `stream decoder: fast inverse transform reaches the decoder, closely matching the reference transform`,
+fails on all four, and on main's tree with GCC 16); the `double` comparison with main's build; the probe on the Cortex-M3
+and the host; the board; the full-matrix `ci.yml` and `pr-gate.yml` dispatches on the branch.
+
 ### Encoder phases
 
 Each encoder phase follows the decoder phase that decodes what it writes and uses what that phase
@@ -3802,7 +3868,9 @@ words, asked for 25 in their own words, and took the recommendations for the res
     ran the dot product in `float` with the table designed once in `double`, which takes 7.3 ms a
     frame at 25/24 and 15/16; what is left at 1001/960 is the first frame's 5.9 s and a table read
     from PSRAM (22 to 98 ms a frame), and a shorter filter is one of the options D14a4's pull
-    request puts.
+    request puts. D14a5 builds the table at compile time and the converter copies the 188 KB of it
+    that it keeps into PSRAM: no first-frame stall, 16.5 ms a frame at 23.976 fps, so the shorter
+    filter is not needed for either.
 
 34. **The encoder on an ESP32.**
     - (a) **Never**, as decision 15 has it.
