@@ -531,7 +531,9 @@ A file outside the library that defines one of the library's own names in one of
 `tests/ac3/core/avx2/absent/` files, which define `avx2_probe_matches_expected` for a build with no AVX2 tier); the block of
 `iclforge::test::avx2` in the same files stays. The history, the Rust crate (whose own module is `ac3`), CMake (whose
 `iclforge::<library>` is a target) and the ABI allowlists (which a build writes) are not read. 26 changes are inside a string
-(`--report` lists them): six test names, nine docstrings of the Python extension, eleven messages and templates.
+(`--report` lists them): six test names, seven docstrings of the Python extension, and thirteen other strings (a profiler
+label, the text a packaging script writes into a throwaway project, the patterns of the footprint report, the namespace text of two
+generators, a fuzz seed script, a space search and a sentence of a page).
 
 ### What the compiler's loop decides
 
