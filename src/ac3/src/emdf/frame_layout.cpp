@@ -708,7 +708,7 @@ FrameLayout walk_frame(std::span<const std::byte> frame) {
                             w = (w << 1) | (bit_at(frame, bitp + static_cast<std::size_t>(i)) ? 1u
                                                                                              : 0u);
                         }
-                        if (w == kSyncWord) {
+                        if (w == iclforge::emdf::kSyncWord) {
                             out.has_container = true;
                             out.container_start = bitp;
                             field.carries_container = true;
