@@ -71,7 +71,7 @@
 // the encoder chose AND on the level change they cause, and those are two
 // different claims.
 
-namespace iclforge {
+namespace iclforge::ac3 {
 
 enum class DecodeError : std::uint8_t {
     kTruncated,
@@ -967,4 +967,4 @@ split_access_units(std::span<const std::byte> stream, int programme);
 [[nodiscard]] ICLFORGE_AC3_EXPORT bool has_eac3_extension_substreams(
     std::span<const std::byte> stream);
 
-}  // namespace iclforge
+}  // namespace iclforge::ac3

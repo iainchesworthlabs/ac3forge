@@ -26,7 +26,7 @@
 #include "iclforge/objects/oamd.hpp"
 #include "iclforge/render/spatial.hpp"
 
-namespace iclforge::oba {
+namespace iclforge::ac3::oba {
 
 namespace {
 
@@ -808,4 +808,4 @@ std::expected<eac3::AccessUnit, FrameError> AtmosEncoder::encode_bed_frame(
     return unit;
 }
 
-}  // namespace iclforge::oba
+}  // namespace iclforge::ac3::oba

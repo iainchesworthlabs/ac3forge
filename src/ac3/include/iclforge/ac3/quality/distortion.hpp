@@ -53,7 +53,7 @@
 // them into one number here would price them all at once. A caller that
 // wants them measures the streams it wants and sums.
 
-namespace iclforge::quality {
+namespace iclforge::ac3::quality {
 
 // §7.2.2.3's banding. The same 50 for every sample rate: the table maps
 // bins, not frequencies, and a band's width in Hz follows the rate.
@@ -146,4 +146,4 @@ inline constexpr double kMaxSnrDb = 200.0;
 // Bands the stream does not cover report kMaxSnrDb, for the same reason.
 ICLFORGE_AC3_EXPORT void band_snr_db(const BandNoise& measured, std::span<double> out);
 
-}  // namespace iclforge::quality
+}  // namespace iclforge::ac3::quality

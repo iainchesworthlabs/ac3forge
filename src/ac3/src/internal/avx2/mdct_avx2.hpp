@@ -22,7 +22,7 @@
 // argument mdct.cpp's own comments make for the SSE2 seam.
 // ---------------------------------------------------------------------------
 
-namespace iclforge::internal::avx2 {
+namespace iclforge::ac3::internal::avx2 {
 
 // mdct.cpp's apply_analysis_window, four samples per iteration instead of
 // two. Unit stride throughout, nothing to gather or scatter.
@@ -154,4 +154,4 @@ void mdct512_forward_batch4(std::span<const double> w0, std::span<const double> 
                             std::span<double> c0, std::span<double> c1, std::span<double> c2,
                             std::span<double> c3);
 
-}  // namespace iclforge::internal::avx2
+}  // namespace iclforge::ac3::internal::avx2

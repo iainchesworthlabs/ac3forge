@@ -9,7 +9,7 @@
 #include <string>
 #include <utility>
 
-namespace iclforge::verify {
+namespace iclforge::ac3::verify {
 
 namespace {
 
@@ -84,4 +84,4 @@ std::string Eac3MirrorEncoder::last_report() const {
     return report(last_mismatches_, encoder_trace_);
 }
 
-}  // namespace iclforge::verify
+}  // namespace iclforge::ac3::verify

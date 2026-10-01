@@ -49,7 +49,7 @@
 //     row is absent rather than guessed - and -24/+/-2/-2 would in any case
 //     restate kAtscA85.
 
-namespace iclforge::meta {
+namespace iclforge::ac3::meta {
 
 // How a preset enforces its loudness target. Most delivery specs state a
 // target to hit and a symmetric tolerance around it; a distribution platform
@@ -237,4 +237,4 @@ struct QcVerdict {
                                                          std::optional<double> integrated_lkfs,
                                                          std::optional<double> true_peak_dbtp);
 
-}  // namespace iclforge::meta
+}  // namespace iclforge::ac3::meta

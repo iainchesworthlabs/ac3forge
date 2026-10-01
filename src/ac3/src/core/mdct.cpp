@@ -16,7 +16,7 @@
 #include "mdct_avx2.hpp"
 #include "reference_transform.hpp"
 
-namespace iclforge {
+namespace iclforge::ac3 {
 
 namespace {
 
@@ -899,4 +899,4 @@ void imdct512_windowed_batch4(std::span<const float, 256> coeffs0,
     imdct512_windowed(coeffs3, x3);
 }
 
-}  // namespace iclforge
+}  // namespace iclforge::ac3

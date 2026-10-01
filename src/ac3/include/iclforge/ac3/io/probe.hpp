@@ -48,7 +48,7 @@
 // accumulated. AccessUnitReader below extends that to the input side, so a
 // caller need not hold the file either.
 
-namespace iclforge::io {
+namespace iclforge::ac3::io {
 
 // A field's observed extent over a whole stream. `seen` distinguishes "never
 // carried" from "carried, and happened to be zero" - the same distinction
@@ -325,4 +325,4 @@ class ICLFORGE_AC3_EXPORT AccessUnitReader {
     std::unique_ptr<Impl> impl_;
 };
 
-}  // namespace iclforge::io
+}  // namespace iclforge::ac3::io

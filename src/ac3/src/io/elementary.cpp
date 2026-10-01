@@ -17,7 +17,7 @@
 #include "iclforge/ac3/core/tables.hpp"
 #include "iclforge/ac3/meta/mixing.hpp"
 
-namespace iclforge::io {
+namespace iclforge::ac3::io {
 
 namespace {
 
@@ -904,4 +904,4 @@ std::optional<std::uint32_t> uniform_access_unit_samples(const ScannedStream& st
     return first;
 }
 
-}  // namespace iclforge::io
+}  // namespace iclforge::ac3::io

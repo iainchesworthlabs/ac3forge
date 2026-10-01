@@ -58,7 +58,7 @@
 // conditional. That hoisting is why this cannot share decode_frame's loop:
 // the two syntaxes agree only on the payload underneath.
 
-namespace iclforge {
+namespace iclforge::ac3 {
 
 
 namespace {
@@ -4802,4 +4802,4 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
     return UnitResult(std::in_place, std::in_place, std::move(out));
 }
 
-}  // namespace iclforge
+}  // namespace iclforge::ac3

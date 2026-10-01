@@ -33,7 +33,7 @@
 // one) - one definition of which seat a location falls into is what keeps an
 // encoder's promise and a decoder's protection describing the same fold.
 
-namespace iclforge::eac3::seat {
+namespace iclforge::ac3::eac3::seat {
 
 enum class Seat : std::uint8_t { kLeft, kCentre, kRight, kLeftSurround, kRightSurround, kLfe };
 
@@ -103,4 +103,4 @@ struct SeatMix {
     return surrounds ? Acmod::k2_2 : Acmod::k2_0;
 }
 
-}  // namespace iclforge::eac3::seat
+}  // namespace iclforge::ac3::eac3::seat

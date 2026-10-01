@@ -45,7 +45,7 @@
 #include "scalar_transform.hpp"
 #include "snr_search.hpp"
 
-namespace iclforge::eac3 {
+namespace iclforge::ac3::eac3 {
 
 namespace {
 
@@ -6091,4 +6091,4 @@ std::expected<AccessUnit, FrameError> AccessUnitEncoder::encode_access_unit(
     return unit;
 }
 
-}  // namespace iclforge::eac3
+}  // namespace iclforge::ac3::eac3

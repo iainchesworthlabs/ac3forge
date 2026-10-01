@@ -38,7 +38,7 @@
 #include "exp_strategy.hpp"
 #include "snr_search.hpp"
 
-namespace iclforge {
+namespace iclforge::ac3 {
 
 namespace {
 
@@ -2587,4 +2587,4 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     return frame;
 }
 
-}  // namespace iclforge
+}  // namespace iclforge::ac3

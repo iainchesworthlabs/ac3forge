@@ -47,7 +47,7 @@
 // ac3/verify/selfcheck.hpp for the encode-then-decode-then-compare driver
 // most callers actually want.
 
-namespace iclforge::verify {
+namespace iclforge::ac3::verify {
 
 // One coded stream's state within one block, as that side believed it. Streams
 // are numbered exactly as both the encoder and the decoder already number them
@@ -183,4 +183,4 @@ inline constexpr int kMaxPerArray = 4;
 [[nodiscard]] ICLFORGE_AC3_EXPORT std::string report(std::span<const Mismatch> mismatches,
                                                  int fbw_channels, int coded_channels);
 
-}  // namespace iclforge::verify
+}  // namespace iclforge::ac3::verify

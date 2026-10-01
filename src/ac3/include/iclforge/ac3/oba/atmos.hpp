@@ -35,7 +35,7 @@
 // only split their shared energy in proportion to how loud each one is. That
 // is not a defect of this encoder; it is what a parametric object coder is.
 
-namespace iclforge::oba {
+namespace iclforge::ac3::oba {
 
 struct AtmosConfig {
     SampleRate sample_rate = SampleRate::k48000;
@@ -274,4 +274,4 @@ ICLFORGE_AC3_EXPORT void qmf_band_energy(std::span<const float> signal,
                                      std::span<const std::uint8_t, 64> mapping,
                                      std::span<double> out, dsp::QmfAnalysis& analysis);
 
-}  // namespace iclforge::oba
+}  // namespace iclforge::ac3::oba

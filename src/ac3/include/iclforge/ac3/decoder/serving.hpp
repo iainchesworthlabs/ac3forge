@@ -19,7 +19,7 @@
 // the same decision from the same inputs (planning/hearth-reference-player.md,
 // "Decoder configuration").
 
-namespace iclforge::render {
+namespace iclforge::ac3::render {
 
 // kAuto reconstructs exactly when the layout has height speakers, which is
 // the case the bed cannot serve; kAlways does so for any rendered layout;
@@ -61,4 +61,4 @@ inline void configure_decoder(const Serving& serving, iclforge::DecoderConfig& c
     config.skip_object_reconstruction = !serving.reconstruct;
 }
 
-}  // namespace iclforge::render
+}  // namespace iclforge::ac3::render

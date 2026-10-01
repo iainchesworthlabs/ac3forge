@@ -23,7 +23,7 @@
 // is: plumbing between the two encoder translation units, not library surface.
 // tests/ac3/encoder/test_exp_strategy.cpp includes it directly.
 
-namespace iclforge::internal {
+namespace iclforge::ac3::internal {
 
 // §8.2.8: "when the variation exceeds a threshold, new exponents will be
 // sent".
@@ -424,4 +424,4 @@ struct ExponentRunPlans {
     return in.free_strategy ? both.per_block : both.hoisted;
 }
 
-}  // namespace iclforge::internal
+}  // namespace iclforge::ac3::internal

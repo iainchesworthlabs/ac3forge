@@ -11,7 +11,7 @@
 #include "iclforge/arithmetic/detail/simd.hpp"
 #include "iclforge/base/detail/profiling.hpp"
 
-namespace iclforge {
+namespace iclforge::ac3 {
 
 // to_fixed25 and exponent_from_fixed are header-inline (exponents.hpp says
 // why); this stays out of line because its callers are whole-block ones that
@@ -329,4 +329,4 @@ void decode_exponents(std::uint8_t absolute, std::span<const std::uint8_t> group
     }
 }
 
-}  // namespace iclforge
+}  // namespace iclforge::ac3

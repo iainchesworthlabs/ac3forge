@@ -17,7 +17,7 @@
 // belongs in the library because forge and forge-gui must report the same
 // numbers from the same ballistics rather than each inventing its own.
 
-namespace iclforge::analysis {
+namespace iclforge::ac3::analysis {
 
 // Everything at or below this reports as this, so callers never meet
 // log10(0). Well under the -96 dBFS noise floor of 16-bit material.
@@ -175,4 +175,4 @@ struct SoundfieldVector {
 [[nodiscard]] ICLFORGE_AC3_EXPORT SoundfieldVector energy_vector(std::span<const ChannelLevel> levels,
                                                              Acmod acmod);
 
-}  // namespace iclforge::analysis
+}  // namespace iclforge::ac3::analysis

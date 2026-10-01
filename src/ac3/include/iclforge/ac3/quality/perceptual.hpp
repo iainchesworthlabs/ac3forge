@@ -74,7 +74,7 @@
 // it is. tests/ac3/quality/test_perceptual.cpp pins the behaviour that matters
 // - tones score tonal, noise and clicks do not.
 
-namespace iclforge::quality {
+namespace iclforge::ac3::quality {
 
 // The calibration between the encoder's coefficient domain and sound
 // pressure level, needed only by the absolute threshold.
@@ -224,4 +224,4 @@ struct NoiseToMask {
 [[nodiscard]] ICLFORGE_AC3_EXPORT NoiseToMask noise_to_mask(const BandNoise& measured,
                                                         std::span<const double> threshold);
 
-}  // namespace iclforge::quality
+}  // namespace iclforge::ac3::quality

@@ -17,7 +17,7 @@
 // output, and is signaled per full-bandwidth channel by the decoder's own
 // transproce/chintransproc/transprocloc/transproclen fields.
 
-namespace iclforge {
+namespace iclforge::ac3 {
 
 // TC1/TC2 in the spec's own naming: the two synthesis-buffer/cross-fade
 // system constants used throughout §3.7.2's pseudocode.
@@ -95,4 +95,4 @@ struct TransientPrenoiseRange {
 // integer arithmetic here too.
 ICLFORGE_AC3_EXPORT void apply_transient_prenoise(std::span<float> pcm, int transloc, int translen);
 
-}  // namespace iclforge
+}  // namespace iclforge::ac3

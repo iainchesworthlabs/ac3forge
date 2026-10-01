@@ -13,7 +13,7 @@
 #include "iclforge/ac3/core/tables.hpp"
 #include "iclforge/ac3/export.hpp"
 
-namespace iclforge {
+namespace iclforge::ac3 {
 
 // 2^-k for k in [0, 32): the scale a decoded exponent applies to its
 // mantissa (§7.1.3), a coupling coordinate's exponent to its mantissa
@@ -40,7 +40,7 @@ template <typename Scalar>
     return kPow2Negative<Scalar>[static_cast<std::size_t>(exp)];
 }
 
-}  // namespace iclforge
+}  // namespace iclforge::ac3
 
 // AC-3 exponent pipeline (A/52 §7.1, §8.2.7-8.2.11).
 //
@@ -59,7 +59,7 @@ template <typename Scalar>
 // independently computed allocation silently diverges. decode_exponents here
 // is that normative §7.1.3 algorithm, shared with the in-repo decoder.
 
-namespace iclforge {
+namespace iclforge::ac3 {
 
 inline constexpr int kMaxExponent = 24;          // §8.2.7
 inline constexpr int kMaxAbsoluteExponent = 15;  // 4-bit exps[ch][0] field, §7.1.2
@@ -295,4 +295,4 @@ ICLFORGE_AC3_EXPORT void decode_coupling_exponents(std::uint8_t cplabsexp,
                                                std::span<const std::uint8_t> groups,
                                                ExpStrategy strategy, std::span<std::uint8_t> out);
 
-}  // namespace iclforge
+}  // namespace iclforge::ac3

@@ -61,7 +61,7 @@
 // to the format once - a twiddle at 2^-24 is closer to the true value than
 // anything the arithmetic around it keeps.
 
-namespace iclforge::internal {
+namespace iclforge::ac3::internal {
 
 // The pair's working value (see "No saturation" above). The FFT kernel takes
 // it as its VecType, the lane type fft_kernel.hpp's batched callers use, with
@@ -257,4 +257,4 @@ inline void imdct256_pair_windowed_fixed(std::span<const Fixed32, 256> coeffs,
     }
 }
 
-}  // namespace iclforge::internal
+}  // namespace iclforge::ac3::internal

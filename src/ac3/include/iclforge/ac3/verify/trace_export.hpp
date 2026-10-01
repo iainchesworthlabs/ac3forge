@@ -52,7 +52,7 @@
 // frame, without holding the file in memory - the same incremental spirit
 // DecoderConfig::trace/syntax already follow.
 
-namespace iclforge::verify {
+namespace iclforge::ac3::verify {
 
 // "frame,substream,block,stream,kind,index,value\n" - write this once, before
 // the first append_trace_csv call, for a self-describing file.
@@ -71,4 +71,4 @@ ICLFORGE_AC3_EXPORT void append_trace_json_lines(const FrameTrace& trace, std::u
 ICLFORGE_AC3_EXPORT void append_trace_json_lines(const Eac3AccessUnitTrace& trace,
                                              std::uint64_t frame_index, std::string& out);
 
-}  // namespace iclforge::verify
+}  // namespace iclforge::ac3::verify

@@ -21,7 +21,7 @@
 
 #include "wav_format.hpp"
 
-namespace iclforge::io {
+namespace iclforge::ac3::io {
 
 namespace {
 
@@ -301,4 +301,4 @@ std::expected<void, WavError> write_wav_pcm16_raw(const std::string& path,
     return {};
 }
 
-}  // namespace iclforge::io
+}  // namespace iclforge::ac3::io

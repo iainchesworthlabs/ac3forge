@@ -13,7 +13,7 @@
 #include <span>
 #include <vector>
 
-namespace iclforge::meta {
+namespace iclforge::ac3::meta {
 
 namespace {
 
@@ -619,4 +619,4 @@ int dialnorm_from_lkfs(double lkfs) {
     return std::clamp(value, 1, 31);
 }
 
-}  // namespace iclforge::meta
+}  // namespace iclforge::ac3::meta

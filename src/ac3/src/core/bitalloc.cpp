@@ -19,7 +19,7 @@
 #include "bitalloc_internal.hpp"
 #include "iclforge/arithmetic/scalar_math.hpp"
 
-namespace iclforge {
+namespace iclforge::ac3 {
 
 namespace {
 
@@ -614,9 +614,9 @@ DeltaSegments choose_delta_segments(std::span<const float> coefficients,
     return choose_delta_segments_over<float>(coefficients, exps, start);
 }
 
-}  // namespace iclforge
+}  // namespace iclforge::ac3
 
-namespace iclforge::internal {
+namespace iclforge::ac3::internal {
 
 void compute_bit_allocation_traced(std::span<const std::uint8_t> exps, SampleRate sample_rate,
                                    const BitAllocCodes& codes, int csnroffst, int fsnroffst,
@@ -625,4 +625,4 @@ void compute_bit_allocation_traced(std::span<const std::uint8_t> exps, SampleRat
     compute_bit_allocation_impl(exps, sample_rate, codes, csnroffst, fsnroffst, bap, region, &mask);
 }
 
-}  // namespace iclforge::internal
+}  // namespace iclforge::ac3::internal

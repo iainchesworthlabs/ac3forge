@@ -26,7 +26,7 @@
 //   the true peak of the §7.8 downmix, not by programme RMS, and it attacks
 //   instantaneously, because a ceiling met one frame late is not a ceiling.
 
-namespace iclforge::meta {
+namespace iclforge::ac3::meta {
 
 namespace detail {
 
@@ -327,4 +327,4 @@ class ICLFORGE_AC3_EXPORT HeavyCompressor {
     std::unique_ptr<Impl> impl_;
 };
 
-}  // namespace iclforge::meta
+}  // namespace iclforge::ac3::meta

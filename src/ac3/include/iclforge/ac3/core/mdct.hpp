@@ -42,7 +42,7 @@
 // oracle the fast path's tests validate against. DecoderConfig::fast_imdct
 // is what a decoder actually reads to decide.
 
-namespace iclforge {
+namespace iclforge::ac3 {
 
 // Multiply a raw 512-sample block by the analysis window (§8.2.3.1).
 ICLFORGE_AC3_EXPORT void apply_analysis_window(std::span<const double, 512> x,
@@ -185,4 +185,4 @@ ICLFORGE_AC3_EXPORT void imdct256_pair_windowed(std::span<const double, 256> coe
 ICLFORGE_AC3_EXPORT void imdct256_pair_windowed(std::span<const float, 256> coeffs,
                                             std::span<float, 512> x);
 
-}  // namespace iclforge
+}  // namespace iclforge::ac3

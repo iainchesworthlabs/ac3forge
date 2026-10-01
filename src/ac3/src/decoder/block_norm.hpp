@@ -55,7 +55,7 @@
 // exponent one too small costs a bit of precision, one too large costs the
 // block.
 
-namespace iclforge::internal {
+namespace iclforge::ac3::internal {
 
 template <typename Scalar>
 inline constexpr bool kNormalisedStore = std::is_same_v<Scalar, Fixed32>;
@@ -355,4 +355,4 @@ inline void overlap_add_normalised(const std::array<Scalar, 512>& x,
     }
 }
 
-}  // namespace iclforge::internal
+}  // namespace iclforge::ac3::internal

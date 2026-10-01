@@ -34,7 +34,7 @@
 // long-run rate is exact. At 32/48 kHz the same accumulator degenerates to
 // the constant frame size.
 
-namespace iclforge {
+namespace iclforge::ac3 {
 
 struct EncoderConfig {
     SampleRate sample_rate = SampleRate::k48000;
@@ -230,4 +230,4 @@ class ICLFORGE_AC3_EXPORT FrameEncoder {
     std::unique_ptr<Impl> impl_;
 };
 
-}  // namespace iclforge
+}  // namespace iclforge::ac3

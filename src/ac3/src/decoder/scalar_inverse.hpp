@@ -27,7 +27,7 @@
 // and a profile carrying float32 coefficients has already refused
 // fast_imdct=false with kNoReferenceTransform long before reaching here.
 
-namespace iclforge::internal {
+namespace iclforge::ac3::internal {
 
 template <typename Scalar>
 void inverse_transform_into(const std::array<Scalar, 256>& coeffs, std::array<Scalar, 512>& x,
@@ -60,4 +60,4 @@ void inverse_transform_into(const std::array<Scalar, 256>& coeffs, std::array<Sc
     }
 }
 
-}  // namespace iclforge::internal
+}  // namespace iclforge::ac3::internal

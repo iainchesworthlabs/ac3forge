@@ -18,7 +18,7 @@
 // Their own reasoning - why a full matrix rather than a period-reduced one,
 // and what precomputing bought - stayed with them.
 
-namespace iclforge::internal {
+namespace iclforge::ac3::internal {
 
 namespace {
 
@@ -192,4 +192,4 @@ void reference_inner_sum_64(std::span<const double, 64> z_re, std::span<const do
     inner_sum_core<64>(inner_sum_pair_table(), z_re, z_im, t_re, t_im);
 }
 
-}  // namespace iclforge::internal
+}  // namespace iclforge::ac3::internal

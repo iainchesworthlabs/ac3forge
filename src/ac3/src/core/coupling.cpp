@@ -8,7 +8,7 @@
 #include <cstdint>
 #include <span>
 
-namespace iclforge::coupling {
+namespace iclforge::ac3::coupling {
 
 namespace {
 
@@ -157,4 +157,4 @@ int choose_master(std::span<const double> values) {
     return std::clamp(shift / 3, 0, kMaxMaster);
 }
 
-}  // namespace iclforge::coupling
+}  // namespace iclforge::ac3::coupling

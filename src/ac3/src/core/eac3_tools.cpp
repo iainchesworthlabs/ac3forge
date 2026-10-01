@@ -25,7 +25,7 @@
 #include "iclforge/arithmetic/fixed32.hpp"
 #include "mdct_fixed.hpp"
 
-namespace iclforge::eac3 {
+namespace iclforge::ac3::eac3 {
 
 namespace {
 
@@ -1399,4 +1399,4 @@ void ecpl_channel_coefficients_fixed(std::span<const Fixed32, 256> real_in,
     }
 }
 
-}  // namespace iclforge::eac3
+}  // namespace iclforge::ac3::eac3

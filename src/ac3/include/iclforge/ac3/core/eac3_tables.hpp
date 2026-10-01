@@ -22,7 +22,7 @@
 // rather than in the encoder is what stops the two from drifting into
 // disagreement about what a bit pattern means.
 
-namespace iclforge::eac3 {
+namespace iclforge::ac3::eac3 {
 
 // §E2.3.1.6: bit streams compliant with Annex E carry bsid 16. Values 11-15
 // are earlier E-AC-3 versions a version-16 decoder is required to decode too;
@@ -360,4 +360,4 @@ struct ChannelPlan {
 
 }  // namespace chanmap
 
-}  // namespace iclforge::eac3
+}  // namespace iclforge::ac3::eac3

@@ -10,7 +10,7 @@
 // allocated per call, so a stream whose transients the decoder corrects a few
 // times a second does not allocate for each of them.
 
-namespace iclforge::internal {
+namespace iclforge::ac3::internal {
 
 // The most §3.7.2's synthesis buffer holds: 2*TC1 + pnlen, pnlen at most two
 // blocks less transprocloc's four-sample step.
@@ -22,4 +22,4 @@ inline constexpr int kTransientPrenoiseMaxSynthesis =
 void apply_transient_prenoise(std::span<float> pcm, int transloc, int translen,
                               std::span<float> synthesis);
 
-}  // namespace iclforge::internal
+}  // namespace iclforge::ac3::internal

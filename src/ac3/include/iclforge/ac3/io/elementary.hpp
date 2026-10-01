@@ -30,7 +30,7 @@
 // A stream can also be BOTH at once, which is what kAc3CoreEac3Extension
 // below is for - see its own comment.
 
-namespace iclforge::io {
+namespace iclforge::ac3::io {
 
 enum class StreamKind : std::uint8_t {
     kAc3,   // bsid <= 10
@@ -482,4 +482,4 @@ struct AccessUnitTiming {
 [[nodiscard]] ICLFORGE_AC3_EXPORT std::optional<std::uint32_t> uniform_access_unit_samples(
     const ScannedStream& stream);
 
-}  // namespace iclforge::io
+}  // namespace iclforge::ac3::io

@@ -20,7 +20,7 @@
 // requirement for a facility only the trace has any use for. See
 // CONTRIBUTING.md's ABI-gate note and tools/ci/abi-allowlist/.
 
-namespace iclforge::internal {
+namespace iclforge::ac3::internal {
 
 // Same contract as iclforge::compute_bit_allocation, plus `mask` - always written
 // in full, on every path that function itself takes (including its two
@@ -30,4 +30,4 @@ void compute_bit_allocation_traced(std::span<const std::uint8_t> exps, SampleRat
                                    std::span<std::uint8_t> bap, const BitAllocRegion& region,
                                    std::array<int, 50>& mask);
 
-}  // namespace iclforge::internal
+}  // namespace iclforge::ac3::internal

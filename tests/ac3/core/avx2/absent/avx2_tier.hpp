@@ -27,14 +27,14 @@
 
 #include "mdct_avx2.hpp"
 
-namespace iclforge::internal::avx2 {
+namespace iclforge::ac3::internal::avx2 {
 
 // Declared but never callable here - see avx2_tier.cpp. The signature matches
 // src/internal/avx2/avx2_probe.hpp's exactly, so the present/ build and this
 // one agree on what the test is calling.
 [[nodiscard]] bool avx2_probe_matches_expected() noexcept;
 
-}  // namespace iclforge::internal::avx2
+}  // namespace iclforge::ac3::internal::avx2
 
 namespace iclforge::test::avx2 {
 

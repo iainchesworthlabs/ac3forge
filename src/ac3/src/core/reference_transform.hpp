@@ -36,7 +36,7 @@
 // The stub variant's bodies are unreachable by construction, not merely
 // unused: every caller checks kReferenceTransformAvailable first.
 
-namespace iclforge::internal {
+namespace iclforge::ac3::internal {
 
 // §8.2.3.2 direct form, alpha = 0 (long), -1 and +1 (the two halves of a
 // block-switched block). Same phase formula, same std::cos, same accumulation
@@ -62,4 +62,4 @@ void reference_inner_sum_128(std::span<const double, 128> z_re,
 void reference_inner_sum_64(std::span<const double, 64> z_re, std::span<const double, 64> z_im,
                             std::span<double, 64> t_re, std::span<double, 64> t_im);
 
-}  // namespace iclforge::internal
+}  // namespace iclforge::ac3::internal

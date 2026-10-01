@@ -13,7 +13,7 @@
 // reference transform is present finds out the way any caller does - by
 // asking for it and being refused (DecodeError::kNoReferenceTransform).
 
-namespace iclforge::internal {
+namespace iclforge::ac3::internal {
 
 // ICLFORGE_MINIMAL_DECODER. False here: this build carries the whole codec.
 inline constexpr bool kMinimalDecoderProfile = false;
@@ -29,4 +29,4 @@ inline constexpr bool kReferenceTransformAvailable = true;
 // to measure it against. See that header.
 
 
-} // namespace iclforge::internal
+} // namespace iclforge::ac3::internal

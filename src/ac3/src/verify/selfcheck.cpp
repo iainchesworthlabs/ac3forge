@@ -8,7 +8,7 @@
 #include <string>
 #include <utility>
 
-namespace iclforge::verify {
+namespace iclforge::ac3::verify {
 
 namespace {
 
@@ -63,4 +63,4 @@ std::string MirrorEncoder::last_report() const {
     return report(last_mismatches_, encoder_trace_.fbw_channels, encoder_trace_.coded_channels);
 }
 
-}  // namespace iclforge::verify
+}  // namespace iclforge::ac3::verify

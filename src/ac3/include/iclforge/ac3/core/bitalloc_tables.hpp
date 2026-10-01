@@ -7,7 +7,7 @@
 #include <array>
 #include <cstdint>
 
-namespace iclforge::tables {
+namespace iclforge::ac3::tables {
 
 // Table 7.6 / 7.7: slow & fast decay.
 inline constexpr std::array<std::int32_t, 4> kSlowDec = {
@@ -139,4 +139,4 @@ inline constexpr std::array<std::uint8_t, 64> kBapTab = {
     14, 14, 14, 14, 14, 14, 14, 15, 15, 15, 15, 15, 15, 15, 15, 15,
 };
 
-}  // namespace iclforge::tables
+}  // namespace iclforge::ac3::tables

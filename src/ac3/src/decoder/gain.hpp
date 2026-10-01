@@ -15,7 +15,7 @@
 // eac3_decoder.cpp), not library surface - the same convention
 // src/ac3/src/encoder/snr_search.hpp uses for its own cross-TU helper.
 
-namespace iclforge::internal {
+namespace iclforge::ac3::internal {
 
 // OutputConfig::mode expressed as the two gain switches it actually is, so
 // both decoders resolve it identically and block_gain() below stays unaware
@@ -100,4 +100,4 @@ struct BlockScale {
     decode_scalar_t scale{};
 };
 
-}  // namespace iclforge::internal
+}  // namespace iclforge::ac3::internal

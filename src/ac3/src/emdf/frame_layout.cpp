@@ -15,7 +15,7 @@
 #include "iclforge/ac3/core/tables.hpp"
 #include "iclforge/objects/emdf.hpp"
 
-namespace iclforge::emdf {
+namespace iclforge::ac3::emdf {
 
 namespace {
 
@@ -865,4 +865,4 @@ FrameLayout walk_frame(std::span<const std::byte> frame) {
     return out;
 }
 
-}  // namespace iclforge::emdf
+}  // namespace iclforge::ac3::emdf

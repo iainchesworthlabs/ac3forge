@@ -22,7 +22,7 @@
 #include "iclforge/ac3/meta/drc.hpp"  // to_db
 #include "iclforge/ac3/meta/mixing.hpp"
 
-namespace iclforge {
+namespace iclforge::ac3 {
 
 namespace {
 
@@ -842,4 +842,4 @@ void OutputStage::apply(std::span<const std::span<float>> channels,
 }
 
 
-}  // namespace iclforge
+}  // namespace iclforge::ac3

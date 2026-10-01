@@ -40,7 +40,7 @@
 // §7.2.2.1.1 defines as an all-zero bit allocation, so no mantissa data
 // exists and the frame is pure syntax.
 
-namespace iclforge::eac3 {
+namespace iclforge::ac3::eac3 {
 
 // kBsid, StreamType and the Table E2.5 chanmap live in
 // ac3/core/eac3_tables.hpp: the decoder reads the same fields this writes, and
@@ -764,4 +764,4 @@ class ICLFORGE_AC3_EXPORT AccessUnitEncoder {
     std::unique_ptr<Impl> impl_;
 };
 
-}  // namespace iclforge::eac3
+}  // namespace iclforge::ac3::eac3

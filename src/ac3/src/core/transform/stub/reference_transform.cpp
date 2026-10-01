@@ -26,7 +26,7 @@
 // one, so such a bug shows up immediately in a round trip rather than as a
 // slight quality change nobody attributes.
 
-namespace iclforge::internal {
+namespace iclforge::ac3::internal {
 
 static_assert(!kReferenceTransformAvailable,
               "this translation unit is only for the profile that declares the direct-form "
@@ -83,4 +83,4 @@ void reference_inner_sum_64(std::span<const double, 64> /*z_re*/,
     unreachable_fill(t_re, t_im);
 }
 
-}  // namespace iclforge::internal
+}  // namespace iclforge::ac3::internal

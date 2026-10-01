@@ -18,7 +18,7 @@
 // correct body, not merely a defensive placeholder.
 // ---------------------------------------------------------------------------
 
-namespace iclforge::internal::avx2 {
+namespace iclforge::ac3::internal::avx2 {
 
 void apply_analysis_window(std::span<const double, 512> /*x*/,
                            std::span<double, 512> /*windowed*/) {
@@ -86,4 +86,4 @@ void mdct512_forward_batch4(std::span<const double> /*w0*/, std::span<const doub
     std::unreachable();
 }
 
-}  // namespace iclforge::internal::avx2
+}  // namespace iclforge::ac3::internal::avx2

@@ -24,7 +24,7 @@
 // The SNR-search bit counter and the packer must agree exactly, so both are
 // built on the same machinery here.
 
-namespace iclforge {
+namespace iclforge::ac3 {
 
 // Bits per directly-coded mantissa (0 for the grouped baps 1, 2, 4 and for
 // bap 0) — Table 7.18 qntztab.
@@ -235,4 +235,4 @@ class ICLFORGE_AC3_EXPORT MantissaBlockReader {
     Cache bap4_;
 };
 
-}  // namespace iclforge
+}  // namespace iclforge::ac3

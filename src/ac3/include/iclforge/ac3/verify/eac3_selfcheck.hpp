@@ -35,7 +35,7 @@
 // render that decode_access_unit adds on top is downstream of every field
 // the trace records.
 
-namespace iclforge::verify {
+namespace iclforge::ac3::verify {
 
 // One access unit, plus what the check found out about it.
 struct CheckedAccessUnit {
@@ -113,4 +113,4 @@ class ICLFORGE_AC3_EXPORT Eac3MirrorEncoder {
     std::uint64_t frame_index_ = 0;
 };
 
-}  // namespace iclforge::verify
+}  // namespace iclforge::ac3::verify

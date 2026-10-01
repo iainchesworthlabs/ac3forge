@@ -20,7 +20,7 @@
 // std::min cannot deduce one type from the two. See
 // src/encoder/bandwidth.cpp for where a bare-metal build of the encoder first
 // hit it.
-namespace iclforge::quality {
+namespace iclforge::ac3::quality {
 
 namespace {
 
@@ -421,4 +421,4 @@ NoiseToMask noise_to_mask(const BandNoise& measured, std::span<const double> thr
     return result;
 }
 
-}  // namespace iclforge::quality
+}  // namespace iclforge::ac3::quality

@@ -19,7 +19,7 @@
 // continues the previous band"), so the grouping arithmetic is written once
 // here rather than twice at the two call sites.
 
-namespace iclforge::eac3 {
+namespace iclforge::ac3::eac3 {
 
 // The widest sub-band count any of the tools reaches: enhanced coupling's 22
 // (§E3.5.2). Standard coupling has 18 and spectral extension 17.
@@ -822,4 +822,4 @@ struct AhtGaqDequantizer {
     }
 };
 
-}  // namespace iclforge::eac3
+}  // namespace iclforge::ac3::eac3

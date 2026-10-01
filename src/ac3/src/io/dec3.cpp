@@ -12,7 +12,7 @@
 #include "iclforge/ac3/io/elementary.hpp"
 #include "iclforge/ac3/meta/bsi.hpp"
 
-namespace iclforge::io {
+namespace iclforge::ac3::io {
 
 namespace {
 
@@ -175,4 +175,4 @@ std::string dash_channel_configuration(const ScannedStream& stream) {
     return fmt::format("{:04X}", stream.channel_map);
 }
 
-}  // namespace iclforge::io
+}  // namespace iclforge::ac3::io

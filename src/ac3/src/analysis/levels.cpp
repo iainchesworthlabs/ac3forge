@@ -15,7 +15,7 @@
 #include "iclforge/ac3/core/tables.hpp"
 #include "iclforge/render/spatial.hpp"
 
-namespace iclforge::analysis {
+namespace iclforge::ac3::analysis {
 
 namespace {
 
@@ -308,4 +308,4 @@ SoundfieldVector energy_vector(std::span<const ChannelLevel> levels, Acmod acmod
     return result;
 }
 
-}  // namespace iclforge::analysis
+}  // namespace iclforge::ac3::analysis

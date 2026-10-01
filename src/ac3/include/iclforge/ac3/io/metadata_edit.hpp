@@ -49,7 +49,7 @@
 //     matching iclforge::plan::validate's own stance - its bsi carries an extra
 //     blkid/frmsizecod branch nothing in this project produces or consumes.
 
-namespace iclforge::io {
+namespace iclforge::ac3::io {
 
 enum class EditError : std::uint8_t {
     kBadSyncWord,
@@ -177,4 +177,4 @@ struct EditSummary {
 [[nodiscard]] ICLFORGE_AC3_EXPORT std::expected<EditSummary, EditError> edit_stream_metadata(
     std::span<std::byte> stream, const MetadataEdit& edit);
 
-}  // namespace iclforge::io
+}  // namespace iclforge::ac3::io

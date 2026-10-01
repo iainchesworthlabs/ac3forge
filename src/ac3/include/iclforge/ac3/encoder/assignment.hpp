@@ -27,7 +27,7 @@
 // reach it - and because most callers (a single WAV onto a named layout)
 // never need it: they stay on the automatic route().
 
-namespace iclforge::plan {
+namespace iclforge::ac3::plan {
 
 // Where one source channel goes. A closed set: every assigned channel is
 // exactly one of these, and an unassigned channel is worth naming rather
@@ -203,4 +203,4 @@ inline constexpr std::string_view kAssignmentSyntax =
 [[nodiscard]] ICLFORGE_AC3_EXPORT std::string format_assignment(std::span<const SourceShape> sources,
                                                              const Assignment& assignment);
 
-}  // namespace iclforge::plan
+}  // namespace iclforge::ac3::plan

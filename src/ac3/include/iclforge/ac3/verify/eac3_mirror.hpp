@@ -53,7 +53,7 @@
 // See ac3/verify/eac3_selfcheck.hpp for the encode-then-decode-then-compare
 // driver most callers actually want.
 
-namespace iclforge::verify {
+namespace iclforge::ac3::verify {
 
 // One coded stream's state within one block. Streams are numbered the way
 // the ENCODER numbers them and the way ac3/verify/mirror.hpp already does:
@@ -346,4 +346,4 @@ inline constexpr int kEac3MaxPerArray = 4;
 [[nodiscard]] ICLFORGE_AC3_EXPORT std::string report(std::span<const Eac3Mismatch> mismatches,
                                                  const Eac3AccessUnitTrace& shape);
 
-}  // namespace iclforge::verify
+}  // namespace iclforge::ac3::verify

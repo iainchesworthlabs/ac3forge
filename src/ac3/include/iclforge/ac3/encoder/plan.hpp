@@ -34,7 +34,7 @@
 // AccessUnitConfig values and says how a source's channels reach them; the
 // encoders are unchanged and unaware of it.
 
-namespace iclforge::plan {
+namespace iclforge::ac3::plan {
 
 // --- codec ------------------------------------------------------------------
 //
@@ -639,4 +639,4 @@ struct ICLFORGE_AC3_EXPORT Routing {
 ICLFORGE_AC3_EXPORT void render(const Routing& routing, std::span<const std::span<const float>> source,
                             std::span<const std::span<float>> coded, std::size_t samples);
 
-}  // namespace iclforge::plan
+}  // namespace iclforge::ac3::plan

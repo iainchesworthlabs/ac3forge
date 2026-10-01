@@ -47,7 +47,7 @@
 // untouched instead of refusing it for being out of scope. See
 // FrameLayout::object_signals.
 
-namespace iclforge::emdf {
+namespace iclforge::ac3::emdf {
 
 // A closed bit range [first, last], counted from the frame's first bit.
 struct BitRange {
@@ -147,4 +147,4 @@ struct FrameLayout {
 // one. Undefined for fewer than 4 bytes, which is not a syncframe.
 [[nodiscard]] ICLFORGE_AC3_EXPORT std::size_t syncframe_size(std::span<const std::byte> at);
 
-}  // namespace iclforge::emdf
+}  // namespace iclforge::ac3::emdf

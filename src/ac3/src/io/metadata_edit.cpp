@@ -16,7 +16,7 @@
 #include "iclforge/ac3/io/elementary.hpp"
 #include "iclforge/ac3/meta/mixing.hpp"
 
-namespace iclforge::io {
+namespace iclforge::ac3::io {
 
 namespace {
 
@@ -532,4 +532,4 @@ std::expected<EditSummary, EditError> edit_stream_metadata(std::span<std::byte> 
     return summary;
 }
 
-}  // namespace iclforge::io
+}  // namespace iclforge::ac3::io

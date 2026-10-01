@@ -11,7 +11,7 @@
 #include "iclforge/ac3/core/tables.hpp"
 #include "iclforge/ac3/meta/drc.hpp"  // to_db
 
-namespace iclforge::meta {
+namespace iclforge::ac3::meta {
 
 namespace {
 
@@ -355,4 +355,4 @@ bool valid_mix_metadata(const MixMetadata& value) {
     return true;
 }
 
-}  // namespace iclforge::meta
+}  // namespace iclforge::ac3::meta

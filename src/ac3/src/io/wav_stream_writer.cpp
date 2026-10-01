@@ -16,7 +16,7 @@
 // alive across many calls. Sharing a file made both concerns harder to read
 // without buying anything back.
 
-namespace iclforge::io {
+namespace iclforge::ac3::io {
 
 namespace {
 
@@ -245,4 +245,4 @@ std::uint64_t WavPcm16StreamWriter::bytes_written() const {
     return impl_ ? impl_->bytes_written : 0;
 }
 
-}  // namespace iclforge::io
+}  // namespace iclforge::ac3::io

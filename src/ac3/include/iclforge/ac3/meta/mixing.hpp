@@ -18,7 +18,7 @@
 // mix that folds down badly one way can be corrected without spoiling the
 // other, plus an LFE mix level AC-3 has no way to express.
 
-namespace iclforge::meta {
+namespace iclforge::ac3::meta {
 
 // The printed table values (0.707, 0.595, 0.841 …) are rounded quarter-powers
 // of two; these are the exact ones, so that a chain of them is exact.
@@ -418,4 +418,4 @@ inline constexpr int kReferenceDialnorm = 31;
 // §7.8's stated ideal of +10 dB relative to left and right.
 [[nodiscard]] ICLFORGE_AC3_EXPORT double lfe_mix_gain(double level_db);
 
-}  // namespace iclforge::meta
+}  // namespace iclforge::ac3::meta

@@ -11,7 +11,7 @@
 #include <string_view>
 #include <vector>
 
-namespace iclforge::verify {
+namespace iclforge::ac3::verify {
 
 namespace {
 
@@ -564,4 +564,4 @@ std::string report(std::span<const Eac3Mismatch> mismatches, const Eac3AccessUni
     return out;
 }
 
-}  // namespace iclforge::verify
+}  // namespace iclforge::ac3::verify

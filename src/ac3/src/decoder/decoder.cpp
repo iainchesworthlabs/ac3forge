@@ -38,7 +38,7 @@
 #include "bitalloc_memo.hpp"
 #include "gain.hpp"
 
-namespace iclforge {
+namespace iclforge::ac3 {
 
 // Each case says what is wrong with the stream, except kUnsupported and
 // kNoReferenceTransform, which say what this decoder or this build does not
@@ -1819,4 +1819,4 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
     return out;
 }
 
-}  // namespace iclforge
+}  // namespace iclforge::ac3

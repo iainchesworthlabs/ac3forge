@@ -25,7 +25,7 @@
 // the memo does not keep, so the traced form always recomputes and marks the
 // memo invalid.
 
-namespace iclforge::internal {
+namespace iclforge::ac3::internal {
 
 struct BitAllocMemo {
     std::vector<std::uint8_t> exps;
@@ -56,4 +56,4 @@ struct BitAllocMemo {
     }
 };
 
-}  // namespace iclforge::internal
+}  // namespace iclforge::ac3::internal
