@@ -58,7 +58,7 @@ fuzz build fails on both in each case.
 Like `ci.yml`'s own leg-status table, this is a point-in-time result, not a
 standing guarantee - re-run it yourself rather than trusting an old number.
 
-The section below is the original four harnesses' measurement; the signing-verify fuzz walk harnesses have their own, further down under "Status: the VX3 harnesses",
+The section below is the original four harnesses' measurement; the signing-verify fuzz walk harnesses have their own, further down under "Status: the signing-verify fuzz walk harnesses",
 along with what they found.
 
 Two full bounded passes ran locally before this landed (Docker: `ubuntu:26.04`
@@ -78,12 +78,12 @@ the second pass, 180s/harness:
 
 No crash, hang, or sanitizer report across ~45M total executions between the
 two passes; `fuzz/regressions/` was empty at that commit (it is not any
-more - see "Status: the VX3 harnesses"). `fuzz_scan`'s exec
+more - see "Status: the signing-verify fuzz walk harnesses"). `fuzz_scan`'s exec
 count dwarfs the decode harnesses' because a format-sniff is orders of
 magnitude cheaper than a real IMDCT-and-bit-allocation decode - expected, not
 a sign anything is under-tested relative to its own cost.
 
-## Status: the VX3 harnesses
+## Status: the signing-verify fuzz walk harnesses
 
 Same caveat as the section above - a point-in-time result, not a standing
 guarantee. Measured on WSL2 Ubuntu 26.04, Clang 21, `RelWithDebInfo` +
