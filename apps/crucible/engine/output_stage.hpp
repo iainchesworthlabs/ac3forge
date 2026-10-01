@@ -11,6 +11,7 @@
 #include "iclforge/ac3/oba/atmos.hpp"
 #include "audio_devices.hpp"
 #include "output_policy.hpp"
+#include "virtual_device.hpp"
 
 // The output end of the engine (docs/platforms/windows-demo.md, "Output modes
 // and hot switching"): probe what the machine has, let the policy choose,
@@ -44,12 +45,10 @@ struct OutputStageConfig {
     bool low_latency = false;
     // The null sink is recognised by name (the driver's own, or a stand-in
     // such as FxSound's idle endpoint during development).
-    // Still "Crucible Silent Output", not "Crucible": this matches the endpoint the
-    // driver actually advertises, and apps/windows/driver/ keeps its device
-    // identity until attestation signing lands (docs/crucible/design/promotion.md,
-    // "Coordination with the driver-signing session"). It moves to "Crucible"
-    // in the same change that renames the INF, so the name is signed once.
-    std::string null_sink_substring = "Crucible Silent Output";
+    // The default is the name the Windows driver advertises
+    // (kWindowsSilentDeviceName, virtual_device.hpp); the engine passes its
+    // own EngineConfig::null_sink_substring on.
+    std::string null_sink_substring{kWindowsSilentDeviceName};
     std::optional<OutputMode> pinned;
     std::string preferred_endpoint_id{};  // the user's choice of endpoint; empty: automatic
     std::uint32_t sample_rate = 48000;

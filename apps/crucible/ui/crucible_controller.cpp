@@ -505,9 +505,9 @@ QString CrucibleController::keyPath() const {
     return settings_.value(QStringLiteral("signing/keyPath")).toString();
 }
 
-// The default is the driver's current device name, not the application's:
-// see EngineConfig::null_sink_substring for why the two differ until
-// attestation signing lands.
+// The stored value (output/nullSinkName) exists only once the person has
+// edited the filter under Advanced; until then the platform's own device name
+// is the answer, so a renamed device leaves nobody's settings behind.
 QString CrucibleController::nullSinkName() const {
     // The default is the platform's own name for its silent device, not a
     // literal: "Crucible Silent Output" on Windows, "Crucible (silent)" on Linux.

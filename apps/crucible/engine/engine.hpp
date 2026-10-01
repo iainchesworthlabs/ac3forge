@@ -15,6 +15,7 @@
 #include "iclforge/objects/oamd.hpp"
 #include "output_policy.hpp"
 #include "slots.hpp"
+#include "virtual_device.hpp"
 
 // Crucible's engine: everything except the window
 // (docs/platforms/windows-demo.md). One thread runs the frame loop - refresh
@@ -27,12 +28,11 @@ namespace iclforge::crucible {
 class DiagnosticLog;  // diagnostics.hpp, which includes this header
 
 struct EngineConfig {
-    // Still "Crucible Silent Output", not "Crucible": this matches the endpoint the
-    // driver actually advertises, and apps/windows/driver/ keeps its device
-    // identity until attestation signing lands (docs/crucible/design/promotion.md,
-    // "Coordination with the driver-signing session"). It moves to "Crucible"
-    // in the same change that renames the INF, so the name is signed once.
-    std::string null_sink_substring = "Crucible Silent Output";
+    // Any endpoint whose name contains this is the silent device. The default
+    // is the name the Windows driver advertises (kWindowsSilentDeviceName,
+    // virtual_device.hpp); the window overrides it with the platform's own
+    // (VirtualDevice::device_name()) or the person's setting.
+    std::string null_sink_substring{kWindowsSilentDeviceName};
     std::string signing_key_path;  // empty: the environment, then none
     bool low_latency = false;      // 1-block frames at a bitrate that carries the metadata
     std::uint32_t bitrate_kbps = 0;  // 0: 448 normal, 1536 low-latency

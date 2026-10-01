@@ -209,13 +209,10 @@ class WindowsVirtualDevice final : public VirtualDevice {
 public:
     void set_package_dir(std::string_view dir) override { package_dir_ = dir; }
 
-    // The driver's endpoint. It changes to "Crucible" in the same change
-    // that renames the INF, once signing is paid for.
-    std::string device_name() const override { return "Crucible Silent Output"; }
+    // The driver's endpoint, as the INF's DeviceDesc spells it.
+    std::string device_name() const override { return std::string(kWindowsSilentDeviceName); }
     bool from_package() const override { return true; }
-    std::string how_to_get_one() const override {
-        return "install the Crucible Silent Output driver (Settings)";
-    }
+    std::string how_to_get_one() const override { return "install the driver (Settings)"; }
 
     SilentDeviceState state(const SilentDeviceQuery& query) override {
         SilentDeviceState out;

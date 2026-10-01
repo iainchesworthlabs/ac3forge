@@ -1,6 +1,6 @@
 /*++
 
-IclForgeNullSink: the Desktop Atmos Demo's silent output device, on ACX.
+IclForgeNullSink: Crucible's silent output device, on ACX.
 
 Derived from Microsoft's ACX AudioCodec sample (audio/Acx/Samples in
 microsoft/Windows-driver-samples, MS-PL; see ../../LICENSE and ../../README.md

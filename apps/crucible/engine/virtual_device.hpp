@@ -36,6 +36,15 @@
 
 namespace iclforge::crucible {
 
+// The Windows silent device's name: the device description of the driver in apps/windows/driver
+// (IclForgeNullSink.inx, `DeviceDesc`), which Windows shows as "Speakers (<name>)". The engine's
+// and the output stage's default filter and the Windows VirtualDevice all read this one constant.
+// The INF's strings, the guest scripts and the Crucible tests carry the same words, and
+// tools/n1b/n1d_driver_names.py changes every one of them in a single run. The name is not just
+// "Crucible": the signal path calls its second station that, and a device with the same name would
+// stand beside the application it feeds.
+inline constexpr std::string_view kWindowsSilentDeviceName = "Crucible Silent Output";
+
 struct SilentDeviceState {
     // False on a platform that silences at the tap instead (macOS). When
     // false every other field is meaningless and the UI shows nothing about
@@ -86,8 +95,8 @@ public:
 
     // What the silent device is called, as the platform's own sound settings
     // show it and as the engine matches it by name: "Crucible Silent Output" on
-    // Windows (the driver's endpoint, until the driver is renamed with its
-    // signing), "Crucible (silent)" on Linux. The first Linux screenshot
+    // Windows (the driver's endpoint, kWindowsSilentDeviceName above),
+    // "Crucible (silent)" on Linux. The first Linux screenshot
     // labelled every station with the Windows name because this lived in
     // the window as a default rather than in the platform that owns it.
     [[nodiscard]] virtual std::string device_name() const = 0;

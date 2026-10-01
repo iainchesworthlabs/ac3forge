@@ -1,11 +1,12 @@
-# IclForgeNullSink: the Desktop Atmos Demo's silent output device
+# IclForgeNullSink: Crucible's silent output device
 
 A root-enumerated virtual audio device with one render endpoint, "Speakers (Crucible Silent Output)",
-that advertises 7.1 at 48 kHz and discards everything it is given. The Desktop Atmos Demo
-(`../`, WASAPI loopback tap, [docs/platforms/windows-demo.md](../../../docs/platforms/windows-demo.md))
-makes it the Windows default output so that every application renders into a device nobody
-hears while the demo taps each one individually; a game that can render surround renders 7.1
-into it and reaches the demo's bed intact.
+that advertises 7.1 at 48 kHz and discards everything it is given. Crucible
+([`../../crucible/`](../../crucible/), WASAPI process-loopback tap,
+[docs/platforms/windows-demo.md](../../../docs/platforms/windows-demo.md)) makes it the Windows
+default output so that every application renders into a device nobody hears while Crucible taps
+each one individually; a game that can render surround renders 7.1 into it and reaches Crucible's
+bed intact.
 
 It is an ACX driver (Audio Class eXtensions, Microsoft's current audio driver framework) on
 KMDF: a plain WDF driver of about 1,800 lines of C++, about 1,270 of them code, in place of the
@@ -13,13 +14,31 @@ PortCls/WaveRT miniport that held this directory until 2026-09-04 and carried 9,
 sample code to do the same job. Why the port was made, what it keeps and how it was verified
 are on [docs/platforms/windows-driver-acx.md](../../../docs/platforms/windows-driver-acx.md).
 
+## Its names, and where each is read
+
+The identity is `IclForgeNullSink`: the hardware id `ROOT\IclForgeNullSink`, the service of that
+name, `IclForgeNullSink.sln`, `.inx` (and the `.inf` stamped from it), `.rc`, `.sys` and `.cat`,
+and `IclForge`, the .NET namespace `NullSinkDevice.ps1` compiles for itself. The endpoint is
+"Speakers (Crucible Silent Output)": "Crucible Silent Output" is the INF's `DeviceDesc`, and the
+string Crucible and the guest scripts match it by. The INF's provider and manufacturer are
+"ICL Forge". The name is not the bare word "Crucible" because the signal path calls its second
+station that, and a device of the same name would stand beside it.
+
+The driver took these names on 2026-10-01 (change N1D of the re-layout), from `Ac3ForgeNullSink`
+and "Desktop Atmos", which used a trademark of Dolby's to name a system-wide device. It had never
+been signed and had been installed nowhere but the test guest, so no installed copy was orphaned
+and no attestation package holds the old names. Changing a name again is one run of
+`tools/n1b/n1d_driver_names.py` (its `NAMES` table) over a tree that does not yet use the new
+one; the endpoint's name is also one constant in Crucible, `kWindowsSilentDeviceName` in
+`apps/crucible/engine/virtual_device.hpp`.
+
 ## Licence: separate from the rest of the repository
 
 This directory is derived from Microsoft's **AudioCodec** ACX sample (`audio/Acx/Samples` in
 [microsoft/Windows-driver-samples](https://github.com/microsoft/Windows-driver-samples)), which
 is licensed under the **Microsoft Public License (MS-PL)**, reproduced in [LICENSE](LICENSE). The
 MS-PL is a free licence but the FSF lists it as incompatible with the GPL, under which the rest
-of ac3forge is licensed. That is fine here because this driver is a separate work: a kernel-mode
+of this repository is licensed. That is fine here because this driver is a separate work: a kernel-mode
 binary that shares no code with the GPL application, is not linked into it, and is reached only
 through public Windows APIs. The modifications in this directory are offered under the same
 MS-PL terms as the sample. Nothing in here is `#include`d or linked anywhere else in the
@@ -46,7 +65,7 @@ compiled in behind a zero.
 | `Source/Main/position.h` | `PositionClock`: the position and timing simulation. Bytes per second and a packet size in, a 100 ns clock value in, the position and the packets owed out. No kernel headers. |
 | `Source/Main/nullsink.h` | Kit includes, the WDF contexts, the constants, and every callback's declaration - in an `extern "C"` block, because MSVC mangles `__declspec(code_seg("PAGE"))` into a C++ function's name and the ACX callback typedefs then fail to link. |
 | `Source/Main/NewDelete.cpp` | The sample's placement `operator new` on `ExAllocatePool2`, with `POOL_FLAG_NON_PAGED_EXECUTE` masked off so no allocation is ever executable. |
-| `Source/Main/IclForgeNullSink.inx` | The INF, stamped to `.inf` at build time. Hardware id `ROOT\IclForgeNullSink`, service `IclForgeNullSink`, device description "Crucible Silent Output" (so the endpoint is "Speakers (Crucible Silent Output)", the name the demo matches), reference string `Speaker0` (the circuit's name), the endpoint opted in to event-driven mode, Windows 11 (build 22000) and later. UTF-16 with a byte-order mark: `stampinf` preserves the encoding and `inf2cat` refuses UTF-16 without the mark. |
+| `Source/Main/IclForgeNullSink.inx` | The INF, stamped to `.inf` at build time. Hardware id `ROOT\IclForgeNullSink`, service `IclForgeNullSink`, device description "Crucible Silent Output" (so the endpoint is "Speakers (Crucible Silent Output)", the name Crucible matches), provider and manufacturer "ICL Forge", reference string `Speaker0` (the circuit's name), the endpoint opted in to event-driven mode, Windows 11 (build 22000) and later. UTF-16 with a byte-order mark: `stampinf` preserves the encoding and `inf2cat` refuses UTF-16 without the mark. |
 | `Source/Main/Main.vcxproj`, `Package/package.VcxProj`, `IclForgeNullSink.sln` | KMDF 1.31, ACX 1.1, the kit's `acxstub.lib`. `DriverVer`'s date is stamped from the build's **UTC** date: `inf2cat` rejects a date later than the current UTC date, and the default (the local date) fails between midnight and 10:00 in Australia. |
 
 What was cut from the sample, by name: the capture circuit and its microphone, the keyword
@@ -208,12 +227,12 @@ A test-signed driver loads only with test signing on and memory integrity off:
    the package with `pnputil`, and creates the root-enumerated device through SetupAPI
    (`NullSinkDevice.ps1`: `SetupDiCreateDeviceInfo`, the hardware id, `DIF_REGISTERDEVICE`,
    `UpdateDriverForPlugAndPlayDevices`, the documented sequence the WDK's `devcon install`
-   performs), as `ROOT\MEDIA\0000`. Nothing beyond Windows is needed, so the packaged demo
-   carries the same three scripts. `SwDeviceCreate`, the newer software-device API, was
+   performs), as `ROOT\MEDIA\0000`. Nothing beyond Windows is needed, so the packaged
+   Crucible carries the same three scripts. `SwDeviceCreate`, the newer software-device API, was
    tried first and returns `ERROR_MOD_NOT_FOUND` on the test guest from every session tried;
    the note in `NullSinkDevice.ps1` has the detail.
 4. `remove.ps1` reverses it: removes the device (`pnputil /remove-device`) and deletes the
    staged package.
 
 Attestation signing through an EV certificate and Partner Center is what would let this load on
-other people's machines with memory integrity on; that is the last item of the demo's plan.
+other people's machines with memory integrity on; that is the last item of Crucible's plan.

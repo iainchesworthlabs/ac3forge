@@ -1,4 +1,4 @@
-# Creates and starts the Desktop Atmos driver test guest in VMware Workstation:
+# Creates and starts the driver test guest in VMware Workstation:
 # a throwaway Windows 11 VM that installs itself unattended (autounattend.xml)
 # with test signing on and memory integrity off, so the test-signed
 # IclForgeNullSink package can be loaded, crashed and rolled back without
