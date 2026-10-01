@@ -20,6 +20,6 @@ namespace iclforge::ac3::internal {
 // it is measured: the same CLI, diffed against the double one by
 // tools/checks/check_decode_scalar_snr.py and run through the gold-reference
 // gate.
-using decode_scalar_t = Fixed32;
+using decode_scalar_t = iclforge::internal::Fixed32;
 
 }  // namespace iclforge::ac3::internal
