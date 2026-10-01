@@ -1681,10 +1681,10 @@ The sections below contain the complete change list and fixes.
   library, so the compiler's evaluation and every target's agree), and the three tables of the
   decoder's ratios are data in the program's constants. The ESP32-P4 no longer designs 94,094
   coefficients at the first 1001/960 frame, which took 5.9 s on its soft-float `double`: the first
-  frame takes 0.32 s, as at 24 fps. A table keeps phases 0 to up / 2 and reads the others backwards
+  frame takes 0.31 s, as at 24 fps. A table keeps phases 0 to up / 2 and reads the others backwards
   (188 KB at 1001/960, from 376 KB), and the filter copies it into the heap when it is made, since
   read in place from the P4's flash it took the converter 60 ms a frame at 23.976 fps and from the
-  copy it takes 16.6 ms (22.4 before); the PSRAM the table uses is 188 KB and not 376 KB. The tables
+  copy it takes 16.5 ms (22.4 before); the PSRAM the table uses is 188 KB and not 376 KB. The tables
   are the C library's design rounded to `float` in every coefficient, so no `float` PCM hash and no
   pin moved, and the `double` output is byte-identical to before (360 decodes and 6 encodes). The
   image grows by 196 KB of constants (the Cortex-M3 probe's ceiling is 750,000 bytes from 535,000),

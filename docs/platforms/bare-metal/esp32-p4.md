@@ -22,7 +22,7 @@ Every figure on this page outside its [AC-4](#ac-4) section was measured on a bo
 | Real time, no network | **Every fixture and every stream-set file**, from 0.027x (`ac3_mono`) to 0.448x (`eac3_714_fold`, 7.1.4 folded to Lo/Ro) among the fixtures, up to 0.700x (`714-ecpl`) among the stream set — comfortably inside a 32 ms frame even at this chip's 360 MHz ceiling, not the part's 400 MHz datasheet maximum (see [The chip revision](#the-chip-revision-and-what-it-blocks)) |
 | Memory | 514,820 bytes free at boot, largest block 385,024; peak heap across every fixture 195,025 (`eac3_atmos_render`), leaving well over half the free total unused at the worst point measured |
 | AC-4 decode | Behind `CONFIG_ICLFORGE_AC4`, off by default. Twenty plays of DEE's streams (2.0, 5.1 and 5.1.4; SIMPLE, A-SPX, A-CPL and S-CPL; the converter's four frame rates) run from an HTTP source with the network up, and the probe's six fixtures decode to its pinned `float` PCM hashes exactly. The board's hash equals the host's (GCC 16, Clang 22 and MSVC) on all twenty plays and on all six core-decoding plays, and the Cortex-M3 leg's on the 24-frame cut of each, since D14a4 took the `float` calls whose last bit differs between C libraries out of libm, see [AC-4](#ac-4) |
-| AC-4 real time | 2.0 streams in SIMPLE mode (0.53 of a frame), in A-SPX mode (0.74) and, through the converter, at 24 fps (0.92) and 25 fps (0.82), played to a 2.0 layout, with D14a's third part in the decoder (0.86 and 1.04 before it) and D14a4's `float` converter (5.6 to 6.6 before it). 5.1 takes 1.4 to 4.1 and 5.1.4 2.8 to 3.7; the converter's 1001/960 rates, 23.976 and 29.97 fps, take 1.11 and 3.51 (1.05 and 1.12 with the 512-byte policy), with D14a5's tables built by the compiler. AC-3 and E-AC-3 5.1 through the same image take 0.20, and E-AC-3 7.1.4 0.38 |
+| AC-4 real time | 2.0 streams in SIMPLE mode (0.53 of a frame), in A-SPX mode (0.74) and, through the converter, at 24 fps (0.91) and 25 fps (0.82), played to a 2.0 layout, with D14a's third part in the decoder (0.86 and 1.04 before it) and D14a4's `float` converter (5.6 to 6.6 before it). 5.1 takes 1.4 to 4.1 and 5.1.4 2.8 to 3.7; the converter's 1001/960 rates, 23.976 and 29.97 fps, take 1.11 and 3.51 (1.05 and 1.10 with the 512-byte policy), with D14a5's tables built by the compiler. AC-3 and E-AC-3 5.1 through the same image take 0.20, and E-AC-3 7.1.4 0.38 |
 | AC-4 memory | A peak heap of 0.60 MB at 2.0 to 2.2 MB at 5.1.4, with internal RAM used up under ESP-IDF's default allocation policy (2 to 14 KB free at its least). The decode task uses 20 to 24 KB of a 64 KB stack, from 49 to 50 KB before D14a's third part |
 | Encode | Not measured. Both encoders are floating-point; nothing here rules it out |
 | QEMU | Not emulated, see [QEMU](#qemu) |
@@ -294,19 +294,19 @@ inside it, the stage table gives.
 The converter's four plays, the hash comparison and the sixth probe fixture were measured again on
 2026-09-30 with D14a4 in the decoder, on the same board, streams and image configuration, and the
 converter's four again on 2026-10-01 with D14a5's tables, beside the same plays on D14a4's tree built
-the same way; the other plays measured again agree with D14b's rows to 3% and are not repeated here.
+the same way; the other plays measured again agree with D14b's rows to 3.5% and are not repeated here.
 
 ### What it decodes in real time
 
 At 360 MHz with the network up, the AC-4 decoder keeps up with real time, to a 2.0 layout, for 2.0
 streams in SIMPLE mode, which take 0.53 of a frame, in A-SPX mode, which take 0.74, and, through the
-converter at 24 and 25 fps, DEE's immersive stereo, which takes 0.92 and 0.82. Nothing wider does.
+converter at 24 and 25 fps, DEE's immersive stereo, which takes 0.91 and 0.82. Nothing wider does.
 5.1 takes 1.4 to 4.1 times a frame's duration to 5.1, one for each of the four codec modes, and 1.4
 to 4.5 folded to 2.0. 5.1.4 in full decoding takes 2.8 to 3.7 to its own layout and 2.5 to 3.4
 folded to 2.0, and core decoding 2.3 to 3.1 to 5.1.4 and 2.1 to 2.9 to 2.0. The converter's other
 two frame rates, 23.976 and 29.97 fps, are the ratio 1001/960, whose table the compiler builds and
 the converter keeps in PSRAM: they take 1.11 and 3.51, the second being the play where the converter runs
-slow under the default policy (1.05 and 1.12 with the 512-byte policy). Before D14a's third part the same
+slow under the default policy (1.05 and 1.10 with the 512-byte policy). Before D14a's third part the same
 streams took 0.86 and 1.04 at 2.0, 3.5 to 6.7 at 5.1, 5.4 to 6.1 at 5.1.4 and 5.9 to 6.5 through the
 converter: the part made a frame 1.1 to 2.5 times faster and the converter's streams not at all,
 D14a4's `float` converter took them from 5.6 to 6.6 to 0.82 to 1.25 (3.65), and D14a5's tables took the
@@ -355,10 +355,10 @@ D14a's third part, and the third with allocations over 512 bytes sent to PSRAM f
 | `514-music-512` | A-SPX, S-CPL | 5.1.4 | 150,557 | 3.53 | 5.86 | 3.35 | 0.42 | 2.16 | 5 | 44.2 |
 | `514-music-768` | S-CPL | 2.0 | 106,677 | 2.50 | 4.31 | 2.22 | 0.41 | 1.90 | 7 | 44.2 |
 | `514-music-768` | S-CPL | 5.1.4 | 119,976 | 2.81 | 5.37 | 2.53 | 0.43 | 2.18 | 5 | 44.2 |
-| `ims-music-64-23976` | A-SPX, 23.976 fps | 2.0 | 46,431 | 1.11 | 6.50 | 1.05 | 0.32 | 0.81 | 8 | 44.6 |
-| `ims-music-64-24` | A-SPX, 24 fps | 2.0 | 38,499 | 0.92 | 5.89 | 0.86 | 0.30 | 0.63 | 7 | 44.6 |
-| `ims-music-64-25` | A-SPX, 25 fps | 2.0 | 32,845 | 0.82 | 6.21 | 0.87 | 0.31 | 0.65 | 12 | 44.6 |
-| `ims-music-64-2997` | A-SPX, 29.97 fps | 2.0 | 117,026 | 3.51 | 6.45 | 1.12 | 0.42 | 0.76 | 6 | 44.6 |
+| `ims-music-64-23976` | A-SPX, 23.976 fps | 2.0 | 46,351 | 1.11 | 6.50 | 1.05 | 0.31 | 0.81 | 11 | 44.6 |
+| `ims-music-64-24` | A-SPX, 24 fps | 2.0 | 38,057 | 0.91 | 5.89 | 0.86 | 0.31 | 0.63 | 13 | 44.6 |
+| `ims-music-64-25` | A-SPX, 25 fps | 2.0 | 32,748 | 0.82 | 6.21 | 0.87 | 0.31 | 0.64 | 14 | 44.6 |
+| `ims-music-64-2997` | A-SPX, 29.97 fps | 2.0 | 117,017 | 3.51 | 6.45 | 1.10 | 0.42 | 0.76 | 7 | 44.6 |
 
 `20-music-192` and `20-music-96` are 2.0; the `51-` streams are 5.1 at 384, 192, 128 and 96 kbps,
 and the `514-` streams 5.1.4 at 256, 512 and 768, each in the mode DEE writes at that rate; the
@@ -420,10 +420,10 @@ reconstruction, the stereo and channel processing, the downmix, DRC and the outp
 | `514-music-512` | 5.1.4 | 23,152 | 40,917 | 20,935 | 15,874 | 12,234 | 37,311 |  |  | 150,557 |
 | `514-music-768` | 2.0 | 24,378 | 30,350 | 33,322 | 16,001 | 2,518 |  |  |  | 106,677 |
 | `514-music-768` | 5.1.4 | 24,930 | 33,619 | 33,145 | 15,720 | 12,291 |  |  |  | 119,976 |
-| `ims-music-64-23976` | 2.0 | 5,554 | 8,130 | 3,028 | 2,589 | 4,654 | 5,470 |  | 16,612 | 46,431 |
-| `ims-music-64-24` | 2.0 | 5,615 | 8,109 | 3,013 | 2,592 | 4,219 | 5,442 |  | 9,212 | 38,499 |
-| `ims-music-64-25` | 2.0 | 5,597 | 6,822 | 2,144 | 2,756 | 2,459 | 5,187 |  | 7,293 | 32,845 |
-| `ims-music-64-2997` | 2.0 | 5,307 | 7,131 | 1,891 | 2,163 | 2,115 | 4,531 |  | 93,808 | 117,026 |
+| `ims-music-64-23976` | 2.0 | 5,541 | 8,129 | 3,023 | 2,579 | 4,658 | 5,465 |  | 16,520 | 46,351 |
+| `ims-music-64-24` | 2.0 | 5,620 | 10,671 | 3,995 | 2,577 | 2,365 | 5,466 |  | 7,389 | 38,057 |
+| `ims-music-64-25` | 2.0 | 5,453 | 7,098 | 2,162 | 2,778 | 2,475 | 5,155 |  | 7,285 | 32,748 |
+| `ims-music-64-2997` | 2.0 | 5,262 | 7,105 | 1,901 | 2,161 | 2,150 | 4,567 |  | 93,761 | 117,017 |
 
 A 2.0 SIMPLE frame is 22.8 ms: parse 6.6, reconstruction 7.8, the inverse transform 3.3 and the QMF
 banks 5.0, which are 22% of it and 29% of a 5.1 SIMPLE frame's 60.7. The inverse transform is 13.1 to 13.4
@@ -436,7 +436,7 @@ take 1.1 to 1.4 ms a channel-frame for analysis and 1.1 to 1.6 for synthesis, wi
 the default policy: synthesis in `51-music-96` at 2.0 took 13.6 ms a channel (1.3 with the 512-byte
 policy), and 2.3 in the 23.976 fps stream (1.5), `514-music-768`'s inverse
 transform 2.3 ms a call at both layouts (1.2) and, now that the converter is fast enough to show
-it, the converter of the 29.97 fps stream, 93.8 ms a frame (12.4).
+it, the converter of the 29.97 fps stream, 93.8 ms a frame (12.2).
 
 ### Allocation policy
 
@@ -461,15 +461,15 @@ default. Why the default costs the AC-4 decoder anything once internal RAM is go
 established: the candidates are buffers whose addresses conflict in the caches and the cost of the
 allocator's failing first attempts, and the count above points away from the second. With the
 converter at `float` the effect is larger where it lands on the converter: the 29.97 fps play's
-converter takes 93.8 ms a frame under the default policy and 12.4 under the 512-byte one, from the
+converter takes 93.8 ms a frame under the default policy and 12.2 under the 512-byte one, from the
 same code and the same table. It repeats: the play's converter took 98.5 to 98.6 ms in each of four
 runs under the default policy on D14a4's tree, 98.5 on that tree measured again for D14a5 and
 93.8 with D14a5's tables, and 17.2 to 17.5 in each run under the 512-byte one on D14a4's tree and
-12.4 with D14a5's tables, so with these images it belongs to the play, and its cause is the open question above. D14a5's runs rule out the table. The same play's converter takes 124.7 ms with the table read in place from flash, 153 with the
+12.2 with D14a5's tables, so with these images it belongs to the play, and its cause is the open question above. D14a5's runs rule out the table. The same play's converter takes 124.7 ms with the table read in place from flash, 153 with the
 whole 376 KB table read from flash, 93.8 from the copy and 98.5 from PSRAM, always 43 to 77 ms more than the 23.976
-fps play's (16.6 ms) with the same table and the same code, for 0.8 of its output samples, and the
+fps play's (16.5 ms) with the same table and the same code, for 0.8 of its output samples, and the
 converter's time at 25/24 differs by a third between images of the same code (7.3 to 9.7 ms in the
-five images of D14a4's tree and D14a5's, whichever memory the table was in). The converter's own buffers,
+images of D14a4's tree and D14a5's, whichever memory the table was in). The converter's own buffers,
 a history of 1,600 to 2,100 samples and the frame's output for each channel, 6 to 9 KB each, are among
 what the two policies place differently; which memory each landed in, in each play, was not read.
 
@@ -477,24 +477,24 @@ what the two policies place differently; which memory each landed in, in each pl
 
 | Stream | Ratio | Samples a frame | us/frame | x real time | Converter us/frame | Before D14a5 | Before D14a4 | First frame s | Before D14a5 |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| `ims-music-64-24` | 25/24 | 2,000 | 38,499 | 0.92 | 9,212 | 7,283 | 204,951 | 0.30 | 0.43 |
-| `ims-music-64-23976` | 1001/960 | 2,002 | 46,431 | 1.11 | 16,612 | 22,369 | 230,897 | 0.32 | 5.87 |
-| `ims-music-64-25` | 15/16 | 1,920 | 32,845 | 0.82 | 7,293 | 7,184 | 208,009 | 0.31 | 0.40 |
-| `ims-music-64-2997` | 1001/960 | 1,602 | 117,026 | 3.51 | 93,808 | 98,508 | 184,609 | 0.42 | 5.97 |
+| `ims-music-64-24` | 25/24 | 2,000 | 38,057 | 0.91 | 7,389 | 7,283 | 204,951 | 0.31 | 0.43 |
+| `ims-music-64-23976` | 1001/960 | 2,002 | 46,351 | 1.11 | 16,520 | 22,369 | 230,897 | 0.31 | 5.87 |
+| `ims-music-64-25` | 15/16 | 1,920 | 32,748 | 0.82 | 7,285 | 7,184 | 208,009 | 0.31 | 0.40 |
+| `ims-music-64-2997` | 1001/960 | 1,602 | 117,017 | 3.51 | 93,761 | 98,508 | 184,609 | 0.42 | 5.97 |
 
 Part 1 clause 6.2.15's three ratios are 25/24 (24 fps), 1001/1000 x 25/24 = 1001/960 (23.976 fps,
 and 29.97 fps at its own frame length) and 15/16 (25 fps). The converter's polyphase filter is
 designed in `double` and, in the decoder's `float` build, kept in `float` (D14a4): each phase's
 coefficients, 94 taps at 25/24 and 1001/960 and 100 at 15/16, are computed and normalised in
-`double` and rounded to `float` once as the table is built (by the compiler since D14a5, below), and
-an output is the sum of that many
-`float` products of the `float` history, added over four lanes in an order that
-`dsp/resampler_vector.hpp` fixes, so that the host, the Cortex-M3 leg and the board give the same
-sample. Before D14a4 the sum ran in `double` on a part whose FPU is single precision, so that each
+`double` and rounded to `float` once as the table is built (by the compiler since D14a5, below),
+and an output is the sum of that many `float` products of the `float` history, added over four
+lanes in an order that `dsp/resampler_vector.hpp` fixes, so that the host, the Cortex-M3 leg and
+the board give the same sample. Before D14a4 the sum ran in `double` on a part whose FPU is single
+precision, so that each
 multiply and add was a call to a software routine of the compiler's runtime: 185 to 231 ms a frame,
 4.9 to 5.5 times real time by itself and 84 to 88% of the frame. It now takes 7.2 to 7.3 ms a frame
 at 25/24 and 15/16, 28 to 29 times less (3.7 us for each output sample of the pair, about 7 cycles a
-tap), and the frame is 0.92 and 0.82 of its duration: the P4 decodes DEE's immersive stereo at 24
+tap), and the frame is 0.91 and 0.82 of its duration: the P4 decodes DEE's immersive stereo at 24
 and 25 fps in real time. In the images of D14a5 the same code takes 7.3 to 9.7 ms at 25/24 (7.2 to
 7.6 at 15/16): the converter's time at 25/24 moves by a third with the layout of the heap from one
 image to the next, whichever memory the table is kept in.
@@ -508,9 +508,9 @@ rounded to `float` in every coefficient of 25/24, 15/16 and 1001/960, which the 
 up - p is phase p read from its last coefficient to its first, since the window and the sinc are even,
 and a second dot-product kernel reads it that way, bit for bit the sum of the phase written out
 backwards. At 1001/960 that is 501 phases of 94 taps, 188 KB as `float` where the table was 376,376
-bytes; the three tables are 196,464 bytes of constants in the image, which grew by 199,760 bytes
-(1,977,504 to 2,177,264 for the measurement image). Nothing is designed on the board: the first frame at
-1001/960 takes 0.32 s and 0.42 s, from 5.9 and 6.0, within 0.12 s of the first frame at 24 and 25 fps.
+bytes; the three tables are 196,464 bytes of constants in the image, which grew by 199,696 bytes
+(1,977,504 to 2,177,200 for the measurement image). Nothing is designed on the board: the first frame at
+1001/960 takes 0.31 s and 0.42 s, from 5.9 and 6.0, within 0.12 s of the first frame at 24 and 25 fps.
 
 The constants are in flash, which on this board is read in DIO mode at 80 MHz behind the 128 KB L2
 cache, where the PSRAM is read in hex mode at 200 MHz, and a table of 188 KB does not fit the cache.
@@ -519,9 +519,9 @@ PSRAM), the whole 376 KB table 110 ms, and the 29.97 fps play 124.7 and 153 ms; 
 whose tables are 4.9 and 3.2 KB, reading in place made no difference that showed through the layout
 noise above. The filter therefore copies the table when it is made: the 188 KB go to PSRAM, and the
 two small tables, 4.9 and 3.2 KB where the ones designed at run time were 9.4 and 6 KB, are blocks
-below the policy's 16 KB. From the copy the converter takes 16.6 ms a frame at 23.976 fps (1.11 times real time, from 1.25),
+below the policy's 16 KB. From the copy the converter takes 16.5 ms a frame at 23.976 fps (1.11 times real time, from 1.25),
 and the peak PSRAM of the play falls from 632 to 435 KB, and from 572 to 383 at 29.97 fps. The 29.97 fps play's converter,
-93.8 ms a frame (12.4 with allocations over 512 bytes sent to PSRAM first), belongs to the open question in
+93.8 ms a frame (12.2 with allocations over 512 bytes sent to PSRAM first), belongs to the open question in
 [Allocation policy](#allocation-policy); the table does not account for it.
 
 ### Float output on the host, the Cortex-M3 leg and the board
