@@ -93,5 +93,8 @@ Checks: >
   cert-str34-c
 
 WarningsAsErrors: '*'
-HeaderFilterRegex: '(src/(forge|matroska)|apps/cli)/.*'
+# The headers of the code static-analysis.yml analyses: the library (one directory, forge, until the
+# 2026-09-30 re-layout, now ac3, objects, base, dsp, render, arithmetic and iec61937), Matroska and
+# the CLI. include/ or src/ after the library's name keeps src/ac4core/src/dsp out of src/dsp's pattern.
+HeaderFilterRegex: '(src/(ac3|arithmetic|base|dsp|iec61937|matroska|objects|render)/(include|src)|apps/cli)/.*'
 FormatStyle: none
