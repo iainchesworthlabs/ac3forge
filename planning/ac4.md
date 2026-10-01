@@ -2263,8 +2263,8 @@ way in the same session beside D14a5's image (the converter's microseconds a fra
 512-byte policy the converter takes 7.5, 7.3, 15.3 and 12.2 ms. The `float` PCM hashes of the 84 plays and cuts of D14a4's
 lists are the same on the host (MSVC, GCC 16 and Clang 22), in the Cortex-M3 program and on the board, and equal to
 D14a4's, so no pin moved; the `double` output is byte-identical (360 decodes and 6 encodes). The image grows by 199,696
-bytes, 196,464 of them the tables, the Cortex-M3 probe's by 198,416 bytes, and `dsp/resampler.cpp` takes 5 to 24 s
-longer to compile at `float`, by compiler (MSVC 24.5 s from 0.7, GCC 16 6.1 s from 0.8, ESP-IDF's RISC-V GCC 13.0 s from 1.9). The 29.97 fps play's
+bytes, 196,464 of them the tables, the Cortex-M3 probe's by 198,416 bytes, and `dsp/resampler.cpp` takes 5 to 14 s
+longer to compile at `float`, by compiler (MSVC 14.7 s from 0.7, GCC 16 6.0 s from 0.8, ESP-IDF's RISC-V GCC 8.4 s from 1.5). The 29.97 fps play's
 converter still takes 77 ms more than the 23.976 fps play's with the same table and code, and the allocation policy's
 open question stands.
 

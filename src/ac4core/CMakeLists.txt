@@ -183,10 +183,10 @@ endif()
 # million operations in GCC 14 and 15 (32 million in GCC 16, which counts them
 # differently), and the defaults are 100,000 steps, 1,048,576 steps and 33,554,432
 # operations. Each compiler has its own flag for it, and the limits below are three to
-# eleven times what the tables need. The evaluation makes the file take 5 to 24 seconds
-# longer to compile, by compiler: GCC 16 6.1 s where it took 0.8, Clang 22 8.9 where 1.1,
-# clang-cl 8.4 where 0.8, GCC 14 10.3 where 1.2, ESP-IDF's RISC-V GCC 15 13.0 where 1.9
-# and MSVC 24.5 where 0.7 (planning/ac4.md, D14a5); a double build pays nothing. The
+# eleven times what the tables need. The evaluation makes the file take 5 to 14 seconds
+# longer to compile, by compiler: clang-cl 5.9 s where it took 0.8, GCC 16 6.0 where 0.8,
+# GCC 14 6.1 where 1.1, ESP-IDF's RISC-V GCC 15 8.4 where 1.5, Clang 22 8.8 where 1.0 and
+# MSVC 14.7 where 0.7 (planning/ac4.md, D14a5); a double build pays nothing. The
 # ESP-IDF component reaches this file through the root CMakeLists.txt, so the same
 # limits apply there. APPEND, since the block above sets this file's compile options
 # as well when it applies.

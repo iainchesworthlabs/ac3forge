@@ -1688,7 +1688,7 @@ The sections below contain the complete change list and fixes.
   are the C library's design rounded to `float` in every coefficient, so no `float` PCM hash and no
   pin moved, and the `double` output is byte-identical to before (360 decodes and 6 encodes). The
   image grows by 196 KB of constants (the Cortex-M3 probe's ceiling is 750,000 bytes from 535,000),
-  and a `float` build evaluates the tables while it compiles `dsp/resampler.cpp` (5 to 24 seconds
+  and a `float` build evaluates the tables while it compiles `dsp/resampler.cpp` (5 to 14 seconds
   more, by compiler, MSVC the longest, with the constant evaluator's limit raised for that file).
 
 **Browser (WASM)**
