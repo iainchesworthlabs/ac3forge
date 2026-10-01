@@ -237,6 +237,76 @@ class Code(Case):
         )
 
 
+def words(text: str, path: str = "src/adm/CMakeLists.txt") -> str:
+    return D.transform_words(path, text)
+
+
+class Words(unittest.TestCase):
+    def changed(self, before: str, after: str, path: str = "src/adm/CMakeLists.txt") -> None:
+        self.assertEqual(words(before, path), after)
+        self.assertEqual(words(after, path), after, "a second run changes nothing")
+
+    def test_a_library_is_named_by_its_target(self) -> None:
+        self.changed(
+            "# unlike ac3adm, see its own option()", "# unlike iclforge::adm, see its own option()"
+        )
+        self.changed("# ac3iab's own test file", "# iclforge::iab's own test file")
+        self.changed("# not ac3admbridge:: - matches", "# not iclforge::admbridge:: - matches")
+        self.changed(
+            "# ac3adm/admbridge are shared-only", "# iclforge::adm/admbridge are shared-only"
+        )
+        self.changed(
+            "# a SHARED ac3adm.so is self-contained",
+            "# a SHARED libiclforge_adm.so is self-contained",
+        )
+
+    def test_a_library_file_is_named_as_it_is_now(self) -> None:
+        self.changed("build-pw/src/audio/libac3audio.a", "build-pw/src/audio/libiclforge_audio.a")
+        self.changed(
+            "libac3signing_static.a and libac3iab.so",
+            "libiclforge_signing_static.a and libiclforge_iab.so",
+        )
+
+    def test_a_raw_target_is_the_one_it_became(self) -> None:
+        self.changed(
+            "iclforge_ac3_static/forge_shared each wrap iclforge_ac3_objects",
+            "iclforge_ac3_static/iclforge_ac3_shared each wrap iclforge_ac3_objects",
+        )
+        self.changed(
+            "iclforge_capi_objects/forge_c_static/forge_c_shared",
+            "iclforge_capi_objects/iclforge_c_static/iclforge_c_shared",
+        )
+        self.changed("the forge_c precedent", "the iclforge_c precedent")
+        self.changed(
+            "(install(EXPORT ... NAMESPACE ac3::)", "(install(EXPORT ... NAMESPACE iclforge::)"
+        )
+
+    def test_a_name_that_is_not_the_old_one_stays(self) -> None:
+        for text in (
+            "iclforge/adm/ac3adm.hpp and test_ac3iab.cpp",
+            "see iclforge::ac3_static, iclforge_c and libiclforge_c_static.a",
+            "ac3::forge",
+            "check_shared_forge_binding.sh",
+        ):
+            with self.subTest(text):
+                self.assertEqual(words(text), text)
+
+    def test_a_line_about_the_past_is_left(self) -> None:
+        past = "# let libac3iab.so go uncovered (from the day ac3iab landed until this fix)"
+        self.assertEqual(words(past, ".github/workflows/_ci-core.yml"), past)
+        self.assertNotEqual(words(past, ".github/workflows/other.yml"), past)
+
+    def test_only_build_and_tool_text_is_read(self) -> None:
+        for path in (
+            "docs/library/adm.md",
+            "src/adm/src/adm.cpp",
+            "tools/n1b/notes.py",
+            "planning/ac4.md",
+        ):
+            with self.subTest(path):
+                self.assertNotEqual(D.kind_of(path), "code")
+
+
 class Anchors(unittest.TestCase):
     def test_a_heading_that_changes_changes_its_slug(self) -> None:
         before = "# Using ac3::forge\n\n## `ac3cli` options\n\n## Other\n"
@@ -414,6 +484,7 @@ FILES = {
     "planning/p.md": "A plan that says `ac3cli` and links [x](../docs/a.md#ac3cli-options).\n",
     "CHANGELOG.md": "- ac3cli, see [x](docs/a.md#ac3cli-options)\n",
     "src/audio/CMakeLists.txt": "# links ac3::forge and names ac3::oba::X\nadd_library(a)\n",
+    "src/adm/CMakeLists.txt": "# unlike ac3adm, see forge_shared; libac3iab.so\nadd_library(adm)\n",
     "src/ac3/x.cpp": '// ac3::oba::X, ac3cli\nconst char* kUrl = "https://github.com/iainchesworthlabs/ac3forge";\n',
     ".github/workflows/dependabot-auto-merge.yml": (
         "    if: github.repository == 'iainchesworthlabs/ac3forge'\n"
@@ -486,10 +557,22 @@ class Run(unittest.TestCase):
         self.assertEqual(self.text("tests/golden/x.txt"), FILES["tests/golden/x.txt"])
         self.assertEqual(self.text("tools/n1b/notes.py"), FILES["tools/n1b/notes.py"])
 
+    def test_the_words_phase_names_the_libraries_in_build_text_only(self) -> None:
+        self.go("words")
+        self.assertEqual(
+            self.text("src/adm/CMakeLists.txt"),
+            "# unlike iclforge::adm, see iclforge_ac3_shared; libiclforge_iab.so\n"
+            "add_library(adm)\n",
+        )
+        for kept in ("src/ac3/x.cpp", "README.md", "docs/a.md", "tools/n1b/notes.py"):
+            with self.subTest(kept):
+                self.assertEqual(self.text(kept), FILES[kept])
+
     def test_a_second_run_of_each_phase_changes_nothing(self) -> None:
         self.go("all")
         self.assertEqual(self.go("text"), {"text": []})
         self.assertEqual(self.go("urls"), {"urls": []})
+        self.assertEqual(self.go("words"), {"words": []})
 
     def test_the_census_counts_by_family_and_by_why(self) -> None:
         rows = D.residual(self.root)

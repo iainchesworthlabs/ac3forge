@@ -1,10 +1,10 @@
 """The pages, stage S5 of the plan: the documentation follows the new names, and every address
 follows the new repository name.
 
-    n1b_docs.py --root <worktree> --phase text|urls|all [--dry-run] [--report <file>]
+    n1b_docs.py --root <worktree> --phase text|urls|words|all [--dry-run] [--report <file>]
                 [--json <file>]
 
-Two phases, each committed alone (`all` is the two in order).
+Three phases, each committed alone (`all` is the three in order).
 
 `text` renames what the earlier stages left in living text. A page (every tracked `.md`,
 `mkdocs.yml`, `overrides/`, the docs site's data and scripts under `docs/`, the generated snippets;
@@ -38,8 +38,17 @@ link into a tag), the winget manifests' directory (a path in the tree), the Sona
 (it carries no slash), and the lines the hand-written commit writes (`HAND_LINES`: the guards that
 test `github.repository`, and the constant the bump script reads).
 
+`words` is the last of the three: the words of build and tool text that still name a library by the
+name it had (`ac3adm`, `ac3iab`, `ac3audio`, `libac3iab.so`) or a CMake target of the old single
+library by its raw name (`forge_shared`, `forge_c_static`). S2 renamed the targets and S3 the
+namespaces, and each left a comment that says the word, or half of a pair
+(`iclforge_ac3_static/forge_shared`). It reads the files of the third kind above (CMake, workflows,
+shell, Python, the presets), never a page, a C or C++ file (their comments and strings keep these
+words, and the census lists them) or a file name (`ac3iab.hpp`, `test_ac3iab.cpp`). A line that
+tells a past event in the name of its time is left (`HISTORICAL_LINES`).
+
 The history is `CHANGELOG.md`, `planning/`, `tests/golden`, the released winget manifests,
-`.git-blame-ignore-revs` and this migration's scripts; neither phase reads it. Three pages narrate
+`.git-blame-ignore-revs` and this migration's scripts; no phase reads it. Three pages narrate
 a tree that was named differently (`RECORD_PAGES`) and keep their names. A page line that
 describes the rename itself is left (`HAND_PAGE_LINES`). `--report` lists every decision, `--json`
 writes the rules, the counts and the header table. A second run changes nothing.
@@ -367,6 +376,8 @@ RULES: dict[str, Rule] = {
         Rule("display-member", RENAME, "display", "AC3Forge Hearth and AC3Forge Crucible"),
         Rule("bare-code", RENAME, "display", "the bare word in code: the identifier iclforge"),
         Rule("clone-dir", RENAME, "display", "the directory a clone of the repository makes"),
+        Rule("library-word", RENAME, "code", "a library by its old name in build text: ac3adm"),
+        Rule("raw-target", RENAME, "code", "a CMake target of the old library by its raw name"),
         Rule("literal", RENAME, "name", "a quoted Kconfig menu title, or the Homebrew cask's name"),
         Rule("external", KEEP, "kept", "an address: the urls phase's, or the owner's"),
         Rule(
@@ -927,6 +938,75 @@ def transform_urls(
     return "\n".join(out)
 
 
+# --- the words of build text ----------------------------------------------------------------------
+
+# A line that tells a past event in the name of its time, by file: a fragment of the line. The
+# library was called `ac3iab` when the allowlist file `libac3iab.so.txt` went missing, and the
+# measurements of the coverage report are listed by the names the components had then.
+HISTORICAL_LINES: dict[str, tuple[str, ...]] = {
+    ".github/workflows/_ci-core.yml": (
+        "let libac3iab.so go uncovered",
+        "from the day ac3iab landed until this fix",
+    ),
+    "tools/ci/check_abi_symbols.py": ("libac3iab.so.txt was",),
+    "tools/checks/coverage_report.sh": (
+        "ac3adm 87.9/82.4",
+        "ac3adm 87.2/81.5",
+        "ac3iab 95.4/92.9",
+    ),
+}
+
+_LIBRARIES = "admbridge|adm|iab|audio|signing|sendspin|arithmetic"
+# The libraries that had a name of their own. A word is not part of a longer one, of a path
+# (`iclforge/adm/ac3adm.hpp`: that is the header's file name) or of a qualified name, and it is
+# not followed by an extension (`test_ac3iab.cpp`).
+_WORDS: tuple[tuple[str, re.Pattern, str], ...] = (
+    (
+        "library-word",
+        re.compile(r"(?<![\w.:-])libac3(" + _LIBRARIES + r")(?![A-Za-z0-9])"),
+        r"libiclforge_\1",
+    ),
+    (
+        "library-word",
+        re.compile(r"(?<![\w/.:-])ac3(" + _LIBRARIES + r")(?=\.so\b)"),
+        r"libiclforge_\1",
+    ),
+    (
+        "library-word",
+        re.compile(r"(?<![\w/.:-])ac3(" + _LIBRARIES + r")(?![\w]|\.(?:hpp|cpp|h)\b)"),
+        r"iclforge::\1",
+    ),
+    ("raw-target", re.compile(r"(?<![\w:])forge_c_(static|shared)(?!\w)"), r"iclforge_c_\1"),
+    ("raw-target", re.compile(r"(?<![\w:])forge_c(?!\w)"), "iclforge_c"),
+    (
+        "raw-target",
+        re.compile(r"(?<![\w:])forge_(static|shared|objects|minimal)(?!\w)"),
+        r"iclforge_ac3_\1",
+    ),
+    ("raw-target", re.compile(r"(NAMESPACE\s+)ac3::"), r"\1iclforge::"),
+)
+
+
+def transform_words(
+    path: str, text: str, hits: list | None = None, counts: Counter | None = None
+) -> str:
+    out: list[str] = []
+    past = HISTORICAL_LINES.get(path, ())
+    for number, line in enumerate(text.split("\n"), 1):
+        if any(fragment in line for fragment in past):
+            out.append(line)
+            continue
+        new = line
+        for name, rx, to in _WORDS:
+            new, n = rx.subn(to, new)
+            if n and counts is not None:
+                counts[name] += n
+        if new != line and hits is not None:
+            hits.append(("words", path, number, line.strip()[:120], new.strip()[:120]))
+        out.append(new)
+    return "\n".join(out)
+
+
 # --- the run --------------------------------------------------------------------------------------
 
 
@@ -992,6 +1072,22 @@ def url_phase(repo: Repo, root: Path) -> tuple[dict[str, str], dict[str, str], l
             continue
         old[f] = text
         new[f] = transform_urls(f, text, hits, counts)
+    return old, new, hits, counts
+
+
+def words_phase(repo: Repo, root: Path) -> tuple[dict[str, str], dict[str, str], list, Counter]:
+    old: dict[str, str] = {}
+    new: dict[str, str] = {}
+    hits: list = []
+    counts: Counter = Counter()
+    for f in repo.files:
+        if kind_of(f) != "code" or f.startswith(FALLBACK_PREFIXES):
+            continue
+        text = read_text(root, f)
+        if text is None:
+            continue
+        old[f] = text
+        new[f] = transform_words(f, text, hits, counts)
     return old, new, hits, counts
 
 
@@ -1076,7 +1172,7 @@ def run(
     changed: dict[str, list[str]] = {}
     totals: dict[str, dict[str, int]] = {}
     report: list[str] = []
-    for name, step in (("text", text_phase), ("urls", url_phase)):
+    for name, step in (("text", text_phase), ("urls", url_phase), ("words", words_phase)):
         if phase not in (name, "all"):
             continue
         # the files are read from the disk each time: the text phase has written its own
@@ -1092,7 +1188,7 @@ def run(
 
 def main() -> int:
     ap = base_parser(__doc__)
-    ap.add_argument("--phase", choices=["text", "urls", "all"], default="all")
+    ap.add_argument("--phase", choices=["text", "urls", "words", "all"], default="all")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--report", default=None, help="write every decision to this file")
     ap.add_argument("--json", default=None, help="write the header table and the counts here")
