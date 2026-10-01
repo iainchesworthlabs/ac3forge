@@ -216,9 +216,9 @@ a history to show here ([Validation: AC-4](verification.md#the-encoder)).
           <th rowspan="2" class="landscape-group-start">Baseline</th>
         </tr>
         <tr>
-          <th class="landscape-group-start">iclforge</th><th>vs FFmpeg</th><th>vs DEE</th>
-          <th class="landscape-group-start">iclforge</th><th>vs FFmpeg</th><th>vs DEE</th>
-          <th class="landscape-group-start">iclforge</th><th>vs FFmpeg</th><th>vs DEE</th>
+          <th class="landscape-group-start">ICL Forge</th><th>vs FFmpeg</th><th>vs DEE</th>
+          <th class="landscape-group-start">ICL Forge</th><th>vs FFmpeg</th><th>vs DEE</th>
+          <th class="landscape-group-start">ICL Forge</th><th>vs FFmpeg</th><th>vs DEE</th>
         </tr>
       </thead>
       <tbody>${trs}</tbody>
