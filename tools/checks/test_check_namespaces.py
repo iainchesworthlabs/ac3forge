@@ -128,7 +128,7 @@ class Namespaces(unittest.TestCase):
         write(self.root, header("mp4"), "namespace iclforge::mp4 {\n}\n")
         code, out = self.run_check({"ac3": ["ac3"]})
         self.assertEqual(code, 1)
-        self.assertIn("src/mp4: public headers, and no row of the table", out)
+        self.assertIn("mp4: public headers, and no row of the table", out)
 
     def test_a_row_for_a_library_without_headers_fails(self) -> None:
         write(self.root, header("ac3"), "namespace iclforge::ac3 {\n}\n")

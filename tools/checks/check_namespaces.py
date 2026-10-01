@@ -192,7 +192,7 @@ def check(root: Path, table: Table, files: list[str]) -> Report:
     by_library = public_headers(files)
     for lib in sorted(by_library):
         if lib not in table.libraries:
-            problems.append(f"src/{lib}: public headers, and no row of the table for the library")
+            problems.append(f"{lib}: public headers, and no row of the table for the library")
     for lib in sorted(table.libraries):
         if lib not in by_library:
             problems.append(f"{lib}: a row of the table for a library with no public headers")
