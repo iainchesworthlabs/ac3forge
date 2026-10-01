@@ -1,7 +1,7 @@
 """Compare the exported symbols of the libraries before and after a change (two `symbols` records).
 
     export_diff.py --old <symbols-msvc.json> --new <symbols-msvc.json> [--map identity|l2]
-                   [--rewrite cuts,names,idents] [--copies] [--limit 30]
+                   [--rewrite cuts,names,idents,ac3ns] [--copies] [--limit 30]
 
 `baseline.py record --only symbols` writes one record per build: for every shared library, the
 names it exports, undecorated. This compares two of them. What a stage may change is named by the
@@ -16,6 +16,11 @@ options and nothing else passes.
   --rewrite idents the brand in a name is rewritten the way n1b_idents.py rewrites an identifier
                    (S4): the C API's `ac3forge_encoder_create` is `iclforge_encoder_create`, and
                    `sendspin::ac3forge` is `sendspin::player`
+  --rewrite ac3ns  the AC-3 library's names nest under `iclforge::ac3` (S6): a name the table of
+                   ac3ns_symbols.json lists is rewritten the way n1b_ac3ns.py rewrites a qualified
+                   name, so `iclforge::FrameEncoder::encode(iclforge::Acmod)` is
+                   `iclforge::ac3::FrameEncoder::encode(iclforge::ac3::Acmod)`, and
+                   `iclforge::oba::Position`, which the objects library declares, is itself
   --copies         a name that leaves one library is not a difference when another library of
                    the new record exports it. A shared library that links the codec statically
                    re-exports the members it pulled in (admbridge.dll carried 278 copies of what
@@ -32,11 +37,13 @@ one: has_avx2()), which are listed for a person to accept.
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import re
 import sys
 from pathlib import Path
 
+from ac3ns_core import Table, qualify
 from n1b_apply import SPLIT_LIBS
 from n1b_cmake import OUTPUT
 from n1b_idents import symbol_rename
@@ -54,6 +61,11 @@ NAME_RENAMES = [
 ]
 
 
+@functools.lru_cache(maxsize=1)
+def ac3ns_table() -> Table:
+    return Table.load()
+
+
 def rewrite(name: str, kinds: set[str]) -> str:
     rules: list[tuple[str, str]] = []
     if "cuts" in kinds:
@@ -62,6 +74,8 @@ def rewrite(name: str, kinds: set[str]) -> str:
         rules += NAME_RENAMES
     for pattern, replacement in rules:
         name = re.sub(pattern, replacement, name)
+    if "ac3ns" in kinds:
+        name = qualify(name, ac3ns_table())[0]
     if "idents" in kinds:
         name = symbol_rename(name)
     return name
@@ -127,12 +141,12 @@ def main() -> int:
     ap.add_argument("--old", required=True, type=Path)
     ap.add_argument("--new", required=True, type=Path)
     ap.add_argument("--map", choices=["identity", "l2"], default="identity")
-    ap.add_argument("--rewrite", default="", help="comma-separated: cuts, names, idents")
+    ap.add_argument("--rewrite", default="", help="comma-separated: cuts, names, idents, ac3ns")
     ap.add_argument("--copies", action="store_true", help="a name another library exports is kept")
     ap.add_argument("--limit", type=int, default=30)
     a = ap.parse_args()
     kinds = {k for k in a.rewrite.split(",") if k}
-    unknown = kinds - {"cuts", "names", "idents"}
+    unknown = kinds - {"cuts", "names", "idents", "ac3ns"}
     if unknown:
         sys.exit(f"export_diff: unknown --rewrite {sorted(unknown)}")
     old = json.loads(a.old.read_text(encoding="utf-8"))
