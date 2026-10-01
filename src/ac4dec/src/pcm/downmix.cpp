@@ -109,6 +109,18 @@ DownmixValues downmix_values(const PresentationSubstream* presentation, const Me
 void DownmixStage::configure(std::span<const Speaker> speakers, bool add_ch_base,
                              DownmixTarget target, bool mix_lfe,
                              const std::optional<ImmersiveLayout>& immersive) {
+    // The values a stream sends describe its channels, not the output: over
+    // the same channels a new target or LFE choice keeps them, since the
+    // stream may not send them again until its next I-frame.
+    const bool same_channels = std::ranges::equal(speakers, in_speakers_) &&
+                               add_ch_base == add_ch_base_ && immersive == immersive_;
+    const auto settle = [this, same_channels] {
+        if (same_channels) {
+            rebuild();
+        } else {
+            reset();
+        }
+    };
     in_speakers_.assign(speakers.begin(), speakers.end());
     add_ch_base_ = add_ch_base;
     target_ = target;
@@ -129,7 +141,7 @@ void DownmixStage::configure(std::span<const Speaker> speakers, bool add_ch_base
         pass_through_ =
             immersive_->decoding == DecodingMode::kFull && out_speakers_ == in_speakers_ &&
             is_identity(render_matrix(*immersive_, in_speakers_, plan_, render_gains(nullptr, -1)));
-        reset();
+        settle();
         return;
     }
     plan_ = {};
@@ -173,7 +185,7 @@ void DownmixStage::configure(std::span<const Speaker> speakers, bool add_ch_base
             break;
     }
     pass_through_ = out_speakers_ == in_speakers_;
-    reset();
+    settle();
 }
 
 void DownmixStage::reset() {

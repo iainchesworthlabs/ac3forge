@@ -119,6 +119,7 @@ public:
         }
         recent_filled_ = std::min(recent_filled_ + frames, kToneWindow);
         submitted_ += frames;
+        submitted_total_ += frames;
         return true;
     }
 
@@ -208,6 +209,7 @@ public:
                            .channels = open_ ? width_ : std::uint16_t{0},
                            .opens = opens_,
                            .frames_heard = heard_total_,
+                           .frames_submitted = submitted_total_,
                            .peak = peak_};
     }
 
@@ -266,6 +268,7 @@ private:
     std::uint64_t submitted_ = 0;
     std::uint64_t heard_ = 0;
     std::uint64_t heard_total_ = 0;
+    std::uint64_t submitted_total_ = 0;
     std::uint64_t clock_frames_ = 0;
     std::uint32_t opens_ = 0;
     double carry_ = 0.0;
