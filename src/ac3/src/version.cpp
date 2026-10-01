@@ -25,7 +25,7 @@ std::string version_details() {
     // header itself rather than from a CMake-substituted string, so the
     // binary reports what it actually contains and cannot claim a
     // directory it was not built with.
-    out += fmt::format("\n  kernels: {}", internal::arch::kSimdName);
+    out += fmt::format("\n  kernels: {}", iclforge::internal::arch::kSimdName);
     if (git_dirty) {
         out += "\n  state:   dirty (uncommitted changes)";
     }

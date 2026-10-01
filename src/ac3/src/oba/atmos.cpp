@@ -699,11 +699,11 @@ std::expected<eac3::AccessUnit, FrameError> AtmosEncoder::encode_frame(
     if (impl_->config_.emit_object_metadata) {
         const auto oamd = build_payload(impl_->program_, described, impl_->frame_samples_);
         const auto joc_payload = joc::build_payload(impl_->params_);
-        const std::array<emdf::Payload, 2> payloads{{
-            {.id = emdf::kPayloadIdOamd, .bytes = oamd},
-            {.id = emdf::kPayloadIdJoc, .bytes = joc_payload},
+        const std::array<iclforge::emdf::Payload, 2> payloads{{
+            {.id = iclforge::emdf::kPayloadIdOamd, .bytes = oamd},
+            {.id = iclforge::emdf::kPayloadIdJoc, .bytes = joc_payload},
         }};
-        container = emdf::build_container(payloads);
+        container = iclforge::emdf::build_container(payloads);
     }
 
     // --- 6. The stream ------------------------------------------------------
@@ -789,11 +789,11 @@ std::expected<eac3::AccessUnit, FrameError> AtmosEncoder::encode_bed_frame(
     if (impl_->config_.emit_object_metadata) {
         const auto oamd = build_payload(impl_->program_, {}, impl_->frame_samples_);
         const auto joc_payload = joc::build_payload(impl_->params_);
-        const std::array<emdf::Payload, 2> payloads{{
-            {.id = emdf::kPayloadIdOamd, .bytes = oamd},
-            {.id = emdf::kPayloadIdJoc, .bytes = joc_payload},
+        const std::array<iclforge::emdf::Payload, 2> payloads{{
+            {.id = iclforge::emdf::kPayloadIdOamd, .bytes = oamd},
+            {.id = iclforge::emdf::kPayloadIdJoc, .bytes = joc_payload},
         }};
-        container = emdf::build_container(payloads);
+        container = iclforge::emdf::build_container(payloads);
     }
 
     std::array<std::span<const float>, 6> views{};

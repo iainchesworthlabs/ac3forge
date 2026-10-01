@@ -326,8 +326,8 @@ struct DecoderConfig {
     void* diagnostics_context = nullptr;
 };
 
-using render::BlockSink;  // ac3/render/pcm_block.hpp
-using render::PcmBlock;
+using iclforge::render::BlockSink;  // ac3/render/pcm_block.hpp
+using iclforge::render::PcmBlock;
 
 struct DecodedFrame {
     SampleRate sample_rate = SampleRate::k48000;

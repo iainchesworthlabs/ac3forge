@@ -2909,18 +2909,19 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
             // reason for existing: a decoder that does not understand this
             // data reads the rest of the frame exactly as it would without it.
             if (!out.object_metadata.has_value()) {
-                const auto container = emdf::parse_container(skip_bytes);
+                const auto container = iclforge::emdf::parse_container(skip_bytes);
                 if (container.has_value() && container->has_value()) {
                     for (const auto& payload : **container) {
                         if (impl_->config_.syntax != nullptr) {
                             impl_->config_.syntax->add_emdf_payload(payload.id);
                         }
-                        if (payload.id == emdf::kPayloadIdOamd) {
+                        if (payload.id == iclforge::emdf::kPayloadIdOamd) {
                             out.object_metadata = iclforge::oba::parse_payload(payload.bytes);
-                        } else if (payload.id == emdf::kPayloadIdJoc && joc_bytes.empty()) {
+                        } else if (payload.id == iclforge::emdf::kPayloadIdJoc &&
+                                   joc_bytes.empty()) {
                             joc_bytes.assign(payload.bytes.begin(), payload.bytes.end());
-                        } else if (payload.id != emdf::kPayloadIdOamd &&
-                                   payload.id != emdf::kPayloadIdJoc &&
+                        } else if (payload.id != iclforge::emdf::kPayloadIdOamd &&
+                                   payload.id != iclforge::emdf::kPayloadIdJoc &&
                                    impl_->config_.diagnostics != nullptr) {
                             // Any id this decoder does not interpret at all -
                             // a second JOC payload (joc_bytes already taken)

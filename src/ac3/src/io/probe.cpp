@@ -126,8 +126,8 @@ struct Prober::Impl {
         if (at == ids.end() || *at != id) {
             ids.insert(at, id);
         }
-        report.oamd = report.oamd || id == emdf::kPayloadIdOamd;
-        report.joc = report.joc || id == emdf::kPayloadIdJoc;
+        report.oamd = report.oamd || id == iclforge::emdf::kPayloadIdOamd;
+        report.joc = report.joc || id == iclforge::emdf::kPayloadIdJoc;
     }
 
     void accumulate_syntax(const FrameSyntax& syn) {
