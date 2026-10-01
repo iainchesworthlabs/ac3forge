@@ -2190,6 +2190,13 @@ The sections below contain the complete change list and fixes.
   Microsoft's AudioCodec sample, in place of the PortCls/WaveRT miniport — about 1,900
   lines in place of 9,700, with Driver Verifier's DDI compliance now part of its
   verification. Nothing the demo or scripts see changes.
+- **The Windows silent device has its own names.** `Ac3ForgeNullSink` is `IclForgeNullSink` (the
+  hardware id `ROOT\IclForgeNullSink`, the service, the file names and the scripts), and the
+  endpoint is "Speakers (Crucible Silent Output)" in place of "Speakers (Desktop Atmos)", a name
+  that used Dolby's trademark for a device in every user's sound settings. Crucible finds the
+  device by the new name. The driver had never been signed and had been installed only in the
+  project's test guest, so nothing needs migrating; its code is unchanged, and it passed Driver
+  Verifier's exercise in the guest under the new names.
 
 **CI and static analysis**
 
@@ -2223,7 +2230,8 @@ The sections below contain the complete change list and fixes.
   `tools/ci/precheck.py` runs the static checks locally.
 - **The build matrix is data, and a nightly run does what the run after a merge leaves out.**
   `.github/ci/legs.jsonc` lists the 11 legs, `tools/ci/plan_legs.py` picks them, and a dispatch
-  can name legs (`-f legs=linux-llvm,macos-llvm`) or a tier. The run after a merge builds the
+  can name legs (`-f legs=linux-llvm,macos-llvm`), the Windows null-sink driver job
+  (`-f legs=windows-driver`) or a tier. The run after a merge builds the
   legs a merge can break (Linux GCC and LLVM, Linux GCC on arm64, Windows MSVC and clang-cl,
   macOS arm64) and picks its lanes from the files merged since `verified`; a satellite lane
   (Android, WebAssembly, ESP-IDF, Rust, wheels, npm) runs only for a change in its own tree, and

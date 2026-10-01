@@ -1,5 +1,5 @@
-// Spike S1: does Windows 11 process-loopback capture do what the Desktop Atmos
-// Demo plan needs? (docs/platforms/windows-demo.md, "Phase 0: spikes")
+// Spike S1: does Windows 11 process-loopback capture do what the Windows
+// demo's plan needs? (docs/platforms/windows-demo.md, "Phase 0: spikes")
 //
 // Questions, each a flag below:
 //   - can N processes be tapped at once, and what format arrives?      --spawn N

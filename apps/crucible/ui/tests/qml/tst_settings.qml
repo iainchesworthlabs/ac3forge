@@ -27,7 +27,7 @@ TestCase {
         CrucibleController.bitrate = 0;
         CrucibleController.theme = "system";
         CrucibleController.palette = "signal";
-        CrucibleController.nullSinkName = "Desktop Atmos";
+        CrucibleController.nullSinkName = "Crucible Silent Output";
         CrucibleController.keepRunningWhenClosed = true;
         CrucibleController.moveDefaultOnLaunch = false;
         CrucibleController.driverDir = "";
@@ -42,7 +42,7 @@ TestCase {
         compare(CrucibleController.bitrate, 0);
         compare(CrucibleController.theme, "system");
         compare(CrucibleController.palette, "signal");
-        compare(CrucibleController.nullSinkName, "Desktop Atmos");
+        compare(CrucibleController.nullSinkName, "Crucible Silent Output");
         compare(CrucibleController.keepRunningWhenClosed, true);
         compare(CrucibleController.moveDefaultOnLaunch, false);
         compare(CrucibleController.keyPath, "");

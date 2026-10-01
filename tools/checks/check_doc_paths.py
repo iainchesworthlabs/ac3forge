@@ -115,25 +115,13 @@ FOREIGN_PATHS = {
 # Paths a plan proposes but the tree does not have yet. A brace token expands to
 # one path per alternative (see expand_braces), so these are listed individually
 # and, like FOREIGN_PATHS, printed on every run. A path that lands should be
-# deleted from here, which is what makes the plan's own prose fall due.
+# deleted from here, which is what makes the plan's own prose fall due. Only a page that is not in
+# PROSE_PATHS_UNCHECKED needs an entry: that table already excuses the prose of the other plans.
 PLANNED_PATHS = {
-    "apps/forge/cli": "proposed by the recasting plan, not created yet",
-    "apps/forge/gui": "proposed by the recasting plan, not created yet",
-    "apps/forge/common": "proposed by the recasting plan, not created yet",
-    "apps/hearth": "proposed by the playback-appliance plan, not created yet",
-    "apps/hearth/platform/linux": "proposed by the playback-appliance plan, not created yet",
-    "apps/hearth/platform/windows": "proposed by the playback-appliance plan, not created yet",
-    "apps/hearth/platform/macos": "proposed by the playback-appliance plan, not created yet",
-    "apps/crucible/platform": "proposed by the playback-appliance plan, not created yet",
-    "apps/windows/engine": "the pre-promotion layout the promotion record names",
-    "apps/windows/runner": "the pre-promotion layout the promotion record names",
-    "apps/windows/ui": "the pre-promotion layout the promotion record names",
-    "apps/windows/translations": "the pre-promotion layout the promotion record names",
-    "apps/windows/spikes": "the pre-promotion layout the promotion record names",
-    "src/forge/include/ac3/decoder/associated_service.hpp": (
+    "src/ac3/include/iclforge/ac3/decoder/associated_service.hpp": (
         "proposed by the programme-mixing-metadata plan's Phase 5, not created yet"
     ),
-    "src/forge/src/decoder/associated_service.cpp": (
+    "src/ac3/src/decoder/associated_service.cpp": (
         "proposed by the programme-mixing-metadata plan's Phase 5, not created yet"
     ),
 }
@@ -152,35 +140,13 @@ UNCHECKED_LITERAL_TREES = {
 # code spans are exempt, because those pages are not claiming the tree looks
 # like that today.
 PROSE_PATHS_UNCHECKED = {
-    "planning/README.md": "index of plans; names the directories they propose",
     "planning/recasting.md": "plan; proposes a layout that does not exist yet",
-    "planning/topology.md": "plan; proposes applications that do not exist yet",
     "planning/player-appliance.md": "plan; proposes an apps tree that does not exist",
     "planning/host-plugin.md": "study; proposes an Assay component and its own docs tree",
     "planning/qc-report.md": "plan; proposes source files it would add",
-    "planning/esp32-player.md": (
-        "plan; proposes component sources and an ESPHome platform that do not exist yet"
-    ),
-    "planning/hearth-reference-player.md": (
-        "plan; proposes an apps tree, a Sendspin library and firmware that do not exist yet"
-    ),
-    "planning/hearth-sendspin-extension.md": (
-        "specification; names the Sendspin library and test tools it defines"
-    ),
-    "planning/esp32-ota.md": (
-        "plan; proposes firmware sources, sdkconfig overlays, a host tool and tests that do not "
-        "exist yet"
-    ),
-    "planning/ac4.md": (
-        "plan; proposes decoder, encoder and core libraries and sources that do not exist yet"
-    ),
     "planning/layout.md": "study; proposes a layout, paths and names that do not exist yet",
     "planning/layout-inventory.md": (
         "inventory; a dated snapshot of the tree, naming the paths the proposed layout moves"
-    ),
-    "planning/roadmap-inventory.md": (
-        "inventory; a dated snapshot (tree as of 2026-09-17) that names gaps against the "
-        "tree, which go stale as work lands"
     ),
     "docs/crucible/design/promotion.md": (
         "phase record; names the pre-promotion apps/windows layout"

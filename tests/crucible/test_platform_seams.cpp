@@ -2,7 +2,9 @@
 
 #include <string>
 
+#include "engine.hpp"
 #include "fake_services.hpp"
+#include "output_stage.hpp"
 #include "platform_services.hpp"
 #include "virtual_device.hpp"
 
@@ -86,11 +88,12 @@ TEST_CASE("the session monitor carries the engine's keep list", "[crucible][seam
 TEST_CASE("the default device seam carries a refusal and a platform that never moves it",
           "[crucible][seams]") {
     FakeDefaultDevice device;
-    device.set_endpoints({{.id = "hdmi", .name = "Denon AVR", .is_default = false},
-                          {.id = "null", .name = "Speakers (Desktop Atmos)", .is_default = true}});
+    device.set_endpoints(
+        {{.id = "hdmi", .name = "Denon AVR", .is_default = false},
+         {.id = "null", .name = "Speakers (Crucible Silent Output)", .is_default = true}});
 
     REQUIRE(device.default_id() == "null");
-    REQUIRE(device.find_endpoint("Desktop Atmos") == "null");
+    REQUIRE(device.find_endpoint("Crucible Silent Output") == "null");
     REQUIRE(device.find_endpoint("Denon") == "hdmi");
     REQUIRE(device.find_endpoint("nothing like this").empty());
 
@@ -179,4 +182,19 @@ TEST_CASE("a platform half that never moves the default needs no silent device",
     const SilentDeviceState state =
         silent->state({.endpoint_present = false, .endpoint_is_default = false});
     REQUIRE_FALSE(state.needed);
+}
+
+TEST_CASE("the Windows silent device has one name, and it is not the application's",
+          "[crucible][seams]") {
+    // The driver's device description (IclForgeNullSink.inx) is what Windows shows as
+    // "Speakers (<name>)", and the engine, the output stage and the Windows VirtualDevice all read
+    // it from kWindowsSilentDeviceName rather than each holding a copy. It is not the bare word
+    // the signal path calls the application (a device and a station with one name would stand
+    // side by side on the Output page), and it does not carry the old name's trademark.
+    const std::string name{kWindowsSilentDeviceName};
+    REQUIRE(EngineConfig{}.null_sink_substring == name);
+    REQUIRE(OutputStageConfig{}.null_sink_substring == name);
+    REQUIRE(name.find("Crucible") == 0);
+    REQUIRE(name != "Crucible");
+    REQUIRE(name.find("Atmos") == std::string::npos);
 }

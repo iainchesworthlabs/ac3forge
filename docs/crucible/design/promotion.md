@@ -38,7 +38,7 @@ built and what is not, against the tree today.
 
 | Phase | Built | Designed, or not settled |
 |---|---|---|
-| 1. Identity | The rename to `apps/crucible`, `ac3crucible`, `ac3::crucible` and `AC3FORGE_BUILD_CRUCIBLE`, and the settings migration from the demo | The driver keeps its "Desktop Atmos" device name until attestation signing ([Coordination](#coordination-with-the-driver-signing-session)) |
+| 1. Identity | The rename to `apps/crucible`, `ac3crucible`, `ac3::crucible` and `AC3FORGE_BUILD_CRUCIBLE`, and the settings migration from the demo; the driver's own names on 2026-10-01 (`IclForgeNullSink`, the endpoint "Crucible Silent Output": [Coordination](#coordination-with-the-driver-signing-session)) | |
 | 2. The seams | `AudioDevices`, `SessionMonitor`, `Foreground`, `DefaultDevice` and `VirtualDevice`, with one `platform/<os>/` definition each | |
 | 3. Library, Linux | `Capture::start_process_loopback` and `DeviceWatcher` over PipeWire | |
 | 4. Linux platform half | All four seams, the silent device as a PipeWire node, X11 full-screen detection, icons from the theme and `.desktop` entries, the window, and a run on a Raspberry Pi 4B | X11 full-screen detection has been tested over a fake reader only; XRes pid validation is named and not taken; the upstream report for the Qt tray bug is not recorded |
@@ -166,11 +166,11 @@ controller cannot compile anywhere else, so it takes the interface first.
 The single largest difference between the platforms, and the reason Windows was the hard one to
 do first rather than the easy one.
 
-**Windows** keeps the `Ac3ForgeNullSink` ACX driver
-([its own page](../../platforms/windows-driver-acx.md)). It is built, test-signed and Code-Analysed
-in CI, and verified in a throwaway guest. It loads only where test signing is on until an EV
-certificate and attestation submission exist. Nothing in this plan changes that; the driver's
-device name changes with the rename, which is [a coordination
+**Windows** keeps its ACX driver, `Ac3ForgeNullSink` when this was written and `IclForgeNullSink`
+since 2026-10-01 ([its own page](../../platforms/windows-driver-acx.md)). It is built, test-signed
+and Code-Analysed in CI, and verified in a throwaway guest. It loads only where test signing is on
+until an EV certificate and attestation submission exist. Nothing in this plan changes that; the
+driver's device name changed with the rename, which was [a coordination
 point](#coordination-with-the-driver-signing-session).
 
 **Linux** loads a null sink. No driver, no signing, no elevation: a PipeWire
@@ -1775,6 +1775,18 @@ and paying again. The right order is: the signing session lands its work, then a
 coordinated change renames the INF's device name to "Crucible" and rebuilds, then attestation is
 submitted once. This plan does not make that change unilaterally; it flags it as the thing to
 sequence.
+
+!!! success "Done 2026-10-01 (change N1D)"
+    Both points were taken in one change, before the driver was ever signed. The driver is
+    `IclForgeNullSink` (the hardware id, the service and the file names), and its device
+    description and endpoint are "Crucible Silent Output" and "Speakers (Crucible Silent Output)".
+    The plan said "Crucible". The Output page's first station shows the endpoint's name beside the
+    application's own station, "2 · CRUCIBLE", so the bare word would have named two stations
+    alike; the longer name is one constant in the application (`kWindowsSilentDeviceName`) and one
+    string in the INF. The driver had been installed only in the project's test guest, which is
+    why its identity could change together with its strings. [The driver's
+    page](../../platforms/windows-driver-acx.md#the-rename-2026-10-01) says what was verified in
+    the guest and what was not.
 
 ## Deliberately not in scope
 

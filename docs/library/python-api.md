@@ -108,7 +108,7 @@ avoids a `memcpy` when it can:
   long as they are already `float32` and C-contiguous (`numpy`'s default for a freshly-built
   array). An array that isn't (wrong dtype, a transposed/strided view, a Python `list` of plain
   floats) is converted once, exactly as it always was; this only removes the *second*,
-  unconditional copy the pre-AP6 bindings always made on top of that.
+  unconditional copy the earlier bindings always made on top of that.
 - **Decoded PCM** (`.channels`, `.object_audio`) is a read-only `numpy` view directly onto the
   `DecodedFrame`/`DecodedSubstream`/`DecodedAccessUnit` instance's own memory — no allocation, no
   copy. The view keeps that instance alive for as long as the view itself is (via `numpy`'s own
@@ -235,7 +235,7 @@ the three `fscod2` reduced rates), bitrate, `numblkscod`, `acmod`/`lfe`, the Ann
 (`auto_tools` and the individual `coupling`/`spx`/`aht` flags it overrides), substream identity
 (`strmtyp`/`substreamid`/`chanmap`/`last_dependent`), and `drc`/`heavy`/`drc2`/`heavy2` (the same
 `ac3.Profile`/`ac3.HeavyConfig` types the AC-3 side uses). Not mirrored: the `mixmdate`/`infomdat`
-metadata groups (`mixing`, `info`), `vbr`/ABR (`EQ12`), `search` (`EQ7`/`EQ13`'s per-frame
+metadata groups (`mixing`, `info`), `vbr`/ABR, `search` (the per-frame
 bit-allocation codes search), `fgaincod` and `delta_allocation`. None of these is left out for a
 reason of design, as the C API's own documented trim is.
 

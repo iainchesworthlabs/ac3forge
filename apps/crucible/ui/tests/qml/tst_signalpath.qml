@@ -29,7 +29,7 @@ TestCase {
         CrucibleController.pinned = "auto";
         CrucibleController.preferredEndpoint = "";
         CrucibleController.bypassCodec = false;
-        CrucibleController.nullSinkName = "Desktop Atmos";
+        CrucibleController.nullSinkName = "Crucible Silent Output";
     }
 
     function cleanup() {
@@ -205,11 +205,11 @@ TestCase {
         compare(CrucibleController.defaultOutputName, "Speakers (Realtek)");
         const station = findChild(page, "station-apps");
         verify(station.warn, "a real default is a warning");
-        const send = button(station, "Send applications to Desktop Atmos");
+        const send = button(station, "Send applications to Crucible Silent Output");
         verify(send, "the station offers the move");
         click(send);
         tryCompare(CrucibleController, "defaultIsNullSink", true, 3000);
-        compare(CrucibleController.defaultOutputName, "Speakers (Desktop Atmos)");
+        compare(CrucibleController.defaultOutputName, "Speakers (Crucible Silent Output)");
         compare(CrucibleController.previousDefaultName, "Speakers (Realtek)");
         compare(CrucibleController.defaultMessage, "");
         tryCompare(station, "warn", false);
@@ -244,7 +244,7 @@ TestCase {
         const page = makePage();
         verify(TestServices.refuseDefaultMoves("the policy said no"));
         const opened = TestServices.soundSettingsOpened();
-        click(button(findChild(page, "station-apps"), "Send applications to Desktop Atmos"));
+        click(button(findChild(page, "station-apps"), "Send applications to Crucible Silent Output"));
         tryCompare(CrucibleController, "defaultMessage", "the policy said no", 3000);
         compare(CrucibleController.defaultIsNullSink, false);
         compare(TestServices.soundSettingsOpened(), opened + 1, "the refusal opens the platform's sound settings");
@@ -256,7 +256,7 @@ TestCase {
         machine(["avr", "realtek", "null"]);
         const page = makePage();
         const station = findChild(page, "station-apps");
-        click(button(station, "Send applications to Desktop Atmos"));
+        click(button(station, "Send applications to Crucible Silent Output"));
         tryCompare(CrucibleController, "defaultIsNullSink", true, 3000);
         verify(TestServices.refuseDefaultMoves("the policy will not put it back"));
         const opened = TestServices.soundSettingsOpened();
@@ -284,7 +284,7 @@ TestCase {
         const page = makePage();
         compare(CrucibleController.nullSinkPresent, false);
         const station = findChild(page, "station-apps");
-        const send = button(station, "Send applications to Desktop Atmos");
+        const send = button(station, "Send applications to Crucible Silent Output");
         verify(send);
         compare(send.enabled, false, "nothing to send them to");
         verify(station.detail.indexOf("There is no silent device to send them to") >= 0, station.detail);
@@ -301,12 +301,12 @@ TestCase {
         const page = makePage();
         compare(CrucibleController.nullSinkPresent, false);
         const station = findChild(page, "station-apps");
-        const send = button(station, "Send applications to Desktop Atmos");
+        const send = button(station, "Send applications to Crucible Silent Output");
         verify(send.enabled, "offered: the press makes the device first");
         click(send);
         tryCompare(CrucibleController, "defaultIsNullSink", true, 3000);
         compare(CrucibleController.nullSinkPresent, true);
-        compare(CrucibleController.defaultOutputName, "Speakers (Desktop Atmos)");
+        compare(CrucibleController.defaultOutputName, "Speakers (Crucible Silent Output)");
         // The probe sees the new device too.
         tryVerify(function() { return findChild(page, "endpointRow-null") !== null; }, 5000, "the silent device joined the table");
     }

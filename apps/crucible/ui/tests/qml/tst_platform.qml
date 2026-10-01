@@ -247,13 +247,13 @@ TestCase {
         // engine matches by. It reaches the window as the default of the
         // nullSinkName setting, which is why this case does not write that
         // setting first: the first Linux screenshot labelled every station
-        // "Desktop Atmos" on a machine that has never had one, because the
+        // with the Windows device's name on a machine that has never had one, because the
         // name lived in the window as a default rather than in the platform
         // that owns it.
         if (isLinux) {
             compare(CrucibleController.nullSinkName, "Crucible (silent)");
         } else if (isWindows) {
-            compare(CrucibleController.nullSinkName, "Desktop Atmos");
+            compare(CrucibleController.nullSinkName, "Crucible Silent Output");
         } else if (isMacos) {
             // No endpoint, so no name for one. Empty rather than a
             // placeholder, because a placeholder would put a device in the

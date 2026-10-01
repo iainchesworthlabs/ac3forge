@@ -1,7 +1,7 @@
-# Creates and starts the Desktop Atmos driver test guest in VMware Workstation:
+# Creates and starts the driver test guest in VMware Workstation:
 # a throwaway Windows 11 VM that installs itself unattended (autounattend.xml)
 # with test signing on and memory integrity off, so the test-signed
-# Ac3ForgeNullSink package can be loaded, crashed and rolled back without
+# IclForgeNullSink package can be loaded, crashed and rolled back without
 # touching the host. See README.md.
 #
 #   .\New-DriverTestVm.ps1 -WindowsIso D:\ISOs\Win11_25H2_English_x64_v2.iso
@@ -34,7 +34,7 @@ $vdisk = Join-Path $Workstation 'vmware-vdiskmanager.exe'
 $toolsIso = Join-Path $Workstation 'windows.iso'
 foreach ($f in @($vmrun, $vdisk, $toolsIso, $WindowsIso)) { if (-not (Test-Path $f)) { throw "missing: $f" } }
 $PackageDir = (Resolve-Path $PackageDir).Path
-$inf = Join-Path $PackageDir 'Ac3ForgeNullSink.inf'
+$inf = Join-Path $PackageDir 'IclForgeNullSink.inf'
 if (-not (Test-Path $inf)) { throw "no driver package at $PackageDir (build apps/windows/driver first)" }
 
 # Stock Microsoft media stops at "Press any key to boot from CD or DVD" under
