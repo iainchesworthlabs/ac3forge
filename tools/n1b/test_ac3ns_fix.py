@@ -434,10 +434,6 @@ class Member(Tree):
 
 
 class UsingNamespace(Tree):
-    def col(self, rel: str, line: int, needle: str) -> int:
-        row = (self.root / rel).read_text(encoding="utf-8").split("\n")[line - 1]
-        return row.index(needle) + 1
-
     def test_a_directive_whose_namespace_the_unit_no_longer_sees_is_the_librarys_now(self) -> None:
         self.write("a.cpp", "void f() {\n    using namespace iclforge::internal;\n}\n")
         d = fix.Diag(str(self.root / "a.cpp"), 2, 31, "usingns", "")
