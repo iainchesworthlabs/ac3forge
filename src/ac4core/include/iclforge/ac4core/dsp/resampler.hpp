@@ -52,14 +52,17 @@
 // is made, with the C library's sin and sqrt, as it always has. At float the
 // decoder's three ratios, 25/24, 15/16 and 1001/960, are tables the compiler
 // built (dsp/resampler_design.hpp, with the portable functions of
-// dsp/portable_math.hpp), data in the program's read-only memory: nothing is
-// designed on a part that has no use for the time it takes (5.9 s at 1001/960
-// on the ESP32-P4's soft-float double) and the same coefficients are on every
-// platform. They hold phases 0 to up / 2: phase up - p is phase p read from its
-// last coefficient to its first, so that is half the table, 188 KB at 1001/960,
-// and phase() says which way to read (planning/ac4.md, D14a5). Any other ratio
-// at float is designed when the filter is made, with the same functions, and
-// kept the same way.
+// dsp/portable_math.hpp), data in the program's read-only memory that the
+// filter copies when it is made: nothing is designed on a part that has no use
+// for the time it takes (5.9 s at 1001/960 on the ESP32-P4's soft-float
+// double) and the same coefficients are on every platform. The copy is for a
+// part that executes from flash behind a cache, where reading a table the
+// cache cannot hold from the constants is several times slower than reading it
+// from the heap (src/ac4core/src/dsp/resampler.cpp has the figures). They hold phases 0 to
+// up / 2: phase up - p is phase p read from its last coefficient to its first,
+// so that is half the table, 188 KB at 1001/960, and phase() says which way to
+// read (planning/ac4.md, D14a5). Any other ratio at float is designed when the
+// filter is made, with the same functions, and kept the same way.
 
 namespace iclforge::ac4::detail::dsp {
 
@@ -110,10 +113,8 @@ class BasicResamplerFilter {
     double passband_ = 0.5;
     double stopband_ = 0.5;
     // Every phase of the table, up_ of taps_ coefficients; at float, phases 0
-    // to up_ / 2 only (halved_), of the filter's own or, in shared_, a
-    // compile-time table's.
+    // to up_ / 2 only (halved_).
     std::vector<Coefficient> table_;
-    const Coefficient* shared_ = nullptr;
     bool halved_ = false;
 };
 

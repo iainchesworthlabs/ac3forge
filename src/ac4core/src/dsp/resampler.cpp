@@ -79,7 +79,15 @@ BasicResamplerFilter<Coefficient>::BasicResamplerFilter(int up, int down) {
             taps_ = shared->design.taps;
             passband_ = shared->design.passband;
             stopband_ = shared->design.stopband;
-            shared_ = shared->coefficients;
+            // The filter keeps a copy of the table, so that the converter reads it from the memory
+            // the heap gives and not from the program's constants: on the ESP32-P4 and -S3 those
+            // are flash behind a cache, where a miss costs ten times a PSRAM's, and the table of
+            // 1001/960 (188 KB against a cache of 128 KB) misses on most of what it reads. Read in
+            // place it took the converter 60 ms a frame at 23.976 fps on the P4; from the copy, in
+            // the PSRAM that the heap puts a block of that size in, 17 ms (planning/ac4.md, D14a5).
+            const auto count =
+                static_cast<std::size_t>(up_ / 2 + 1) * static_cast<std::size_t>(taps_);
+            table_.assign(shared->coefficients, shared->coefficients + count);
             return;
         }
         const ResamplerDesign design = design_resampler<PortableMath>(up_, down_);
@@ -116,12 +124,11 @@ typename BasicResamplerFilter<Coefficient>::PhaseRef BasicResamplerFilter<Coeffi
     if (p < 0 || p >= up_) {
         return {};
     }
-    const Coefficient* base = shared_ != nullptr ? shared_ : table_.data();
     const auto taps = static_cast<std::size_t>(taps_);
     if (!halved_ || p <= up_ / 2) {
-        return {base + static_cast<std::size_t>(p) * taps, false};
+        return {table_.data() + static_cast<std::size_t>(p) * taps, false};
     }
-    return {base + static_cast<std::size_t>(up_ - p) * taps, true};
+    return {table_.data() + static_cast<std::size_t>(up_ - p) * taps, true};
 }
 
 template <typename Coefficient>
