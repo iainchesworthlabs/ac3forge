@@ -430,6 +430,24 @@ class Urls(unittest.TestCase):
         )
 
 
+class Former(unittest.TestCase):
+    def test_a_line_the_hand_written_commits_write_about_the_past_is_left(self) -> None:
+        text = "The two are the project `ac3forge` with the module `ac3forge`."
+        self.assertEqual(page(text, "docs/library/python-api.md"), text)
+        self.assertEqual(page(text, "docs/library/other.md"), text.replace("ac3forge", "iclforge"))
+        url = (
+            "see https://github.com/iainchesworthlabs/ac3forge for the old one: "
+            "`iainchesworthlabs.ac3forge`, was closed unmerged"
+        )
+        self.assertEqual(urls(url, "docs/forge/index.md"), url)
+        self.assertNotEqual(urls(url, "docs/forge/other.md"), url)
+
+    def test_the_page_about_the_old_names_is_left_whole(self) -> None:
+        text = "`ac3cli` is `forge`; https://github.com/iainchesworthlabs/ac3forge\n"
+        self.assertEqual(D.transform_page("docs/renamed.md", text), text)
+        self.assertEqual(D.transform_urls("docs/renamed.md", text), text)
+
+
 class Tables(unittest.TestCase):
     def test_the_header_map_names_a_header_of_the_tree(self) -> None:
         spellings = {layoutdef.spelling_of(f) for f in Repo(DEFAULT_ROOT).files}

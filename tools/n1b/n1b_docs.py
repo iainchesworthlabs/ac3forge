@@ -50,8 +50,11 @@ tells a past event in the name of its time is left (`HISTORICAL_LINES`).
 The history is `CHANGELOG.md`, `planning/`, `tests/golden`, the released winget manifests,
 `.git-blame-ignore-revs` and this migration's scripts; no phase reads it. Three pages narrate
 a tree that was named differently (`RECORD_PAGES`) and keep their names. A page line that
-describes the rename itself is left (`HAND_PAGE_LINES`). `--report` lists every decision, `--json`
-writes the rules, the counts and the header table. A second run changes nothing.
+describes the rename itself is left (`HAND_PAGE_LINES`), and so is every line the hand-written
+commits write about the past on purpose (`FORMER_NAME_LINES`, and `FORMER_NAME_FILES` for the page
+that lists the old names); that is what lets a second run of the passes on the stage's last commit
+change nothing. `--report` lists every decision, `--json` writes the rules, the counts and the
+header table.
 """
 
 from __future__ import annotations
@@ -650,13 +653,89 @@ HAND_PAGE_LINES: dict[str, tuple[str, ...]] = {
     "ROADMAP.md": ("N1 has not run. N1A renames the programs",),
 }
 
+# What the hand-written commits say about the past on purpose: a package published under its old
+# name, the tap that holds the old formula, a file of a release that exists, the winget identity
+# of the staged versions, the driver's namespace. A page that is about the old names is left whole.
+FORMER_NAME_FILES = ("docs/renamed.md",)
+# A line, by file: a fragment of it. A fragment says something about the past and is never a name
+# the tree still uses, so none of them is in the tree the passes run on first; the one exception is
+# the driver's .NET namespace in apps/windows/README.md, which the passes renamed and the owner's
+# decision of 2026-10-01 keeps until N1D renames the driver: run on the parent of the text commit,
+# this version leaves that one line where that commit changed it.
+FORMER_NAME_LINES: dict[str, tuple[str, ...]] = {
+    "README.md": ("The family was called AC3Forge", "`ac3crucible`, up to the pre-release"),
+    "apps/windows/README.md": ("`Ac3Forge` those scripts compile for themselves",),
+    "docs/assets/data/support-catalogue.json": (
+        '"url": "https://pypi.org/project/ac3forge/"',
+        "The pre-releases 0.9.0b1 and 0.10.0b1 are the project ac3forge",
+        "The pre-releases are the project ac3forge; the project iclforge starts",
+    ),
+    "docs/forge/cli/index.md": ("the program `ac3cli`, and [Renamed]",),
+    "docs/forge/index.md": (
+        "from the first release made after the rename, `ac3cli` (and `ac3gui`)",
+        "release on and `ac3forge-<version>-<platform>` before it",
+        "the tap holds the formula `ac3forge` and the cask `ac3gui`",
+        "which install `ac3cli` and `ac3gui.app`",
+        "`iainchesworthlabs.ac3forge`, was closed unmerged",
+        "installs `ac3cli` and `ac3gui` from a release up to",
+        "(`ac3forge-dev-*`, `libac3forge0`,",
+        "`libac3forge-dev` and `ac3forge-devel` before it",
+    ),
+    "docs/index.md": ("from a pre-release (`ac3cli`, `ac3forge`, ...)",),
+    "docs/library/python-api.md": (
+        "are the project `ac3forge` with the module `ac3forge`",
+        "(`pip install ac3forge`); the project `iclforge` has no release",
+        "0.10.0b1's wheels, as the project `ac3forge`",
+    ),
+    "docs/platforms/index.md": ("is `pip install ac3forge`",),
+    "docs/platforms/macos.md": ("`ac3forge` and the cask `ac3gui` ([Renamed]",),
+    "docs/releasing.md": (
+        "ICL Forge was called AC3Forge up to the pre-release",
+        "the pre-releases went to the project `ac3forge`",
+        "the `ac3forge-dev-*` library archives",
+        "the `ac3gui` AppImage",
+        "**PyPI:** [`ac3forge`]",
+        "Its `Formula/ac3forge.rb` and `Casks/ac3gui.rb`",
+        "[`iainchesworthlabs/homebrew-ac3forge`]",
+        "under the name `ac3forge`",
+        "as `iainchesworthlabs.ac3forge`",
+        "Renaming the repository from `ac3forge` to `iclforge`",
+        "as the project `ac3forge`",
+        "[`ac3forge`](https://pypi.org/project/ac3forge/) is a published project",
+        "provisioned the project `ac3forge`",
+        "renamed from `homebrew-ac3forge`",
+        "the formula `ac3forge` and the cask `ac3gui`, both at",
+        "as `ac3gui.app` -",
+        "keep `iainchesworthlabs.ac3forge`",
+        "directory `ac3forge/` as they were made",
+        "`ac3forge` and is not a base to copy",
+        "the directory is `ac3forge` in place of `iclforge`",
+        "carry `ac3forge-...` and",
+        "`ac3gui-...`, as [Renamed]",
+        "were attested while the repository was named ac3forge",
+        "or ac3forge-signing-key.asc up to",
+    ),
+    "packaging/homebrew/README.md": (
+        "the tap holds the formula `ac3forge` and the cask `ac3gui`",
+        "(`ac3forge`, `ac3gui`) to them",
+        "removing `Formula/ac3forge.rb` and `Casks/ac3gui.rb`",
+        "renamed from `homebrew-ac3forge`",
+    ),
+    "python/README.md": (
+        "are the project `ac3forge`, with the module `ac3forge`",
+        "project `ac3forge`, for Windows x64",
+    ),
+}
+
 
 def transform_page(
     path: str, text: str, hits: list | None = None, counts: Counter | None = None
 ) -> str:
     """A page's text with the rules of the text phase carried out."""
+    if path in FORMER_NAME_FILES:
+        return text
     bare_code = path.endswith(BARE_IS_CODE_SUFFIXES)
-    hand = HAND_PAGE_LINES.get(path, ())
+    hand = HAND_PAGE_LINES.get(path, ()) + FORMER_NAME_LINES.get(path, ())
     out: list[str] = []
     fence: str | None = None
     raw: str | None = None
@@ -899,8 +978,10 @@ _CLONE_RX = re.compile(r"(git clone \S*iainchesworthlabs/\S+\s*&&\s*cd )ac3forge
 def transform_urls(
     path: str, text: str, hits: list | None = None, counts: Counter | None = None
 ) -> str:
+    if path in FORMER_NAME_FILES:
+        return text
     out: list[str] = []
-    hand = HAND_LINES.get(path, ())
+    hand = HAND_LINES.get(path, ()) + FORMER_NAME_LINES.get(path, ())
     for number, line in enumerate(text.split("\n"), 1):
         if any(fragment in line for fragment in hand):
             if counts is not None:
