@@ -211,10 +211,10 @@ public:
 
     // The driver's endpoint. It changes to "Crucible" in the same change
     // that renames the INF, once signing is paid for.
-    std::string device_name() const override { return "Desktop Atmos"; }
+    std::string device_name() const override { return "Crucible Silent Output"; }
     bool from_package() const override { return true; }
     std::string how_to_get_one() const override {
-        return "install the Desktop Atmos driver (Settings)";
+        return "install the Crucible Silent Output driver (Settings)";
     }
 
     SilentDeviceState state(const SilentDeviceQuery& query) override {
@@ -291,7 +291,7 @@ private:
         return std::filesystem::exists(dir / "install.ps1", ec) &&
                std::filesystem::exists(dir / "remove.ps1", ec) &&
                std::filesystem::exists(
-                   dir / "Package" / "x64" / "Release" / "package" / "Ac3ForgeNullSink.inf", ec);
+                   dir / "Package" / "x64" / "Release" / "package" / "IclForgeNullSink.inf", ec);
     }
 
     // %LOCALAPPDATA%\iclforge\driver-<verb>.log. The engine library has no Qt,

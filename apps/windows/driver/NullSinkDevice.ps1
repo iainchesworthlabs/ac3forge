@@ -1,4 +1,4 @@
-# The Ac3ForgeNullSink device through SetupAPI, for install.ps1 and remove.ps1
+# The IclForgeNullSink device through SetupAPI, for install.ps1 and remove.ps1
 # to dot-source. This is the documented sequence for creating a root-
 # enumerated device for a driver that has no hardware, and the one the WDK's
 # devcon sample performs for "devcon install": a device information element
@@ -17,15 +17,15 @@
 # The functions: Get-NullSinkDevices, Test-NullSinkDevice, New-NullSinkDevice
 # (returns the instance id), Restart-NullSinkDevice, Remove-NullSinkDevice.
 
-$script:HardwareId = 'ROOT\Ac3ForgeNullSink'
+$script:HardwareId = 'ROOT\IclForgeNullSink'
 
-if (-not ('Ac3Forge.RootDevice' -as [type])) {
+if (-not ('IclForge.RootDevice' -as [type])) {
     Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace Ac3Forge {
+namespace IclForge {
     public static class RootDevice {
         [StructLayout(LayoutKind.Sequential)]
         struct SP_DEVINFO_DATA {
@@ -116,7 +116,7 @@ function Test-NullSinkDevice {
 
 function New-NullSinkDevice([Parameter(Mandatory)][string]$Inf) {
     $reboot = $false
-    $instance = [Ac3Forge.RootDevice]::Create((Resolve-Path $Inf).Path, $script:HardwareId, [ref]$reboot)
+    $instance = [IclForge.RootDevice]::Create((Resolve-Path $Inf).Path, $script:HardwareId, [ref]$reboot)
     if ($reboot) { Write-Warning 'Windows asked for a reboot to finish the install' }
     $instance
 }

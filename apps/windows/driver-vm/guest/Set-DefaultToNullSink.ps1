@@ -1,4 +1,4 @@
-# Runs INSIDE the test guest: makes "Speakers (Desktop Atmos)" the default
+# Runs INSIDE the test guest: makes "Speakers (Crucible Silent Output)" the default
 # output the way the demo does it, then reports the default. Uses the same
 # undocumented policy-config interface the demo's default_device.cpp does,
 # here through a tiny inline C# shim, so the driver's endpoint is exercised
@@ -59,9 +59,9 @@ Add-Type -TypeDefinition $src
 $root = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\MMDevices\Audio\Render'
 $target = Get-ChildItem $root | Where-Object {
     $props = Get-ItemProperty "$($_.PSPath)\Properties" -ErrorAction SilentlyContinue
-    ($props.PSObject.Properties | Where-Object { $_.Value -is [string] -and $_.Value -match 'Desktop Atmos' }).Count -gt 0
+    ($props.PSObject.Properties | Where-Object { $_.Value -is [string] -and $_.Value -match 'Crucible Silent Output' }).Count -gt 0
 } | Select-Object -First 1
-if (-not $target) { throw 'no render endpoint named like "Desktop Atmos"' }
+if (-not $target) { throw 'no render endpoint named like "Crucible Silent Output"' }
 $id = '{0.0.0.00000000}.' + $target.PSChildName
 if ($TryFormat -gt 0) {
     $hr = [DefaultAudio]::SetFormat($id, $TryFormat)

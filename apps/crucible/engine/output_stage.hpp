@@ -44,12 +44,12 @@ struct OutputStageConfig {
     bool low_latency = false;
     // The null sink is recognised by name (the driver's own, or a stand-in
     // such as FxSound's idle endpoint during development).
-    // Still "Desktop Atmos", not "Crucible": this matches the endpoint the
+    // Still "Crucible Silent Output", not "Crucible": this matches the endpoint the
     // driver actually advertises, and apps/windows/driver/ keeps its device
     // identity until attestation signing lands (docs/crucible/design/promotion.md,
     // "Coordination with the driver-signing session"). It moves to "Crucible"
     // in the same change that renames the INF, so the name is signed once.
-    std::string null_sink_substring = "Desktop Atmos";
+    std::string null_sink_substring = "Crucible Silent Output";
     std::optional<OutputMode> pinned;
     std::string preferred_endpoint_id{};  // the user's choice of endpoint; empty: automatic
     std::uint32_t sample_rate = 48000;

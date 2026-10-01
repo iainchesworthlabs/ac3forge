@@ -87,10 +87,10 @@ TEST_CASE("the default device seam carries a refusal and a platform that never m
           "[crucible][seams]") {
     FakeDefaultDevice device;
     device.set_endpoints({{.id = "hdmi", .name = "Denon AVR", .is_default = false},
-                          {.id = "null", .name = "Speakers (Desktop Atmos)", .is_default = true}});
+                          {.id = "null", .name = "Speakers (Crucible Silent Output)", .is_default = true}});
 
     REQUIRE(device.default_id() == "null");
-    REQUIRE(device.find_endpoint("Desktop Atmos") == "null");
+    REQUIRE(device.find_endpoint("Crucible Silent Output") == "null");
     REQUIRE(device.find_endpoint("Denon") == "hdmi");
     REQUIRE(device.find_endpoint("nothing like this").empty());
 

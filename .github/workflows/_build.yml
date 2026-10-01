@@ -1890,12 +1890,12 @@ jobs:
           Set-Location "$env:GITHUB_WORKSPACE\apps\windows\driver"
           Write-Host "Visual Studio: $vs"
           Write-Host "MSVC toolset:  $env:VCToolsVersion"
-          msbuild .\Ac3ForgeNullSink.sln /p:Configuration=Release /p:Platform=x64 /t:Rebuild /m /v:m /nologo
+          msbuild .\IclForgeNullSink.sln /p:Configuration=Release /p:Platform=x64 /t:Rebuild /m /v:m /nologo
           if ($LASTEXITCODE -ne 0) { throw "msbuild failed ($LASTEXITCODE)" }
-          $package = Get-ChildItem -Recurse -Filter 'Ac3ForgeNullSink.inf' | Where-Object { $_.FullName -match 'Release\\package\\' } | Select-Object -First 1
+          $package = Get-ChildItem -Recurse -Filter 'IclForgeNullSink.inf' | Where-Object { $_.FullName -match 'Release\\package\\' } | Select-Object -First 1
           if (-not $package) { throw 'no stamped INF under a Release\package directory' }
           $dir = $package.Directory.FullName
-          foreach ($f in 'Ac3ForgeNullSink.sys', 'Ac3ForgeNullSink.inf', 'ac3forgenullsink.cat') {
+          foreach ($f in 'IclForgeNullSink.sys', 'IclForgeNullSink.inf', 'iclforgenullsink.cat') {
             if (-not (Test-Path (Join-Path $dir $f))) { throw "package is missing $f" }
           }
           $cer = Get-ChildItem (Split-Path $dir) -Filter '*.cer' | Select-Object -First 1

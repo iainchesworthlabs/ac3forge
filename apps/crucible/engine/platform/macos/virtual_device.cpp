@@ -39,7 +39,7 @@
 // ---------------------------------------------------------------------------
 // how_to_get_one() is printed by the signal path and the first-run dialog
 // wherever a person is told what stands between them and a working setup. On
-// Windows it is "install the Desktop Atmos driver (Settings)". On Linux it is
+// Windows it is "install the Crucible Silent Output driver (Settings)". On Linux it is
 // "Crucible creates it when you send applications to it; nothing to install" -
 // a sentence written so that a person reads it as a thing that happens by
 // itself rather than as a missing feature. This one has to go one step

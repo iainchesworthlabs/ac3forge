@@ -31,7 +31,7 @@ TestCase {
         CrucibleController.roomView = "2d";
         CrucibleController.theme = "system";
         CrucibleController.textScale = "100";
-        CrucibleController.nullSinkName = "Desktop Atmos";
+        CrucibleController.nullSinkName = "Crucible Silent Output";
     }
 
     function cleanup() {
@@ -175,12 +175,12 @@ TestCase {
 
     function test_theTrayMovesAndRestoresTheDefaultOutput() {
         const window = openShell(true);
-        const move = trayEntry(window, "Move default output to Desktop Atmos");
+        const move = trayEntry(window, "Move default output to Crucible Silent Output");
         verify(move, "the tray offers the move");
         verify(move.enabled, "the scripted machine has a silent device");
         move.triggered();
         tryCompare(CrucibleController, "defaultIsNullSink", true, 3000);
-        const now = trayEntry(window, "Default output: Speakers (Desktop Atmos)");
+        const now = trayEntry(window, "Default output: Speakers (Crucible Silent Output)");
         verify(now, "the entry now says where applications play");
         compare(now.enabled, false);
         const restore = trayEntry(window, "Restore Speakers (Realtek)");

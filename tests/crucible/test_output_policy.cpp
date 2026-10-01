@@ -35,7 +35,7 @@ EndpointFacts headphones(bool spatial = true, bool is_default = false) {
 }
 
 EndpointFacts null_sink(bool is_default = true) {
-    return {.id = "null", .name = "Desktop Atmos Speakers", .is_default = is_default,
+    return {.id = "null", .name = "Crucible Silent Output Speakers", .is_default = is_default,
             .is_null_sink = true, .shared_channels = 8};
 }
 

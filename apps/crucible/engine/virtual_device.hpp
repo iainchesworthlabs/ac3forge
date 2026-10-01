@@ -85,7 +85,7 @@ public:
     virtual ~VirtualDevice() = default;
 
     // What the silent device is called, as the platform's own sound settings
-    // show it and as the engine matches it by name: "Desktop Atmos" on
+    // show it and as the engine matches it by name: "Crucible Silent Output" on
     // Windows (the driver's endpoint, until the driver is renamed with its
     // signing), "Crucible (silent)" on Linux. The first Linux screenshot
     // labelled every station with the Windows name because this lived in

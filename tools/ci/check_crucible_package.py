@@ -81,7 +81,7 @@ REQUIRED = (
 #   - the Settings page's driver note (apps/crucible/ui/qml/SettingsPage.qml);
 #   - package_complete() in
 #     apps/crucible/engine/platform/windows/driver_tools.cpp, which requires
-#     Ac3ForgeNullSink.inf and so greys Install driver on every packaged copy.
+#     IclForgeNullSink.inf and so greys Install driver on every packaged copy.
 #
 # They had drifted before this check existed: driverDir() finds the packaged
 # scripts beside the executable, so a packaged copy took the "build from

@@ -84,7 +84,7 @@ OutputStageConfig config_over(const std::shared_ptr<FakeDevices>& devices, bool 
     return {.devices = devices,
             .bypass_codec = bypass,
             .low_latency = false,
-            .null_sink_substring = "Desktop Atmos",
+            .null_sink_substring = "Crucible Silent Output",
             .pinned = std::nullopt,
             .sample_rate = 48000,
             .ac3_bitrate_kbps = 448};

@@ -26,7 +26,7 @@ guest that never leaves this machine.
 | `Verify-Driver.ps1` | Reverts to `clean-install`, arms Driver Verifier (the standard checks, DDI compliance and code-integrity checking) and the KMDF framework verifier for the driver, reboots, installs, exercises it (default role, playback, the idle power-down and return, a format change on the endpoint, device restarts idle and under a stream, three concurrent streams, removal and driver unload under a stream, reinstall from scratch) and reports the verifier state, the service and device, and any bugcheck or minidump. `-Kasan` does the same with the KASAN-instrumented package on the KASAN kernel; `-NoDdi`, `-NoVerifier`, `-NoExercise` and `-ReportOnly` are described in `..\driver\README.md`. |
 | `Build-Iso.ps1` | Writes an ISO from a directory with Windows' own IMAPI2 (ISO 9660 + Joliet, or UDF with an EFI boot image); the other scripts use it. |
 | `guest_console.py` | Screenshots (`shot out.png`), key presses (`key space`, `combo Super_L+r`) and typing (`type text`) on the guest console over Workstation's VNC server, for the stretch before Tools is running when `vmrun` cannot see the guest. Needs Python with Pillow. The VNC server maps keys by the US layout, so the guest is installed with a US keyboard and the helper adds Shift for capitals and symbols itself. |
-| `guest/Set-DefaultToNullSink.ps1` | Runs inside the guest (copied there by `Verify-Driver.ps1`): makes "Speakers (Desktop Atmos)" the default output the way the demo does, so the endpoint is exercised as a default without the demo installed there; `-TryFormat <rate>` instead asks the endpoint to take another sample rate and reports the answer. |
+| `guest/Set-DefaultToNullSink.ps1` | Runs inside the guest (copied there by `Verify-Driver.ps1`): makes "Speakers (Crucible Silent Output)" the default output the way the demo does, so the endpoint is exercised as a default without the demo installed there; `-TryFormat <rate>` instead asks the endpoint to take another sample rate and reports the answer. |
 
 `autounattend.xml` does the rest: bypasses the TPM, Secure Boot and RAM checks, partitions and
 installs, creates the local administrator `atmos` (password `atmos`, auto-logon), skips OOBE,
@@ -51,8 +51,8 @@ needs nothing beyond Windows: `install.ps1` creates the device through SetupAPI
 
 Verified 2026-09-04 on Windows 11 Pro 25H2 (build 26200, installed from
 `Win11_25H2_English_x64_v2.iso`) in the guest, against the ACX driver: the package stages,
-`install.ps1` creates the root-enumerated "Desktop Atmos" device through SetupAPI, its
-"Speakers (Desktop Atmos)" endpoint appears, the service runs, the endpoint takes the default
+`install.ps1` creates the root-enumerated "Crucible Silent Output" device through SetupAPI, its
+"Speakers (Crucible Silent Output)" endpoint appears, the service runs, the endpoint takes the default
 role through the same policy-config call the demo makes, and rendering into it (WAV playback,
 speech synthesis) leaves the guest up with no bugcheck. `Verify-Driver.ps1` then ran the same
 install under Driver Verifier's standard checks, DDI compliance and code-integrity checking,

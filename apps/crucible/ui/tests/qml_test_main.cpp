@@ -101,7 +101,7 @@ public:
                          std::shared_ptr<iclforge::crucible::testing::FakeDevices> devices)
         : settings_(std::move(settings)), devices_(std::move(devices)) {}
 
-    std::string device_name() const override { return "Desktop Atmos"; }
+    std::string device_name() const override { return "Crucible Silent Output"; }
     std::string how_to_get_one() const override { return "this application creates it"; }
     iclforge::crucible::SilentDeviceState state(
         const iclforge::crucible::SilentDeviceQuery& query) override {
@@ -121,7 +121,7 @@ public:
             const std::lock_guard lock(devices_->mutex);
             devices_->devices.push_back(facts);
         }
-        last_ = {.running = false, .exit_code = 0, .log_tail = {"created Desktop Atmos"}};
+        last_ = {.running = false, .exit_code = 0, .log_tail = {"created Crucible Silent Output"}};
         return {};
     }
     std::expected<void, std::string> remove() override {
@@ -133,7 +133,7 @@ public:
             const std::lock_guard lock(devices_->mutex);
             std::erase_if(devices_->devices, [&](const auto& e) { return e.id == id; });
         }
-        last_ = {.running = false, .exit_code = 0, .log_tail = {"removed Desktop Atmos"}};
+        last_ = {.running = false, .exit_code = 0, .log_tail = {"removed Crucible Silent Output"}};
         return {};
     }
     iclforge::crucible::DeviceActionStatus action_status() override { return last_; }
@@ -324,7 +324,7 @@ private:
             virtual_device = std::make_shared<ScriptedSilentDevice>(default_device, devices);
         } else {
             auto fake = std::make_shared<iclforge::crucible::testing::FakeVirtualDevice>();
-            fake->set_device_name("Desktop Atmos");
+            fake->set_device_name("Crucible Silent Output");
             fake->set_state({.needed = true,
                              .present = true,
                              .in_use = false,

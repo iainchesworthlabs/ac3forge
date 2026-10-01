@@ -510,7 +510,7 @@ QString CrucibleController::keyPath() const {
 // attestation signing lands.
 QString CrucibleController::nullSinkName() const {
     // The default is the platform's own name for its silent device, not a
-    // literal: "Desktop Atmos" on Windows, "Crucible (silent)" on Linux.
+    // literal: "Crucible Silent Output" on Windows, "Crucible (silent)" on Linux.
     return settings_.value(QStringLiteral("output/nullSinkName"),
                            from_utf8(virtual_device_->device_name()))
         .toString();

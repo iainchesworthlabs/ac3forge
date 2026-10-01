@@ -23,7 +23,7 @@ namespace {
 // The service's Parameters key: the one place a driver that failed to add
 // its device can still leave a message. The name is fixed by the INF.
 constexpr PCWSTR kParametersKey =
-    L"\\Registry\\Machine\\SYSTEM\\CurrentControlSet\\Services\\Ac3ForgeNullSink\\Parameters";
+    L"\\Registry\\Machine\\SYSTEM\\CurrentControlSet\\Services\\IclForgeNullSink\\Parameters";
 
 // The first note in a chain of returns is the one that names the failing
 // call; the callers' notes on the way out would only overwrite it with the
@@ -48,7 +48,7 @@ NullSink_NoteFailure(
     g_failureNoted = TRUE;
 
     DbgPrintEx(DPFLTR_IHVAUDIO_ID, DPFLTR_ERROR_LEVEL,
-               "Ac3ForgeNullSink: %ws failed with 0x%08X\n", Step, static_cast<unsigned>(Status));
+               "IclForgeNullSink: %ws failed with 0x%08X\n", Step, static_cast<unsigned>(Status));
 
     (VOID)RtlCreateRegistryKey(RTL_REGISTRY_ABSOLUTE, const_cast<PWSTR>(kParametersKey));
     (VOID)RtlWriteRegistryValue(RTL_REGISTRY_ABSOLUTE, const_cast<PWSTR>(kParametersKey),
@@ -135,7 +135,7 @@ NullSink_EvtDevicePrepareHardware(
     const NTSTATUS powerStatus = NullSink_ApplyPowerPolicy(Device);
     if (!NT_SUCCESS(powerStatus)) {
         DbgPrintEx(DPFLTR_IHVAUDIO_ID, DPFLTR_WARNING_LEVEL,
-                   "Ac3ForgeNullSink: S0 idle settings not applied (0x%08X); continuing without\n",
+                   "IclForgeNullSink: S0 idle settings not applied (0x%08X); continuing without\n",
                    static_cast<unsigned>(powerStatus));
     }
 

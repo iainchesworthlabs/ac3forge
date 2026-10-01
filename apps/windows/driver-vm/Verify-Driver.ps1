@@ -40,7 +40,7 @@ $ErrorActionPreference = 'Stop'
 $vmrun = Join-Path $Workstation 'vmrun.exe'
 $vmx = Join-Path $VmDir "$Name.vmx"
 $guest = @('-T', 'ws', '-gu', 'atmos', '-gp', 'atmos')
-$driverName = 'Ac3ForgeNullSink'
+$driverName = 'IclForgeNullSink'
 
 function Wait-Tools([int]$seconds = 300) {
     $deadline = (Get-Date).AddSeconds($seconds)
@@ -97,10 +97,10 @@ if (-not $ReportOnly) {
     # it was driven). -Kasan wants the package under a *-kasan Release dir.
     $driverRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\driver')).Path
     $wantKasan = $Kasan.IsPresent
-    $inf = Get-ChildItem $driverRoot -Recurse -Filter 'Ac3ForgeNullSink.inf' |
+    $inf = Get-ChildItem $driverRoot -Recurse -Filter 'IclForgeNullSink.inf' |
         Where-Object { $_.FullName -match 'Release[^\\]*\\package\\' -and (($_.FullName -match 'kasan') -eq $wantKasan) } |
         Sort-Object LastWriteTime -Descending | Select-Object -First 1
-    if (-not $inf) { throw "no $(if ($wantKasan) { 'KASAN ' })package (Ac3ForgeNullSink.inf) in $driverRoot; build it first" }
+    if (-not $inf) { throw "no $(if ($wantKasan) { 'KASAN ' })package (IclForgeNullSink.inf) in $driverRoot; build it first" }
     $packageDir = $inf.Directory.FullName
     Write-Host "package: $packageDir"
     # The scripts come from the working tree, not the CD the guest was made
@@ -127,13 +127,13 @@ if (-not $ReportOnly) {
     # the flags picked host-side, so the guest script has no interpolation
     # of its own.
     $flags = if ($NoDdi) { '0x20009BB' } else { '0x20209BB' }
-    $armLine = if ($NoVerifier) { '"driver verifier: not armed (-NoVerifier)"' } else { "verifier /flags $flags /driver Ac3ForgeNullSink.sys | Out-Null" }
+    $armLine = if ($NoVerifier) { '"driver verifier: not armed (-NoVerifier)"' } else { "verifier /flags $flags /driver IclForgeNullSink.sys | Out-Null" }
     Invoke-Guest (@"
 $armLine
 "@ + @'
 
 "verifier: " + ((verifier /querysettings | Select-String -Pattern 'Verified Drivers|Special Pool|Force IRQL|DDI|Code integrity') | ForEach-Object { $_.Line.Trim() }) -join ' | '
-$wdf = 'HKLM:\SYSTEM\CurrentControlSet\Services\Ac3ForgeNullSink\Parameters\Wdf'
+$wdf = 'HKLM:\SYSTEM\CurrentControlSet\Services\IclForgeNullSink\Parameters\Wdf'
 New-Item -Path $wdf -Force | Out-Null
 Set-ItemProperty -Path $wdf -Name VerifierOn -Value 1 -Type DWord
 Set-ItemProperty -Path $wdf -Name TrackHandles -Value '*' -Type MultiString
@@ -151,7 +151,7 @@ Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\K
 
     Write-Host 'installing the package under the verifiers'
     Invoke-Guest @'
-"verifier active: " + ((verifier /query | Select-String -Pattern 'Ac3ForgeNullSink' -SimpleMatch) -join ' ')
+"verifier active: " + ((verifier /query | Select-String -Pattern 'IclForgeNullSink' -SimpleMatch) -join ' ')
 & C:\Users\atmos\install.ps1 -PackageDir C:\Users\atmos\package
 '@ 'install' | ForEach-Object { "  $_" }
     Start-Sleep -Seconds 10
@@ -161,8 +161,8 @@ Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\K
         Invoke-Guest @'
 $deadline = (Get-Date).AddSeconds(40)
 do {
-    $ep = Get-PnpDevice -Class AudioEndpoint -ErrorAction SilentlyContinue | Where-Object FriendlyName -match 'Desktop Atmos'
-    $dev = Get-PnpDevice -Class MEDIA -ErrorAction SilentlyContinue | Where-Object FriendlyName -match 'Desktop Atmos'
+    $ep = Get-PnpDevice -Class AudioEndpoint -ErrorAction SilentlyContinue | Where-Object FriendlyName -match 'Crucible Silent Output'
+    $dev = Get-PnpDevice -Class MEDIA -ErrorAction SilentlyContinue | Where-Object FriendlyName -match 'Crucible Silent Output'
     if ($ep) { break }
     Start-Sleep 2
 } while ((Get-Date) -lt $deadline)
@@ -182,7 +182,7 @@ do {
 $ErrorActionPreference = 'Continue'
 $deadline = (Get-Date).AddSeconds(30)
 do {
-    $ep = Get-PnpDevice -Class AudioEndpoint -ErrorAction SilentlyContinue | Where-Object FriendlyName -match 'Desktop Atmos'
+    $ep = Get-PnpDevice -Class AudioEndpoint -ErrorAction SilentlyContinue | Where-Object FriendlyName -match 'Crucible Silent Output'
     if ($ep) { break }
     Start-Sleep 2
 } while ((Get-Date) -lt $deadline)
@@ -207,7 +207,7 @@ try { Start-Sleep -Seconds 9; $s.Speak("back from idle"); "idle power-down and b
 # not judged (a refusal is the expected outcome, a hang or bugcheck is not).
 try { "format change: " + (& C:\Users\atmos\Set-DefaultToNullSink.ps1 -TryFormat 44100 | Select-Object -Last 1) } catch { "format change: $_" }
 try { $s.Speak("still rendering after the format change"); "rendered after the format change" } catch { "after format change: $_" }
-$dev = Get-PnpDevice -Class MEDIA | Where-Object FriendlyName -eq 'Desktop Atmos'
+$dev = Get-PnpDevice -Class MEDIA | Where-Object FriendlyName -eq 'Crucible Silent Output'
 $restarts = 0
 1..3 | ForEach-Object {
     try { $dev | Disable-PnpDevice -Confirm:$false -ErrorAction Stop; Start-Sleep 1; $dev | Enable-PnpDevice -Confirm:$false -ErrorAction Stop; Start-Sleep 2; $restarts++ } catch { "restart: $_" }
@@ -236,7 +236,7 @@ try {
     Start-Sleep 1
     & C:\Users\atmos\remove.ps1 | Out-Null
     Wait-Job $job -Timeout 30 | Out-Null; Remove-Job $job -Force
-    "removed the device and unloaded the driver under a live stream; loaded now: " + [bool](Get-Service Ac3ForgeNullSink -ErrorAction SilentlyContinue | Where-Object Status -eq Running)
+    "removed the device and unloaded the driver under a live stream; loaded now: " + [bool](Get-Service IclForgeNullSink -ErrorAction SilentlyContinue | Where-Object Status -eq Running)
 } catch { "removal: $_" }
 try { & C:\Users\atmos\install.ps1 -PackageDir C:\Users\atmos\package | Out-Null; "reinstalled from scratch" } catch { "reinstall: $_" }
 '@ 'exercise' | ForEach-Object { "  $_" }
@@ -248,18 +248,18 @@ try { & C:\Users\atmos\install.ps1 -PackageDir C:\Users\atmos\package | Out-Null
 Write-Host 'report'
 Invoke-Guest @'
 "--- verifier ---"
-verifier /query | Select-String -Pattern 'Ac3ForgeNullSink|Loads|Unloads|Allocations|Pool|Verified' | ForEach-Object { $_.Line.Trim() }
+verifier /query | Select-String -Pattern 'IclForgeNullSink|Loads|Unloads|Allocations|Pool|Verified' | ForEach-Object { $_.Line.Trim() }
 "--- wdf verifier ---"
-(Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\Ac3ForgeNullSink\Parameters\Wdf' -ErrorAction SilentlyContinue | Select-Object VerifierOn, VerboseOn, TrackHandles | Format-List | Out-String).Trim()
+(Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\IclForgeNullSink\Parameters\Wdf' -ErrorAction SilentlyContinue | Select-Object VerifierOn, VerboseOn, TrackHandles | Format-List | Out-String).Trim()
 "--- kasan ---"
 "kernel switch: " + (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Kernel' -Name KasanEnabled -ErrorAction SilentlyContinue).KasanEnabled
 "--- driver ---"
-Get-Service Ac3ForgeNullSink -ErrorAction SilentlyContinue | Select-Object Name, Status | Format-Table -AutoSize | Out-String
+Get-Service IclForgeNullSink -ErrorAction SilentlyContinue | Select-Object Name, Status | Format-Table -AutoSize | Out-String
 Get-PnpDevice -Class MEDIA | Select-Object Status, FriendlyName | Format-Table -AutoSize | Out-String
 "--- bugchecks and minidumps ---"
 Get-WinEvent -FilterHashtable @{LogName='System'; Id=1001; ProviderName='Microsoft-Windows-WER-SystemErrorReporting'} -ErrorAction SilentlyContinue | Select-Object TimeCreated, Message | Format-List | Out-String
 Get-WinEvent -FilterHashtable @{LogName='System'; ProviderName='Microsoft-Windows-Kernel-Power'; Id=41} -ErrorAction SilentlyContinue | Select-Object TimeCreated | Format-Table | Out-String
 Get-ChildItem C:\Windows\Minidump -ErrorAction SilentlyContinue | Select-Object Name, Length, LastWriteTime | Format-Table -AutoSize | Out-String
 "--- framework log tail ---"
-Get-WinEvent -LogName System -MaxEvents 400 -ErrorAction SilentlyContinue | Where-Object { $_.Message -match 'Ac3ForgeNullSink|Wdf|verifier' } | Select-Object -First 15 TimeCreated, Id, Message | Format-List | Out-String
+Get-WinEvent -LogName System -MaxEvents 400 -ErrorAction SilentlyContinue | Where-Object { $_.Message -match 'IclForgeNullSink|Wdf|verifier' } | Select-Object -First 15 TimeCreated, Id, Message | Format-List | Out-String
 '@ 'report'

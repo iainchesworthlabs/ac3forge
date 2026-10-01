@@ -234,12 +234,12 @@ class NoticesContentTest(unittest.TestCase):
             shipped = windows_zip(
                 directory,
                 WINDOWS_NOTICES + QUICK3D_SECTION,
-                extra=("bin/driver/Package/x64/Release/package/Ac3ForgeNullSink.inf",),
+                extra=("bin/driver/Package/x64/Release/package/IclForgeNullSink.inf",),
             )
             code, out = run(shipped)
             self.assertEqual(code, 1)
             self.assertIn("carries a driver INF", out)
-            self.assertIn("Ac3ForgeNullSink.inf", out)
+            self.assertIn("IclForgeNullSink.inf", out)
 
     def test_windows_zip_must_not_carry_qt_test(self):
         # The other negative rule, and the one with a moving part behind it:
