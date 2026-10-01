@@ -8,7 +8,7 @@
 # the same components and options. iclforge::adm/iclforge::admbridge (the ADM/BW64
 # reader and its Atmos bridge) are deliberately NOT options here even though upstream now
 # installs/exports both (shared-only - see cmake/InstallLibrary.cmake's ICLFORGE_BUILD_ADM
-# block): ac3adm needs Boost, and out-of-scope-for-now applies here the same way it does for the
+# block): iclforge::adm needs Boost, and out-of-scope-for-now applies here the same way it does for the
 # vcpkg port's own missing "adm" feature.
 #
 # This recipe wraps cmake/InstallLibrary.cmake's own install()/export()

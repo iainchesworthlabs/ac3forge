@@ -3,7 +3,7 @@
 # opt-in features, off unless asked for, since each adds public targets), never the CLI, GUI,
 # Hearth, tests, examples or fuzz harnesses - upstream's own ICLFORGE_BUILD_CLI/GUI/HEARTH/TESTS/
 # EXAMPLES/FUZZERS options make that a plain OFF each, no patching needed. iclforge::adm (the
-# ADM/BW64 reader) and iclforge::admbridge have no feature here: ac3adm needs Boost and, even though
+# ADM/BW64 reader) and iclforge::admbridge have no feature here: iclforge::adm needs Boost and, even though
 # both are now installed/exported by upstream (shared-only - see cmake/InstallLibrary.cmake's
 # ICLFORGE_BUILD_ADM block upstream), this port keeps ICLFORGE_BUILD_ADM=OFF below rather than
 # adding an "adm" feature - out of scope for this port until there's a real need for it.

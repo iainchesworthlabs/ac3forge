@@ -21,11 +21,11 @@
 # iclforge::c (src/capi/CMakeLists.txt), this is an ordinary C++ dependent
 # rather than a self-contained C ABI, so iclforge_signing_static links iclforge::ac3_static
 # and iclforge_signing_shared links iclforge::ac3_shared, exactly mirroring how
-# iclforge_ac3_static/forge_shared each wrap iclforge_ac3_objects, rather than always
+# iclforge_ac3_static/iclforge_ac3_shared each wrap iclforge_ac3_objects, rather than always
 # embedding one specific variant regardless of BUILD_SHARED_LIBS the way capi
 # does. Raw target names iclforge_signing_objects/signing_static/signing_shared, not
-# ac3_signing_*: same stutter-avoidance reasoning as iclforge_ac3_objects/forge_static/
-# iclforge_ac3_shared's own header comment (install(EXPORT ... NAMESPACE ac3::)
+# ac3_signing_*: same stutter-avoidance reasoning as iclforge_ac3_objects/iclforge_ac3_static/
+# iclforge_ac3_shared's own header comment (install(EXPORT ... NAMESPACE iclforge::)
 # prepends the namespace to whatever the target is actually named).
 # ---------------------------------------------------------------------------
 add_library(iclforge_signing_objects OBJECT)
@@ -96,7 +96,7 @@ set_target_properties(iclforge_signing_shared PROPERTIES
     VERSION "${PROJECT_VERSION}"
     SOVERSION "${PROJECT_VERSION}")
 
-# Same Windows same-directory-clash avoidance as iclforge_ac3_shared/forge_static's own OUTPUT_NAME split.
+# Same Windows same-directory-clash avoidance as iclforge_ac3_shared/iclforge_ac3_static's own OUTPUT_NAME split.
 set_target_properties(iclforge_signing_shared PROPERTIES OUTPUT_NAME "iclforge_signing")
 set_target_properties(iclforge_signing_static PROPERTIES OUTPUT_NAME "iclforge_signing_static")
 

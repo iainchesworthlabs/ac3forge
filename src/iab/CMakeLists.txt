@@ -7,10 +7,10 @@
 # reasoned about, tested and reused on its own (see src/mpegts/CMakeLists.txt's
 # own header, which this file mirrors structurally).
 #
-# Unlike ac3adm (src/adm), this module has no third-party dependency at
+# Unlike iclforge::adm (src/adm), this module has no third-party dependency at
 # all - IAB's own element/Plex-coded bitstream needs nothing beyond this
 # module's own bit reader (src/bitreader.hpp) - so, like the three container
-# writers, it defaults ON rather than OFF, and (also unlike ac3adm) has no
+# writers, it defaults ON rather than OFF, and (also unlike iclforge::adm) has no
 # opt-in vcpkg feature of its own yet: it is new in this PR and nothing
 # downstream (CLI, GUI, examples) consumes it yet - IAB reader's phase 3
 # (`atmos-iab`, mapping onto iclforge::admbridge) is what will eventually give it

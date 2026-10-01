@@ -34,7 +34,7 @@ if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/iabTargets.cmake")
 endif()
 # admTargets/admbridgeTargets.cmake, when present, each define ONLY a *_shared target (never
 # *_static) - see cmake/InstallLibrary.cmake's ICLFORGE_BUILD_ADM block and
-# src/adm/CMakeLists.txt's header comment for why ac3adm/admbridge are shared-only, unlike
+# src/adm/CMakeLists.txt's header comment for why iclforge::adm/admbridge are shared-only, unlike
 # every other component here.
 if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/admTargets.cmake")
     include("${CMAKE_CURRENT_LIST_DIR}/admTargets.cmake")

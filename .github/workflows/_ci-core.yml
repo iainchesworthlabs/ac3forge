@@ -83,7 +83,7 @@ jobs:
   # iclforge-tests coverage over every library component: src/ac3 plus audio,
   # signing, matroska, mp4, mpegts, capi, and - via the coverage preset's
   # ICLFORGE_BUILD_ADM=ON with vcpkg's 'adm' feature, the same pair
-  # adm-validate passes by hand - ac3adm/admbridge. Originally src/ac3 only
+  # adm-validate passes by hand - iclforge::adm/admbridge. Originally src/ac3 only
   # ("the library is what was asked for"); extended once the rest of the
   # library surface existed and was already being EXERCISED by this same
   # suite, just uninstrumented and unreported. apps/cli and apps/gui stay out

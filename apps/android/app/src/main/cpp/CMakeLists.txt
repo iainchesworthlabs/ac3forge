@@ -51,7 +51,7 @@ set(ICLFORGE_BUILD_HEARTH OFF CACHE BOOL "" FORCE)
 # (see the comment above the MATROSKA/MP4/MPEGTS block just below) - this app never links
 # iclforge::c, so there is no reason to compile src/capi at all here. Off explicitly rather
 # than relying on the root CMakeLists.txt's default ON: leaving it on would silently compile
-# iclforge_capi_objects/forge_c_static/forge_c_shared into every Shield build for nothing.
+# iclforge_capi_objects/iclforge_c_static/iclforge_c_shared into every Shield build for nothing.
 set(ICLFORGE_BUILD_CAPI OFF CACHE BOOL "" FORCE)
 
 # The AC-4 libraries (src/ac4, src/ac4core, src/ac4dec, src/ac4enc) build at the root

@@ -38,7 +38,7 @@ endif()
 # libFuzzer can catch and minimize, rather than a warning it would otherwise
 # print and run straight past.
 #
-# Set on iclforge_ac3_objects, not the iclforge_ac3_static/forge_shared wrapper
+# Set on iclforge_ac3_objects, not the iclforge_ac3_static/iclforge_ac3_shared wrapper
 # targets: the actual codec sources compile there (see src/ac3/CMakeLists.txt),
 # and PUBLIC on an OBJECT library's usage requirements still propagates
 # through PUBLIC target_link_libraries(iclforge_ac3_static PUBLIC iclforge_ac3_objects)
@@ -96,7 +96,7 @@ endforeach()
 #
 # iclforge_adm_objects, which fuzz_adm_parse links, was the last one left out, and
 # for a reason the other two did not have: libbw64 is header-only, so
-# instrumenting ac3adm instruments the libbw64 code it compiles too. UBSan then
+# instrumenting iclforge::adm instruments the libbw64 code it compiles too. UBSan then
 # stopped the harness within a few hundred executions inside libbw64's
 # UnknownChunk constructor, which takes &data_[0] of an empty vector for a
 # zero-length chunk, and does the same in Bw64Reader::read() for a <data> chunk
@@ -108,8 +108,8 @@ endforeach()
 # more than it suppressed: a <fmt > whose channel count and width overflow
 # libbw64's uint16_t block alignment gets its read buffer sized from the wrapped
 # value and decoded against the real one, which ASan reports as a heap overread
-# against ac3adm's own read_pcm. That one is guarded in src/adm/src/adm.cpp,
-# and an uninstrumented ac3adm reads it as a clean execution.
+# against iclforge::adm's own read_pcm. That one is guarded in src/adm/src/adm.cpp,
+# and an uninstrumented iclforge::adm reads it as a clean execution.
 #
 # Each call is guarded on the option that decides whether its library exists,
 # and each harness below sits under the same guard, so turning one of those
@@ -195,7 +195,7 @@ iclforge_add_container_fuzzer(fuzz_mpegts_demux iclforge::mpegts)
 
 # --- The other two Dolby bitstreams this repo reads --------------------------
 #
-# ac3iab and ac4 are here for the same reason every harness above is: both
+# iclforge::iab and ac4 are here for the same reason every harness above is: both
 # exist only to read files this project did not write, and both size their
 # loops from numbers the file chose. They are the two such parsers that had no
 # harness at all until now.
@@ -315,7 +315,7 @@ iclforge_add_fuzzer(fuzz_signing_verify iclforge::signing)
 # "adm" feature for libadm's Boost headers, which the rest of this build
 # deliberately has no vcpkg dependency at all (see fuzz/run.sh's own
 # -DICLFORGE_BUILD_* list). fuzz/run.sh turns it on via ICLFORGE_FUZZ_ADM=1;
-# without that this harness simply is not built, exactly as ac3adm itself is
+# without that this harness simply is not built, exactly as iclforge::adm itself is
 # not.
 if(ICLFORGE_BUILD_ADM)
     iclforge_add_fuzzer(fuzz_adm_parse iclforge::adm)

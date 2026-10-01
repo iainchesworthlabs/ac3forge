@@ -10,7 +10,7 @@
 # library-plus-two-thin-wrappers shape as iclforge::ac3 itself - see
 # src/ac3/CMakeLists.txt's header comment for the full reasoning.
 #
-# Unlike iclforge_ac3_static/forge_shared, BOTH variants here statically embed
+# Unlike iclforge_ac3_static/iclforge_ac3_shared, BOTH variants here statically embed
 # iclforge::ac3_static (PRIVATE - forge's own types never appear in this
 # target's public header, so nothing about that leaks to a consumer's
 # include path) rather than tracking BUILD_SHARED_LIBS. A binding or embedder

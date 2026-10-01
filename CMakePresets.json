@@ -208,7 +208,7 @@
     {
       "name": "coverage",
       "hidden": true,
-      "description": "gcov source coverage instrumentation (cmake/Coverage.cmake) over every library component - iclforge::ac3, iclforge::audio, iclforge::signing, matroska/mp4/mpegts, the C API, and (via ICLFORGE_BUILD_ADM=ON plus vcpkg's 'adm' feature, the same pair ci.yml's adm-validate job passes) ac3adm/admbridge - plus forge and iclforge-tests. ICLFORGE_BUILD_CLI is ON here (coverage floors): apps/cli is ~6,500 lines that front every other CI gate, tests/cli/test_cli.cpp runs the real built binary as a subprocess, and tools/checks/coverage_report.sh now gates it alongside the library components, so leaving it out meant the most-exercised executable in the tree had no floor at all. Examples stay off - they are documentation that happens to compile, tests/ already covers the same API surface, and each one is its own ctest process. ICLFORGE_BUILD_GUI stays off too: the GUI needs a Qt kit no Linux CI leg installs (see coverage_report.sh's own note).",
+      "description": "gcov source coverage instrumentation (cmake/Coverage.cmake) over every library component - iclforge::ac3, iclforge::audio, iclforge::signing, matroska/mp4/mpegts, the C API, and (via ICLFORGE_BUILD_ADM=ON plus vcpkg's 'adm' feature, the same pair ci.yml's adm-validate job passes) iclforge::adm/admbridge - plus forge and iclforge-tests. ICLFORGE_BUILD_CLI is ON here (coverage floors): apps/cli is ~6,500 lines that front every other CI gate, tests/cli/test_cli.cpp runs the real built binary as a subprocess, and tools/checks/coverage_report.sh now gates it alongside the library components, so leaving it out meant the most-exercised executable in the tree had no floor at all. Examples stay off - they are documentation that happens to compile, tests/ already covers the same API surface, and each one is its own ctest process. ICLFORGE_BUILD_GUI stays off too: the GUI needs a Qt kit no Linux CI leg installs (see coverage_report.sh's own note).",
       "cacheVariables": {
         "ICLFORGE_ENABLE_COVERAGE": "ON",
         "ICLFORGE_BUILD_CLI": "ON",
@@ -369,7 +369,7 @@
       "name": "config-linux-gcc-coverage",
       "inherits": [ "debug", "linux-gcc", "coverage", "core" ],
       "displayName": "Linux GCC Coverage",
-      "description": "ICLFORGE_BUILD_HEARTH is ON here (like everywhere else, via the root CMakeLists.txt default) with VCPKG_MANIFEST_FEATURES overridden to carry both opt-in features this leg wants (\"adm\" from the coverage fragment, plus \"hearth\") rather than just the one - src/sendspin and apps/hearth/engine link iclforge::coverage the same way apps/cli does, so iclforge::sendspin and apps/hearth get their own gated rows in tools/checks/coverage_report.sh alongside ac3adm/admbridge.",
+      "description": "ICLFORGE_BUILD_HEARTH is ON here (like everywhere else, via the root CMakeLists.txt default) with VCPKG_MANIFEST_FEATURES overridden to carry both opt-in features this leg wants (\"adm\" from the coverage fragment, plus \"hearth\") rather than just the one - src/sendspin and apps/hearth/engine link iclforge::coverage the same way apps/cli does, so iclforge::sendspin and apps/hearth get their own gated rows in tools/checks/coverage_report.sh alongside iclforge::adm/admbridge.",
       "cacheVariables": {
         "ICLFORGE_BUILD_HEARTH": "ON",
         "VCPKG_MANIFEST_FEATURES": "adm;hearth"

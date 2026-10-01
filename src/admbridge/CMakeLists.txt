@@ -11,13 +11,13 @@
 #     JOC/Atmos terms.
 #   - src/ac3 (-> iclforge::ac3, iclforge::oba::AtmosEncoder) is always built,
 #     unconditionally, by every configuration of this project. It cannot
-#     gain a dependency on the opt-in, Boost-requiring ac3adm without
-#     breaking every default build - the exact reason ac3adm itself defaults
+#     gain a dependency on the opt-in, Boost-requiring iclforge::adm without
+#     breaking every default build - the exact reason iclforge::adm itself defaults
 #     ICLFORGE_BUILD_ADM off (see src/adm/CMakeLists.txt's own header).
 #
-# Gated by the SAME ICLFORGE_BUILD_ADM option ac3adm itself uses, rather than
+# Gated by the SAME ICLFORGE_BUILD_ADM option iclforge::adm itself uses, rather than
 # a new ICLFORGE_BUILD_ADMBRIDGE of its own: this module is meaningless
-# without ac3adm (there is nothing to bridge), and iclforge::ac3 is
+# without iclforge::adm (there is nothing to bridge), and iclforge::ac3 is
 # unconditionally available regardless, so a separate option would only ever
 # take the same value ICLFORGE_BUILD_ADM already does - one flag, not two
 # that must be kept in sync by hand. A future DAMF reader (out of scope for now)
@@ -31,10 +31,10 @@
 # block) as iclforge::admbridge_shared ONLY - same shared-only deviation as iclforge::adm itself (see
 # src/adm/CMakeLists.txt's header comment), and for a related reason: iclforge_admbridge_objects PUBLIC-
 # links iclforge::adm below, a genuine usage requirement (this module's own public headers name
-# ac3adm types), so admTargets must resolve it - and since only iclforge_adm_shared is ever exported,
+# iclforge::adm types), so admTargets must resolve it - and since only iclforge_adm_shared is ever exported,
 # admbridge has to resolve to that specific variant too, not the ambient iclforge::adm alias
 # (which would pick iclforge_adm_static whenever BUILD_SHARED_LIBS=OFF, breaking the export the same
-# way an unpinned dependency broke ac3adm's own export before the fix described there). See the
+# way an unpinned dependency broke iclforge::adm's own export before the fix described there). See the
 # target_link_libraries(iclforge_admbridge_objects...) call below.
 # ---------------------------------------------------------------------------
 add_library(iclforge_admbridge_objects OBJECT)
@@ -76,9 +76,9 @@ target_compile_features(iclforge_admbridge_objects PUBLIC cxx_std_23)
 # comment explains why - the alias tracks BUILD_SHARED_LIBS and would resolve to iclforge_adm_static
 # whenever that's OFF (the common case, including the coverage preset - the only place
 # ICLFORGE_BUILD_ADM=ON is exercised in CI today), which is never in any export set under
-# ac3adm's shared-only design. Pinning here mirrors src/capi/CMakeLists.txt's forge_c precedent
+# iclforge::adm's shared-only design. Pinning here mirrors src/capi/CMakeLists.txt's iclforge_c precedent
 # of embedding one fixed variant regardless of the ambient default, just for a PUBLIC dependency
-# instead of a PRIVATE one. ac3iab is NOT pinned the same way: it is default-ON with both
+# instead of a PRIVATE one. iclforge::iab is NOT pinned the same way: it is default-ON with both
 # variants in the install/export set, so the ambient alias is exactly right for it.
 target_link_libraries(iclforge_admbridge_objects
     PUBLIC
