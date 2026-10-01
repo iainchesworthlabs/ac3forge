@@ -30,3 +30,10 @@ af6b96212eae0a22514aec67bd68c4a061854a41  # S4: paths in text follow the moved p
 758ac01b8ac625a49c0973d04c1a124dd0bac294  # N1A: wrap the lines the program-names pass pushed past 100 columns
 377c3d5ef3811d2ba334bc762c4500eb3bb180fc  # N1A: lupdate and the pseudo-locale generator on the renamed sources
 5b9ada431ba1c655ed9eb13f45bd71dd5d9ca772  # N1A: clang-format the settings migration and its tests
+
+# S5, the pages and the addresses: what n1b_docs.py gives on its parent in each of its three phases, and the eight Python
+# lines wrapped after them (the tools commits and the hand-written ones are not listed)
+6d4523e34b15d8425d20ec8aa1eb853179bd6638  # S5: the pages, and the comments that name C++ and CMake, follow the new names
+612ea09cc349ebdf6078bfa0d792e1b4161cff5b  # S5: every address names the repository iclforge
+ce3c449eaebecbf6bc3d59bb3b0be701bb8fba7b  # S5: build and tool text names the libraries as it should
+ff7ea00f4fe8872158ec97fc3418f2bedc5d637f  # S5: wrap the eight Python lines the rename pushed past 100 columns

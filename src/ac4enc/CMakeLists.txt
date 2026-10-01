@@ -5,7 +5,7 @@
 # A peer of src/ac4dec, in the same OBJECT + static + shared arrangement (see
 # src/ac3/CMakeLists.txt's iclforge::ac3 for why). It links iclforge::ac4, since
 # its own header describes what it writes with the inspector's Toc and syntax
-# trace, and the shared core ac4::core: the forward transform, the windows
+# trace, and the shared core iclforge::ac4core: the forward transform, the windows
 # and the codebooks. Its syntax writer is a transcription of the tables of its
 # own, separate from the decoder's reader. Installed and exported with the
 # inspector, the decoder and the core as iclforge::ac4enc_static and
@@ -115,7 +115,7 @@ set_target_properties(iclforge_ac4enc_shared PROPERTIES OUTPUT_NAME "iclforge_ac
 set_target_properties(iclforge_ac4enc_static PROPERTIES OUTPUT_NAME "iclforge_ac4enc_static")
 
 # The names install(EXPORT ... NAMESPACE ac4::) gives the targets, as the
-# tree's aliases have them: iclforge::ac4enc_static, not ac4::ac4enc_static.
+# tree's aliases have them: iclforge::ac4enc_static, not iclforge::ac4::ac4enc_static.
 set_target_properties(iclforge_ac4enc_objects PROPERTIES EXPORT_NAME "encoder_objects")
 set_target_properties(iclforge_ac4enc_static PROPERTIES EXPORT_NAME "encoder_static")
 set_target_properties(iclforge_ac4enc_shared PROPERTIES EXPORT_NAME "encoder_shared")

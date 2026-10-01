@@ -13,11 +13,11 @@ proves the codec works and is not how anything real gets its audio.
 
 ## What it demonstrates
 
-**An input path.** `ac3::split_frames` and `ac3::split_access_units` take a span
+**An input path.** `iclforge::split_frames` and `iclforge::split_access_units` take a span
 over the whole stream. Nothing streaming can produce one — an SD card, an HTTP
 body and this partition all arrive in pieces, and on a part with about 300 KB of RAM
 the whole file is not going to be resident anyway.
-`ac3::io::AccessUnitAccumulator` applies the same boundary rule incrementally,
+`iclforge::io::AccessUnitAccumulator` applies the same boundary rule incrementally,
 over a buffer the caller owns, so framing allocates nothing.
 
 **Access units, not syncframes.** `Eac3Decoder::decode_access_unit_by_block`
@@ -38,8 +38,8 @@ tool and accepts a plain AC-3 syncframe as one access unit of one substream, so
 the player does not need to know which it was given. `FrameDecoder` reads AC-3
 alone — bsid above 8 comes back as `kUnsupported` — and this example used it
 until 2026-09-10, which meant an E-AC-3 stream failed before any audio and CI,
-whose sample is AC-3, could not tell. With `CONFIG_AC3FORGE_AC4` on, the player tells an AC-4
-stream by its sync word and gives it to `ac4::SyncFrameSplitter` and `ac4::Decoder` instead.
+whose sample is AC-3, could not tell. With `CONFIG_ICLFORGE_AC4` on, the player tells an AC-4
+stream by its sync word and gives it to `iclforge::ac4::SyncFrameSplitter` and `iclforge::ac4::Decoder` instead.
 
 **Two seams.** Where bytes come from and where audio goes are both directories
 CMake picks, not flags the player branches on — the same rule the library uses
@@ -48,7 +48,7 @@ See [`main/byte_source.hpp`](main/byte_source.hpp) and
 [`main/audio_sink.hpp`](main/audio_sink.hpp).
 
 **Two tasks and a ring, which are the component's.** Since 2026-09-10 the loop
-lives in `esp-idf/iclforge` as `ac3forge::Player`
+lives in `esp-idf/iclforge` as `iclforge::Player`
 ([`include/iclforge/player.hpp`](../../include/iclforge/player.hpp)): a fetch
 task on core 0, beside WiFi and TCP/IP, reads the source into a ring buffer; a
 decode task on core 1 drains the ring through the accumulator, decodes, and
@@ -58,7 +58,7 @@ stall the DAC never hears. The single loop this replaced had 20 ms of I2S DMA
 between a slow read and silence. `main/hearth_sink.cpp` is what is left: two
 adapters from the seams to the player's `ByteSource` and `PcmSink`, a level
 meter, and the reporting. The ring's size, its placement in PSRAM, and both
-cores are under *ac3forge hearth sink* in `idf.py menuconfig`.
+cores are under *iclforge hearth sink* in `idf.py menuconfig`.
 
 | Source | Sink |
 | --- | --- |
@@ -67,13 +67,13 @@ cores are under *ac3forge hearth sink* in `idf.py menuconfig`.
 | `fatfs` — a FAT volume in flash | `capture` — converts and checks; what CI runs |
 | `http` — an HTTP body over WiFi | `null` — counts blocks |
 
-Chosen in `idf.py menuconfig` under *ac3forge hearth sink*, with the output
+Chosen in `idf.py menuconfig` under *iclforge hearth sink*, with the output
 layout the stream is rendered onto.
 
 ## Running it
 
-On a board, with an I2S DAC wired to the three pins under `ac3forge stream
-player` in `idf.py menuconfig` (BCLK, WS, DOUT — defaults 5, 6, 7):
+On a board, with an I2S DAC wired to the three pins under `iclforge hearth sink`
+in `idf.py menuconfig` (BCLK, WS, DOUT — defaults 5, 6, 7):
 
 ```bash
 . $IDF_PATH/export.sh
@@ -163,13 +163,13 @@ the S3 does.
 ### Updating over the network
 
 A board on these tables takes a new image over its network. Any of these
-sends the application image, `ac3forge_hearth_sink.bin`, not the merged
+sends the application image, `iclforge_hearth_sink.bin`, not the merged
 factory image:
 
 ```bash
 python tools/hearth/ota.py push --build-dir <build dir> --host hearth-eb2c64.local
 idf.py -C <this directory> -B <build dir> ... build ota --host hearth-eb2c64.local
-curl -T <build dir>/ac3forge_hearth_sink.bin http://hearth-eb2c64.local/firmware
+curl -T <build dir>/iclforge_hearth_sink.bin http://hearth-eb2c64.local/firmware
 ```
 
 `ota.py` checks the image and the board before it sends anything, sends the
@@ -177,7 +177,7 @@ file's SHA-256 with it, and waits for the board to accept the new image or go
 back to the old one.
 
 The board's own web page does the same from a browser: **Update firmware…**
-in its Firmware section takes `ac3forge_hearth_sink.bin` from a file, shows the
+in its Firmware section takes `iclforge_hearth_sink.bin` from a file, shows the
 bytes sent, and loads the new image's page once the board runs it. The section
 also shows both slots, the trial and how the last update ended, and has
 **Restart** and **Roll back**.
@@ -194,7 +194,7 @@ On the board, the update goes like this:
    trial.
 4. **The trial.** The image is accepted once it has held a network address, the
    HTTP server and the Sendspin player for 30 s without a break
-   (`CONFIG_AC3FORGE_FIRMWARE_TRIAL_HOLD_S`). If it does not get there within
+   (`CONFIG_ICLFORGE_FIRMWARE_TRIAL_HOLD_S`). If it does not get there within
    5 minutes (`_DEADLINE_S`), or it resets first, the board goes back to the
    image before it. A panic, a watchdog and a power cut are all resets.
 
@@ -226,7 +226,7 @@ console would show are kept where the network reaches them:
   no core dump: it would take 4,016 bytes of internal SRAM that board does not
   have to spare (`sdkconfig.psram`).
 - **The console's recent output**: the last 16 KiB in PSRAM, or 2 KiB without
-  PSRAM (`CONFIG_AC3FORGE_LOG_BYTES`). `GET /log` sends it, and
+  PSRAM (`CONFIG_ICLFORGE_LOG_BYTES`). `GET /log` sends it, and
   `ota.py log --host H --follow` follows it. The Sendspin pairing token is left
   out: whoever can read `GET /log` need only be on the network.
 
@@ -235,7 +235,7 @@ console would show are kept where the network reaches them:
 Under QEMU, through the capture sink:
 
 ```
-ac3forge hearth_sink: AC-3 or E-AC-3 onto 2.0
+iclforge hearth_sink: AC-3 or E-AC-3 onto 2.0
 source: partition 'audio' at 0x830000, 10752 bytes of audio in 262144
 heap: internal free 315656 (largest block 258048), psram free 0
 sink: capture 48000 Hz 24-in-32 x2 in 2 slots (no peripheral, no pacing)
@@ -253,7 +253,7 @@ stream.units=12 stream.held=0 stream.resync_bytes=0 stream.sink=capture-i2s stre
 result=pass
 ```
 
-(That is the console of CI's run of 2026-09-29. Its first line names the build's codecs: `AC-3, E-AC-3 or AC-4` with `CONFIG_AC3FORGE_AC4` on. The `first unit is held` line is `CONFIG_AC3FORGE_EXAMPLE_HOLD_FIRST_UNIT`, which `sdkconfig.ci` sets. The timings under QEMU are shape only.)
+(That is the console of CI's run of 2026-09-29. Its first line names the build's codecs: `AC-3, E-AC-3 or AC-4` with `CONFIG_ICLFORGE_AC4` on. The `first unit is held` line is `CONFIG_ICLFORGE_EXAMPLE_HOLD_FIRST_UNIT`, which `sdkconfig.ci` sets. The timings under QEMU are shape only.)
 
 `player: layout` says what the layout is and how the stream reaches it: the
 decoder's own fold for `2.0` and `1.0`, the renderer for anything else, with the
@@ -269,7 +269,7 @@ stream that does not use the tool). `stream.audio_ms` against `stream.wall_ms`
 is the whole-pipeline real-time check: a player that kept up spent as long
 playing as the audio lasted, one that stalled spent longer by exactly the
 silence it inserted, and a sink with no peripheral runs ahead of the clock, as
-here. With `CONFIG_AC3FORGE_EXAMPLE_REPORT_EVERY_FRAMES` set, the same figures
+here. With `CONFIG_ICLFORGE_EXAMPLE_REPORT_EVERY_FRAMES` set, the same figures
 also print cumulatively every N frames as a `progress=` line, for a source that
 makes one long pass and would otherwise be silent for minutes.
 
@@ -278,7 +278,7 @@ spent placing each block onto the layout and inside the sink's write, the level
 meter included; the rest is the decoder's own. On a paced sink the sink's part
 is mostly the wait for the DAC.
 
-**A play's start.** With `CONFIG_AC3FORGE_EXAMPLE_HOLD_FIRST_UNIT` set, the
+**A play's start.** With `CONFIG_ICLFORGE_EXAMPLE_HOLD_FIRST_UNIT` set, the
 player holds a play's first access unit until the second has decoded, so the
 sink starts with two frames queued rather than one. A play's first frames
 decode more slowly than the rest, and without the hold a 7.1.4 stream played
@@ -291,8 +291,8 @@ measurements.
 **A local 7.1.4 stream folded to 2.0** fits without PSRAM once the output stage
 folds a block at a time, and it needs a DMA queue that holds a whole frame:
 twelve descriptors of 256 frames, 64 ms, as `sdkconfig.psram` sets them
-(`CONFIG_AC3FORGE_EXAMPLE_I2S_DMA_DESCRIPTORS=12`,
-`CONFIG_AC3FORGE_EXAMPLE_I2S_DMA_FRAMES=256`), for 16 KB more of internal SRAM
+(`CONFIG_ICLFORGE_EXAMPLE_I2S_DMA_DESCRIPTORS=12`,
+`CONFIG_ICLFORGE_EXAMPLE_I2S_DMA_FRAMES=256`), for 16 KB more of internal SRAM
 than the default. A frame's six blocks arrive together, and the default queue
 cannot hold them and cover the next frame's decode as well: on a DevKitC-1 with
 no PSRAM, `714-tones.ec3` played from the partition had 251 of its 1,512
@@ -332,7 +332,7 @@ arrives. `min_headroom_ms` is the least that was left as a block arrived;
 long it had been empty, summed. The model is out by up to one DMA descriptor
 (5 ms at the default depth), which is enough to read a stall and not enough to
 mistake one for a smooth run. `sink.dma_ms` is the queue's depth, from
-`CONFIG_AC3FORGE_EXAMPLE_I2S_DMA_DESCRIPTORS` and `_DMA_FRAMES`.
+`CONFIG_ICLFORGE_EXAMPLE_I2S_DMA_DESCRIPTORS` and `_DMA_FRAMES`.
 
 Every figure on that line is the play's own. `begin_play` tells the sink a play
 is starting (`sink_begin_play()` in [`main/audio_sink.hpp`](main/audio_sink.hpp)),
@@ -355,7 +355,7 @@ property of the stream and the layout, so CI holds the expectation.
 `result=pass` on its own means "some units decoded without returning an error",
 which a stream decoding to silence or to full-scale noise satisfies completely.
 CI compares these against the host's answer for the same file through the same
-configuration — `ac3cli decode … downmix=loro drcmode=line`, giving 107,370 and
+configuration — `forge decode … downmix=loro drcmode=line`, giving 107,370 and
 106,234. The 0.4% gap is the float32 decode path against the host's float64.
 
 `resync` is bytes skipped looking for a sync word. Non-zero means the stream did
@@ -378,7 +378,7 @@ listening, so the pacing and the sink's counters are real.
 
 **The default shape plays in real time, paced by the DAC.** `partition` to
 `i2s` at `2.0` (`sdkconfig.defaults;sdkconfig.hw`), the six-frame AC-3 5.1
-sample looped 150 times (`CONFIG_AC3FORGE_EXAMPLE_MAX_LAPS=150`):
+sample looped 150 times (`CONFIG_ICLFORGE_EXAMPLE_MAX_LAPS=150`):
 
 ```
 lap=150 frames=900 us_per_frame=31251 worst_frame_us=33420 realtime_permille=976 render_us_per_frame=750 sink_us_per_frame=20271 resync=0 ring_low=0 heap_free=198084
@@ -473,9 +473,9 @@ stream.units=18750 stream.held=0 stream.resync_bytes=0 stream.sink=i2s stream.si
 
 ## Controlling it
 
-With `CONFIG_AC3FORGE_EXAMPLE_CONTROL_PORT` set (the HTTP source's
+With `CONFIG_ICLFORGE_EXAMPLE_CONTROL_PORT` set (the HTTP source's
 configurations set 80; the default is 0, none), the component's
-`ac3forge::Control` answers on that port:
+`iclforge::Control` answers on that port:
 
 | | |
 | --- | --- |
@@ -487,7 +487,7 @@ configurations set 80; the default is 0, none), the component's
 | `POST /stop` | |
 | `POST /volume` | body: `0.0` to `1.0`, a linear gain the decode task applies before the sink |
 | `GET /layout` | the output layout, as text |
-| `PUT /layout` | body: a name (`5.1.4`) or a speaker list (`L,R,C,LFE,Ls,Rs`), the same grammar as `CONFIG_AC3FORGE_EXAMPLE_LAYOUT`. Takes effect at the next play - the `i2s` sink reconfigures its mode and slot count to match, so this never needs a rebuild. `400` for text that is not a layout, `409` for one with more slots than the sink's ceiling. |
+| `PUT /layout` | body: a name (`5.1.4`) or a speaker list (`L,R,C,LFE,Ls,Rs`), the same grammar as `CONFIG_ICLFORGE_EXAMPLE_LAYOUT`. Takes effect at the next play - the `i2s` sink reconfigures its mode and slot count to match, so this never needs a rebuild. `400` for text that is not a layout, `409` for one with more slots than the sink's ceiling. |
 | `GET /name` | what the board calls itself, as text |
 | `PUT /name` | body: a name, up to 32 bytes. Stored on the board, so it survives a reflash; it is the mDNS instance name and what a server lists the sink under. `409` if it does not fit or NVS refused it. |
 | `GET /wiring` | `1` if a second I2S line is wired, `0` if not; `404` where there can be no second line - the ESP32-C6, the P4's `i2s_wide`, `capture` and `null` - and `/status` then has no `second_line` |
@@ -529,7 +529,7 @@ and `silent` is the layout's speakers the play has sent nothing:
 
 Two things the player does before it decodes a unit. A stream carrying more
 than one programme (§E2.3.1.2's independent substreams) plays its first; the
-others' access units are skipped, as `ac3cli decode` skips them. And a stream
+others' access units are skipped, as `forge decode` skips them. And a stream
 whose sample rate is not the sink's 48 kHz is refused rather than played at the
 wrong speed: the play fails, the console says `error: sample rate failed (44100)`
 and `/status` has `why` `sample rate` with the rate in `error`.
@@ -589,14 +589,14 @@ Nothing plays at boot. The player listens on port 8928 at `/sendspin`, the
 board advertises `_sendspin._tcp` under its name, and a server that finds it
 dials it. Two roles are offered:
 
-- `_ac3forge_player@v1`
+- `_iclforge_player@v1`
   ([planning/hearth-sendspin-extension.md](../../../../planning/hearth-sendspin-extension.md)):
   AC-3 or E-AC-3 in IEC 61937 bursts, decoded on the board, rendered onto its
   layout, then routed, trimmed and delayed as the server's settings say. The
   server can also set the layout, the crossover and the decoder's settings
   (operating mode, heavy compression, dialnorm, the downmix and its phase
   shift, the LFE mix, the programme, objects and concealment), play an
-  identify tone on one output, and change the volume. `ac3hearth` plays this
+  identify tone on one output, and change the volume. `hearth` plays this
   role.
 - `player@v1`: stereo PCM at 48 kHz, 24 or 16 bits, which Music Assistant
   sends to a player that lists nothing else. FLAC and Opus are not offered:
@@ -628,7 +628,7 @@ does not restart.
 
 **A board does not give up on the network it has been given.** A join that
 fails, and a network the board has joined and then lost, are both retried the
-same way: `CONFIG_AC3FORGE_EXAMPLE_WIFI_RETRIES` tries at once (five by
+same way: `CONFIG_ICLFORGE_EXAMPLE_WIFI_RETRIES` tries at once (five by
 default, about 15 s against a network that is not there), then after 1, 2, 4
 and 8 s, then every 15 s, for as long as the board runs or until it is given
 another network. So an access point that restarts, and a board that boots
@@ -640,7 +640,7 @@ network: lost 'kitchen' (reason 200); rejoining
 network: back on 'kitchen' after 140 s, address 192.168.1.45
 ```
 
-The quick tries are what `CONFIG_AC3FORGE_EXAMPLE_WIFI_RETRIES` bounds, so a
+The quick tries are what `CONFIG_ICLFORGE_EXAMPLE_WIFI_RETRIES` bounds, so a
 wrong passphrase is still *reported* in about 25 s rather than waited on for
 good: `network_up()` returns false, the console says why, and Improv answers
 `cannot_connect`. The board goes on trying in the background all the same, and
@@ -696,7 +696,7 @@ second of audio; the next play was clean (630 of 630 bursts, nothing late).
 ### Pairing
 
 Every connection is encrypted with Noise (`KKpsk2`, ChaChaPoly by default;
-`CONFIG_AC3FORGE_SENDSPIN_SUITE` chooses AES-GCM). A server plays to the board
+`CONFIG_ICLFORGE_SENDSPIN_SUITE` chooses AES-GCM). A server plays to the board
 once they are paired, which happens one of two ways:
 
 - **By the token.** The console prints the board's pairing token at boot, and
@@ -730,7 +730,7 @@ commands: `pair list`, `pair token`, `pair reset`, `pair cancel`, `pair
 forget` with or without an ID, and `sendspin`, which prints the player's state.
 
 A server that has not paired gets nothing to play unless
-`CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_UNPAIRED_ACCESS` is set, and then only once
+`CONFIG_ICLFORGE_EXAMPLE_SENDSPIN_UNPAIRED_ACCESS` is set, and then only once
 its own operator approves the board.
 
 ### When a sample plays
@@ -763,7 +763,7 @@ drops or repeats one frame in 256 while the smoothed error is outside
 arrives too late to play any of is dropped before it is decoded. The
 `capture` and `null` sinks have no interrupts, and pace and time themselves
 as a DMA ring would. The capture sink does so only with
-`CONFIG_AC3FORGE_EXAMPLE_CAPTURE_PACED`; unpaced, it plays each frame as it
+`CONFIG_ICLFORGE_EXAMPLE_CAPTURE_PACED`; unpaced, it plays each frame as it
 comes, which is what CI compares levels with.
 
 ### What it reports
@@ -801,7 +801,7 @@ sendspin.rms[1]=7414
 rendering, and inside the sink's write.
 
 While a stream plays, a `sendspin.progress` line gives the same figures so
-far every `CONFIG_AC3FORGE_EXAMPLE_REPORT_EVERY_FRAMES` chunks (125, about
+far every `CONFIG_ICLFORGE_EXAMPLE_REPORT_EVERY_FRAMES` chunks (125, about
 four seconds, in `sdkconfig.sendspin`), with the internal heap free now, its
 largest block, and the least since the stream began:
 
@@ -817,9 +817,9 @@ The player's buffers, stacks, lead and ring are under *Sendspin player* in
 On 2026-09-16 two ESP32-S3-DevKitC-1-N16R8 boards on the same Wi-Fi, with no
 DAC wired, played the E-AC-3 JOC fixture
 (`tests/golden/object-fixture/dee_joc_514.ec3`) for ten minutes as one group
-from `ac3hearth-testserver`, beside a test sink of its own. One played 2.0 on
+from `hearth-testserver`, beside a test sink of its own. One played 2.0 on
 32-bit standard I2S, the other 5.1 on eight 16-bit TDM slots
-(`CONFIG_AC3FORGE_EXAMPLE_I2S_SLOT_BITS=16`: one line carries four 32-bit
+(`CONFIG_ICLFORGE_EXAMPLE_I2S_SLOT_BITS=16`: one line carries four 32-bit
 slots). Each board already held an unpaired connection from another server
 on the network, which runs Music Assistant, and displaced it when the test
 server's connection came.
@@ -896,7 +896,7 @@ about 45 ms; every reply read during a burst looked that late, and once
 thirty bursts in a row had been left out of the clock's filter this way
 (`ClockSync::kFloorBursts`), the offset followed the delay and jumped 13 to
 31 ms. A reply is now dated by when its bytes reached the board instead: an
-lwIP IPv4 input hook (`ac3forge/tcp_arrivals.hpp`, installed through
+lwIP IPv4 input hook (`iclforge/tcp_arrivals.hpp`, installed through
 `ESP_IDF_LWIP_HOOK_FILENAME` on the `lwip` component) logs each Sendspin
 connection's TCP stream from its SYN, on the network task, well above the
 decode task; `PlayerSession::receive()` takes an arrival time from that log
@@ -928,7 +928,7 @@ room for it. 48 KB is the ring kept.
 
 On 2026-09-22, this ESP32-C6 and one ESP32-S3-DevKitC-1-N16R8, both playing
 2.0 (the S3 on 32-bit standard I2S), played one AC-3 2.0 programme from
-`ac3hearth-testserver` as a group for ten minutes:
+`hearth-testserver` as a group for ten minutes:
 0 underruns on either board and a 479 us worst spread between their play
 times, inside B3's 1 ms group criterion. An earlier ten-minute run with the
 same two boards had one underrun on the S3 board alone, about two minutes
@@ -949,14 +949,14 @@ exception the failed allocation threw could not itself be allocated
 (`__wrap___cxa_allocate_exception`), which aborts rather than closing the
 stream in the ordinary way.
 
-`_ac3forge_player@v1` sends the server's own programme at whatever channel
+`_iclforge_player@v1` sends the server's own programme at whatever channel
 count it codes: `outputs.count` in the role's capability advertisement
 bounds *routing*, the stage after decode, not what reaches the decoder, so
 it does nothing to stop a wide syncframe from being sent and decoded in
 the first place - `support().outputs.count` being `sink_slots()`, the I2S
 wiring's own ceiling (up to 8 on this board), made that plainer still,
 since a compliant server following it would see no reason not to offer
-5.1. `CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_MAX_CODED_CHANNELS` closes this at
+5.1. `CONFIG_ICLFORGE_EXAMPLE_SENDSPIN_MAX_CODED_CHANNELS` closes this at
 the one place both codecs' frame headers already say the channel count
 before any decoder-specific memory is touched: `BurstPlayer` reads
 `FrameHeader::coded_channels()` and, past this count, refuses the
@@ -1011,10 +1011,10 @@ board-only boot crashes found bringing this example itself up, all fixed in
 
 With those three, a clean boot, WiFi join and a full paired Sendspin play, built with
 `SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.hw;sdkconfig.p4;sdkconfig.sendspin"`
-plus real `AC3FORGE_EXAMPLE_WIFI_SSID`/`_PASSWORD`: SDIO up, the ESP32-C6 identified, a
+plus real `ICLFORGE_EXAMPLE_WIFI_SSID`/`_PASSWORD`: SDIO up, the ESP32-C6 identified, a
 real access point joined and a DHCP lease taken, mDNS advertising `_sendspin._tcp`, the
 REST control surface up on port 80 - all through this example's own code, not a
-standalone test. `ac3hearth-testserver` then paired by token and played an Atmos/JOC
+standalone test. `hearth-testserver` then paired by token and played an Atmos/JOC
 E-AC-3 fixture (`tests/golden/object-fixture/dee_joc_514.ec3`, acmod=7, 11 objects) five
 times through over ten seconds onto the 2.0 layout: 315 of 315 bursts played, 0
 underruns, 0 late, 0 dropped, 0 invalid, `/status` polled throughout with a worst
@@ -1041,7 +1041,7 @@ source cannot open TDM at all on this revision) are otherwise unchanged and corr
 `sdkconfig.ci-sendspin`, over `sdkconfig.ci-http`, is the player on QEMU's
 Ethernet with the capture sink, a 16 KB ring and no PSRAM.
 `tools/checks/run_sendspin_qemu.sh` boots it with the Sendspin port and the
-page forwarded to the host, and `ac3hearth-testserver` pairs with it by the
+page forwarded to the host, and `hearth-testserver` pairs with it by the
 token on its console, gives it a 2.0 layout and plays the E-AC-3 JOC fixture
 to it and to a test sink of its own, in one group. The board's RMS lines are
 then held to the test sink's WAV file by `tools/checks/check_sendspin_levels.py`,
@@ -1075,7 +1075,7 @@ and the second restarts in a loop.
 
 ## AC-4
 
-`sdkconfig.ac4` builds the component's AC-4 decoder into the example (`CONFIG_AC3FORGE_AC4`,
+`sdkconfig.ac4` builds the component's AC-4 decoder into the example (`CONFIG_ICLFORGE_AC4`,
 offered only on a part with a floating-point unit, and in practice one with PSRAM). A stream
 that opens with an AC-4 sync word then plays as an AC-3 or E-AC-3 one does, from any source.
 [The ESP32-P4 page](../../../../docs/platforms/bare-metal/esp32-p4.md#ac-4) has what a stream of
@@ -1085,16 +1085,16 @@ data types and not `ac4` (`main/sendspin/player/sendspin.cpp`), so no AC-4 strea
 from a Sendspin group (phase I6). The measurements were made with `POST /play` and a URL.
 
 ```bash
-idf.py -DIDF_TARGET=esp32p4   "-DSDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.hw;sdkconfig.p4;sdkconfig.sendspin;sdkconfig.ac4"   -DAC3FORGE_STAGE_TIMERS=ON build
+idf.py -DIDF_TARGET=esp32p4   "-DSDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.hw;sdkconfig.p4;sdkconfig.sendspin;sdkconfig.ac4"   -DICLFORGE_STAGE_TIMERS=ON build
 ```
 
 The decode task needs 40 KB of stack, which `sdkconfig.ac4` sets: today's decoder uses 20 to 24 KB
 of it. A play ends with the lines the page's figures come from: `ac4.lap` (frames, samples, the
 decoder's time, the worst frame's and the PCM hash), `ac4.heap` (what the play took of internal
-RAM and PSRAM) and, with `AC3FORGE_STAGE_TIMERS=ON`, a `play.stage[...]` line for each part of the
-decode. `AC3FORGE_EXAMPLE_AC4_CORE` selects core decoding and `AC3FORGE_EXAMPLE_AC4_PCM_HASH` the
+RAM and PSRAM) and, with `ICLFORGE_STAGE_TIMERS=ON`, a `play.stage[...]` line for each part of the
+decode. `ICLFORGE_EXAMPLE_AC4_CORE` selects core decoding and `ICLFORGE_EXAMPLE_AC4_PCM_HASH` the
 hash of the samples, which costs 0.6 ms a frame at 2.0; a play's location overrides both, with
-`?decoding=core` and `?hash=off`. A measurement image adds `AC3FORGE_EXAMPLE_SINK_NULL=y` and plays
+`?decoding=core` and `?hash=off`. A measurement image adds `ICLFORGE_EXAMPLE_SINK_NULL=y` and plays
 with `POST /play` (a URL as the body) after `PUT /layout`.
 
 ## The sources
@@ -1119,7 +1119,7 @@ the URL is `http://10.0.2.2:8000/demo.ec3` and no firewall is involved. The
 stream is the WASM page's demo: E-AC-3 5.1 with JOC objects, 448 kbit/s, 250
 access units. On 2026-09-10 the run fetched and decoded all 250 with zero
 resynchronised bytes, and its per-channel levels matched the host's
-`ac3cli decode demo.ec3 out.wav downmix=loro drcmode=line` to the digit —
+`forge decode demo.ec3 out.wav downmix=loro drcmode=line` to the digit —
 56,673 and 47,346 — which is the check CI holds it to. Three `E (esp_eth)`
 lines about multicast filters print at start-up: the emulated MAC has no
 filter, IDF says so, and nothing depends on one. What QEMU cannot say is
@@ -1153,22 +1153,22 @@ returns false and the player stops rather than pretending.
 ## Layouts, and more than two channels
 
 The player is configured for the speakers it has, not for the stream it is
-sent. `CONFIG_AC3FORGE_EXAMPLE_LAYOUT` names them, one per output slot, either
+sent. `CONFIG_ICLFORGE_EXAMPLE_LAYOUT` names them, one per output slot, either
 as a name — `2.0` (the default), `5.1`, `7.1`, `5.1.4`, `7.1.4`, `9.2.4`,
 `5.0.4` — or as a speaker list, one token per slot in slot order:
 `L,R,C,LFE,Ls,Rs` for a 5.1 DAC wired in WAV order, `30/0,-30/0,lfe` by angles,
 `-` for a slot nothing is on. A name is Table E2.5's order with the LFE last, so
 `5.1` is L C R Ls Rs LFE; a list is whatever order the board is wired in. The
-grammar is [`ac3/render/layout.hpp`](../../../../src/render/include/iclforge/render/layout.hpp)'s and
+grammar is [`iclforge/render/layout.hpp`](../../../../src/render/include/iclforge/render/layout.hpp)'s and
 `PUT /layout` on the control surface takes the same text for the next play.
 
 What happens to a stream depends on the layout, not the stream:
 
 | Layout | How |
 | --- | --- |
-| `2.0`, `1.0` | The decoder's own §7.8 fold (`CONFIG_AC3FORGE_EXAMPLE_STEREO_FOLD` picks Lo/Ro or Lt/Rt). What every player before 2026-09-10 did, unchanged. |
-| anything wider, no heights | As coded. Each coded channel goes to the slot of its own location exactly, or, where the room has no such speaker (a 7.1 stream's rears in a 5.1 room), is spread over its neighbours by `ac3::spatial::pan_direction` at constant power. The LFE goes to the LFE slots and nowhere else. |
-| with heights | As above for a stream without objects. For a stream with an object layer the objects are reconstructed and placed by their own positions, the bed's LFE passes through (held back by the objects' reconstruction delay, so that it stays with them), and the bed's other channels are **not** added — an Atmos bed is the objects' own 5.1 fold, and adding it would play everything twice. `CONFIG_AC3FORGE_EXAMPLE_OBJECTS` widens or narrows when that happens. |
+| `2.0`, `1.0` | The decoder's own §7.8 fold (`CONFIG_ICLFORGE_EXAMPLE_STEREO_FOLD` picks Lo/Ro or Lt/Rt). What every player before 2026-09-10 did, unchanged. |
+| anything wider, no heights | As coded. Each coded channel goes to the slot of its own location exactly, or, where the room has no such speaker (a 7.1 stream's rears in a 5.1 room), is spread over its neighbours by `iclforge::spatial::pan_direction` at constant power. The LFE goes to the LFE slots and nowhere else. |
+| with heights | As above for a stream without objects. For a stream with an object layer the objects are reconstructed and placed by their own positions, the bed's LFE passes through (held back by the objects' reconstruction delay, so that it stays with them), and the bed's other channels are **not** added — an Atmos bed is the objects' own 5.1 fold, and adding it would play everything twice. `CONFIG_ICLFORGE_EXAMPLE_OBJECTS` widens or narrows when that happens. |
 
 **Nothing is upmixed.** The renderer never makes a signal for a speaker out of
 other channels: a slot gets a coded channel at its location, a coded channel
@@ -1194,7 +1194,7 @@ with real time. The same stream decodes and renders onto twelve slots in about
 [`planning/esp32-stream-set.md`](../../../../planning/esp32-stream-set.md#on-a-board)
 and [Folded to stereo](../../../../docs/platforms/bare-metal/esp32-s3.md#folded-to-stereo).
 
-All of it is [`ac3/render/render.hpp`](../../../../src/render/include/iclforge/render/render.hpp),
+All of it is [`iclforge/render/render.hpp`](../../../../src/render/include/iclforge/render/render.hpp),
 one 256-sample block at a time, which is why a 7.1.4 layout costs the player 12 KB
 of block storage rather than 72 KB of frame. The geometry is the library's
 (`tests/render/`); what the header adds is indexing between coded channels,
@@ -1207,7 +1207,7 @@ onto `7.1.4` through the twelve-slot TDM conversion, and checks every slot's
 level against the probe's own `eac3_atmos_render` reference. Reconstructing the
 objects costs about 148 KB of heap in the MDCT-band domain the fixture was
 encoded in and about 233 KB in the QMF domain a real stream needs
-(`CONFIG_AC3FORGE_EXAMPLE_JOC_DOMAIN`) — PSRAM territory on a board, and the
+(`CONFIG_ICLFORGE_EXAMPLE_JOC_DOMAIN`) — PSRAM territory on a board, and the
 reason the QEMU shape runs an 8 KB ring.
 
 ### The I2S sink
@@ -1223,9 +1223,9 @@ frame, four 32-bit slots or eight 16-bit ones, with the slots past the layout's
 channels written as zeros: a TDM DAC is set up for a fixed frame, and on an
 ESP32-C6 the driver clocked three- and five-slot frames 6.7% fast at 16 bits.
 
-**A fixed frame for a TDM DAC.** `CONFIG_AC3FORGE_EXAMPLE_I2S_FIXED_FRAME=1`
+**A fixed frame for a TDM DAC.** `CONFIG_ICLFORGE_EXAMPLE_I2S_FIXED_FRAME=1`
 opens that full TDM frame for every layout, mono and stereo included
-(`ac3forge::SinkFrame::fixed`). A TDM DAC set up for one frame shape needs it:
+(`iclforge::SinkFrame::fixed`). A TDM DAC set up for one frame shape needs it:
 an ESS ES9080 has its slot count, slot width and channel map written over I2C,
 and its PLL can lock to the bit clock, so a 2.0 play opened as standard I2S
 would change the bit clock under it and put the samples in slots it does not
@@ -1253,22 +1253,22 @@ with its one channel in slot 0.
 TDM frame holds at most 128 bits, because the peripheral's half-frame length
 is a 6-bit register field: four slots at 32 bits - a 6.1 MHz bit clock at 48
 kHz - or eight at 16, and ESP-IDF v6.1 refuses more, as does this sink before
-it ever asks the driver. `CONFIG_AC3FORGE_EXAMPLE_I2S_SLOT_BITS` chooses
+it ever asks the driver. `CONFIG_ICLFORGE_EXAMPLE_I2S_SLOT_BITS` chooses
 between them: 32 by default, carrying 24-bit samples in up to four slots, or
-16, carrying 16-bit samples in up to eight (`ac3forge::interleave_16in16`), so
+16, carrying 16-bit samples in up to eight (`iclforge::interleave_16in16`), so
 a 7.1 layout fits one line at 16 bits and not at 32.
-`CONFIG_AC3FORGE_EXAMPLE_I2S_SECOND_LINE` brings up a second,
+`CONFIG_ICLFORGE_EXAMPLE_I2S_SECOND_LINE` brings up a second,
 independent I2S peripheral at 32 bits to double the ceiling to eight, sharing
 line 0's BCLK and WS as inputs - through the GPIO matrix, which routes a pad's
 input side to a peripheral independently of whichever end drives it as an
 output, so this needs no external wire, only the second line's own DATA pin
-(`CONFIG_AC3FORGE_EXAMPLE_I2S_DOUT2_GPIO`) - to keep both lines' frames sample
+(`CONFIG_ICLFORGE_EXAMPLE_I2S_DOUT2_GPIO`) - to keep both lines' frames sample
 aligned. A 7.1.4 layout's twelve slots of 24-bit audio still do not fit
 either way; the `capture` sink stands in for that (below). Whichever DAC or
 DSP is on the wire has to speak whatever mode a channel count lands it in - a
 PCM3168A speaks TDM, a SigmaDSP does on its serial inputs, the common
 MAX98357A and PCM5102 breakouts do not, and neither speaks a second,
-independent TDM line at all. `CONFIG_AC3FORGE_EXAMPLE_I2S_SLAVE` hands BCLK
+independent TDM line at all. `CONFIG_ICLFORGE_EXAMPLE_I2S_SLAVE` hands BCLK
 and WS to line 0's other end instead of generating them - how an ADAU1452 or
 ADAU1467 that is the house's clock wants it; a second line is always a slave,
 since its only job is reading those same two pins.
@@ -1303,7 +1303,7 @@ the digit. Neither crossing left the control surface any less responsive than
 before it.
 
 **The second line reconfigures correctly and has not proven itself past
-that.** Bringing one up (`AC3FORGE_EXAMPLE_I2S_SECOND_LINE=1`) for a
+that.** Bringing one up (`ICLFORGE_EXAMPLE_I2S_SECOND_LINE=1`) for a
 six-channel, unfolded `5.1` layout did the right thing in every way this can
 check without a second DAC on the wire: both lines came up in TDM mode, line 1
 shared line 0's BCLK/WS as the design intends, and `sink_slots` read 8. What
@@ -1314,8 +1314,8 @@ buffers rather than one - `heap_caps_malloc could not allocate 32768 bytes`,
 than hanging or crashing. A real memory budget this project has now measured,
 not a wrong answer; whether the two lines' samples stay aligned once
 something is actually wired to both remains to be seen, and
-`AC3FORGE_EXAMPLE_I2S_SECOND_LINE`'s own help text has the numbers behind
-both findings. The slave role (`AC3FORGE_EXAMPLE_I2S_SLAVE`) is untested
+`ICLFORGE_EXAMPLE_I2S_SECOND_LINE`'s own help text has the numbers behind
+both findings. The slave role (`ICLFORGE_EXAMPLE_I2S_SLAVE`) is untested
 either way: there is no DAC or DSP here that drives the clocks.
 
 **What CI establishes about the real `i2s` sink itself, without a board, is
@@ -1349,10 +1349,10 @@ audio nobody is listening for and everybody can hear. There is a test for
 exactly that, and the `capture` sink checks it on the target. `capture`
 converts up to sixteen slots with no peripheral behind it and no hardware
 ceiling to refuse against, which is how CI checks a twelve-slot conversion
-that no real line here could carry at all; `CONFIG_AC3FORGE_EXAMPLE_TDM_SLOTS`
+that no real line here could carry at all; `CONFIG_ICLFORGE_EXAMPLE_TDM_SLOTS`
 sets its emulated width, unrelated to the real sink's own ceiling.
 
-**How a sample becomes a slot depends on the part.** `ac3forge::to_pcm16` and
+**How a sample becomes a slot depends on the part.** `iclforge::to_pcm16` and
 `to_slot_24in32` scale, clip and truncate a sample in `float`: a handful of
 instructions on a part with a floating-point unit, such as the ESP32-S3. The
 ESP32-C6 has none, and each of those four operations is a call into the
@@ -1361,7 +1361,7 @@ software floating-point routines. `to_pcm16_from_bits` and
 IEEE-754 bits with 32-bit integer arithmetic instead - equal to the float
 forms for every input that is not a NaN, checked exhaustively on the host and
 against a real decoded stream under QEMU (S3 in float, C3 in bits, identical
-converted slots). `ac3forge/interleave.hpp`'s interleaves take the conversion
+converted slots). `iclforge/interleave.hpp`'s interleaves take the conversion
 as a template argument and the component chooses it from
 `CONFIG_SOC_CPU_HAS_FPU`, so a sink's own code is unchanged either way.
 
@@ -1379,7 +1379,7 @@ onto eight 16-bit TDM slots (`sink_us_per_frame`, which also carries the
 level meter in front of the sink): 20,875 us in float, 12,689 us from the
 bits - `-Os` still calls the conversion once a sample rather than inlining
 it, which building the sink's source at `-O2`
-(`AC3FORGE_MINIMAL_HOT_O2`'s reasoning, applied to this file) brings to
+(`ICLFORGE_MINIMAL_HOT_O2`'s reasoning, applied to this file) brings to
 11,551. Levels are unchanged to the digit across all three. The ESP32-S3's
 own sink compiles to identical object code before and after - confirmed on a
 board, no difference outside measurement jitter.
@@ -1396,7 +1396,7 @@ decoder's hot sources at `-O2` move flash, not these figures:
 | …of which `.bss` | 46,232 |
 | …leaving for the heap, by the linker's estimate | 253,197 |
 | Taken from that heap when the player starts: one block for each of the layout's slots (two for `2.0`, 2,048 bytes; twelve for `7.1.4`, 12,288), the framing buffer, the staging block and the renderer's gain tables | 23,040 |
-| The ring between fetch and decode (`CONFIG_AC3FORGE_EXAMPLE_RING_BYTES`; PSRAM when present) | 32,768 |
+| The ring between fetch and decode (`CONFIG_ICLFORGE_EXAMPLE_RING_BYTES`; PSRAM when present) | 32,768 |
 | The decode task's stack, and the fetch task's | 32,768 + 8,192 |
 | Interleave buffers (one block, 32-bit and 16-bit, static, in the sink) | 3,072 |
 | I2S DMA queue (8 × 128 frames, stereo, 32-bit: Kconfig's 4 × 240, reshaped so each descriptor divides a block) | 8,192 |

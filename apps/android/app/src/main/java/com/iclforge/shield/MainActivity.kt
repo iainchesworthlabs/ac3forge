@@ -326,7 +326,7 @@ class MainActivity : Activity() {
         }
 
         val version = NativeBridge.nativeVersionString()
-        Log.i(TAG, "ac3::forge version reported by native library: $version")
+        Log.i(TAG, "iclforge::ac3 version reported by native library: $version")
 
         NativeBridge.registerPassthroughBridge(passthroughBridge)
         val capabilities = NativeBridge.nativeProbePassthroughCapabilities()

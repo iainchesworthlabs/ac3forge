@@ -2,7 +2,7 @@ plugins {
     id("com.android.application")
 }
 
-// Object signing is no longer a build-variant toggle. The signer (ac3::signing)
+// Object signing is no longer a build-variant toggle. The signer (iclforge::signing)
 // is committed and always compiled; whether the app actually signs is decided
 // at runtime by whether a `signing.key` asset is present (see
 // shield_signing_hook.hpp). That asset is written into src/main/assets/ from a
@@ -54,7 +54,7 @@ android {
         externalNativeBuild {
             cmake {
                 // ANDROID_STL=c++_shared, not the default static libc++:
-                // ac3::forge/ac3::audio are static libs linked into this one
+                // iclforge::ac3/iclforge::audio are static libs linked into this one
                 // shared object, and a static STL would duplicate global
                 // state (locale, iostream init) if anything else in the
                 // process ever pulled in libc++ too - shared avoids that

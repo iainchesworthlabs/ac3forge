@@ -1,4 +1,4 @@
-//! Atmos/JOC object encode — `ac3::oba::AtmosEncoder` via `iclforge_atmos_encoder_t`.
+//! Atmos/JOC object encode — `iclforge::oba::AtmosEncoder` via `iclforge_atmos_encoder_t`.
 //!
 //! Objects in, one ordinary-looking 5.1 E-AC-3 access unit out: the objects are panned into a
 //! 5.1 bed a legacy decoder plays unchanged, and OAMD (where each object is) plus JOC (how to
@@ -23,7 +23,7 @@ pub struct AtmosConfig {
     /// headroom a plain 5.1 stream does not — default 448.
     pub bitrate_kbps: u32,
     pub dialnorm: i32,
-    /// Index into `ac3::oba::joc::kNumBands` (Table 50); default 4 (nine bands).
+    /// Index into `iclforge::oba::joc::kNumBands` (Table 50); default 4 (nine bands).
     pub num_bands_idx: i32,
     /// §6.3.3.7's finer quantizer: half the step, roughly one more bit per coefficient.
     pub fine_quant: bool,
@@ -65,7 +65,7 @@ impl AtmosConfig {
     }
 }
 
-/// One object's placement for one frame — `ac3::oba::ObjectPlacement` via
+/// One object's placement for one frame — `iclforge::oba::ObjectPlacement` via
 /// `iclforge_object_placement_t`. Position is §4.2.1's room-anchored system (`x`/`y` in
 /// `[0, 1]`, `z` in `[-1, 1]`).
 ///

@@ -7,5 +7,5 @@ version = "0.1.0"
 edition = "2021"
 rust-version = "1.98.0"
 license = "GPL-3.0-or-later"
-repository = "https://github.com/iainchesworthlabs/ac3forge"
+repository = "https://github.com/iainchesworthlabs/iclforge"
 authors = ["iclforge contributors"]

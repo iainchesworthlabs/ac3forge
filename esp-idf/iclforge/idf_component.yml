@@ -21,10 +21,10 @@ description: >-
   precision where there is a floating-point unit, fixed point where there is
   not. AC-4 decoding is an option for the ESP32-P4 (CONFIG_ICLFORGE_AC4, off by default);
   it needs PSRAM.
-url: https://github.com/iainchesworthlabs/ac3forge
-repository: https://github.com/iainchesworthlabs/ac3forge.git
-documentation: https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/platforms/bare-metal/esp32-s3.md
-issues: https://github.com/iainchesworthlabs/ac3forge/issues
+url: https://github.com/iainchesworthlabs/iclforge
+repository: https://github.com/iainchesworthlabs/iclforge.git
+documentation: https://github.com/iainchesworthlabs/iclforge/blob/main/docs/platforms/bare-metal/esp32-s3.md
+issues: https://github.com/iainchesworthlabs/iclforge/issues
 license: "GPL-3.0-or-later"  # matches LICENSE at the repo root
 
 # Four parts, each with a CI run or a measurement behind it.

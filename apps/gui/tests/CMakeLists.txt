@@ -61,7 +61,7 @@ qt_add_executable(forge_gui_qmltests
 # through them (wide-layout record/live paths), and container_input.cpp joined them the same
 # way for container readers (mkv/mp4/ts). This target compiles the same files in, exactly as it
 # always did - qc_controller.cpp/object_decode_controller.cpp call
-# ac3::apps::elementary_stream_from_bytes too, so it needs the same
+# iclforge::apps::elementary_stream_from_bytes too, so it needs the same
 # definition forge-gui's own target links.
 target_include_directories(forge_gui_qmltests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../common")
 

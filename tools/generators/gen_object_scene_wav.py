@@ -41,7 +41,7 @@ sources is exactly what a parametric object coder has to keep apart:
 3 and 4 are a direction-degenerate pair, and they are in the scene to probe
 one specific thing. The bed has no height channels, so elevation costs
 nothing in the downmix and two objects that differ only in height are panned
-into the five bed channels identically - ac3/oba/atmos.hpp's own module
+into the five bed channels identically - iclforge/ac3/oba/atmos.hpp's own module
 comment names that as the limit of what JOC can do. Direction is not the
 matrix's only axis, though: it solves per FREQUENCY BAND (AtmosConfig::
 num_bands_idx, Table 50), so a pair that shares a direction but not a

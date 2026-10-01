@@ -1153,7 +1153,7 @@ void print_man_page(std::span<const CommandInfo> commands) {
     fmt::println("The same key inline, for environments with no file to point at.");
     fmt::println(".SH SEE ALSO");
     fmt::println("Full documentation at");
-    fmt::println(".UR https://github.com/iainchesworthlabs/ac3forge");
+    fmt::println(".UR https://github.com/iainchesworthlabs/iclforge");
     fmt::println(".UE");
 }
 

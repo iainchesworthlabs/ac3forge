@@ -248,12 +248,12 @@
         "windows": [
           "source",
           "ci",
-          "channel-based, immersive and object streams in ac3cli, ac3gui and Hearth"
+          "channel-based, immersive and object streams in forge, forge-gui and Hearth"
         ],
         "linux": [
           "source",
           "ci",
-          "channel-based, immersive and object streams in ac3cli, ac3gui and Hearth"
+          "channel-based, immersive and object streams in forge, forge-gui and Hearth"
         ],
         "macos": [
           "source",
@@ -263,7 +263,7 @@
         "browser": [
           "source",
           "ci",
-          "ac3forge_wasm_ac4 module; no demo page yet"
+          "iclforge_wasm_ac4 module; no demo page yet"
         ],
         "android": [
           "source",
@@ -289,12 +289,12 @@
         "windows": [
           "source",
           "ci",
-          "mono to 5.1, 5.1.4 and objects in ac3cli and ac3gui"
+          "mono to 5.1, 5.1.4 and objects in forge and forge-gui"
         ],
         "linux": [
           "source",
           "ci",
-          "mono to 5.1, 5.1.4 and objects in ac3cli and ac3gui"
+          "mono to 5.1, 5.1.4 and objects in forge and forge-gui"
         ],
         "macos": [
           "source",
@@ -304,7 +304,7 @@
         "browser": [
           "source",
           "ci",
-          "ac3forge_wasm_ac4 module, objects included; no demo page yet"
+          "iclforge_wasm_ac4 module, objects included; no demo page yet"
         ],
         "android": [
           "source",
@@ -1004,12 +1004,12 @@
           [
             "configured",
             "ci",
-            "ac3cli and ac3gui decode and encode, Hearth decodes; decoded AC-4 plays through the PCM monitor"
+            "forge and forge-gui decode and encode, Hearth decodes; decoded AC-4 plays through the PCM monitor"
           ],
           [
             "configured",
             "experimental-ci",
-            "ac3cli only"
+            "forge only"
           ]
         ],
         [
@@ -1156,12 +1156,12 @@
           [
             "configured",
             "ci",
-            "ac3cli and ac3gui decode and encode, Hearth decodes; decoded AC-4 plays through the PCM monitor"
+            "forge and forge-gui decode and encode, Hearth decodes; decoded AC-4 plays through the PCM monitor"
           ],
           [
             "configured",
             "ci",
-            "ac3cli and ac3gui decode and encode, Hearth decodes"
+            "forge and forge-gui decode and encode, Hearth decodes"
           ]
         ],
         [
@@ -1331,17 +1331,17 @@
           [
             "source",
             "ci",
-            "ac3cli and ac3gui; audio untested"
+            "forge and forge-gui; audio untested"
           ],
           [
             "source",
             "ci",
-            "ac3cli and ac3gui; audio untested"
+            "forge and forge-gui; audio untested"
           ],
           [
             "configured",
             "ci",
-            "the DMG carries ac3cli and ac3gui"
+            "the DMG carries forge and forge-gui"
           ]
         ],
         [
@@ -1695,7 +1695,7 @@
           [
             "limited",
             "hardware",
-            "behind CONFIG_AC3FORGE_AC4; 2.0 in real time, wider layouts slower"
+            "behind CONFIG_ICLFORGE_AC4; 2.0 in real time, wider layouts slower"
           ],
           [
             "unavailable",
@@ -1877,7 +1877,7 @@
         "AC-4 encode",
         "Public API",
         "File: mono to 5.1, and 5.0.4 and 5.1.4 (3.0, 7.X and 7.X.4 experimental), several substreams and presentations, objects from a scene file, a WAV file's channels, or an ADM or IAB master (experimental), every encoder option; record and live capture in mono, stereo, 5.0 or 5.1",
-        "File: mono to 5.1, one substream, and objects (A-JOC or direct-coded), raw or MP4, the ac3cli line echoed",
+        "File: mono to 5.1, one substream, and objects (A-JOC or direct-coded), raw or MP4, the forge line echoed",
         "No",
         "No"
       ],
@@ -1969,9 +1969,9 @@
       "platform": "Windows",
       "variant": "x64",
       "state": "published",
-      "artifact": "NSIS installer or ZIP containing ac3cli and ac3gui",
+      "artifact": "NSIS installer or ZIP containing forge and forge-gui",
       "action": "Open GitHub releases",
-      "url": "https://github.com/iainchesworthlabs/ac3forge/releases/latest",
+      "url": "https://github.com/iainchesworthlabs/iclforge/releases/latest",
       "note": "The binaries are unsigned; Windows may show a SmartScreen warning."
     },
     {
@@ -1979,19 +1979,19 @@
       "platform": "Windows",
       "variant": "ARM64",
       "state": "published",
-      "artifact": "NSIS installer or ZIP containing ac3cli",
+      "artifact": "NSIS installer or ZIP containing forge",
       "action": "Open GitHub releases",
-      "url": "https://github.com/iainchesworthlabs/ac3forge/releases/latest",
-      "note": "The CI leg is experimental and ac3gui is not included."
+      "url": "https://github.com/iainchesworthlabs/iclforge/releases/latest",
+      "note": "The CI leg is experimental and forge-gui is not included."
     },
     {
       "product": "Forge",
       "platform": "Linux",
       "variant": "x86_64",
       "state": "published",
-      "artifact": "TGZ, DEB or RPM; ac3gui is also available as an AppImage",
+      "artifact": "TGZ, DEB or RPM; forge-gui is also available as an AppImage",
       "action": "Open GitHub releases",
-      "url": "https://github.com/iainchesworthlabs/ac3forge/releases/latest",
+      "url": "https://github.com/iainchesworthlabs/iclforge/releases/latest",
       "note": "Choose the package format used by your distribution."
     },
     {
@@ -1999,9 +1999,9 @@
       "platform": "Linux",
       "variant": "aarch64",
       "state": "published",
-      "artifact": "TGZ, DEB or RPM containing ac3cli and ac3gui",
+      "artifact": "TGZ, DEB or RPM containing forge and forge-gui",
       "action": "Open GitHub releases",
-      "url": "https://github.com/iainchesworthlabs/ac3forge/releases/latest",
+      "url": "https://github.com/iainchesworthlabs/iclforge/releases/latest",
       "note": "This is the Raspberry Pi 4/5 package when the operating system is 64-bit."
     },
     {
@@ -2009,9 +2009,9 @@
       "platform": "macOS",
       "variant": "Universal (Apple Silicon + Intel)",
       "state": "published",
-      "artifact": "Universal DMG containing ac3cli and ac3gui",
+      "artifact": "Universal DMG containing forge and forge-gui",
       "action": "Open GitHub releases",
-      "url": "https://github.com/iainchesworthlabs/ac3forge/releases/latest",
+      "url": "https://github.com/iainchesworthlabs/iclforge/releases/latest",
       "note": "The package is CI-tested; no project maintainer has used it on a Mac."
     },
     {
@@ -2021,7 +2021,7 @@
       "state": "configured",
       "artifact": "Separate Crucible ZIP when present in the release",
       "action": "Open GitHub releases",
-      "url": "https://github.com/iainchesworthlabs/ac3forge/releases/latest",
+      "url": "https://github.com/iainchesworthlabs/iclforge/releases/latest",
       "note": "Packaging is wired, but no tag has exercised this route. The archive has driver scripts; the test-signed driver must be built from source."
     },
     {
@@ -2031,7 +2031,7 @@
       "state": "configured",
       "artifact": "TGZ or DEB when present in the release",
       "action": "Open GitHub releases",
-      "url": "https://github.com/iainchesworthlabs/ac3forge/releases/latest",
+      "url": "https://github.com/iainchesworthlabs/iclforge/releases/latest",
       "note": "Packaging is wired, but no tag has exercised this route; the x86_64 asset is best-effort."
     },
     {
@@ -2041,7 +2041,7 @@
       "state": "configured",
       "artifact": "TGZ or DEB when present in the release",
       "action": "Open GitHub releases",
-      "url": "https://github.com/iainchesworthlabs/ac3forge/releases/latest",
+      "url": "https://github.com/iainchesworthlabs/iclforge/releases/latest",
       "note": "Packaging is wired, but no tag has exercised this route."
     },
     {
@@ -2092,7 +2092,7 @@
       "artifact": "No desktop package",
       "action": "Read Hearth status",
       "url": "hearth/",
-      "note": "The Qt/QML window has six pages and builds in CI. The release DMG carries only ac3cli and ac3gui, and the window has not been used on a Mac."
+      "note": "The Qt/QML window has six pages and builds in CI. The release DMG carries only forge and forge-gui, and the window has not been used on a Mac."
     },
     {
       "product": "Hearth",
@@ -2139,9 +2139,9 @@
       "platform": "Windows",
       "variant": "x64",
       "state": "published",
-      "artifact": "ac3forge-dev ZIP",
+      "artifact": "Development ZIP (the -dev- archive)",
       "action": "Open GitHub releases",
-      "url": "https://github.com/iainchesworthlabs/ac3forge/releases/latest",
+      "url": "https://github.com/iainchesworthlabs/iclforge/releases/latest",
       "note": "Contains headers, libraries and CMake package files."
     },
     {
@@ -2149,9 +2149,9 @@
       "platform": "Windows",
       "variant": "ARM64",
       "state": "published",
-      "artifact": "ac3forge-dev ZIP",
+      "artifact": "Development ZIP (the -dev- archive)",
       "action": "Open GitHub releases",
-      "url": "https://github.com/iainchesworthlabs/ac3forge/releases/latest",
+      "url": "https://github.com/iainchesworthlabs/iclforge/releases/latest",
       "note": "The CI leg is experimental."
     },
     {
@@ -2159,9 +2159,9 @@
       "platform": "Linux",
       "variant": "x86_64",
       "state": "published",
-      "artifact": "ac3forge-dev TGZ, DEB or RPM development package",
+      "artifact": "TGZ, DEB or RPM development package (the -dev- archive and the -dev packages)",
       "action": "Open GitHub releases",
-      "url": "https://github.com/iainchesworthlabs/ac3forge/releases/latest",
+      "url": "https://github.com/iainchesworthlabs/iclforge/releases/latest",
       "note": "The system packages separate runtime libraries from headers and CMake files."
     },
     {
@@ -2169,9 +2169,9 @@
       "platform": "Linux",
       "variant": "aarch64",
       "state": "published",
-      "artifact": "ac3forge-dev TGZ, DEB or RPM development package",
+      "artifact": "TGZ, DEB or RPM development package (the -dev- archive and the -dev packages)",
       "action": "Open GitHub releases",
-      "url": "https://github.com/iainchesworthlabs/ac3forge/releases/latest",
+      "url": "https://github.com/iainchesworthlabs/iclforge/releases/latest",
       "note": "Suitable for a 64-bit Raspberry Pi."
     },
     {
@@ -2179,9 +2179,9 @@
       "platform": "macOS",
       "variant": "Universal (Apple Silicon + Intel)",
       "state": "published",
-      "artifact": "Best-effort ac3forge-dev ZIP",
+      "artifact": "Best-effort development ZIP (the -dev- archive)",
       "action": "Open GitHub releases",
-      "url": "https://github.com/iainchesworthlabs/ac3forge/releases/latest",
+      "url": "https://github.com/iainchesworthlabs/iclforge/releases/latest",
       "note": "The development archive may be absent from a release."
     },
     {
@@ -2189,50 +2189,50 @@
       "platform": "Windows",
       "variant": "x64",
       "state": "published",
-      "artifact": "ac3forge wheel from PyPI",
+      "artifact": "Python wheel from PyPI",
       "action": "Open PyPI",
       "url": "https://pypi.org/project/ac3forge/",
-      "note": "Install with pip install ac3forge. Wheels up to 0.10.0b1 predate the ac3forge.ac4 module."
+      "note": "The pre-releases 0.9.0b1 and 0.10.0b1 are the project ac3forge: pip install ac3forge. A release made after the rename publishes the project iclforge: pip install iclforge. Wheels up to 0.10.0b1 have no AC-4 module."
     },
     {
       "product": "Python package",
       "platform": "Linux",
       "variant": "x86_64",
       "state": "published",
-      "artifact": "ac3forge wheel from PyPI",
+      "artifact": "Python wheel from PyPI",
       "action": "Open PyPI",
       "url": "https://pypi.org/project/ac3forge/",
-      "note": "Install with pip install ac3forge. Wheels up to 0.10.0b1 predate the ac3forge.ac4 module."
+      "note": "The pre-releases 0.9.0b1 and 0.10.0b1 are the project ac3forge: pip install ac3forge. A release made after the rename publishes the project iclforge: pip install iclforge. Wheels up to 0.10.0b1 have no AC-4 module."
     },
     {
       "product": "Python package",
       "platform": "Linux",
       "variant": "aarch64",
       "state": "configured",
-      "artifact": "ac3forge wheel, built by CI",
+      "artifact": "Python wheel, built by CI",
       "action": "Open PyPI",
       "url": "https://pypi.org/project/ac3forge/",
-      "note": "CI builds this wheel, but no release has carried it and PyPI has none for Linux on aarch64. Build from a checkout with pip install ./python."
+      "note": "CI builds this wheel, but no release has carried it and PyPI has none for Linux on aarch64. Build from a checkout with pip install ./python. The pre-releases are the project ac3forge; the project iclforge starts with a release made after the rename."
     },
     {
       "product": "Python package",
       "platform": "macOS",
       "variant": "Apple Silicon",
       "state": "published",
-      "artifact": "ac3forge wheel from PyPI",
+      "artifact": "Python wheel from PyPI",
       "action": "Open PyPI",
       "url": "https://pypi.org/project/ac3forge/",
-      "note": "Install with pip install ac3forge. Wheels up to 0.10.0b1 predate the ac3forge.ac4 module."
+      "note": "The pre-releases 0.9.0b1 and 0.10.0b1 are the project ac3forge: pip install ac3forge. A release made after the rename publishes the project iclforge: pip install iclforge. Wheels up to 0.10.0b1 have no AC-4 module."
     },
     {
       "product": "Python package",
       "platform": "macOS",
       "variant": "Intel",
       "state": "configured",
-      "artifact": "ac3forge wheel, built by CI",
+      "artifact": "Python wheel, built by CI",
       "action": "Open PyPI",
       "url": "https://pypi.org/project/ac3forge/",
-      "note": "CI builds this wheel, but no release has carried it and PyPI has none for macOS on Intel. Build from a checkout with pip install ./python."
+      "note": "CI builds this wheel, but no release has carried it and PyPI has none for macOS on Intel. Build from a checkout with pip install ./python. The pre-releases are the project ac3forge; the project iclforge starts with a release made after the rename."
     },
     {
       "product": "Browser demos",
@@ -2252,7 +2252,7 @@
       "artifact": "Source package under js/",
       "action": "Read the browser package guide",
       "url": "platforms/wasm/",
-      "note": "ac3forge-wasm-decoder has not been published to npm."
+      "note": "iclforge-wasm-decoder has not been published to npm."
     },
     {
       "product": "Shield Atmos Demo",
@@ -2261,7 +2261,7 @@
       "state": "published",
       "artifact": "Release APK",
       "action": "Open GitHub releases",
-      "url": "https://github.com/iainchesworthlabs/ac3forge/releases/latest",
+      "url": "https://github.com/iainchesworthlabs/iclforge/releases/latest",
       "note": "Sideload with adb; it is not distributed through the Play Store."
     }
   ]

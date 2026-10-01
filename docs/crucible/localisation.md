@@ -6,7 +6,7 @@ changes in the window when the language reads right to left, the glossary the tr
 held to, and how the catalogues are regenerated and gated.
 
 The pipeline itself — `LanguageManager`, the `.ts` and `.qm` files, the shared canonical language
-set — belongs to [ac3gui's localisation page](../forge/gui/localisation.md); Crucible reuses it rather
+set — belongs to [forge-gui's localisation page](../forge/gui/localisation.md); Crucible reuses it rather
 than carrying a second copy. What is below is Crucible's own half.
 
 ## What the chooser offers
@@ -19,18 +19,18 @@ re-read from the catalogue.
 | --- | --- | --- |
 | `en` | English | none — the `qsTr()` source text |
 | `fr` | Français | `apps/crucible/translations/crucible_fr.ts` |
-| `de` | Deutsch | `ac3crucible_de.ts` |
-| `es` | Español | `ac3crucible_es.ts` |
-| `ar` | العربية | `ac3crucible_ar.ts` |
-| `he` | עברית | `ac3crucible_he.ts` |
-| `yi` | יידיש | `ac3crucible_yi.ts` |
+| `de` | Deutsch | `crucible_de.ts` |
+| `es` | Español | `crucible_es.ts` |
+| `ar` | العربية | `crucible_ar.ts` |
+| `he` | עברית | `crucible_he.ts` |
+| `yi` | יידיש | `crucible_yi.ts` |
 
 ## How the language is chosen at launch
 
 Three sources, in this order; the first that names a language the app ships wins.
 
-1. `AC3GUI_LOCALE` in the environment. Nothing is written to the settings store when it is used,
-   so a run under it leaves the person's own choice alone. `ac3crucible --language <code>` sets
+1. `ICLFORGE_GUI_LOCALE` in the environment. Nothing is written to the settings store when it is used,
+   so a run under it leaves the person's own choice alone. `crucible --language <code>` sets
    it for that run: it is how a screenshot in one language is captured.
 2. The `language/code` setting, which the chooser writes. **System** removes it.
 3. The system locale, mapped to one of the seven. A locale the app does not ship falls back to
@@ -110,8 +110,8 @@ mechanical translations, not from a native speaker, and the review pass is where
 confirmed or replaced. What is not open to preference is consistency — one rendering per term
 per language, whichever it turns out to be.
 
-Never translated, in any of the six: AC3Forge, Crucible, Dolby Atmos, Atmos, Dolby Digital
-(Plus), E-AC-3, AC-3, JOC, PCM, HDMI, PipeWire, WirePlumber, Windows, `ac3forge` (lower case: the
+Never translated, in any of the six: ICL Forge, Crucible, Dolby Atmos, Atmos, Dolby Digital
+(Plus), E-AC-3, AC-3, JOC, PCM, HDMI, PipeWire, WirePlumber, Windows, `iclforge` (lower case: the
 library), the speaker abbreviations L/R/C/Ls/Rs, the bitrate labels, and 5.1 / 7.1 / 7.1.4.
 German may join a brand into a compound with hyphens — Dolby-Atmos-Szene — which is that
 language's own orthography and correct. The three palette names (Signal, Ink, Console) are
@@ -171,7 +171,7 @@ filled catalogues in this tree, so they are what a reviewer will find in the fil
 and writes what it finds into the six `.ts` files:
 
 ```sh
-cmake --build --preset <preset> --target ac3crucible_lupdate
+cmake --build --preset <preset> --target crucible_lupdate
 ```
 
 A new or reworded string arrives as `<translation type="unfinished">`, holding the previous text
@@ -199,12 +199,12 @@ large file. The sixteen contexts in the files today are `AboutDialog`, `AppRow`,
 `LicencesDialog`, `Main`, `OutputPage`, `QObject`, `Room3DView`, `RoomKeys`, `RoomPage`,
 `RoomView`, `RoomWords`, `SettingsPage` and `SignalPath`. The position phrases live under
 `RoomWords` since they moved out of `RoomPage.qml`; the renderings they had before that move are
-in `apps/crucible/translations/ac3crucible_<code>.ts` at commit `c5c9df76`, under `RoomPage`.
+in `apps/crucible/translations/crucible_<code>.ts` at commit `c5c9df76`, under `RoomPage`.
 
 ## What the gate checks
 
 `tests/crucible/test_translations.cpp` reads the six files and runs on every platform, in the
-plain `ac3tests` binary, so a developer's own `ctest` sees it:
+plain `iclforge-tests` binary, so a developer's own `ctest` sees it:
 
 | Rule | State |
 | --- | --- |
@@ -222,9 +222,9 @@ what they found. What they assert is that every entry has a translation, which i
 than that every translation is right — the review the glossary describes is what settles that, and
 arming these rules does not stand in for it.
 
-`.github/workflows/_ci-windows.yml` also runs `ac3crucible_lupdate` and then
-`git diff --exit-code -- apps/crucible/translations`, the way it already does for `ac3gui`. It
-runs on the `windows-msvc` leg alone, because the `ac3crucible_lupdate` target exists only where
+`.github/workflows/_ci-windows.yml` also runs `crucible_lupdate` and then
+`git diff --exit-code -- apps/crucible/translations`, the way it already does for `forge-gui`. It
+runs on the `windows-msvc` leg alone, because the `crucible_lupdate` target exists only where
 Crucible is configured and the matrix build tree carries Crucible on Windows; one leg is enough,
 since extraction does not depend on the compiler. It turns a forgotten regeneration into a red
 check rather than a quietly stale catalogue.
@@ -248,10 +248,10 @@ on an empty entry would say nothing about the pass.
 ## Screenshots in one language
 
 ```sh
-QT_QPA_PLATFORM=offscreen ac3crucible --language ar --page settings --shot crucible-settings-ar.png
+QT_QPA_PLATFORM=offscreen crucible --language ar --page settings --shot crucible-settings-ar.png
 ```
 
-`--language` sets `AC3GUI_LOCALE` for that run only, so a capture never moves the language the
+`--language` sets `ICLFORGE_GUI_LOCALE` for that run only, so a capture never moves the language the
 person chose. What to look at in the result: the header title at the right edge, the page switch
 and the status pill on the left, the combo-box chevrons on the left of their controls, the room
 plan's L speaker still on the left, the endpoint table's heads unclipped, and no missing-glyph

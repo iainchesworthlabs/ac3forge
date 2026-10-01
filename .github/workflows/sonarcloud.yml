@@ -95,8 +95,9 @@ jobs:
     name: SonarCloud scan
     needs: [preflight, toolchain-versions]
     # Forks never have SONAR_TOKEN and schedules do not run on them anyway; the
-    # repository check keeps a fork's manual dispatch from failing confusingly.
-    if: needs.preflight.outputs.configured == 'true' && github.repository == 'iainchesworthlabs/ac3forge'
+    # owner check keeps a fork's manual dispatch from failing confusingly. It names the owner
+    # and not the repository, so it holds before and after the repository is renamed.
+    if: needs.preflight.outputs.configured == 'true' && github.repository_owner == 'iainchesworthlabs'
     runs-on: ubuntu-latest
     # Same image and container ci.yml's coverage job builds this preset in, so
     # the GCC 16 toolchain script and the vcpkg cache behave identically here.
@@ -291,8 +292,8 @@ jobs:
       # sonar-project.properties from sonar.projectBaseDir, which the action
       # sets to `.`, and naming the file explicitly is a trap in a container
       # job. `github.workspace` expands on the HOST, to
-      # /home/runner/work/ac3forge/ac3forge, while the container sees the same
-      # tree at /__w/ac3forge/ac3forge - so the path resolves to nothing
+      # /home/runner/work/<repo>/<repo>, while the container sees the same
+      # tree at /__w/<repo>/<repo> - so the path resolves to nothing
       # inside, the scanner logs "Project root configuration file: NONE" and
       # fails on missing sonar.projectKey/sonar.organization. Every other
       # property below is relative and resolves against the base dir.

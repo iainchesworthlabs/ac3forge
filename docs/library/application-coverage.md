@@ -6,7 +6,7 @@ surface, not every internal call site.
 
 --8<-- "docs-snippets/generated/application-capabilities.md"
 
-“Internal audio layer” means `ac3::audio`, which applications in this repository link directly
+“Internal audio layer” means `iclforge::audio`, which applications in this repository link directly
 but the library development packages do not install. “Output policy” means Crucible selects that
 path according to the active device rather than presenting it as a separate command.
 

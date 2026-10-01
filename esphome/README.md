@@ -1,12 +1,12 @@
-# ac3forge for ESPHome
+# ICL Forge for ESPHome
 
-An ESPHome external component that pulls ac3forge into an ESP-IDF build and
+An ESPHome external component that pulls ICL Forge into an ESP-IDF build and
 exposes a decoder plus the streaming framer.
 
 ## What this is, and is not
 
-**Is:** the plumbing. `Ac3ForgeComponent` owns an `ac3::FrameDecoder` and an
-`ac3::io::AccessUnitAccumulator`; you feed it bytes and take planar float PCM
+**Is:** the plumbing. `IclForgeComponent` owns an `iclforge::FrameDecoder` and an
+`iclforge::io::AccessUnitAccumulator`; you feed it bytes and take planar float PCM
 back. `FrameDecoder` reads AC-3 alone: an E-AC-3 stream (bsid above 8), Atmos
 included, is framed but not decoded, and `decode()` then returns null with
 `failed()` set. There is no AC-4 here either.
@@ -22,23 +22,23 @@ lets it be built against something that already works.
 external_components:
   - source:
       type: git
-      url: https://github.com/iainchesworthlabs/ac3forge
+      url: https://github.com/iainchesworthlabs/iclforge
       ref: main
       path: esphome/components
-    components: [ac3forge]
+    components: [iclforge]
 
 esp32:
   board: esp32-s3-devkitc-1
   framework:
     type: esp-idf
 
-ac3forge:
-  version: v0.10.0-beta.1   # a git ref of ac3forge itself
+iclforge:
+  version: v0.10.0-beta.1   # a git ref of iclforge itself
   buffer_size: 16384
 ```
 
 Two refs are in play and they are not the same thing. The `external_components`
-`ref` picks the version of *this ESPHome component*; `ac3forge:`'s `version:`
+`ref` picks the version of *this ESPHome component*; `iclforge:`'s `version:`
 picks the version of *the library* it fetches. Pin both to tags for anything you
 intend to keep working.
 
@@ -75,7 +75,7 @@ has the table). It has not been timed through this component.
 
 ## Why a git dependency and not the registry
 
-ac3forge is not published to the ESP Component Registry yet — see
+ICL Forge is not published to the ESP Component Registry yet — see
 [`.github/workflows/esp-component.yml`](../.github/workflows/esp-component.yml)
 for why that publish job is deliberately not armed. ESPHome's
 `add_idf_component` writes `git:`, `version:` and `path:` straight into the
@@ -92,6 +92,6 @@ including the `add_idf_component` call, whose signature is not covered by any
 stability promise. CI also asserts that a `buffer_size` no access unit fits in
 is *rejected*, because a bound that never rejects is not a bound.
 
-CI does not compile the firmware: that would clone ac3forge at the configured
+CI does not compile the firmware: that would clone ICL Forge at the configured
 ref and build the whole IDF project, which says nothing about the code under
 review because the ref it fetched is not that code.

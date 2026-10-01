@@ -3,10 +3,10 @@
 *Maintainer notes - CI structure; not a build or contribution guide.*
 
 For triaging GitHub Advanced Security code-scanning alerts on pull requests, see
-[`tools/ci/code_scanning_triage.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/ci/code_scanning_triage.md).
+[`tools/ci/code_scanning_triage.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/tools/ci/code_scanning_triage.md).
 
 Pull requests and merge-queue entries run
-[`pr-gate.yml`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/pr-gate.yml),
+[`pr-gate.yml`](https://github.com/iainchesworthlabs/iclforge/blob/main/.github/workflows/pr-gate.yml),
 described in [CI for many agents](ci-agentic.md), and `ci.yml` has no `pull_request` or
 `merge_group` trigger. `ci.yml` runs on every push to main (one run at a time), on the nightly
 schedule, and on a dispatch, and it uses the lanes on this page to decide what to run: a lane is a
@@ -375,7 +375,7 @@ longer written in those files: the legs are listed in `.github/ci/legs.jsonc`, `
 | `.github/workflows/_ci-macos.yml` | macos-llvm, macos-llvm-x64 | Install Qt6/LLVM/ffmpeg (macOS), Assert Crucible built (shared with Windows), the universal-merge install-tree uploads |
 
 Steps that applied to more than one OS in the original job (`Package`, `Upload package
-artifacts`, `Assert the AC3Forge Crucible was built`, `Assert the CLI man page and completions
+artifacts`, `Assert the Crucible was built`, `Assert the CLI man page and completions
 were packaged (Linux/macOS)`, `Install Ninja`) are reproduced verbatim in every file whose OS
 their own `if:` condition already covers, rather than pulled into a third composite - each one is
 already self-contained (branches on `runner.os`/`matrix.preset` internally), so copying it costs a

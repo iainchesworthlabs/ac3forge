@@ -1,6 +1,6 @@
 # Fuzzing
 
-libFuzzer harnesses over every place ac3forge parses externally-supplied
+libFuzzer harnesses over every place ICL Forge parses externally-supplied
 binary data. This is the codec's natural attack surface: its whole job is
 decoding bitstreams whose structure it cannot control, and the project has
 already had one bug in this class - commit `8386c8f` fixed a decoder
@@ -29,22 +29,22 @@ equivalent) before `fuzz/run.sh` will link.
 
 ## `-Werror` is on for this build too
 
-This build once opted out of `ac3::warnings`: `AC3FORGE_BUILD_FUZZERS` skipped
-linking it into `ac3forge`, on the stated assumption that the codebase carried
+This build once opted out of `iclforge::warnings`: `ICLFORGE_BUILD_FUZZERS` skipped
+linking it into `iclforge`, on the stated assumption that the codebase carried
 roughly sixteen sign-conversion and double-promotion sites that only the
 Windows MSVC leg had ever been held to, and that clearing them belonged to the
 cross-platform porting task rather than to fuzzing.
 
 That number was never measured, and it was wrong. Building the harnesses with
-`ac3::warnings` linked in, under Clang 21 with the full set
+`iclforge::warnings` linked in, under Clang 21 with the full set
 (`-Werror -Wconversion -Wsign-conversion -Wdouble-promotion -Wold-style-cast`
 and the rest) alongside ASan/UBSan/libFuzzer, produces **zero** warnings - the
 other legs had gone green in the meantime and taken the debt with them. The
-exemption was removed rather than re-justified, so `ac3forge` now compiles
+exemption was removed rather than re-justified, so `iclforge` now compiles
 under one warning set in every configuration, this one included.
 
-All harness executables link `ac3::warnings` too, and had no warnings of
-their own either. They need to name it explicitly: `ac3forge` links it
+All harness executables link `iclforge::warnings` too, and had no warnings of
+their own either. They need to name it explicitly: `iclforge` links it
 `PRIVATE`, so the flags govern the library's own sources and do not propagate
 to anything downstream of it.
 
@@ -144,7 +144,7 @@ reports, each surfacing once the one before it was fixed:
   sized to wrote one element past the end of it. (ASan
   `stack-buffer-overflow`: a 4-byte write at offset 1076 of a 1012-byte frame
   object.)
-- `ac3::signing`'s own per-channel tally took `subspan(0, endmant)` of the
+- `iclforge::signing`'s own per-channel tally took `subspan(0, endmant)` of the
   exponent array the walk had actually recovered, without checking that
   `endmant` fits in it. That is a precondition, not a clamp: on an empty
   span it manufactures one with a null data pointer and a non-zero size,
@@ -160,7 +160,7 @@ means such a frame is never signed or verified against a bit range that was
 never right. The same shape as `8386c8f`, the bug this directory was created
 for.
 
-**`ac3adm::parse_bw64` allocated from declared chunk sizes.** Three reports,
+**`iclforge::adm::parse_bw64` allocated from declared chunk sizes.** Three reports,
 two distinct causes:
 
 - `read_pcm` sized its PCM buffer from the DECLARED `<data>` chunk size, so a
@@ -170,13 +170,13 @@ two distinct causes:
 - any OTHER over-claiming chunk did the same thing one layer down: libbw64
   materialises every chunk it reads except `<data>` into a `std::vector`
   sized straight from the chunk header, inside `readFile()`, before any
-  ac3forge code runs. Reported twice, at two different chunk ids, one of them
+  ICL Forge code runs. Reported twice, at two different chunk ids, one of them
   using RF64's `0xFFFFFFFF` escape value. `adm.cpp`'s `chunk_sizes_fit()`
   refuses it. The allocation itself is in third-party code, and the residual
   gap is stated in that function's own comment rather than papered over.
 
 **`verify_atmos_frame` inherited the SIGNER's debug subset assertion**, so a
-Debug build aborted on `ac3cli decode <plain stereo>.ec3 out.wav
+Debug build aborted on `forge decode <plain stereo>.ec3 out.wav
 verify-objects` - an ordinary input for an operation whose whole job is
 checking streams its caller did not produce. Found while writing the harness
 rather than by it: these builds are NDEBUG, so the harness could not have
@@ -214,7 +214,7 @@ coverage number that quietly stopped improving.
 ## Status: the IAB and AC-4 harnesses, instrumented
 
 `fuzz_iab_parse` and `fuzz_ac4_parse` were added without their libraries in
-`fuzz/CMakeLists.txt`'s instrumented set: `ac3iab_objects` and `ac4_objects`
+`fuzz/CMakeLists.txt`'s instrumented set: `iclforge_iab_objects` and `iclforge_ac4_objects`
 compiled with no ASan, UBSan or coverage flags. The harness executable still
 carried the sanitizer runtime, so a segfault, a timeout or an oversized
 allocation stopped a run, but nothing the parser did within its own memory was
@@ -275,7 +275,7 @@ escape through `variable_bits()` could overflow.
 `fuzz_ac4_decode` and `fuzz_ac4_encode` are in `fuzz/run.sh`'s default list, so
 `fuzz-regress`, `fuzz-short` and `fuzz-nightly` run them with the others.
 `fuzz/CMakeLists.txt` instruments `ac4core`, `ac4dec_objects` and
-`ac4enc_objects` for them, as it does `ac4_objects` for `fuzz_ac4_parse`.
+`ac4enc_objects` for them, as it does `iclforge_ac4_objects` for `fuzz_ac4_parse`.
 `fuzz_ac4_decode` starts from `fuzz_ac4_parse`'s seeds and keeps regressions of
 its own, four so far:
 
@@ -311,7 +311,7 @@ merge.
 
 `fuzz_adm_parse` was the last harness whose library sat outside the instrumented
 set, and the only one that needed a change to a dependency before it could join.
-libbw64 is header-only, so instrumenting `ac3adm_objects` instruments the libbw64
+libbw64 is header-only, so instrumenting `iclforge_adm_objects` instruments the libbw64
 code it compiles, and UBSan stopped the harness a few hundred executions in,
 inside `UnknownChunk`'s constructor.
 
@@ -320,7 +320,7 @@ inside `UnknownChunk`'s constructor.
 Same caveat as the sections above — a point-in-time result, not a standing
 guarantee. Measured on WSL2 Ubuntu 26.04, Clang 22.1.2, `RelWithDebInfo` +
 ASan/UBSan, 300 s per build from an empty grown corpus. "Before" is
-`ac3adm_objects` uninstrumented, as it shipped; "after" is instrumented, with a
+`iclforge_adm_objects` uninstrumented, as it shipped; "after" is instrumented, with a
 patch for the constructor above and the fixes below applied. The replay column
 feeds each grown corpus, plus the committed seeds and regressions, through the
 same instrumented binary with `-runs=0`:
@@ -334,12 +334,12 @@ The committed seeds and regressions replay at 1,379 / 1,573 on their own, so tha
 is the floor each grown corpus is adding to.
 
 The uninstrumented build's `cov` counts the harness translation unit alone: with
-no counters inside `ac3adm` or libbw64, an input reaching a new path in the reader
+no counters inside `iclforge::adm` or libbw64, an input reaching a new path in the reader
 did not register as new, and was not kept. Its execution rate was the higher one
 until the findings below were fixed — several of them cost whole seconds per
 execution, and the instrumented run reached 489 exec/s once they were gone.
 
-**What it found.** Two in libbw64, patched at the time; the rest in `ac3adm`'s
+**What it found.** Two in libbw64, patched at the time; the rest in `iclforge::adm`'s
 own code. Each has a reproducer under `fuzz/regressions/fuzz_adm_parse/`:
 
 - **`&buffer[0]` of an empty `std::vector<char>`**, in libbw64's `UnknownChunk`
@@ -352,7 +352,7 @@ own code. Each has a reproducer under `fuzz/regressions/fuzz_adm_parse/`:
   buffer is sized from the wrapped value and decoded against the real one. WAVE's
   own `nBlockAlign` field is 16 bits too, so the file's declared value matches the
   wrapped one and libbw64's sanity check passes. The 32,768-channel form divides
-  by the wrapped 0 instead. An uninstrumented `ac3adm` runs the overread as a
+  by the wrapped 0 instead. An uninstrumented `iclforge::adm` runs the overread as a
   clean execution and returns it as audio. (`block-align-wraps-to-zero`.)
 - **A 1.7 GB allocation**, from an RF64 `<data>` declaring more bytes than the
   file holds: `chunk_sizes_fit()` allows that, since a truncated recording is an
@@ -421,7 +421,7 @@ reasoning and for the upstream PRs proposing the same fixes, which would let
 each half of this patch be deleted once it lands.
 
 Re-measured the same way as the first pass, with this instrumented build now
-the sole build (there is no meaningful "before" any more - `ac3adm_objects` has
+the sole build (there is no meaningful "before" any more - `iclforge_adm_objects` has
 been instrumented since the first pass, and the library underneath it changed,
 not the instrumentation):
 
@@ -443,29 +443,29 @@ way the fixed findings used to.
 
 | Harness              | Calls                                                              |
 |-----------------------|--------------------------------------------------------------------|
-| `fuzz_scan`            | `ac3::io::scan` - format-sniffing before any decoder commits to a layout |
-| `fuzz_matroska_demux`  | `matroska::demux` + `matroska::Reader` - the EBML walk over a container from a disc rip, a broadcast capture or a download, every length in it self-declared. Both entry points run on the same bytes, the reader in chunks whose size the input's first byte sets |
-| `fuzz_mp4_demux`       | `mp4::demux` + `mp4::Reader` - the box walk, and the sample table it resolves against the file: an index of self-declared offsets and sizes. Both entry points run on the same bytes, the reader in chunks whose size the input's first byte sets |
-| `fuzz_mpegts_demux`    | `mpegts::demux` + `mpegts::Reader` - sync search, PSI section reassembly and PES reassembly, every loop driven by a self-declared length, over a format that is expected to arrive damaged. Both entry points run on the same bytes, the reader in chunks whose size the input's first byte sets |
-| `fuzz_ac3_decode`      | `ac3::split_frames` + `ac3::FrameDecoder::decode_frame`, one decoder across all frames, the way `ac3cli decode` drives it |
-| `fuzz_eac3_decode`     | `ac3::split_access_units` + `ac3::Eac3Decoder::decode_access_unit` (which calls `decode_substream` internally), the way `ac3cli decode` drives it for E-AC-3 |
+| `fuzz_scan`            | `iclforge::io::scan` - format-sniffing before any decoder commits to a layout |
+| `fuzz_matroska_demux`  | `iclforge::matroska::demux` + `iclforge::matroska::Reader` - the EBML walk over a container from a disc rip, a broadcast capture or a download, every length in it self-declared. Both entry points run on the same bytes, the reader in chunks whose size the input's first byte sets |
+| `fuzz_mp4_demux`       | `iclforge::mp4::demux` + `iclforge::mp4::Reader` - the box walk, and the sample table it resolves against the file: an index of self-declared offsets and sizes. Both entry points run on the same bytes, the reader in chunks whose size the input's first byte sets |
+| `fuzz_mpegts_demux`    | `iclforge::mpegts::demux` + `iclforge::mpegts::Reader` - sync search, PSI section reassembly and PES reassembly, every loop driven by a self-declared length, over a format that is expected to arrive damaged. Both entry points run on the same bytes, the reader in chunks whose size the input's first byte sets |
+| `fuzz_ac3_decode`      | `iclforge::split_frames` + `iclforge::FrameDecoder::decode_frame`, one decoder across all frames, the way `forge decode` drives it |
+| `fuzz_eac3_decode`     | `iclforge::split_access_units` + `iclforge::Eac3Decoder::decode_access_unit` (which calls `decode_substream` internally), the way `forge decode` drives it for E-AC-3 |
 | `fuzz_differential_ac3_decode`, `fuzz_differential_eac3_decode` | The same paths as the two rows above; the same bytes are then decoded by FFmpeg and the PCM compared. Not in the default list; see "Differential mode" below |
-| `fuzz_wav_read`        | `ac3::io::read_wav` - a realistic input too (a truncated or hand-edited WAV), not only an adversarial one |
-| `fuzz_iec61937_unwrap` | `ac3::iec61937::BurstReader` + `unwrap_stream` - IEC 61937 burst de-framing, driven the way `ac3cli unspdif` drives it. The input is by definition off a wire (an S/PDIF or HDMI capture), and `Pd` states a length the parser must not believe past its data type's repetition period. Pushed as two chunks split at a mutation-chosen point, so the state machine's carry-across-a-chunk-boundary paths are reachable. The input also goes to `Ac4BurstPacker` as an AC-4 sync frame (IEC 61937-14), whose burst must be its period long and read back as the frame |
-| `fuzz_iab_parse`       | `ac3iab::parse_iabitstream`, `parse_mxf_iab` and `parse_iaframe` on one input - the IAB bitstream's Preamble+IAFrame run (§7), the KLV wrapper of an IAB track file in MXF, and one extracted frame (§9.1). Built with `AC3FORGE_BUILD_IAB` |
-| `fuzz_ac4_parse`       | `ac4::scan`, `ac4::SyncFrameSplitter` and `ac4::parse_raw_frame` - sync search and the table of contents, on each sync frame `scan` finds and on the whole input as one raw frame, so a mutated table of contents is reached without a well-formed sync frame having to be guessed first; then `ac4::build_dac4` and its refusals, the CMAF rules, the codec string and the manifest functions (`signalled_presentation` and the rest, Part 2 Annex G, and Annex H.1.2.4's `configuration_difference`) on every table of contents that reads. Built with `AC3FORGE_BUILD_AC4` |
-| `fuzz_ac4_decode`      | `ac4::Decoder::parse` and `decode` - every substream below the table of contents (section lengths, Huffman codewords, A-SPX envelope counts, DRC gain sets, EMDF payloads) and the reconstruction to PCM, A-SPX, A-CPL, the immersive element, A-JOC, the object audio metadata and the intermediate spatial format among it. The input's last three bytes choose the output processing, the concealment policy, the presentation, core decoding and the renderer's layout, and half way through a stream the settings change as a player's do. Its seeds are `fuzz_ac4_parse`'s |
-| `fuzz_ac4_encode`      | `ac4::Encoder` over the configuration the input's first bytes choose (layouts from mono to 7.1 and the immersive ones, rates, codec modes, I-frames, frame rates, metadata, DRC, downmix, dialogue enhancement, substreams and presentations) and the samples after them as 32-bit floats, NaN and values far past full scale included. Every frame must read back through the decoder's syntax layer with the encoder's own trace, decode to finite PCM, and come out the same from a second encoder. It draws no objects; `tools/ci/fuzz_ac4_encoder_space.py` does |
-| `fuzz_emdf_parse`      | `ac3::emdf::parse_container` - ETSI TS 102 366 Annex H's container, located by a bit-by-bit sync scan and sized by its own 16-bit length field |
-| `fuzz_oamd_parse`      | `ac3::oba::parse_payload` - TS 103 420 §5's `object_audio_metadata_payload`, as recovered from an EMDF payload with id 11 |
-| `fuzz_joc_parse`       | `ac3::oba::joc::parse_payload` - TS 103 420 §6's `joc()` payload: Huffman-coded coefficients into a matrix sized from the stream's own numbers |
-| `fuzz_signing_verify`  | `ac3::signing::verify_atmos_stream` + `verify_atmos_frame` - operator-supplied stream, operator-supplied key, no CRC check in front of either |
-| `fuzz_osc_parse`       | `ac3::oba::parse_osc_packet` - the OSC 1.0 wire form of a live object-position update (live OSC object positions), reached straight from a UDP datagram by `ac3::audio::LivePositionSource` whenever `positions=osc:<port>` is in play. No CRC, no container, no bitstream ahead of it at all - this project's first NETWORK-facing input rather than a file or capture-device one; see `docs/threat-model.md` |
-| `fuzz_adm_parse`       | `ac3adm::parse_bw64(std::istream&)` - BW64/RF64 chunks plus an arbitrary ADM XML document. Opt-in, see below |
-| `fuzz_sendspin_json`   | `ac3::sendspin::json::Document::parse` - the JSON of every Sendspin message, the first code a network peer's bytes reach on ac3hearth's server and on a sink. Every accessor runs on every value parsed, and the document is written back out and parsed again, which must give the same text |
-| `fuzz_sendspin_handshake` | `ac3::sendspin::handshake`'s parsers - `client/init` (read by a server from a client nothing has authenticated), `server/init`, `server/error`, `noise/handshake`, and the payloads of the two Noise messages. Whatever parses is written back out and must parse to the same value |
-| `fuzz_sendspin_messages` | `ac3::sendspin::messages`' and `ac3::sendspin::pairing_messages`' readers - the core messages after the handshake, from `client/hello` to `group/update`, with the `_ac3forge_player@v1` objects four of them carry, and the pairing messages, each read in the specification's dialect and aiosendspin 9.1.1's. Whatever reads is written back out, and that text must read and write back to itself |
-| `fuzz_sendspin_frames` | `ac3::sendspin::Reassembler`, `parse_player_chunk` and `parse_burst_chunk` - transport-mode fragment reassembly in the specification's form and aiosendspin 9.1.1's, and the `player@v1` chunk parser, in both forms of its header, and the `_ac3forge_player@v1` one. The input is a control byte and length-prefixed frames; for one input in eight, chosen by three control bits, the input is also repeated past two frames, split in both fragment forms, and checked to reassemble |
+| `fuzz_wav_read`        | `iclforge::io::read_wav` - a realistic input too (a truncated or hand-edited WAV), not only an adversarial one |
+| `fuzz_iec61937_unwrap` | `iclforge::iec61937::BurstReader` + `unwrap_stream` - IEC 61937 burst de-framing, driven the way `forge unspdif` drives it. The input is by definition off a wire (an S/PDIF or HDMI capture), and `Pd` states a length the parser must not believe past its data type's repetition period. Pushed as two chunks split at a mutation-chosen point, so the state machine's carry-across-a-chunk-boundary paths are reachable. The input also goes to `Ac4BurstPacker` as an AC-4 sync frame (IEC 61937-14), whose burst must be its period long and read back as the frame |
+| `fuzz_iab_parse`       | `iclforge::iab::parse_iabitstream`, `parse_mxf_iab` and `parse_iaframe` on one input - the IAB bitstream's Preamble+IAFrame run (§7), the KLV wrapper of an IAB track file in MXF, and one extracted frame (§9.1). Built with `ICLFORGE_BUILD_IAB` |
+| `fuzz_ac4_parse`       | `iclforge::ac4::scan`, `iclforge::ac4::SyncFrameSplitter` and `iclforge::ac4::parse_raw_frame` - sync search and the table of contents, on each sync frame `scan` finds and on the whole input as one raw frame, so a mutated table of contents is reached without a well-formed sync frame having to be guessed first; then `iclforge::ac4::build_dac4` and its refusals, the CMAF rules, the codec string and the manifest functions (`signalled_presentation` and the rest, Part 2 Annex G, and Annex H.1.2.4's `configuration_difference`) on every table of contents that reads. Built with `ICLFORGE_BUILD_AC4` |
+| `fuzz_ac4_decode`      | `iclforge::ac4::Decoder::parse` and `decode` - every substream below the table of contents (section lengths, Huffman codewords, A-SPX envelope counts, DRC gain sets, EMDF payloads) and the reconstruction to PCM, A-SPX, A-CPL, the immersive element, A-JOC, the object audio metadata and the intermediate spatial format among it. The input's last three bytes choose the output processing, the concealment policy, the presentation, core decoding and the renderer's layout, and half way through a stream the settings change as a player's do. Its seeds are `fuzz_ac4_parse`'s |
+| `fuzz_ac4_encode`      | `iclforge::ac4::Encoder` over the configuration the input's first bytes choose (layouts from mono to 7.1 and the immersive ones, rates, codec modes, I-frames, frame rates, metadata, DRC, downmix, dialogue enhancement, substreams and presentations) and the samples after them as 32-bit floats, NaN and values far past full scale included. Every frame must read back through the decoder's syntax layer with the encoder's own trace, decode to finite PCM, and come out the same from a second encoder. It draws no objects; `tools/ci/fuzz_ac4_encoder_space.py` does |
+| `fuzz_emdf_parse`      | `iclforge::emdf::parse_container` - ETSI TS 102 366 Annex H's container, located by a bit-by-bit sync scan and sized by its own 16-bit length field |
+| `fuzz_oamd_parse`      | `iclforge::oba::parse_payload` - TS 103 420 §5's `object_audio_metadata_payload`, as recovered from an EMDF payload with id 11 |
+| `fuzz_joc_parse`       | `iclforge::oba::joc::parse_payload` - TS 103 420 §6's `joc()` payload: Huffman-coded coefficients into a matrix sized from the stream's own numbers |
+| `fuzz_signing_verify`  | `iclforge::signing::verify_atmos_stream` + `verify_atmos_frame` - operator-supplied stream, operator-supplied key, no CRC check in front of either |
+| `fuzz_osc_parse`       | `iclforge::oba::parse_osc_packet` - the OSC 1.0 wire form of a live object-position update (live OSC object positions), reached straight from a UDP datagram by `iclforge::audio::LivePositionSource` whenever `positions=osc:<port>` is in play. No CRC, no container, no bitstream ahead of it at all - this project's first NETWORK-facing input rather than a file or capture-device one; see `docs/threat-model.md` |
+| `fuzz_adm_parse`       | `iclforge::adm::parse_bw64(std::istream&)` - BW64/RF64 chunks plus an arbitrary ADM XML document. Opt-in, see below |
+| `fuzz_sendspin_json`   | `iclforge::sendspin::json::Document::parse` - the JSON of every Sendspin message, the first code a network peer's bytes reach on hearth's server and on a sink. Every accessor runs on every value parsed, and the document is written back out and parsed again, which must give the same text |
+| `fuzz_sendspin_handshake` | `iclforge::sendspin::handshake`'s parsers - `client/init` (read by a server from a client nothing has authenticated), `server/init`, `server/error`, `noise/handshake`, and the payloads of the two Noise messages. Whatever parses is written back out and must parse to the same value |
+| `fuzz_sendspin_messages` | `iclforge::sendspin::messages`' and `iclforge::sendspin::pairing_messages`' readers - the core messages after the handshake, from `client/hello` to `group/update`, with the `_iclforge_player@v1` objects four of them carry, and the pairing messages, each read in the specification's dialect and aiosendspin 9.1.1's. Whatever reads is written back out, and that text must read and write back to itself |
+| `fuzz_sendspin_frames` | `iclforge::sendspin::Reassembler`, `parse_player_chunk` and `parse_burst_chunk` - transport-mode fragment reassembly in the specification's form and aiosendspin 9.1.1's, and the `player@v1` chunk parser, in both forms of its header, and the `_iclforge_player@v1` one. The input is a control byte and length-prefixed frames; for one input in eight, chosen by three control bits, the input is also repeated past two frames, split in both fragment forms, and checked to reassemble |
 
 ### The object and metadata layer (signing-verify fuzz walk)
 
@@ -483,7 +483,7 @@ matters more here than reach. `fuzz/metadata-seeds.py extract` pulls the real
 containers and the real OAMD/JOC payloads out of the Atmos streams
 `generate-seeds.sh` has just encoded, so each harness starts from bytes its
 own parser accepts; reaching the same states through a container would spend
-most of the budget on container syntax instead. Nothing in `ac3cli` dumps a
+most of the budget on container syntax instead. Nothing in `forge` dumps a
 raw payload, and the container is not byte-aligned inside the frame carrying
 it (`put_skip_field` writes it 8 bits at a time from wherever the audio
 happened to end), so the extractor locates it with the same bit-by-bit sync
@@ -502,20 +502,20 @@ caller's own buffer, and a caller signs a stream it just encoded.
 ### The ADM harness is opt-in
 
 `fuzz_adm_parse` is the one harness here not built by default, and not in
-`fuzz/run.sh`'s default target list. `ac3adm` is the one library in this
-build with a third-party dependency footprint beyond {fmt}: `AC3FORGE_BUILD_ADM`
+`fuzz/run.sh`'s default target list. `iclforge::adm` is the one library in this
+build with a third-party dependency footprint beyond {fmt}: `ICLFORGE_BUILD_ADM`
 is OFF by default, and turning it on additionally needs vcpkg's `adm` feature
 for libadm's Boost headers plus network access for the `FetchContent` pulls of
 libbw64 and libadm themselves - none of which anything else in this build
-touches. `AC3FORGE_FUZZ_ADM=1 VCPKG_ROOT=... fuzz/run.sh` turns all of that
+touches. `ICLFORGE_FUZZ_ADM=1 VCPKG_ROOT=... fuzz/run.sh` turns all of that
 on and appends the harness to the default list.
 
-It is also the one harness whose reports may not land in ac3forge's own code:
+It is also the one harness whose reports may not land in ICL Forge's own code:
 BW64 chunk-walking is libbw64's and ADM XML is libadm's. That is worth
-knowing either way - the bytes reach them through an `ac3adm::` API this
+knowing either way - the bytes reach them through an `iclforge::adm::` API this
 project ships - but it changes what "fix it" means for a finding here.
 
-`ac3::io::read_wav` takes a path rather than a byte span, so
+`iclforge::io::read_wav` takes a path rather than a byte span, so
 `fuzz_wav_read` round-trips libFuzzer's buffer through a scratch file
 (`/dev/shm` when available) before calling it - the one unavoidable step
 beyond calling the function directly, since there is no in-memory
@@ -538,14 +538,14 @@ before the parser it was aimed at.
 `fuzz_ac3_decode` and `fuzz_eac3_decode` now define an
 `LLVMFuzzerCustomMutator` (`fuzz/crc_mutator.hpp`): run libFuzzer's own
 mutation first, then walk the result as a concatenation of syncframes -
-same bsid-at-bit-40 test and same two size derivations `ac3::split_frames`
+same bsid-at-bit-40 test and same two size derivations `iclforge::split_frames`
 uses - and rewrite each frame's CRC words in place.
 
 Re-stamping is not a naive recompute. crc2 is an ordinary trailing CRC, but
 crc1 **precedes** the region it protects: A/52 §7.10.1 requires the register
 to read zero after the first 5/8 of the syncframe has been shifted through,
 and says outright that crc1 is not the CRC of that region. It has to be
-solved for, through the GF(2) polynomial inverse `ac3::solve_leading_crc`
+solved for, through the GF(2) polynomial inverse `iclforge::solve_leading_crc`
 implements - the same call `src/ac3/src/encoder/encoder.cpp` makes, down to
 its crc2 == `kSyncWord` avoidance step (a crc2 that happens to equal 0x0B77
 would make the frame's own tail look like the start of the next syncframe, so
@@ -634,13 +634,13 @@ audio, ever emit a stream a decoder refuses" - is
 **`tools/ci/fuzz_encoder_space.py`**, and nothing here asks it.
 
 It is not a libFuzzer target and not part of `fuzz/run.sh`: it drives the real
-`ac3cli`, so it needs the ordinary CLI build rather than this directory's
+`forge`, so it needs the ordinary CLI build rather than this directory's
 sanitizer/libFuzzer toolchain, and its failure signal is a decoder refusing a
 stream rather than a sanitizer report. Per case it draws a random legal
 encoder configuration (layout, bitrate, coupling, DRC, heavy compression,
 dialnorm, downmix levels, forward-MDCT path), draws adversarial PCM built per
 256-sample BLOCK so a frame's character can change part-way through it,
-encodes, and then decodes the result with BOTH `ac3cli decode` and FFmpeg's
+encodes, and then decodes the result with BOTH `forge decode` and FFmpeg's
 strict decode - the same invocation `tools/ci/run_codec_matrix.sh` uses. A
 refusal from either fails the case, with one arbitrated exception: when only
 FFmpeg's default invocation refuses and the same bytes decode cleanly under
@@ -660,7 +660,7 @@ thoroughly would never have found it. The harness finds it in seconds; that
 was verified by reverting the fix and running it (see the file's own header).
 
 ```bash
-AC3CLI=build/config-linux-llvm/bin/ac3cli python3 tools/ci/fuzz_encoder_space.py --seconds 120
+ICLFORGE_CLI=build/config-linux-llvm/bin/forge python3 tools/ci/fuzz_encoder_space.py --seconds 120
 python3 tools/ci/fuzz_encoder_space.py --check-envelope      # re-measure the rate floors it draws from
 python3 tools/ci/fuzz_encoder_space.py --replay <case-seed>  # rerun one exact failing case
 python3 tools/ci/fuzz_encoder_space.py --regressions         # replay every recorded past failure
@@ -758,7 +758,7 @@ limit, `--check-envelope` gates the refusal staying a clean exit 1, and
 `tests/cli/test_cli.cpp`'s `[frmsiz]` case pins the message.
 
 ```bash
-AC3CLI=build/config-linux-llvm/bin/ac3cli python3 tools/ci/fuzz_eac3_encoder_space.py --seconds 120
+ICLFORGE_CLI=build/config-linux-llvm/bin/forge python3 tools/ci/fuzz_eac3_encoder_space.py --seconds 120
 python3 tools/ci/fuzz_eac3_encoder_space.py --check-envelope   # rate floors + the frmsiz ceiling
 python3 tools/ci/fuzz_eac3_encoder_space.py --check-oracles    # what this FFmpeg can actually read
 python3 tools/ci/fuzz_eac3_encoder_space.py --replay <case-seed>
@@ -785,17 +785,17 @@ direct-coded). Each case is held to three checks:
 |---|---|
 | traces | the encoder's own trace, the decoder's and `tools/references/ac4_syntax.py`'s are the same record for record, and the Python parser reads every substream to its end |
 | framing | the sync frames, walked from the sync word and `frame_size` alone, tile the file, each with its CRC; FFmpeg's raw AC-4 demuxer finds as many packets as the encoder wrote frames, and its mov demuxer reads the MP4 output as one AC-4 track of that many samples |
-| decode | `ac3cli decode` reads every frame at the input's channel count and sample rate, the frames' lengths add up to what the frame rate gives, and the output covers the input delayed by the lag `ac4-encode` reports |
+| decode | `forge decode` reads every frame at the input's channel count and sample rate, the frames' lengths add up to what the frame rate gives, and the output covers the input delayed by the lag `ac4-encode` reports |
 
 FFmpeg has no AC-4 decoder, so the audio is read by the three traces and by
-`ac3cli decode`. A configuration outside the encoder's range (a rate below 8 or
+`forge decode`. A configuration outside the encoder's range (a rate below 8 or
 above 3000 kbps, or at 44.1 kHz a frame rate other than the native one) must be
 refused with the encoder's own message, and `--check-envelope` re-measures that
 range. There is no `--check-oracles`, and no failing input is kept on disk: a
 failure prints its case seed for `--replay`.
 
 ```bash
-AC3CLI=build/config-linux-llvm/bin/ac3cli python3 tools/ci/fuzz_ac4_encoder_space.py --seconds 120
+ICLFORGE_CLI=build/config-linux-llvm/bin/forge python3 tools/ci/fuzz_ac4_encoder_space.py --seconds 120
 python3 tools/ci/fuzz_ac4_encoder_space.py --check-envelope
 python3 tools/ci/fuzz_ac4_encoder_space.py --replay <case-seed>
 python3 tools/ci/fuzz_ac4_encoder_space.py --regressions
@@ -816,7 +816,7 @@ which has a separate dispatch budget for each (`encoder_space_seconds`,
 # does (.github/toolchain/03-llvm-toolchain.sh).
 fuzz/run.sh                    # build, then run every default-list harness for 60s each
 fuzz/run.sh fuzz_scan          # just one harness
-AC3FORGE_FUZZ_SECONDS=600 fuzz/run.sh   # a deeper local run
+ICLFORGE_FUZZ_SECONDS=600 fuzz/run.sh   # a deeper local run
 fuzz/run.sh regress            # replay seeds + regressions, no mutation (fast)
 fuzz/run.sh minimize fuzz_scan fuzz/artifacts/fuzz_scan-crash-<hash>
 
@@ -836,8 +836,8 @@ environment-variable list.
 ## Seed corpus
 
 `fuzz/seeds/<harness>/` is a curated, committed bootstrap corpus, most of it
-generated from ac3forge's own valid output - `fuzz/generate-seeds.sh` drives
-`ac3cli` across the layout/codec/Annex-E-tool matrix this project already
+generated from ICL Forge's own valid output - `fuzz/generate-seeds.sh` drives
+`forge` across the layout/codec/Annex-E-tool matrix this project already
 supports (every layout token, every tool combination, both codecs, silence and
 audio, coupled and uncoupled, Atmos objects and the bed51 fallback) and
 collects the resulting streams. What it does not write is committed as it is:
@@ -848,7 +848,7 @@ the AC-4 seeds (below), `fuzz_iab_parse`'s one file (`encode_iab
 directory and start from an empty corpus.
 
 The corpora of `fuzz_emdf_parse`, `fuzz_oamd_parse`, `fuzz_joc_parse` and
-`fuzz_adm_parse`, and one file of `fuzz_iec61937_unwrap`'s, are not raw `ac3cli`
+`fuzz_adm_parse`, and one file of `fuzz_iec61937_unwrap`'s, are not raw `forge`
 output and are built by `fuzz/metadata-seeds.py`, which `generate-seeds.sh` calls:
 
 - `fuzz_emdf_parse`, `fuzz_oamd_parse`, `fuzz_joc_parse` - `metadata-seeds.py
@@ -860,7 +860,7 @@ output and are built by `fuzz/metadata-seeds.py`, which `generate-seeds.sh` call
   fields and JOC coefficients change), but the fiftieth position update
   teaches the engine nothing the sixth did not.
 - `fuzz_adm_parse` - `metadata-seeds.py adm` synthesises BW64/RF64 fixtures,
-  because nothing `ac3cli` produces is an ADM file. They mirror the ones
+  because nothing `forge` produces is an ADM file. They mirror the ones
   `tests/adm/test_adm.cpp` builds in memory: BS.2088-1 chunk layout,
   BS.2076-2 ADM XML, one Objects document and one DirectSpeakers document,
   plus an RF64 whose `<data>` size resolves through `<ds64>` and a file with
@@ -868,7 +868,7 @@ output and are built by `fuzz/metadata-seeds.py`, which `generate-seeds.sh` call
 - `fuzz_iec61937_unwrap` - `metadata-seeds.py ac4-carrier` packs the first four
   frames of DEE's stereo stream (`tests/golden/external-baseline/ac4-stereo-64/dee.ac4`)
   into IEC 61937-14 bursts, `spdif-ac4-20.wav`, beside the AC-3 and E-AC-3
-  files `ac3cli spdif` writes.
+  files `forge spdif` writes.
 
 The AC-4 corpora are committed streams and files. `fuzz_ac4_parse`, whose seeds
 `fuzz_ac4_decode` shares, holds 17: cuts of two or three frames of eight DEE
@@ -883,7 +883,7 @@ names say which (`mono-48-dc-44k`, `stereo-12-transient`, `stereo-nan`,
 `514-192-ajcc`, and so on).
 
 `fuzz_signing_verify`'s corpus is built inline in `generate-seeds.sh`, since
-its input is a key-prefixed stream rather than a file `ac3cli` writes: a
+its input is a key-prefixed stream rather than a file `forge` writes: a
 throwaway 16-byte key, the same Atmos streams both signed with that key and
 left unsigned, and the bed51 fallback, so all three of
 `verify_atmos_frame`'s outcomes (`kValid`, `kMismatch`, `kNoContainer`) are
@@ -896,10 +896,10 @@ the parser.
 Regenerate it with:
 
 ```bash
-AC3CLI_BIN=build/config-windows-msvc-debug/bin/ac3cli.exe fuzz/generate-seeds.sh
+ICLFORGE_CLI_BIN=build/config-windows-msvc-debug/bin/forge.exe fuzz/generate-seeds.sh
 ```
 
-(Any *working* `ac3cli` build does - this only needs it to produce valid
+(Any *working* `forge` build does - this only needs it to produce valid
 streams, not to run instrumented. The MSVC leg is the practical choice on a
 Windows host simply because it is the one already built there.)
 

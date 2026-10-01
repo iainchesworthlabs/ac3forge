@@ -103,7 +103,7 @@ if((WIN32 OR LINUX) AND NOT ICLFORGE_SANITIZERS MATCHES "thread")
     target_include_directories(iclforge-membench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
     # The AC-4 libraries' static builds, for the same reason as
-    # ac3::forge_static: a DLL's allocations would not reach the counters.
+    # iclforge::ac3_static: a DLL's allocations would not reach the counters.
     target_link_libraries(iclforge-membench PRIVATE
         iclforge::ac3_static iclforge::ac4enc_static iclforge::ac4dec_static iclforge::warnings iclforge::fmt)
 

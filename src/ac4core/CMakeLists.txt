@@ -9,7 +9,7 @@
 # and no ABI of its own. Its headers sit under src/ beside its sources, and
 # the libraries that link it include them by the path from there
 # ("tables/huffman_tables.hpp", "dsp/mdct.hpp"). Everything in it is in
-# namespace ac4::detail.
+# namespace iclforge::ac4::detail.
 #
 # The syntax is not here: the decoder's reader and the encoder's writer are
 # separate transcriptions of the syntax tables, in opposite directions.
@@ -63,7 +63,7 @@ target_compile_features(iclforge_ac4core PUBLIC cxx_std_23)
 #
 # "fixed" maps to the double directory rather than its own for now: AC-4's
 # fixed-point tier (planning/ac4.md, D14d) has not instantiated these kernels
-# at ac3::internal::Fixed32 yet, so there is nothing for a fixed32/ directory
+# at iclforge::internal::Fixed32 yet, so there is nothing for a fixed32/ directory
 # here to hold; a build configured ICLFORGE_DECODE_SCALAR=fixed still needs
 # iclforge_ac4core to produce something, and double is the correct fallback (it is
 # what every non-float build already used before this option existed).
@@ -86,7 +86,7 @@ endif()
 # src/ac3/CMakeLists.txt); iclforge_ac4core is one static library both ac4dec and
 # ac4enc link (this file's own header comment), so when Real is not already
 # double, each of those kernels' .cpp files also explicitly instantiates
-# <double>. That is done through a macro the per-scalar ac4/detail/real.hpp
+# <double>. That is done through a macro the per-scalar iclforge/ac4core/detail/real.hpp
 # defines (src/internal/scalar/<double|float>/, chosen just above): it passes
 # its argument through where Real is float and drops it where Real is already
 # double (a second explicit instantiation of the same specialization would be
@@ -97,7 +97,7 @@ endif()
 # PUBLIC, not PRIVATE: ac4core's own PUBLIC headers (aspx/hf_generator.hpp,
 # acpl/acpl.hpp, ajcc/ajcc.hpp, ajoc/ajoc.hpp, dsp/qmf.hpp, dsp/mdct.hpp,
 # dsp/fft.hpp, dsp/resampler.hpp, dsp/synthesis.hpp) #include
-# "ac4/detail/real.hpp" themselves, and src/ac4dec and src/ac4enc compile
+# "iclforge/ac4core/detail/real.hpp" themselves, and src/ac4dec and src/ac4enc compile
 # against those headers through iclforge::ac4core as a COMPILE_ONLY dependency (their
 # own CMakeLists.txt) - a consumer that only ever compiles against a target,
 # never links it, still needs that target's PUBLIC usage requirements, this
@@ -106,7 +106,7 @@ endif()
 target_include_directories(iclforge_ac4core PUBLIC
     "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/variants/scalar-${_ac4core_scalar_dir}>")
 
-# Which "ac4/detail/profiling.hpp" the kernels' AC4_ZONE_SCOPED_N() markers see
+# Which "iclforge/ac4core/detail/profiling.hpp" the kernels' AC4_ZONE_SCOPED_N() markers see
 # (planning/ac4.md, D14b): none/, where they expand to nothing, or stage_timers/,
 # where they call the two functions the application supplies, as iclforge::ac3's
 # own zone markers do under ICLFORGE_STAGE_TIMERS - which the root allows only in

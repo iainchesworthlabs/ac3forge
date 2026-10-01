@@ -17,13 +17,17 @@
 // it.
 //
 // Not a CMake target: built by hand on the machine with the session, against
-// a PipeWire build of the library in build-pw/. One command, wrapped here; as
-// run on the Raspberry Pi:
+// a PipeWire build of the library in build-pw/. One command, wrapped here. It ran on the
+// Raspberry Pi before the library was split into 22 (N1B) and has not run since, with the
+// file names written as they are now: iclforge::ac3
+// links five more libraries (base, dsp, objects, render, iec61937), each with its own
+// -Isrc/<library>/include, -Ibuild-pw/src/<library>/generated and
+// build-pw/src/<library>/libiclforge_<library>_static.a.
 //
 //   g++ -std=c++23 -O1 -o /tmp/ptprobe tools/checks/passthrough_probe.cpp
-//       -Isrc/audio/include -Isrc/forge/include -Ibuild-pw/src/forge/generated
+//       -Isrc/audio/include -Isrc/ac3/include -Ibuild-pw/src/ac3/generated
 //       $(pkg-config --cflags libpipewire-0.3) -DICLFORGE_AC3_STATIC_DEFINE
-//       build-pw/src/audio/libac3audio.a build-pw/src/forge/libiclforge_ac3_static.a
+//       build-pw/src/audio/libiclforge_audio.a build-pw/src/ac3/libiclforge_ac3_static.a
 //       build-pw/vcpkg_installed/arm64-linux/lib/libfmt.a
 //       $(pkg-config --libs libpipewire-0.3) -lpthread
 //

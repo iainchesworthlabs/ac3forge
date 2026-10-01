@@ -15,16 +15,20 @@
 //
 // Not a CMake target: built by hand on the machine with the session, against
 // a PipeWire build of the library and the engine in build-pw/. One command,
-// wrapped here; as run on the Raspberry Pi:
+// wrapped here. It ran on the Raspberry Pi before the library was split into 22 (N1B) and
+// has not run since, with the file names written as they are now: iclforge::ac3
+// links five more libraries (base, dsp, objects, render, iec61937), each with its own
+// -Isrc/<library>/include, -Ibuild-pw/src/<library>/generated and
+// build-pw/src/<library>/libiclforge_<library>_static.a.
 //
 //   g++ -std=c++23 -O1 -o /tmp/probe tools/checks/crucible_platform_probe.cpp
-//       -Isrc/audio/include -Isrc/forge/include -Ibuild-pw/src/forge/generated
+//       -Isrc/audio/include -Isrc/ac3/include -Ibuild-pw/src/ac3/generated
 //       -Isrc/signing/include -Ibuild-pw/src/signing/generated
 //       -Iapps/crucible/engine $(pkg-config --cflags libpipewire-0.3)
 //       -DICLFORGE_AC3_STATIC_DEFINE -DICLFORGE_SIGNING_STATIC_DEFINE
 //       build-pw/apps/crucible/libcrucible_engine.a
-//       build-pw/src/audio/libac3audio.a build-pw/src/forge/libiclforge_ac3_static.a
-//       build-pw/src/signing/libac3signing_static.a
+//       build-pw/src/audio/libiclforge_audio.a build-pw/src/ac3/libiclforge_ac3_static.a
+//       build-pw/src/signing/libiclforge_signing_static.a
 //       $(pkg-config --libs libpipewire-0.3) $(pkg-config --libs xcb) -lpthread
 //
 //   ($(pkg-config --libs xcb) is for an engine built with libxcb, the X11

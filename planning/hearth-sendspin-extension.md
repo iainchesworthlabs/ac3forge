@@ -25,10 +25,11 @@
     (phase I6 is not built); the test sink does.
 
     The role's name, `_ac3forge_player@v1`, and the programs named below (`ac3hearth`,
-    `ac3hearth-testsink`, `hearth_sink`) are the current names. Phase N1 of the AC-4 plan renames
-    the programs, and its layout study proposes renaming this role with the family
-    (`_iclforge_player@v1`), with both ends of Sendspin and the OTA check changing in one stage. It
-    has not run, and a role name is a wire string: the two ends must change together.
+    `ac3hearth-testsink`, `hearth_sink`) are the names this page was written with. Phase N1 of the
+    AC-4 plan renamed them: the role is `_iclforge_player@v1`, with both ends of Sendspin and the
+    OTA check changed in one stage (S4, #1162), and the programs are `hearth` and `hearth-testsink`
+    (N1A, #1164). A role name is a wire string, so a board that runs a firmware from before the
+    rename needs one flash over USB ([Renamed](../docs/renamed.md#strings-that-two-sides-read)).
 
 ## What this page fixes
 

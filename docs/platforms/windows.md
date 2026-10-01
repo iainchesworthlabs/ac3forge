@@ -1,23 +1,23 @@
 # Windows
 
-ac3forge builds and is tested on Windows with two toolchains, MSVC and clang-cl, CLI and GUI
+ICL Forge builds and is tested on Windows with two toolchains, MSVC and clang-cl, CLI and GUI
 alike: Windows MSVC in the merge queue, and both in the run after a merge to main (see
 [CI for many agents](../ci-agentic.md)). This page covers what is specific to Windows; for the
 full preset reference, options list and troubleshooting, see [Building from source](../building.md).
 Crucible's kernel driver and driver VM live under
-[`apps/windows/README.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/apps/windows/README.md),
+[`apps/windows/README.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/apps/windows/README.md),
 separate from the application in `apps/crucible/`.
 
 ## Status
 
 | | |
 |---|---|
-| What runs here | The library, `ac3cli`, `ac3gui`, Hearth (`ac3hearth`) and Crucible |
+| What runs here | The library, `forge`, `forge-gui`, Hearth (`hearth`) and Crucible |
 | Build | MSVC and clang-cl, x64, both building the GUI; MSVC in the merge queue, both in the run after a merge to main. The GUI is on by default |
 | Capture and monitor playback | Confirmed on real hardware — a Realtek endpoint, live microphone capture through encode to playback |
-| Windows Spatial Sound (`ac3cli spatial`) | Confirmed on real hardware, with Windows Sonic enabled; nobody has listened to check the positions. E-AC-3 objects only |
+| Windows Spatial Sound (`forge spatial`) | Confirmed on real hardware, with Windows Sonic enabled; nobody has listened to check the positions. E-AC-3 objects only |
 | IEC 61937 passthrough output | Confirmed on real hardware — an Onkyo TX-RZ740 over HDMI locks AC-3 (Dolby Digital 5.1), E-AC-3 (Dolby Digital Plus 5.1) and signed Atmos (JOC objects, decoded to 5.0.4) through `PassthroughSink` itself |
-| AC-4 | Decoded and encoded by `ac3cli` and `ac3gui`, decoded by Hearth; `ac3gui`'s live capture takes AC-3 and E-AC-3 only. WASAPI has no IEC 61937 subformat for AC-4, so `PassthroughSink` refuses it and `ac3cli play` decodes it to PCM. v0.10.0-beta.1, the latest release, predates the AC-4 decoder and encoder |
+| AC-4 | Decoded and encoded by `forge` and `forge-gui`, decoded by Hearth; `forge-gui`'s live capture takes AC-3 and E-AC-3 only. WASAPI has no IEC 61937 subformat for AC-4, so `PassthroughSink` refuses it and `forge play` decodes it to PCM. v0.10.0-beta.1, the latest release, predates the AC-4 decoder and encoder |
 | Passthrough capture | **Never confirmed** — no HDMI or S/PDIF capture card has been available |
 | Crucible's null sink | A kernel driver, **test-signed only**; a default-settings machine refuses to load it — see [the driver page](windows-driver-acx.md) |
 | ARM64 | One CI leg, still marked experimental and run in the nightly run; it builds the CLI only, and its packages have shipped since v0.10.0-beta.1 |
@@ -44,24 +44,24 @@ for the mechanics.
 
 On Windows, the five pieces that touch sound hardware are all implemented over **WASAPI**:
 
-- **`ac3::audio`** — live input/loopback capture through a lock-free SPSC ring.
-- **`ac3::iec61937::PassthroughDetector`** — recognising, from that same capture, that the
+- **`iclforge::audio`** — live input/loopback capture through a lock-free SPSC ring.
+- **`iclforge::iec61937::PassthroughDetector`** — recognising, from that same capture, that the
   endpoint is handing over IEC 61937 bursts (AC-3, E-AC-3 or AC-4) rather than PCM.
-- **`ac3::audio::PassthroughSink`** — exclusive-mode/direct bitstream output, for both AC-3 and
+- **`iclforge::audio::PassthroughSink`** — exclusive-mode/direct bitstream output, for both AC-3 and
   E-AC-3 burst framing (IEC 61937). AC-4 (IEC 61937-14) is refused here with
   `kUnsupportedFormat`: WASAPI asks for a compressed format by its `KSDATAFORMAT_SUBTYPE_IEC61937_*`
   subformat, and the Windows SDK (`ksmedia.h`, 10.0.26100) defines none for AC-4.
-- **`ac3::audio::MonitorSink`** — shared-mode PCM playback: a non-bitstreamed preview/monitor
+- **`iclforge::audio::MonitorSink`** — shared-mode PCM playback: a non-bitstreamed preview/monitor
   path that decodes what is being encoded and plays it back on an ordinary output. It is also
-  where `ac3cli monitor` and `ac3cli play` send an AC-4 stream, decoded, and where an AC-4
+  where `forge monitor` and `forge play` send an AC-4 stream, decoded, and where an AC-4
   stream's objects arrive rendered to speakers by the layout renderer.
-- **`ac3::audio::SpatialObjectSink`** — `ISpatialAudioObjectRenderStream`: decoded
+- **`iclforge::audio::SpatialObjectSink`** — `ISpatialAudioObjectRenderStream`: decoded
   Atmos objects go out as dynamic objects at their real OAMD positions, and the bed's LFE (never
-  a JOC output, TS 103 420 §6.3.2.2) as a static one. Behind `ac3cli spatial`. This is the one
+  a JOC output, TS 103 420 §6.3.2.2) as a static one. Behind `forge spatial`. This is the one
   path that lets Dolby's own renderer engage with this project's reconstructed objects at all — a
   licensed decoder otherwise refuses object decoding without a signing key this project doesn't
   ship (see [Object signing](../concepts/object-signing.md)) — and needs nothing but a spatial-
-  sound-capable endpoint to do it, no AVR and no key. It takes E-AC-3 only: `ac3cli spatial`
+  sound-capable endpoint to do it, no AVR and no key. It takes E-AC-3 only: `forge spatial`
   reads no AC-4 stream (on a spatial-enabled endpoint it answers "not a valid E-AC-3 stream", exit
   code 2).
 
@@ -69,7 +69,7 @@ What each can carry:
 
 | Path | Carries | Does not carry |
 |---|---|---|
-| Capture (`ac3::audio`) | PCM from an input, an endpoint's loopback or one process tree; IEC 61937 bursts that arrive as PCM, which the detector recognises for AC-3, E-AC-3 and AC-4 | |
+| Capture (`iclforge::audio`) | PCM from an input, an endpoint's loopback or one process tree; IEC 61937 bursts that arrive as PCM, which the detector recognises for AC-3, E-AC-3 and AC-4 | |
 | `MonitorSink` | PCM the library decoded: AC-3, E-AC-3 (an Atmos stream's bed) and AC-4, whose objects the layout renderer puts on speakers | A bitstream |
 | `PassthroughSink` | IEC 61937 bursts of AC-3 and E-AC-3, the latter with its JOC objects | AC-4, refused with `kUnsupportedFormat` |
 | `SpatialObjectSink` | E-AC-3 object streams, as dynamic objects and a static LFE | AC-4 objects |
@@ -78,7 +78,7 @@ These five are not equally verified on hardware, and the project's own documenta
 is explicit about the difference.
 
 !!! note "MonitorSink is confirmed on hardware"
-    `ac3cli monitor` and `ac3cli live`'s monitor leg have played decoded AC-3 and E-AC-3
+    `forge monitor` and `forge live`'s monitor leg have played decoded AC-3 and E-AC-3
     (including an Atmos stream's 5.1 bed) through a Realtek output in real time, and a live
     microphone capture→encode→monitor session has run end to end. Building this path on
     hardware surfaced two bugs that neither unit tests nor silent/synthetic input
@@ -93,7 +93,7 @@ is explicit about the difference.
     `MonitorSink::start()` reports `MonitorError::kFormatRejected` for `AUDCLNT_E_UNSUPPORTED_FORMAT`
     (`0x88890008`), checked on both the `IAudioClient3` low-latency path and the ordinary
     fallback; every other failure in `start()` still reports `kComFailure`. That was added on
-    2026-09-22, debugging why `ac3tests "[monitor-unplug]"` would not open the "AV Receiver
+    2026-09-22, debugging why `iclforge-tests "[monitor-unplug]"` would not open the "AV Receiver
     (NVIDIA High Definition Audio)" HDMI endpoint the exclusive-mode passthrough confirmation
     below used: `start()` had no way to say why beyond "a Windows audio (WASAPI/COM) call
     failed", and a standalone WASAPI probe written outside this codebase found the refusal at
@@ -121,22 +121,22 @@ is explicit about the difference.
 
 !!! note "Playback position, pause and flush are confirmed; a multichannel patch is not"
     `MonitorSink`'s playback position, `pause()`/`resume()` and `flush()` have been exercised
-    against the default Realtek endpoint by `ac3tests "[monitor-live]"` — a hidden case, since it
+    against the default Realtek endpoint by `iclforge-tests "[monitor-live]"` — a hidden case, since it
     needs a sound card and makes a noise: the position advances with the device's own clock, a
     pause holds it while the queue goes on taking frames, a flush drops both buffers and the
-    count restarts, and playback resumes from the next submit. `ac3cli identify` walked the tone
+    count restarts, and playback resumes from the next submit. `forge identify` walked the tone
     across that endpoint's own speakers, over a 5.1 layout it can place only two channels of, and
     with the pair swapped.
 
     What that machine cannot show is a **multichannel** patch: both its endpoints are stereo, and
     which speaker an output actually reaches is exactly what a two-channel device cannot
     disprove. That check needs an 8-channel endpoint — an AVR over HDMI as LPCM — and is
-    `ac3cli identify 0 7.1.4 3` heard from the speaker each printed line names, then the same
+    `forge identify 0 7.1.4 3` heard from the speaker each printed line names, then the same
     command with a patch that swaps two channels heard to swap those two speakers and nothing
     else.
 
 !!! note "SpatialObjectSink is confirmed against a real spatial endpoint"
-    `ac3cli spatial` has activated `ISpatialAudioObjectRenderStream` and rendered a real Atmos
+    `forge spatial` has activated `ISpatialAudioObjectRenderStream` and rendered a real Atmos
     stream (4 orbiting objects, 8 s, this project's own encoder) against the default Realtek
     output after Windows Sonic for Headphones was enabled on it — 250 access units, zero
     underruns, clean shutdown. The `kNoSpatialFormat` refusal was confirmed the same session
@@ -154,10 +154,10 @@ is explicit about the difference.
     An Onkyo TX-RZ740 was cabled to a Windows workstation via an Nvidia GPU's HDMI audio
     endpoint ("AV Receiver (NVIDIA High Definition Audio)"). `IsFormatSupported`
     answered yes for both `KSDATAFORMAT_SUBTYPE_IEC61937_DOLBY_DIGITAL` and
-    `..._DOLBY_DIGITAL_PLUS` — the first real device this has ever happened on — and `ac3cli
+    `..._DOLBY_DIGITAL_PLUS` — the first real device this has ever happened on — and `forge
     play` through `PassthroughSink` itself, not the PCM16-WAV workaround, locked the receiver
     onto AC-3 (Dolby Digital 5.1), then E-AC-3 (Dolby Digital Plus 5.1), then a signed Atmos
-    stream (`ac3cli atmos ... sign-objects`), which the receiver decoded as **Atmos/DD+, 48 kHz
+    stream (`forge atmos ... sign-objects`), which the receiver decoded as **Atmos/DD+, 48 kHz
     in, 5.0.4 out**, with the object's motion confirmed audible — the same result the Shield app
     got on this same receiver (see `docs/platforms/android.md`). Clean delivery throughout
     (0 underruns on the confirming Atmos run).
@@ -182,7 +182,7 @@ is explicit about the difference.
     stops signalling the event it waits on, so a wait that times out asks the endpoint for its
     padding rather than waiting again. Either answer stops the sink — `running()` turns false,
     `position()` reports nothing, `submit()` refuses — and `start()` opens again with no
-    `stop()` first, on the same endpoint once it is back. `ac3tests "[passthrough-unplug]"` and
+    `stop()` first, on the same endpoint once it is back. `iclforge-tests "[passthrough-unplug]"` and
     `"[monitor-unplug]"` are hidden cases that take a person through it.
 
     **`[passthrough-unplug]` is confirmed**, against the same AV Receiver endpoint the exclusive-
@@ -202,12 +202,12 @@ is explicit about the difference.
     the stream's own `GetAvailableDynamicObjectCount`: Microsoft's reference for that call says
     not to use it once streaming has started, since `BeginUpdatingAudioObjects` already provides
     the same count from then on - the client-level call carries no such restriction.
-    `ac3tests "[spatial-unplug]"` is its own hidden case, not yet run against real hardware.
+    `iclforge-tests "[spatial-unplug]"` is its own hidden case, not yet run against real hardware.
 
 !!! note "No EDID/ELD backend on Windows"
-    `ac3cli play` asks a chosen sink what it actually accepts before committing to a format —
+    `forge play` asks a chosen sink what it actually accepts before committing to a format —
     see [CLI → Following the sink](../forge/cli/commands.md#following-the-sink) — and that read
-    (`ac3::audio::sink_capabilities`) exists today for ALSA and for PipeWire (see
+    (`iclforge::audio::sink_capabilities`) exists today for ALSA and for PipeWire (see
     [Linux](linux.md#reading-a-sinks-own-edideld)). WASAPI answers "will this
     endpoint accept this format" (`IsFormatSupported`, what `enumerate_render_devices()` already
     uses) but does not re-expose the sink's own raw EDID-carried Short Audio Descriptors to
@@ -273,11 +273,11 @@ playing into it is bitstreaming — is the same framing read backwards, and the 
 it. The bursts arrive as ordinary PCM16 samples: `IAudioClient` has no way to say "this is
 Dolby Digital", and `Capture` converts them to float by dividing by 32768, which loses nothing.
 
-`ac3::iec61937::PassthroughDetector` recognises the framing from those floats — a `Pa`/`Pb`
+`iclforge::iec61937::PassthroughDetector` recognises the framing from those floats — a `Pa`/`Pb`
 preamble at a repetition period with a syncframe behind it (`0x0B77` for AC-3 and E-AC-3, the
-AC-4 sync word for AC-4) — and `ac3cli record`
-switches to writing the elementary stream instead of encoding the bursts as audio; `ac3cli
-live` stops with an error instead. `ac3cli unspdif` does the same job on a capture already
+AC-4 sync word for AC-4) — and `forge record`
+switches to writing the elementary stream instead of encoding the bursts as audio; `forge
+live` stops with an error instead. `forge unspdif` does the same job on a capture already
 saved to disk. `carrier_from_capture` is the conversion back to PCM16 words, exact for all
 65536 of them.
 
@@ -294,15 +294,15 @@ saved to disk. `carrier_from_capture` is the conversion back to PCM16 words, exa
 
 ## Qt (the windows: GUI, Hearth, Crucible)
 
-`ac3gui` needs a **prebuilt Qt 6.5+ kit**, discovered by `cmake/FindQt6.cmake` — never from
+`forge-gui` needs a **prebuilt Qt 6.5+ kit**, discovered by `cmake/FindQt6.cmake` — never from
 vcpkg. Hearth's and Crucible's windows need Qt 6.8 or later; on an older kit each is skipped with
-a warning and its engine still builds. CI installs Qt 6.10.3. `AC3FORGE_BUILD_GUI` defaults **ON**
+a warning and its engine still builds. CI installs Qt 6.10.3. `ICLFORGE_BUILD_GUI` defaults **ON**
 on Windows. `FindQt6.cmake` widens
 `CMAKE_PREFIX_PATH` to the usual install roots (`C:/Qt`, `%USERPROFILE%/Qt`, `D:/Qt`); to point
 at a specific kit explicitly:
 
 ```bash
-cmake --preset config-windows-msvc-debug -DAC3FORGE_QT_ROOT=D:/Qt/6.8.3/msvc2022_64
+cmake --preset config-windows-msvc-debug -DICLFORGE_QT_ROOT=D:/Qt/6.8.3/msvc2022_64
 ```
 
 See [Qt](../building.md#qt) for the full discovery order and options.
@@ -315,8 +315,8 @@ cmake --build --preset build-windows-msvc-debug
 ctest --preset test-windows-msvc-debug
 ```
 
-Drop `-debug` for a Release build. The window of Hearth builds by default (`AC3FORGE_BUILD_HEARTH`
-is on); Crucible is opt-in with `-DAC3FORGE_BUILD_CRUCIBLE=ON`. Swap `msvc` for `llvm`
+Drop `-debug` for a Release build. The window of Hearth builds by default (`ICLFORGE_BUILD_HEARTH`
+is on); Crucible is opt-in with `-DICLFORGE_BUILD_CRUCIBLE=ON`. Swap `msvc` for `llvm`
 throughout to build with clang-cl instead:
 
 ```bash
@@ -348,16 +348,16 @@ artifact, a standing smoke test of the packaging path; a tagged release packages
 `release_package` leg (Windows x64 and ARM64, Linux x64 and arm64, macOS). See
 [Packaging](../building.md#packaging).
 
-An x64 installer built from main (`ac3forge-<version>-win64.exe`) carries `ac3cli`, `ac3gui` and
-`ac3hearth`; the one in v0.10.0-beta.1, the latest release, predates Hearth's packaging and
-carries the first two. The Start Menu folder has an entry for `ac3gui`, one for `ac3hearth`, and
-an "ac3cli command prompt" with the install's `bin` on `PATH`. The ZIP splits by component: the
-runtime archive, an `ac3forge-dev-*` library archive, an `ac3forge-hearth-*` archive and an
-`ac3forge-crucible-*` archive, of which the release has the first two. Crucible stays out of the
+An x64 installer built from main (`iclforge-<version>-win64.exe`) carries `forge`, `forge-gui` and
+`hearth`; the one in v0.10.0-beta.1, the latest release, predates Hearth's packaging and
+carries the first two. The Start Menu folder has an entry for `forge-gui`, one for `hearth`, and
+a "forge command prompt" with the install's `bin` on `PATH`. The ZIP splits by component: the
+runtime archive, an `iclforge-dev-*` library archive, an `iclforge-hearth-*` archive and an
+`iclforge-crucible-*` archive, of which the release has the first two. Crucible stays out of the
 installer while its driver is test-signed (`cmake/CPackProjectConfig.cmake`).
 
-The NSIS installer also registers `.ac3` and `.ec3` as `AC3Forge.Stream`, pointing
-`shell\open\command` at the installed `ac3hearth.exe` (`ac3gui.exe` in a build with no Hearth)
+The NSIS installer also registers `.ac3` and `.ec3` as `IclForge.Stream`, pointing
+`shell\open\command` at the installed `hearth.exe` (`forge-gui.exe` in a build with no Hearth)
 and nudging Explorer to pick up the change with `SHChangeNotify`, and reverses both keys on
 uninstall — `CPACK_NSIS_EXTRA_INSTALL_COMMANDS`/`_UNINSTALL_COMMANDS` in `cmake/Packaging.cmake`.
 Nothing registers `.ac4`. The installer and every binary in it are unsigned (Authenticode signing
@@ -367,10 +367,10 @@ end to end is still a manual, unautomated check.
 
 ## Windows Firewall
 
-`ac3hearth` and `ac3hearth-testsink` each open a socket a Windows Firewall rule has to allow:
-`ac3hearth`'s mDNS browse for `_sendspin._tcp` players, and `ac3hearth-testsink`'s own Sendspin
+`hearth` and `hearth-testsink` each open a socket a Windows Firewall rule has to allow:
+`hearth`'s mDNS browse for `_sendspin._tcp` players, and `hearth-testsink`'s own Sendspin
 listener and mDNS advertisement. Rather than leave this to Windows' own "these features have been
-blocked" prompt, `ac3::sendspin::firewall::ensure_inbound_rule()`
+blocked" prompt, `iclforge::sendspin::firewall::ensure_inbound_rule()`
 (`src/sendspin/include/iclforge/sendspin/firewall.hpp`) adds the rule itself, through the same
 `INetFwPolicy2` COM policy object the Settings app's firewall page edits, the first time it finds
 none already there for that executable and port.
@@ -386,8 +386,8 @@ discovery/streaming traffic to the executable that is actually listening, never 
 to a different program.
 
 A loopback-only bind needs none of this - Windows does not gate loopback traffic - and is skipped
-before `ensure_inbound_rule()` is ever called. `ac3hearth-testserver`'s own `ServerHost` and
-reference sink are loopback-only today and so never reach it; `ac3tests`' own `ServerHost`
+before `ensure_inbound_rule()` is ever called. `hearth-testserver`'s own `ServerHost` and
+reference sink are loopback-only today and so never reach it; `iclforge-tests`' own `ServerHost`
 fixtures are the same. Linux and macOS build a no-op implementation of the same two functions and
 never show a prompt of any kind.
 
@@ -423,7 +423,7 @@ the CLI and passed all 2,984 ctest cases. The image before it, `windows-11-arm`,
 the pin the x64 legs share; the exception is still in place.
 
 **CLI-only, for now.** Unlike every other packageable Windows/Linux/macOS leg, `windows-msvc-arm64`
-does not build `ac3gui` — `AC3FORGE_BUILD_GUI` is off in `CMakePresets.json`'s
+does not build `forge-gui` — `ICLFORGE_BUILD_GUI` is off in `CMakePresets.json`'s
 `windows-msvc-arm64` preset. Qt's only Windows ARM64 kit for the pinned 6.10.3 (Qt has offered one
 since 6.8) is `win64_msvc2022_arm64_cross_compiled` (`python -m aqt list-qt windows desktop --arch
 6.10.3`) — a cross-compile kit that expects a paired `win64_msvc2022_64` install to supply its

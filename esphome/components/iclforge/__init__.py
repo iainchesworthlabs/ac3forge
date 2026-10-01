@@ -22,7 +22,7 @@ manager wants for a component living in a subdirectory of a repository.
     external_components:
       - source:
           type: git
-          url: https://github.com/iainchesworthlabs/ac3forge
+          url: https://github.com/iainchesworthlabs/iclforge
           ref: main
           path: esphome/components
         components: [iclforge]
@@ -51,7 +51,7 @@ IclForgeComponent = iclforge_ns.class_("IclForgeComponent", cg.Component)
 # The repository the IDF component manager clones, and where the component sits
 # inside it. Both are here rather than in the schema because a user overriding
 # them is forking, not configuring - and a fork edits this file.
-REPO = "https://github.com/iainchesworthlabs/ac3forge"
+REPO = "https://github.com/iainchesworthlabs/iclforge"
 COMPONENT_PATH = "esp-idf/iclforge"
 
 # Bounds rather than a free integer. The floor is one syncframe plus the header

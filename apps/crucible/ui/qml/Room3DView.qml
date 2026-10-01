@@ -12,7 +12,7 @@ import Crucible
 // height; hold Shift to move it up and down instead. Drag empty space to
 // orbit the camera (the room follows the mouse); the wheel zooms.
 //
-// Room coordinates (ac3::oba::Position: x 0 left to 1 right, y 0 front to
+// Room coordinates (iclforge::oba::Position: x 0 left to 1 right, y 0 front to
 // 1 back, z -1 floor to +1 ceiling) map to scene units the way the
 // engine's spatial sink maps them: 4 m wide, 4 m deep, ear level at 0.
 Item {

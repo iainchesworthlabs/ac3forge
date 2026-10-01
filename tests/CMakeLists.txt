@@ -234,8 +234,8 @@ target_include_directories(iclforge-tests PRIVATE "${CMAKE_SOURCE_DIR}/src/signi
 # through a whole encode. Same pattern as the signing headers above.
 target_include_directories(iclforge-tests PRIVATE "${CMAKE_SOURCE_DIR}/src/ac3/src/encoder")
 
-# test_scalar_math.cpp includes ac3/internal/scalar_math.hpp and
-# test_fixed32*.cpp/test_mdct_fixed.cpp include ac3/internal/fixed32.hpp - the
+# test_scalar_math.cpp includes iclforge/arithmetic/scalar_math.hpp and
+# test_fixed32*.cpp/test_mdct_fixed.cpp include iclforge/arithmetic/fixed32.hpp - the
 # shared arithmetic target (src/arithmetic) both iclforge::ac3 and src/ac4core
 # use (planning/ac4.md, decision 31), worth holding to their own accuracy/
 # correctness bounds rather than only through the fixture hashes that depend
@@ -362,7 +362,7 @@ endif()
 # be caught by an x86_64 run. So the answer arrives the way every other
 # either/or in this repository does - ac3/core/avx2/{present,absent}/ each ship
 # an avx2_tier.hpp, CMake puts the matching one on the include path, and
-# ac3::test::avx2::kTierCompiled is a constexpr bool the test branches on
+# iclforge::test::avx2::kTierCompiled is a constexpr bool the test branches on
 # with a plain `if`. The absent variant declares the same eight entry points
 # and defines them as unreachable stubs (see its own header), so both arms
 # compile everywhere.
@@ -468,7 +468,7 @@ endif()
 # ac3/core/test_crc_mutator.cpp includes fuzz/crc_mutator.hpp - the re-stamping
 # half of the libFuzzer custom mutator (signing-verify fuzz walk). The mutator itself only
 # builds under Clang with -fsanitize=fuzzer, but the header's
-# restamp_syncframe_crcs is ordinary portable C++ over ac3::crc16 and the
+# restamp_syncframe_crcs is ordinary portable C++ over iclforge::crc16 and the
 # frame-size tables, and whether it produces a crc1 the decoder accepts is
 # exactly the kind of thing that should be checked on every platform rather
 # than inferred from a coverage number on one. Same shape as the signing/src
@@ -477,7 +477,7 @@ endif()
 target_include_directories(iclforge-tests PRIVATE "${CMAKE_SOURCE_DIR}/fuzz")
 
 # test_selfcheck.cpp and test_eac3_selfcheck.cpp run the encoder/decoder mirror check
-# (ac3::verify) over the committed programme-material fixtures rather than a synthetic
+# (iclforge::verify) over the committed programme-material fixtures rather than a synthetic
 # signal - the delta bit allocation state it compares only ends part-way through a frame on
 # material that really does change character mid-frame, which is what made those files the
 # reproduction for the bug this check exists to catch, and the Annex E tools it also
@@ -717,7 +717,7 @@ endif()
 # tests/gui/ so its history and its "[gui]" tag are unbroken.
 #
 # container_input.cpp (container readers (mkv/mp4/ts)) joined the same way for the same reason:
-# ac3::apps::sniff_container/elementary_stream_from_bytes are what
+# iclforge::apps::sniff_container/elementary_stream_from_bytes are what
 # decode/qc/levels/play/monitor and the GUI's QC/Inspect pickers all call, so
 # a sniffing regression belongs in the plain Catch2 suite rather than only in
 # the Python encoder-space fuzzer that first found one (REGRESSION_SEEDS'
@@ -799,7 +799,7 @@ endif()
 
 # Crucible's engine core (apps/crucible/
 # engine/): the slot plan, the bed mixer, placement smoothing and the
-# output-mode policy. All four are plain C++ over ac3::oba types with no
+# output-mode policy. All four are plain C++ over iclforge::oba types with no
 # platform in them - the platform layer next to them is what talks to WASAPI
 # or PipeWire - so they compile into this target on every platform, ungated,
 # the same way apps/common does above: the rules the window's UI hangs on
@@ -1157,7 +1157,7 @@ if(ICLFORGE_BUILD_HEARTH)
             hearth/test_testsink_edges.cpp)
         # The engine's pairing records, its Network page bookkeeping (A6), its
         # NetworkGroupSink (A6, streaming to a group) and issue #874's own
-        # exit - a group of two test sinks played from ac3::hearth::Engine
+        # exit - a group of two test sinks played from iclforge::hearth::Engine
         # itself - all of which need src/sendspin's server half, which a
         # core-only build leaves out.
         target_sources(iclforge-tests PRIVATE

@@ -62,7 +62,7 @@ target_sources(forge PRIVATE ../common/probe_json.cpp)
 # refuses ANY #if/#ifdef/#ifndef anywhere under src/, feature flags included, not just platform
 # ones (that script's own header comment). So the same platform-tree shape the WIN32/else split
 # above already uses for stdio_binary.cpp applies here too, for a library-linked-or-not axis
-# instead of an OS one: adm/atmos_adm.hpp declares the narrow, ac3adm/admbridge-type-free seam
+# instead of an OS one: adm/atmos_adm.hpp declares the narrow, iclforge::adm/admbridge-type-free seam
 # main.cpp calls unconditionally (forge_cli::load_adm_atmos_source(), forge_cli::adm_capability()), and
 # exactly one of the two files below actually implements it - never both, never neither - so
 # forge links successfully and behaves correctly either way with zero preprocessor conditionals

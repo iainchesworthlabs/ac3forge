@@ -196,7 +196,7 @@ def split_frames(stream: bytes) -> list[bytes]: ...
 def split_access_units(stream: bytes) -> list[bytes]: ...
 def stream_bsid(frame: bytes) -> int: ...
 
-# scan() and friends - Python bindings completeness, ac3::io/elementary.hpp.
+# scan() and friends - Python bindings completeness, iclforge::io/elementary.hpp.
 def read_frame_header(at: bytes) -> FrameHeader: ...
 def scan(stream: bytes) -> ScannedStream: ...
 def access_unit_timing(stream: ScannedStream, index: int) -> AccessUnitTiming | None: ...
@@ -558,7 +558,7 @@ class Eac3Decoder:
     @property
     def latency_samples(self) -> int: ...
 
-# ac3::verify - the encoder/decoder mirror trace and its research export. A real
+# iclforge::verify - the encoder/decoder mirror trace and its research export. A real
 # submodule (m.def_submodule) at runtime, stubbed as a nested-class namespace here for the same
 # reason `eac3` below is. Pass a FrameTrace/Eac3AccessUnitTrace to DecoderConfig(trace=...)/
 # (eac3_trace=...), decode, then read it back out with trace_to_csv/trace_to_json_lines.
@@ -604,7 +604,7 @@ class AtmosEncoder:
     @property
     def bed_latency(self) -> LatencyBudget: ...
 
-# ac3::eac3::FrameEncoder/AccessUnitEncoder. A real submodule (m.def_submodule) at
+# iclforge::eac3::FrameEncoder/AccessUnitEncoder. A real submodule (m.def_submodule) at
 # runtime, stubbed as a nested-class namespace here rather than a separate eac3.pyi, the way
 # pybind11-stubgen represents one too - `iclforge.eac3.FrameConfig` resolves through this class the
 # same way it resolves through the runtime module.
@@ -716,7 +716,7 @@ class eac3:
 
 def build_codec_config_box(stream: bytes) -> bytes: ...
 
-# ac3::meta - loudness metering and QC. A real submodule at runtime, stubbed as a
+# iclforge::meta - loudness metering and QC. A real submodule at runtime, stubbed as a
 # nested-class namespace exactly like `eac3` above.
 class meta:
     class LoudnessMeter:
@@ -771,9 +771,9 @@ class meta:
         true_peak_dbtp: float | None,
     ) -> meta.QcVerdict: ...
 
-# AC-4 decode/encode (plan phase I4) - ac4::Decoder/ac4::Encoder. Same submodule-as-class
-# convention. A subset of both C++ headers - see python/src/iclforge_ext/ac4/present/
-# ac4_module.cpp's own header comment for what is left out.
+# AC-4 decode/encode (plan phase I4) - iclforge::ac4::Decoder/iclforge::ac4::Encoder. Same
+# submodule-as-class convention. A subset of both C++ headers - see
+# python/src/iclforge_ext/ac4/present/ac4_module.cpp's own header comment for what is left out.
 class ac4:
     class Speaker(Enum):
         kLeft = ...
@@ -1138,7 +1138,7 @@ class ac4:
     @staticmethod
     def sync_frame(raw_ac4_frame: bytes, crc: bool) -> bytes: ...
 
-# ac3::signing - EMDF object-layer signing. Same submodule-as-class convention.
+# iclforge::signing - EMDF object-layer signing. Same submodule-as-class convention.
 class signing:
     class SigningKey:
         def __init__(self, content: bytes) -> None: ...

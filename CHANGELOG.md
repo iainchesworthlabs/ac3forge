@@ -2007,6 +2007,25 @@ The sections below contain the complete change list and fixes.
 
 ### Changed
 
+**Names and layout**
+
+- **The family is ICL Forge, and the programs, libraries, packages and addresses have new names**
+  (`planning/ac4.md`, N1; [Renamed](https://github.com/iainchesworthlabs/iclforge/blob/main/docs/renamed.md) puts each old name beside its new one). The
+  programs are `forge`, `forge-gui`, `hearth` and `crucible`, where they were `ac3cli`, `ac3gui`,
+  `ac3hearth` and `ac3crucible`, and nothing answers to the old names: there is no alias and no
+  launcher. The library is 22 libraries under `src/`, named `iclforge::<library>`, with the headers
+  `iclforge/<library>/` and the files `libiclforge_<library>`; the C API is `iclforge_c/iclforge.h`
+  with the prefix `iclforge_`, the CMake options and the environment variables are `ICLFORGE_*`,
+  the Python module is `iclforge`, the Rust crates `iclforge` and `iclforge-sys`, and the npm
+  package `iclforge-wasm-decoder`. The Sendspin extension role and the sink firmware's project name
+  carry the new name too, so every flashed ESP32 board needs one flash over USB before updates over
+  the network work again. `forge-gui`, Hearth and Crucible copy the settings stored under the old
+  names on their first start. The repository is `iainchesworthlabs/iclforge`, the documentation is at
+  `iainchesworthlabs.github.io/iclforge/` and the Homebrew tap is `homebrew-iclforge`; GitHub
+  redirects the old repository address, and the old documentation address ends. The release files,
+  the Debian and RPM packages, the PyPI project and the Homebrew formula and cask carry the new
+  names from this release, and the pre-releases keep the names they were published under.
+
 **Minimum-footprint / ESP32 decode and encode profile**
 
 - **A Hearth sink's page is redesigned in the Hearth desktop app's look** (`esp-idf/ac3forge/ui/`,

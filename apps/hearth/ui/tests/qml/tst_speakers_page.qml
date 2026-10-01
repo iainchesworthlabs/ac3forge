@@ -162,7 +162,7 @@ TestCase {
 
     // "Clear" unpatches every slot of the open device. Regression: it
     // used to post a patch sized for zero outputs, which every PcmSink
-    // refuses while a device is open (ac3::audio::PcmOutput::set_routing()
+    // refuses while a device is open (iclforge::audio::PcmOutput::set_routing()
     // checks the output count), so it did nothing at all - it only looked
     // right in tst_speakers_routing.qml, where nothing is open.
     function test_clearRoutingButtonUnpatchesEverySlot() {

@@ -24,12 +24,16 @@ from __future__ import annotations
 
 import argparse
 import difflib
+import os
 import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-REPO = "iainchesworthlabs/ac3forge"
+# This repository's address, for the one URL the script writes (the Conan sources entry). The
+# workflow passes it from github.repository; run by hand, GITHUB_REPOSITORY or --repo gives it.
+# It is no literal, so that the script is right before and after the repository is renamed.
+REPO = os.environ.get("GITHUB_REPOSITORY", "")
 
 
 @dataclass
@@ -246,11 +250,11 @@ PackageVersion: {version}
 PackageLocale: en-US
 Publisher: iainchesworthlabs
 PublisherUrl: https://github.com/iainchesworthlabs
-PublisherSupportUrl: https://github.com/iainchesworthlabs/ac3forge/issues
+PublisherSupportUrl: https://github.com/iainchesworthlabs/iclforge/issues
 PackageName: iclforge
-PackageUrl: https://github.com/iainchesworthlabs/ac3forge
+PackageUrl: https://github.com/iainchesworthlabs/iclforge
 License: GPL-3.0-or-later
-LicenseUrl: https://github.com/iainchesworthlabs/ac3forge/blob/main/LICENSE
+LicenseUrl: https://github.com/iainchesworthlabs/iclforge/blob/main/LICENSE
 ShortDescription: Clean-room AC-3/E-AC-3/AC-4 encoder, decoder and Atmos object-layer CLI/GUI
 Description: >-
   iclforge is a clean-room C++23 implementation of the AC-3 (ATSC A/52, "Dolby Digital"),
@@ -349,10 +353,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--source-sha256", required=True, help="SHA256 of the source tarball")
     parser.add_argument("--dmg-sha256", help="SHA256 of iclforge-*-Darwin.dmg, if it was built")
     parser.add_argument("--winzip-sha256", help="SHA256 of iclforge-*-win64.zip, if it was built")
-    parser.add_argument("--repo", default=REPO)
+    parser.add_argument("--repo", default=REPO, help="owner/name; default: $GITHUB_REPOSITORY")
     parser.add_argument("--root", type=Path, default=Path())
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
+    if not args.repo:
+        parser.error("--repo is needed when GITHUB_REPOSITORY is not set")
 
     plan = BumpPlan(
         version=args.version,

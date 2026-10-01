@@ -1,7 +1,7 @@
 'use strict';
 
 // Atmos object-authoring demo: drives encoder_bindings.cpp's AtmosBedEncoder
-// (ac3::oba::AtmosEncoder - a silent 5.1 bed carrying JOC-coded dynamic
+// (iclforge::oba::AtmosEncoder - a silent 5.1 bed carrying JOC-coded dynamic
 // objects) with one ObjectPlacement set per 1536-sample frame, read live from
 // the room canvas. See ../app.js (the encode demo) for the shared
 // module-loading and round-trip-preview conventions this file follows.

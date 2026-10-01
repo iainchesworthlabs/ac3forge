@@ -17,6 +17,11 @@ decided against.
 When a plan lands, update the product index and CHANGELOG; trim the roadmap row; leave the plan as
 a record or mark it superseded — see [SUPERSEDED.md](SUPERSEDED.md).
 
+**Names.** These plans were written while the family was called AC3Forge, and they keep the names of
+their time: `ac3cli`, `ac3gui`, `ac3hearth`, `ac3crucible`, `ac3forge`, the `ac3::` namespaces and
+the `AC3FORGE_` variables. The family is ICL Forge now, and its programs are `forge`, `forge-gui`,
+`hearth` and `crucible`; [Renamed](../docs/renamed.md) puts each old name beside its new one.
+
 ---
 
 ## Active plans
@@ -27,7 +32,7 @@ a record or mark it superseded — see [SUPERSEDED.md](SUPERSEDED.md).
 | [hearth-sendspin-extension.md](hearth-sendspin-extension.md) | Sendspin conformance, Music Assistant compatibility, `_ac3forge_player@v1` | As of 2026-09-30: built as written, and carries AC-4 since D11 (no ESP32 sink lists it); aiosendspin's client and server stand in for Music Assistant in CI, and no run has been made against Music Assistant |
 | [esp32-ota.md](esp32-ota.md) | Firmware updates over the network for `hearth_sink` boards (S3, C6, P4): A/B slots, rollback, integrity checks, flash mode; firmware published by CI, and a user guide | As of 2026-09-30: O1 to O5, O8 and O9 built and merged; O6 (the P4's co-processor firmware) is a study and O7 (signed images) is not built, by the user's decision. See [Sink firmware](../docs/hearth/sink-firmware.md) |
 | [recasting.md](recasting.md) | Library / Forge / Crucible family naming and docs | As of 2026-09-30: phases 1 to 6 largely built, phase 7 (driver signing) not started; its naming decisions were overtaken by N1 ([SUPERSEDED.md](SUPERSEDED.md)) |
-| [ac4.md](ac4.md) | AC-4 in full: a decoder beside the inspector, an encoder, and both in the applications; the oracles, the phases and the decisions | As of 2026-09-30: G0, G1, D1–D11, E1–E10, I1–I5b and D14a–D14b (the ESP32-P4) merged; not built: I6 (ESP32 sinks), D14c (S3), D14d (C6) and N1 (program names and layout); DEE's licence ends 2026-11-06. See its [state table](ac4.md#state-on-2026-09-30) |
+| [ac4.md](ac4.md) | AC-4 in full: a decoder beside the inspector, an encoder, and both in the applications; the oracles, the phases and the decisions | As of 2026-09-30: G0, G1, D1–D11, E1–E10, I1–I5b and D14a–D14b (the ESP32-P4) merged; not built: I6 (ESP32 sinks), D14c (S3) and D14d (C6); DEE's licence ends 2026-11-06. N1 (program names and layout) was built on 2026-09-30 and 2026-10-01, with the owner's renames and S6 left: see [N1](ac4.md#n1-the-names). See its [state table](ac4.md#state-on-2026-09-30) |
 | [eac3-programme-mixing-metadata.md](eac3-programme-mixing-metadata.md) | `mixmdate` reporting/API completeness and decode-time associated-service mixing, scoped alongside two sibling efforts (CLI `programmeN=` authoring, MPEG-TS `mainid`/`asvc`) | As of 2026-09-30: phases 1 and 2 built (#797: reporting in `ac3cli decode` and in Hearth's media information), phases 3 to 5 not: the C API and Python bindings, a GUI summary, and mixing an associated service into the main programme. See [ROADMAP.md](../ROADMAP.md#partial-tails-on-shipped-work) |
 | [esp32-sink-tiers.md](esp32-sink-tiers.md) | C6 / C61 / S3 / P4 good·better·best modules on one dual-ES9080 PCB | As of 2026-09-30: P0, P1 and P3 built, P4 partly, P2 and both C61 phases not built. The P4 sink plays stereo; everything that needs TDM waits for a v3.x board and the DACs. See [ROADMAP.md](../ROADMAP.md#proposed) |
 
@@ -40,7 +45,7 @@ a record or mark it superseded — see [SUPERSEDED.md](SUPERSEDED.md).
 | [topology.md](topology.md) | Source, transport, sink roles; HLS/CMAF transport | Hearth sinks use Sendspin instead ([SUPERSEDED.md](SUPERSEDED.md)); none of the HLS/CMAF transport is built, and its frame still applies elsewhere |
 | [host-plugin.md](host-plugin.md) | DAW/NLE metering/QC plugin feasibility | [Proposed — DAW/NLE host plugin](../ROADMAP.md#proposed) |
 | [qc-report.md](qc-report.md) | Delivery-shaped QC report file | [Proposed — QC delivery report file](../ROADMAP.md#proposed) |
-| [layout.md](layout.md) | The layout and names of `src/` (N1B): codecs as peers over a codec-blind base, three layouts, the migration stages and a prototype, with an [inventory](layout-inventory.md); its 14 decisions await the user | [N1 in the AC-4 plan](ac4.md#n1-the-names) |
+| [layout.md](layout.md) | The layout and names of `src/` (N1B): codecs as peers over a codec-blind base, three layouts, the migration stages and a prototype, with an [inventory](layout-inventory.md); built as L2 in the stages S0 to S5 and N1A, with S6 left (see [what the runs found](layout.md#what-the-runs-found-that-the-plan-did-not)) | [N1 in the AC-4 plan](ac4.md#n1-the-names) |
 
 ---
 

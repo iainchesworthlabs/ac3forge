@@ -55,7 +55,7 @@ include(PkgConfig)
 # OFF is what a vcpkg port needs: vcpkg's per-triplet linkage policy (and its post-build lint)
 # expects a port to ship only the variant matching that triplet's VCPKG_LIBRARY_LINKAGE, not
 # both. ON (the default) keeps today's direct-build/CPack SDK behaviour unchanged - both
-# variants installed and exported, same as before this option existed. iclforge_ac3_static/forge_shared
+# variants installed and exported, same as before this option existed. iclforge_ac3_static/iclforge_ac3_shared
 # and their matroska/mp4/mpegts equivalents still get *built* either way - only what gets
 # install()'d/exported is filtered by this option, so nothing above this point in the tree
 # needs touching for it to take effect.
@@ -121,16 +121,16 @@ endif()
 # export-set membership iclforge_ac3_objects gets just above and for the same
 # reason: install(EXPORT) cannot resolve a usage-requirement dependency
 # that is not itself part of an export set, regardless of which branch
-# above put iclforge_ac3_static/forge_shared in the target list. Does not exist
+# above put iclforge_ac3_static/iclforge_ac3_shared in the target list. Does not exist
 # at all when ICLFORGE_AVX2=OFF or the target is not x86_64.
 if(TARGET iclforge_ac3_simd_avx2)
     list(APPEND _iclforge_forge_install_targets iclforge_ac3_simd_avx2)
 endif()
 
-# ac3adm/admbridge deliberately do NOT follow the ICLFORGE_INSTALL_BOTH_LINKAGES/BUILD_SHARED_LIBS
+# iclforge::adm/admbridge deliberately do NOT follow the ICLFORGE_INSTALL_BOTH_LINKAGES/BUILD_SHARED_LIBS
 # selection above - they are always shared-only, unconditionally, regardless of how the rest of
 # this project is configured. See src/adm/CMakeLists.txt's and src/admbridge/CMakeLists.txt's
-# own header comments for why: ac3adm PRIVATE-embeds the third-party libbw64/libadm (never
+# own header comments for why: iclforge::adm PRIVATE-embeds the third-party libbw64/libadm (never
 # installed/exported by this project in their own right), which only a self-contained SHARED
 # library can absorb without either re-exporting them or leaving a STATIC archive with genuinely
 # unresolved symbols. admbridge follows suit because it PUBLIC-links iclforge::adm_shared.
@@ -164,7 +164,7 @@ endforeach()
 # mp4Targets, mpegtsTargets, capiTargets) - forge has no such switch, since
 # it's the one mandatory, always-built component, but it still gets named
 # after its own component identity ("forge", matching its raw target names
-# iclforge_ac3_static/forge_shared) rather than after the overall package, for the
+# iclforge_ac3_static/iclforge_ac3_shared) rather than after the overall package, for the
 # same consistency reason.
 # The _objects OBJECT library has to be in the same export set as the
 # _static/_shared targets that PUBLIC-link it, even though nothing about it
@@ -183,7 +183,7 @@ install(DIRECTORY "${PROJECT_SOURCE_DIR}/src/ac3/include/"
     DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
     COMPONENT library)
 
-# Generated headers - ac3/version.hpp (from ac3/version.hpp.in) and the
+# Generated headers - iclforge/ac3/version.hpp (from iclforge/ac3/version.hpp.in) and the
 # generate_export_header() output - live in the library's own binary dir, not
 # its source tree (see src/ac3/CMakeLists.txt), so the install(DIRECTORY
 # .../include/) call above never sees them. A consumer's
@@ -354,11 +354,11 @@ if(ICLFORGE_BUILD_IAB)
 endif()
 
 # iclforge::adm and iclforge::admbridge are optional components (ICLFORGE_BUILD_ADM, see the root
-# CMakeLists.txt - admbridge shares ac3adm's own flag, see src/admbridge/CMakeLists.txt's header
+# CMakeLists.txt - admbridge shares iclforge::adm's own flag, see src/admbridge/CMakeLists.txt's header
 # comment) - but unlike every other component in this file, each installs/exports SHARED ONLY
 # (${_iclforge_adm_install_targets}/${_iclforge_admbridge_install_targets}, set above,
 # unconditionally shared regardless of ICLFORGE_INSTALL_BOTH_LINKAGES/BUILD_SHARED_LIBS) - see
-# src/adm/CMakeLists.txt's header comment for why. No vcpkg/Conan feature: ac3adm already has
+# src/adm/CMakeLists.txt's header comment for why. No vcpkg/Conan feature: iclforge::adm already has
 # none (needs Boost, see docs/library/index.md), and admbridge transitively depends on it.
 if(ICLFORGE_BUILD_ADM)
     install(TARGETS ${_iclforge_adm_install_targets}
@@ -375,7 +375,7 @@ if(ICLFORGE_BUILD_ADM)
         DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/iclforge/adm"
         COMPONENT library)
 
-    # LIBNAME hardcoded, not iclforge_pkgconfig_libname() - ac3adm/admbridge are shared-only, so
+    # LIBNAME hardcoded, not iclforge_pkgconfig_libname() - iclforge::adm/admbridge are shared-only, so
     # there's no static/shared choice to derive here, unlike every other component above.
     iclforge_install_pkgconfig(
         NAME iclforge-adm
@@ -404,7 +404,7 @@ if(ICLFORGE_BUILD_ADM)
 endif()
 
 # iclforge::iamf is an optional component (ICLFORGE_BUILD_IAMF, see the root CMakeLists.txt) - same
-# shape as ac3iab immediately above, a writer rather than a reader. The vcpkg port's "iamf"
+# shape as iclforge::iab immediately above, a writer rather than a reader. The vcpkg port's "iamf"
 # feature and the Conan recipe's "iamf" option switch it, off unless asked for (packaging/).
 if(ICLFORGE_BUILD_IAMF)
     install(TARGETS ${_iclforge_iamf_install_targets}
@@ -552,7 +552,7 @@ if(ICLFORGE_BUILD_CAPI)
     # version.h is configure_file()'d from version.h.in (which that install does copy, as the
     # template), each into src/capi's own binary dir. Without version.h, every
     # #include <iclforge_c/iclforge.h> against an installed prefix fails to compile. Same
-    # reason ac3/version.hpp and ac3/export.hpp are installed by name for iclforge::ac3 above.
+    # reason iclforge/ac3/version.hpp and ac3/export.hpp are installed by name for iclforge::ac3 above.
     install(FILES
             "${CMAKE_BINARY_DIR}/src/capi/generated/iclforge_c/export.h"
             "${CMAKE_BINARY_DIR}/src/capi/generated/iclforge_c/version.h"
@@ -669,8 +669,8 @@ if(ICLFORGE_BUILD_ADM)
         DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/iclforge"
         COMPONENT library)
 
-    # ac3:: namespace, not ac3admbridge:: - matches its in-tree alias (iclforge::admbridge_shared,
-    # see src/admbridge/CMakeLists.txt), the same way capiTargets uses ac3:: below for forge_c.
+    # iclforge:: namespace, not iclforge::admbridge:: - matches its in-tree alias (iclforge::admbridge_shared,
+    # see src/admbridge/CMakeLists.txt), the same way capiTargets uses iclforge:: below for iclforge_c.
     install(EXPORT admbridgeTargets
         FILE admbridgeTargets.cmake
         NAMESPACE iclforge::

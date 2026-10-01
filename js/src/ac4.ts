@@ -45,7 +45,7 @@
 // options as given: a field left out keeps the C++ struct's default, so the
 // defaults live in one place, the C++ header, and are not repeated here.
 
-/** ac4::DrcMode's own numeric order (decoder.hpp) - kept in sync by hand. */
+/** iclforge::ac4::DrcMode's own numeric order (decoder.hpp) - kept in sync by hand. */
 export enum Ac4DrcMode {
   Off = 0,
   Default = 1,
@@ -55,7 +55,7 @@ export enum Ac4DrcMode {
   PortableHeadphones = 5,
 }
 
-/** ac4::DownmixTarget's own numeric order (decoder.hpp) - kept in sync by hand. */
+/** iclforge::ac4::DownmixTarget's own numeric order (decoder.hpp) - kept in sync by hand. */
 export enum Ac4DownmixTarget {
   AsCoded = 0,
   FiveX = 1,
@@ -70,20 +70,20 @@ export enum Ac4DownmixTarget {
   FiveX2 = 10,
 }
 
-/** ac4::DecodingMode's own numeric order (decoder.hpp) - kept in sync by hand. */
+/** iclforge::ac4::DecodingMode's own numeric order (decoder.hpp) - kept in sync by hand. */
 export enum Ac4DecodingMode {
   Full = 0,
   Core = 1,
 }
 
-/** ac4::ConcealmentPolicy's own numeric order (decoder.hpp) - kept in sync by hand. */
+/** iclforge::ac4::ConcealmentPolicy's own numeric order (decoder.hpp) - kept in sync by hand. */
 export enum Ac4ConcealmentPolicy {
   None = 0,
   RepeatFade = 1,
   Mute = 2,
 }
 
-/** ac4::CodecMode's own numeric order (encoder.hpp) - kept in sync by hand. */
+/** iclforge::ac4::CodecMode's own numeric order (encoder.hpp) - kept in sync by hand. */
 export enum Ac4CodecMode {
   Auto = 0,
   Simple = 1,
@@ -96,14 +96,14 @@ export enum Ac4CodecMode {
   AspxAjcc = 8,
 }
 
-/** ac4::RateMode's own numeric order (encoder.hpp) - kept in sync by hand. */
+/** iclforge::ac4::RateMode's own numeric order (encoder.hpp) - kept in sync by hand. */
 export enum Ac4RateMode {
   Constant = 0,
   Average = 1,
   Variable = 2,
 }
 
-/** ac4::BedChannel's own codes, Part 2 Table 66's nonstd_bed_channel_assignment (encoder.hpp) - kept in sync by hand. */
+/** iclforge::ac4::BedChannel's own codes, Part 2 Table 66's nonstd_bed_channel_assignment (encoder.hpp) - kept in sync by hand. */
 export enum Ac4BedChannel {
   Left = 0,
   Right = 1,
@@ -122,7 +122,7 @@ export enum Ac4BedChannel {
   RightWide = 15,
 }
 
-/** ac4::ObjectCoding's own numeric order (encoder.hpp) - kept in sync by hand. */
+/** iclforge::ac4::ObjectCoding's own numeric order (encoder.hpp) - kept in sync by hand. */
 export enum Ac4ObjectCoding {
   /** An A-JOC substream (Part 2 clause 5.7): a downmix and the matrices that rebuild the objects from it. */
   Ajoc = 0,
@@ -130,7 +130,7 @@ export enum Ac4ObjectCoding {
   Direct = 1,
 }
 
-/** ac4::AjocDownmix's own numeric order (encoder.hpp) - kept in sync by hand. */
+/** iclforge::ac4::AjocDownmix's own numeric order (encoder.hpp) - kept in sync by hand. */
 export enum Ac4AjocDownmix {
   /** Downmix signals the encoder computes, each the sum of a group of objects. */
   Computed = 0,
@@ -140,7 +140,7 @@ export enum Ac4AjocDownmix {
   Static51 = 2,
 }
 
-/** ac4::AdditionalPair's own numeric order (encoder.hpp, Part 1 Table 88) - kept in sync by hand. */
+/** iclforge::ac4::AdditionalPair's own numeric order (encoder.hpp, Part 1 Table 88) - kept in sync by hand. */
 export enum Ac4AdditionalPair {
   None = 0,
   /** 3/4/0: Lb and Rb. */
@@ -152,16 +152,16 @@ export enum Ac4AdditionalPair {
 }
 
 export interface Ac4PresentationChoice {
-  /** ac4::PresentationChoice::presentation_id; unset (or omitted) selects by index/preference instead. */
+  /** iclforge::ac4::PresentationChoice::presentation_id; unset (or omitted) selects by index/preference instead. */
   presentationId?: number;
-  /** ac4::PresentationChoice::index, a position in the table of contents. */
+  /** iclforge::ac4::PresentationChoice::index, a position in the table of contents. */
   index?: number;
   /** An IETF BCP 47 tag; empty (the default) for none. */
   language?: string;
 }
 
 export interface Ac4OutputOptions {
-  /** ac4::OutputConfig::output_level_dbfs; unset leaves the stream at its coded level. */
+  /** iclforge::ac4::OutputConfig::output_level_dbfs; unset leaves the stream at its coded level. */
   outputLevelDbfs?: number;
   drc?: Ac4DrcMode;
   headphones?: boolean;
@@ -179,14 +179,14 @@ export interface Ac4DecoderOptions {
   decodingMode?: Ac4DecodingMode;
   concealment?: Ac4ConcealmentPolicy;
   presentation?: Ac4PresentationChoice;
-  /** ac4::DecoderConfig::level (md_compat); default 3, matching the C++ struct default. */
+  /** iclforge::ac4::DecoderConfig::level (md_compat); default 3, matching the C++ struct default. */
   mdCompatLevel?: number;
 }
 
 /**
- * ac4::ObjectProperties (Part 2 Annex F.2 to F.10 and add_per_object_md()'s
+ * iclforge::ac4::ObjectProperties (Part 2 Annex F.2 to F.10 and add_per_object_md()'s
  * data), as the decoder returns it and the encoder takes it; every field is
- * optional for the encoder and keeps ac4::ObjectProperties{}'s default (active,
+ * optional for the encoder and keeps iclforge::ac4::ObjectProperties{}'s default (active,
  * 0 dB, priority 1, the room's centre, depth exponent 1) when left out. Each
  * value is written to the nearest its code has and refused off its range:
  * gainDb +15 to -49 dB in steps of 1, or -Infinity; priority 0 to 1 in steps of
@@ -216,10 +216,10 @@ export interface RawAc4ObjectProperties {
   headTrackDisabled: boolean;
 }
 
-/** An object's metadata for the encoder: the fields to change from ac4::ObjectProperties{}'s defaults. */
+/** An object's metadata for the encoder: the fields to change from iclforge::ac4::ObjectProperties{}'s defaults. */
 export type Ac4ObjectProperties = Partial<RawAc4ObjectProperties>;
 
-/** ac4::ObjectConfig: one object of an {@link Ac4ObjectsConfig}, the input channel at its index. */
+/** iclforge::ac4::ObjectConfig: one object of an {@link Ac4ObjectsConfig}, the input channel at its index. */
 export interface Ac4ObjectConfig {
   /** A bed object from this loudspeaker; a dynamic object where left out. */
   bed?: Ac4BedChannel;
@@ -230,7 +230,7 @@ export interface Ac4ObjectConfig {
 }
 
 /**
- * ac4::ObjectsConfig: the objects of the one object substream a stream can
+ * iclforge::ac4::ObjectsConfig: the objects of the one object substream a stream can
  * have, and how they are coded. The limits are the encoder's: 1 to 64
  * objects, at most one the LFE and at least one not; as A-JOC a computed
  * downmix of `downmixSignals` signals (1 to 11, no more than the full-band
@@ -256,7 +256,7 @@ export interface Ac4ObjectsConfig {
 }
 
 /**
- * ac4::ObjectMetadataUpdate: a change to an object's metadata, given to
+ * iclforge::ac4::ObjectMetadataUpdate: a change to an object's metadata, given to
  * {@link Ac4Encoder.encode} with the input it belongs to. From input sample
  * `sample` of that call's channels (0 its first, and any later one) the object
  * `object` - an index into {@link Ac4ObjectsConfig.objects} - moves to
@@ -272,7 +272,7 @@ export interface Ac4ObjectMetadataUpdate {
 }
 
 /**
- * ac4::EncoderConfig::Experimental: syntax only this project's readers have
+ * iclforge::ac4::EncoderConfig::Experimental: syntax only this project's readers have
  * read from this encoder, off unless asked for. drc_gains and three_zero,
  * which need the DRC modes and the substream list this binding does not
  * carry, are not here.
@@ -298,9 +298,9 @@ export interface Ac4Experimental {
   objects?: boolean;
 }
 
-/** ac4::EncoderConfig, less what ac4_bindings.cpp's header comment leaves out. A field left out keeps the C++ default. */
+/** iclforge::ac4::EncoderConfig, less what ac4_bindings.cpp's header comment leaves out. A field left out keeps the C++ default. */
 export interface Ac4EncoderOptions {
-  /** 1, 2, 5, 6, 9 or 10 (see ac4::EncoderConfig::channels); ignored with `objects`. */
+  /** 1, 2, 5, 6, 9 or 10 (see iclforge::ac4::EncoderConfig::channels); ignored with `objects`. */
   channels?: number;
   sampleRateHz?: number;
   frameRateIndex?: number;
@@ -319,7 +319,7 @@ export interface Ac4EncoderOptions {
   objects?: Ac4ObjectsConfig;
 }
 
-/** ac4::PresentationInfo, as Ac4Decoder.presentations() returns it. */
+/** iclforge::ac4::PresentationInfo, as Ac4Decoder.presentations() returns it. */
 export interface RawAc4Presentation {
   index: number;
   presentationId: number | null;
@@ -330,7 +330,7 @@ export interface RawAc4Presentation {
   language: string;
   decodable: boolean;
   selectable: boolean;
-  /** Channel layout as strings (ac4::describe(Speaker)), the same convention decoder_bindings.cpp uses for AC-3. */
+  /** Channel layout as strings (iclforge::ac4::describe(Speaker)), the same convention decoder_bindings.cpp uses for AC-3. */
   speakers: string[];
 }
 
@@ -339,7 +339,7 @@ export interface RawAc4Concealment {
   action: "repeatFade" | "mute";
 }
 
-/** ac4::ObjectUpdate (Part 2 Annex F.11): one block update within a decoded frame. */
+/** iclforge::ac4::ObjectUpdate (Part 2 Annex F.11): one block update within a decoded frame. */
 export interface RawAc4ObjectUpdate {
   /** The output sample of the frame the update takes effect at, counted with the decoder's delay as the frame's channels are. */
   sample: number;
@@ -351,7 +351,7 @@ export interface RawAc4ObjectUpdate {
 export interface RawAc4Object {
   kind: "bed" | "dyn" | "isf";
   lfe: boolean;
-  /** A bed object's loudspeaker (ac4::describe(Speaker)); null otherwise. */
+  /** A bed object's loudspeaker (iclforge::ac4::describe(Speaker)); null otherwise. */
   speaker: string | null;
   samples: Float32Array;
   /** What is in force at the frame's first sample. */
@@ -491,7 +491,7 @@ export class Ac4Decoder {
   }
 
   /**
-   * Decodes one raw_ac4_frame (an ac4::SyncFrame's raw_ac4_frame, or an MP4
+   * Decodes one raw_ac4_frame (an iclforge::ac4::SyncFrame's raw_ac4_frame, or an MP4
    * sample - strip any container/sync-frame wrapper first). Null for a
    * frame with no output and for a decode error with no concealment
    * configured - {@link refusalReason} says why in either case.
@@ -504,7 +504,7 @@ export class Ac4Decoder {
     return this.#native.decodeFrame(bytes);
   }
 
-  /** Changes the output processing from the next frame (ac4::Decoder::set_output()). */
+  /** Changes the output processing from the next frame (iclforge::ac4::Decoder::set_output()). */
   setOutput(options: Ac4OutputOptions = {}): void {
     this.#native.setOutput(
       options.outputLevelDbfs ?? NaN,
@@ -518,12 +518,12 @@ export class Ac4Decoder {
     );
   }
 
-  /** Changes which presentation is decoded from the next frame (ac4::Decoder::set_presentation()). */
+  /** Changes which presentation is decoded from the next frame (iclforge::ac4::Decoder::set_presentation()). */
   setPresentation(choice: Ac4PresentationChoice = DEFAULT_PRESENTATION_CHOICE): void {
     this.#native.setPresentation(choice.presentationId ?? -1, choice.index ?? -1, choice.language ?? "");
   }
 
-  /** Forgets everything carried between frames (ac4::Decoder::reset()). */
+  /** Forgets everything carried between frames (iclforge::ac4::Decoder::reset()). */
   reset(): void {
     this.#native.reset();
   }
@@ -605,12 +605,12 @@ export class Ac4Encoder {
     return this.#native.delaySamples();
   }
 
-  /** The delay ac4::Decoder adds on top of {@link delaySamples}, at the input's rate. */
+  /** The delay iclforge::ac4::Decoder adds on top of {@link delaySamples}, at the input's rate. */
   get decoderDelaySamples(): number {
     return this.#native.decoderDelaySamples();
   }
 
-  /** The 'dac4' box for the stream as encoded so far (ac4::build_dac4()); empty where {@link dac4Refusal} is non-empty. */
+  /** The 'dac4' box for the stream as encoded so far (iclforge::ac4::build_dac4()); empty where {@link dac4Refusal} is non-empty. */
   buildDac4(): Uint8Array {
     return this.#native.buildDac4();
   }
@@ -628,7 +628,7 @@ export class Ac4Encoder {
   }
 }
 
-/** ac4::sync_frame(): wraps `rawFrame` with the sync word, optional CRC and frame_size, for a raw .ac4 file or MPEG-2 TS. */
+/** iclforge::ac4::sync_frame(): wraps `rawFrame` with the sync word, optional CRC and frame_size, for a raw .ac4 file or MPEG-2 TS. */
 export function syncFrame(module: Ac4EmbindModule, rawFrame: Uint8Array, crc: boolean): Uint8Array {
   return module.syncFrame(rawFrame, crc);
 }

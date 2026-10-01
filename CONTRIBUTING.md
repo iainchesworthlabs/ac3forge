@@ -1,8 +1,8 @@
-# Contributing to ac3forge
+# Contributing to ICL Forge
 
 ## Build and test
 
-Setup is in [docs/building.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/building.md). The short form, from any shell (a Developer PowerShell is not required — see that page):
+Setup is in [docs/building.md](https://github.com/iainchesworthlabs/iclforge/blob/main/docs/building.md). The short form, from any shell (a Developer PowerShell is not required — see that page):
 
 ```bash
 cmake --preset config-windows-msvc-debug && cmake --build --preset build-windows-msvc-debug && ctest --preset test-windows-msvc-debug
@@ -45,14 +45,14 @@ other compilers and platforms one run at a time, and nightly the sanitizers, cov
 validation and every other leg. When a merge breaks `main`, `main-health` opens a `main-red`
 issue naming the merges since the last verified commit. A change that needs more than the gate
 before it merges (an ESP-IDF, Android or WASM change, a sanitizer question) can label its PR
-`ci:deep` or dispatch `ci.yml` on its branch. [CI for many agents](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/ci-agentic.md)
+`ci:deep` or dispatch `ci.yml` on its branch. [CI for many agents](https://github.com/iainchesworthlabs/iclforge/blob/main/docs/ci-agentic.md)
 describes the stages, and
-[.github/branch-protection.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/branch-protection.md)
+[.github/branch-protection.md](https://github.com/iainchesworthlabs/iclforge/blob/main/.github/branch-protection.md)
 has the required-check list and the merge-queue rationale. clang-tidy, CodeQL, MSVC
 PREfast and SonarCloud do not gate a PR: they run nightly against `main` and open a
 `nightly-analysis` issue when a run finds something new (same file, "Nightly analysis and
 other visible-only scanners"). Releases are tags cut directly
-from `main` — see [docs/releasing.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/releasing.md).
+from `main` — see [docs/releasing.md](https://github.com/iainchesworthlabs/iclforge/blob/main/docs/releasing.md).
 
 ## The clean-room rule
 
@@ -77,11 +77,17 @@ If you cannot cite where something came from, it does not go in.
 
 ## Repository layout
 
-**`src/` is the installable library; `apps/` consumes it, never the reverse.** `src/ac3` is
-the AC-3, E-AC-3 and Atmos codec. `src/ac4`, `src/ac4core`, `src/ac4dec` and `src/ac4enc` are the
-AC-4 codec, in namespace `ac4`, and link nothing from `src/ac3`. `src/arithmetic` is the
-header-only target both codecs link for their scalar types (`Fixed32`, the project's own float
-functions) and the SIMD seam; it is not installed.
+**`src/` is the installable library; `apps/` consumes it, never the reverse.** `src/` holds 22
+libraries. Each is a directory with its own CMake target (`iclforge::<name>`), its own public
+headers (`iclforge/<name>/`) and its own row in `tools/checks/layering.json`, which lists the
+libraries it may include from; `check_layering.py` fails an include its row does not list.
+`src/ac3` is the AC-3, E-AC-3 and Atmos codec. `src/ac4`, `src/ac4core`, `src/ac4dec` and
+`src/ac4enc` are the AC-4 codec, in namespace `iclforge::ac4`, and link nothing from `src/ac3`.
+The two codecs stand on libraries that know no codec: `src/base` (bit I/O, the speaker
+vocabulary, the CPU probe), `src/arithmetic` (header-only: `Fixed32`, the project's own float
+functions and the SIMD seam; it is not installed), `src/dsp` (the transforms more than one
+library uses), `src/objects` (the object-audio model and the Object Audio Metadata payload),
+`src/render` (layouts, routing and the renderer) and `src/iec61937` (burst packing).
 `apps/{cli,gui,crucible,hearth,android,wasm,baremetal}` consume them (Crucible and the Shield app
 use the AC-3, E-AC-3 and Atmos codec only), and `apps/common` is shared application code,
 compiled directly into its consumers. `apps/windows` holds Crucible's separately licensed
@@ -91,39 +97,41 @@ anything under `apps/`.
 
 **The tree holds four products, and the directories say which is which.** `src/`
 other than `src/audio` and `src/sendspin`, the bindings under `python/`, `js/` and `rust/`, and
-`examples/`, `fuzz/` and `apps/baremetal` are **the library** — `ac3forge` and `ac3::forge` name
-it, and those identifiers name its packages too. `apps/cli`, `apps/gui` and `apps/common` are
-**Forge**, the tooling pair, built and packaged as one thing. `apps/crucible`, with the driver
-in `apps/windows`, is **Crucible**. `apps/hearth`, `src/sendspin` and the `hearth_sink` example
-are **Hearth**. `apps/android` and `apps/wasm` are library demonstrations. `src/audio`, `tests/`,
-`tools/`, `cmake/`, `packaging/` and the version line are shared and owned by no one product.
-[The naming and scope plan](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/recasting.md)
-records what each member owns, down to the targets, packages and CI legs.
+`examples/`, `fuzz/` and `apps/baremetal` are **the library**; `iclforge` names it, and names its
+packages too. `apps/cli`, `apps/gui` and `apps/common` are **Forge**, the tooling pair, built and
+packaged as one thing. `apps/crucible`, with the driver in `apps/windows`, is **Crucible**.
+`apps/hearth`, `src/sendspin` and the `hearth_sink` example are **Hearth**. `apps/android` and
+`apps/wasm` are library demonstrations. `src/audio`, `tests/`, `tools/`, `cmake/`, `packaging/`
+and the version line are shared and owned by no one product.
+[The naming and scope plan](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/recasting.md)
+records what each member owns, down to the targets, packages and CI legs, under the names it was
+written with; [Renamed](https://github.com/iainchesworthlabs/iclforge/blob/main/docs/renamed.md) maps them
+to the present ones.
 
-**These naming rules govern prose and code.** `ac3forge` and
-`ac3::forge` name the library and the family's identifiers — the CMake project, the packages,
-the namespace, the C symbol prefix; **Forge**, capitalised and standing alone, names the
-`ac3cli` + `ac3gui` pair. "AC3Forge" is the family in prose, every identifier stays lowercase,
-and "AC3Forge Forge" is never written. `ac3cli --version` keeps printing `ac3forge <version>`
-(`src/ac3/src/version.cpp`), because that is the library's version line and the published
-Homebrew formula's test asserts it.
+**These naming rules govern prose and code.** In prose, "ICL Forge" is the family, and **Forge**,
+capitalised and standing alone, is the `forge` + `forge-gui` pair; Hearth and Crucible are named
+as themselves, and "ICL Forge Forge" is never written. In code, `iclforge` names the library and
+the family's identifiers: the CMake package, the packages of each language, the namespace root,
+the header root and the C symbol prefix (`iclforge_`), with `ICLFORGE_` for macros, options and
+environment variables. Every identifier stays lowercase but those. `forge --version` prints
+`iclforge <version>` (`src/ac3/src/version.cpp`), because that is the library's version line and
+the Homebrew formula's test asserts it.
 
-**The `ac3/` header prefix marks a dependency on `ac3::forge`, not just anything codec-adjacent.**
-A module installs its public headers under `include/ac3/<name>/` exactly when it depends on or
-extends `ac3::forge`'s own model: `forge` itself (`ac3/core`, `ac3/encoder`, ...), `admbridge`
-(`ac3/admbridge`), `audio` (`ac3/audio`), `signing` (`ac3/signing`). A bare `include/<name>/`
-(no `ac3/` prefix) marks a module as deliberately codec-blind: `ac3adm` (ADM/BW64 file parsing),
-`matroska`, `mp4`, `mpegts` (container muxing) — none of these know AC-3, E-AC-3 or Atmos exist,
-and should stay that way. The AC-4 libraries are bare too, for a different reason: `ac4/`
-(`ac4::ac4`, the inspector), `ac4dec/` (`ac4::decoder`) and `ac4enc/` (`ac4::encoder`) are a
-separate codec that shares no bitstream syntax with `ac3::forge` and depends on nothing in it.
-`ac4core` is the static library the decoder and the encoder share, and has no public headers.
+**A library's headers are `include/iclforge/<name>/`, and the name is the library.** The second
+component of an include path says which library a header belongs to: `iclforge/ac3/decoder/decoder.hpp`
+is in `src/ac3/include/iclforge/ac3/decoder/`, `iclforge/render/layout.hpp` in
+`src/render/include/iclforge/render/`. A library includes headers only of the libraries its row of
+`layering.json` lists. `base`, `dsp`, `objects`, `render` and `iec61937` list no codec, nor do the
+containers (`matroska`, `mp4`, `mpegts`, `iamf`) and the readers (`adm`, `iab`): none of them knows
+AC-3, E-AC-3 or Atmos exist, and they should stay that way. The AC-4 libraries list none of
+`ac3`'s: a separate codec that shares no bitstream syntax with it. `ac4core` is the static library
+the decoder and the encoder share, and has no public headers.
 
-The one deliberate exception is `capi`: it installs under `include/ac3forge_c/`, not `ac3/`,
-even though it depends on the codec directly (it wraps `ac3::forge_static`). The `ac3/` tree is
-a C++ namespace; `capi` is a C-callable surface, and a C or non-C++ consumer has no reason to
-see, or accidentally `#include`, a C++ header. Don't read "not under `ac3/`" as "codec-blind"
-here — it's a different axis (language surface, not dependency) that happens to look similar.
+The one deliberate exception to the header root is `capi`: it installs under
+`include/iclforge_c/`, not `iclforge/`, even though it depends on the codecs directly (it wraps
+`iclforge::ac3_static` and the AC-4 libraries). The `iclforge/` tree is C++; `capi` is a C-callable
+surface, and a C or non-C++ consumer has no reason to see, or accidentally `#include`, a C++
+header.
 
 **One subdirectory per platform audio backend, selected by CMake, never `#ifdef`.**
 `src/audio/src/backend/{alsa,pipewire,android,macos,posix,windows}` — adding a backend means a
@@ -163,7 +171,7 @@ file-supplied text therefore goes through `strtod` instead (`src/ac3/src/encoder
 Linux or Homebrew-macOS build, so the CI legs that catch it are Android (Shield) and Build wheels
 (macos-latest).
 
-**Warnings are errors.** `ac3::warnings` is linked privately into every first-party target,
+**Warnings are errors.** `iclforge::warnings` is linked privately into every first-party target,
 including `examples/`. That includes `-Wsign-conversion` and its MSVC equivalents, which in
 this codebase means a lot of explicit `static_cast<std::size_t>` on indices. Add the cast; do
 not suppress the warning.
@@ -261,12 +269,12 @@ Ranked by how much they prove. Prefer the strongest one available for what you a
      `tools/checks/check_drc.py` and `tools/checks/check_coupling.py`/`check_coupling_level.py` for metadata
      that only a discriminating decode can confirm, and `tools/ci/quality_race.py ci` for a numeric
      SNR/LSD floor per E-AC-3 tool variant. Running any of these locally needs `ffmpeg` on `PATH`
-     and, for the Python ones, `AC3CLI` (or `--cli`) pointed at your build's `ac3cli`.
+     and, for the Python ones, `ICLFORGE_CLI` (or `--cli`) pointed at your build's `forge`.
    - **The gold-reference gate** (`tools/checks/verify_gold_reference.sh`, in the pull-request
      gate and on every platform leg):
-     *quality* and cross-platform reproducibility on one fixed sample - does ac3cli's own decoder
+     *quality* and cross-platform reproducibility on one fixed sample - does forge's own decoder
      agree with FFmpeg's, by SNR, on every compiler this project builds with. See
-     [docs/building.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/building.md#gold-reference-correctness-gate).
+     [docs/building.md](https://github.com/iainchesworthlabs/iclforge/blob/main/docs/building.md#gold-reference-correctness-gate).
 
    The same job also runs `tools/checks/check_matrix_coverage.py`, which asks a different question: not
    "is the output correct" but "does anything exercise this at all". It reads the CLI's own
@@ -299,7 +307,7 @@ Ranked by how much they prove. Prefer the strongest one available for what you a
    and the nightly `Interop` workflow runs `tools/checks/verify_fate_interop.py` over eight
    SHA-256-pinned commercial-encoder excerpts fetched from FFmpeg's FATE archive. Reach for this
    one whenever you touch decoder syntax the encoder here never emits — and read
-   [docs/verification.md](https://iainchesworthlabs.github.io/ac3forge/verification/#third-party-bitstreams)
+   [docs/verification.md](https://iainchesworthlabs.github.io/iclforge/verification/#third-party-bitstreams)
    first, because there are no free AC-3 or E-AC-3 conformance vectors and this is the
    substitute, not the real thing.
 4. **The Python references in `tools/`.** Independent transcriptions of the same spec text.
@@ -307,7 +315,7 @@ Ranked by how much they prove. Prefer the strongest one available for what you a
    self-consistent round trip cannot.
 5. **Dolby's Reference Player and Media Encoder**, for object-layer syntax.
 
-**AC-4 has a ladder of its own**, set out in [docs/verification.md](https://iainchesworthlabs.github.io/ac3forge/verification/#ac-4)
+**AC-4 has a ladder of its own**, set out in [docs/verification.md](https://iainchesworthlabs.github.io/iclforge/verification/#ac-4)
 and in `planning/ac4.md`. FFmpeg reads AC-4's framing and its MP4 track and has no AC-4 decoder, so
 it does not check audio. The decoder is scored against the streams Dolby Encoding Engine (DEE)
 makes from known sources, the committed ones in `tests/golden/external-baseline/ac4-*` and a larger
@@ -327,30 +335,30 @@ the tests there do.
 layer's *syntax*, not its audio: that decoder gates object decoding on a keyed authenticity tag
 this project ships no key for, so it renders these streams as their 5.1 bed, and FFmpeg
 implements no JOC reconstruction at all. Nothing outside this repository can produce an
-independent object decode of an ac3forge stream. What exists instead is a self-consistency
+independent object decode of an ICL Forge stream. What exists instead is a self-consistency
 series with real resolution — `tools/ci/quality_race.py`'s `objects` mode scores a committed
 five-object scene per object per rate in the nightly run, trended at [Object quality
-trend](https://iainchesworthlabs.github.io/ac3forge/object-quality-trend/). If you are changing
-`ac3::oba::joc` or `ac3::oba`, run it before and after and put both numbers in the commit message;
+trend](https://iainchesworthlabs.github.io/iclforge/object-quality-trend/). If you are changing
+`iclforge::oba::joc` or `iclforge::oba`, run it before and after and put both numbers in the commit message;
 it takes seconds and it is the only quality signal that layer has.
 
 Neither decoder covers everything, and the gaps do not overlap: see the [verification-gap
-table](https://iainchesworthlabs.github.io/ac3forge/verification/#where-the-oracles-dont-reach). If your change lands in a cell with no oracle, say so in
+table](https://iainchesworthlabs.github.io/iclforge/verification/#where-the-oracles-dont-reach). If your change lands in a cell with no oracle, say so in
 the commit message and cover it bit-by-bit instead.
 
 ## Documentation
 
-The examples in [docs/library/](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/library/index.md) are excerpts from programs in
-[`examples/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/examples), which are build targets and `ctest` entries. If you change a public
+The examples in [docs/library/](https://github.com/iainchesworthlabs/iclforge/blob/main/docs/library/index.md) are excerpts from programs in
+[`examples/`](https://github.com/iainchesworthlabs/iclforge/tree/main/examples), which are build targets and `ctest` entries. If you change a public
 API, update the example — the build will tell you if you forget. Do not add a snippet to the
 docs that is not backed by a compiled file.
 
 If you add a capability or find a new limitation, the tables in
-[docs/library/capabilities.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/library/capabilities.md)
+[docs/library/capabilities.md](https://github.com/iainchesworthlabs/iclforge/blob/main/docs/library/capabilities.md)
 ("What it does" / "What it does not do") and, for oracle coverage specifically,
-[docs/verification.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/verification.md)
+[docs/verification.md](https://github.com/iainchesworthlabs/iclforge/blob/main/docs/verification.md)
 are the authority and must be updated with it. README.md's own summary of the same material
-should stay a summary, not grow back into a second copy. [docs/history.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/history.md) is a
+should stay a summary, not grow back into a second copy. [docs/history.md](https://github.com/iainchesworthlabs/iclforge/blob/main/docs/history.md) is a
 record of past work and is not maintained against the current state.
 
 The platform tables under `docs-snippets/generated/` are generated from
@@ -387,24 +395,24 @@ a mid-level developer who does not already know this audio domain.
 - `ROADMAP.md` is the **status board** for in-flight, partial, proposed, blocked, and out-of-scope
   work. It uses plain-English names; do not allocate new numeric roadmap IDs (`EQ1`, `UX12`, …).
   Legacy IDs at the bottom of `ROADMAP.md` resolve old PR references only.
-- Product index pages (`docs/*/index.md`) and [`docs/library/capabilities.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/library/capabilities.md)
+- Product index pages (`docs/*/index.md`) and [`docs/library/capabilities.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/docs/library/capabilities.md)
   state **what ships today**.
-- Detailed implementation decisions belong in [`planning/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/planning)
+- Detailed implementation decisions belong in [`planning/`](https://github.com/iainchesworthlabs/iclforge/tree/main/planning)
   or a product's `design/` record. When a plan lands, update CHANGELOG and the product index; trim
-  the roadmap row; leave or mark the plan superseded ([`planning/SUPERSEDED.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/SUPERSEDED.md)).
+  the roadmap row; leave or mark the plan superseded ([`planning/SUPERSEDED.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/SUPERSEDED.md)).
 
 **Each product page set follows one shape.** An `index.md` opens with a status callout (what's
 built, what isn't, what's verified on real hardware versus under emulation or in CI only),
 sub-pages carry plain topic titles rather than repeating the product's binary name, and a
 `design/` subfolder holds phase records and promotion plans — evidence a reference page cites,
-not a guide a user reads first. [docs/crucible/design/promotion.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/crucible/design/promotion.md)
-and [docs/hearth/design/player-appliance.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/hearth/design/player-appliance.md)
+not a guide a user reads first. [docs/crucible/design/promotion.md](https://github.com/iainchesworthlabs/iclforge/blob/main/docs/crucible/design/promotion.md)
+and [docs/hearth/design/player-appliance.md](https://github.com/iainchesworthlabs/iclforge/blob/main/docs/hearth/design/player-appliance.md)
 are the pattern to follow for a new one.
 
 **Non-trivial design work starts in `planning/`, not `docs/`.** A phase plan, a naming decision,
 or a proposal that touches more than a page or two belongs in
-[`planning/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/planning) first —
-see [`planning/README.md`](https://github.com/iainchesworthlabs/ac3forge/tree/main/planning/README.md)
+[`planning/`](https://github.com/iainchesworthlabs/iclforge/tree/main/planning) first —
+see [`planning/README.md`](https://github.com/iainchesworthlabs/iclforge/tree/main/planning/README.md)
 for the index and how it relates to the roadmap. `docs/` describes what exists; `planning/` is
 where what might exist gets argued out first, and a page only moves (or a `design/` record
 gets written) once the work has actually landed. Plans link to the roadmap for status; they do

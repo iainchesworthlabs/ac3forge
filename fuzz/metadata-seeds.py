@@ -28,7 +28,7 @@ Two subcommands, both driven from fuzz/generate-seeds.sh:
       fuzz_iec61937_unwrap/ as a PCM16 stereo WAV, the shape 'forge spdif'
       gives AC-3 and E-AC-3 carriers. forge does not pack AC-4 yet
       (planning/ac4.md, I1), so this does, the way
-      ac3::iec61937::Ac4BurstPacker does at that rate: 2 048 IEC 60958
+      iclforge::iec61937::Ac4BurstPacker does at that rate: 2 048 IEC 60958
       frames a burst, Pc 0x0D18, Pd the frame's length in bits.
 
 The EMDF container syntax below is a deliberate second implementation of
@@ -53,7 +53,7 @@ PAYLOAD_ID_JOC = 14
 
 
 class Bits:
-    """MSB-first bit reader with ac3::BitReader's sticky-overflow behaviour."""
+    """MSB-first bit reader with iclforge::BitReader's sticky-overflow behaviour."""
 
     def __init__(self, data: bytes) -> None:
         self.data = data
@@ -184,7 +184,7 @@ def containers_in(frame: bytes):
 
 
 def syncframes(stream: bytes):
-    """Walks an E-AC-3 stream frame by frame, the way ac3::split_frames does."""
+    """Walks an E-AC-3 stream frame by frame, the way iclforge::split_frames does."""
     offset = 0
     while offset + 6 <= len(stream):
         if stream[offset] != 0x0B or stream[offset + 1] != 0x77:

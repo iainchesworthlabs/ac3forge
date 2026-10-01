@@ -24,7 +24,7 @@
 # bounded by limits the caller sets (see the plan's constraints on src/sendspin). The
 # WebSocket transport over cpp-httplib is the exception, since only a computer builds it.
 #
-# Always STATIC and never installed, like ac3::audio: no export annotations, and not
+# Always STATIC and never installed, like iclforge::audio: no export annotations, and not
 # part of the iclforge-dev package.
 # ---------------------------------------------------------------------------
 option(ICLFORGE_SENDSPIN_CORE_ONLY
@@ -148,7 +148,7 @@ elseif(NOT ICLFORGE_SENDSPIN_CORE_ONLY)
             src/transport/httplib/websocket.cpp)
     # The listening socket's options and the mDNS sockets' system calls, which differ by
     # platform (listen_socket.hpp, discovery/mdns/platform.hpp), and the Windows Firewall
-    # exception a listening or mDNS socket needs on Windows only (ac3/sendspin/firewall.hpp).
+    # exception a listening or mDNS socket needs on Windows only (iclforge/sendspin/firewall.hpp).
     if(WIN32)
         target_sources(iclforge_sendspin
             PRIVATE

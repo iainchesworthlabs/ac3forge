@@ -82,7 +82,7 @@ Dialog {
         }
         Body {
             Layout.topMargin: Theme.space2
-            text: "<a href=\"https://github.com/iainchesworthlabs/ac3forge\">github.com/iainchesworthlabs/ac3forge</a>"
+            text: "<a href=\"https://github.com/iainchesworthlabs/iclforge\">github.com/iainchesworthlabs/iclforge</a>"
             textFormat: Text.RichText
             linkColor: Theme.accent
         }

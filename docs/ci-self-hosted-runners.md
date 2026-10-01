@@ -55,7 +55,7 @@ pinned to GitHub-hosted unconditionally in every job of `pr-gate.yml`, and in `c
 `decide-runner` from a checkout of the fork's merge ref, which is fork-controlled code
 (`codeql.yml`'s decider has no `pull_request` trigger and needs no pin).
 
-This page describes what ac3forge's CI does with a self-hosted runner once one exists. It
+This page describes what ICL Forge's CI does with a self-hosted runner once one exists. It
 does not describe how one comes to exist - the fleet itself (Packer images, provisioning
 scripts, the org they register against) lives in
 [iainchesworthlabs/ci-runners](https://github.com/iainchesworthlabs/ci-runners), a repo
@@ -84,7 +84,7 @@ Per OS, in order:
    up to two API calls, summed, each reading every page of the list (`--paginate`: the API
    returns 30 runners a page, and an organisation with 45 once hid all four Windows runners
    on its second page):
-   - This repo's own registered runners (`GET /repos/iainchesworthlabs/ac3forge/actions/runners`,
+   - This repo's own registered runners (`GET /repos/iainchesworthlabs/iclforge/actions/runners`,
      using the workflow's own `GITHUB_TOKEN` - no extra setup). Empty, because the fleet is
      registered at the organisation level, the model `ci-runners` uses.
    - `iainchesworthlabs`'s org-level runners (`GET /orgs/iainchesworthlabs/actions/runners`),
@@ -137,7 +137,7 @@ for anything the heuristic gets wrong.
 ## Measuring whether it's actually worth it
 
 The whole point of this is to find out whether self-hosted is meaningfully faster than
-GitHub-hosted for ac3forge's build - not to assume it. With one exception, every leg
+GitHub-hosted for ICL Forge's build - not to assume it. With one exception, every leg
 installs GCC/LLVM/Qt/ffmpeg/Ninja and warms vcpkg's cache identically regardless of which
 runner it landed on, so a timing comparison between the two is measuring the runner, not a
 shortcut. The exception is the Windows LLVM leg: its install step checks
@@ -160,7 +160,7 @@ GitHub-hosted otherwise. `sonarcloud.yml` is the exception: it is pinned to
 GitHub-hosted and never routed, because the CFamily analyser does not fit the fleet's
 12 GB guests (its own header carries the measurements). The slot was chosen for a quiet fleet
 at 02:00 UTC. No workflow here asks for the `big` label;
-ac3forge does not use the big runners. A run
+ICL Forge does not use the big runners. A run
 that finds something new (or fails) opens or refreshes a `nightly-analysis` issue through
 `.github/actions/report-nightly-failure` - nothing reliably notifies anyone about a new
 default-branch code-scanning alert (GitHub's documented code-scanning notifications cover
@@ -168,20 +168,20 @@ alert assignment), so the issue is what makes the finding visible the next morni
 
 The fleet is shared with `aqualink-automate`. Scheduled runs are placed so the two repos'
 heavy legs never share a window, and every cron sits off the top of the hour (GitHub delays
-on-the-hour schedules). The agreed split: ac3forge owns 02:00-03:15 UTC on the fleet, and
+on-the-hour schedules). The agreed split: ICL Forge owns 02:00-03:15 UTC on the fleet, and
 aqualink-automate takes the 04:00 hour (its code-scanning cron is Tuesday 21:42 UTC weekly
 today, plus per-PR and push runs; the move into 04:xx has not been made yet).
 
 | Cron (UTC) | Repo | Workflow | Fleet use |
 |---|---|---|---|
-| 02:17 | ac3forge | `codeql.yml` (C++, JavaScript, Python and Kotlin) | Linux |
-| 02:23 | ac3forge | `msvc-analysis.yml` (PREfast) | Windows |
-| 02:29 | ac3forge | `static-analysis.yml` (clang-tidy) | Linux |
-| 02:35 | ac3forge | `sonarcloud.yml` | none (`ubuntu-latest`) |
-| 03:17 | ac3forge | `fuzz.yml` nightly jobs | none (hosted) |
-| 04:43 | ac3forge | `interop.yml` | none (hosted) |
-| 13:17 | ac3forge | `ci.yml`, the nightly run: every leg with every extra pass ([The tiers](ci-agentic.md#the-tiers)) | Linux and Windows, plus hosted |
-| Mon 03:45 / 03:50 / 04:00 | ac3forge | `osv-scanner.yml` / `zizmor.yml` / `scorecard.yml` | none (hosted) |
+| 02:17 | ICL Forge | `codeql.yml` (C++, JavaScript, Python and Kotlin) | Linux |
+| 02:23 | ICL Forge | `msvc-analysis.yml` (PREfast) | Windows |
+| 02:29 | ICL Forge | `static-analysis.yml` (clang-tidy) | Linux |
+| 02:35 | ICL Forge | `sonarcloud.yml` | none (`ubuntu-latest`) |
+| 03:17 | ICL Forge | `fuzz.yml` nightly jobs | none (hosted) |
+| 04:43 | ICL Forge | `interop.yml` | none (hosted) |
+| 13:17 | ICL Forge | `ci.yml`, the nightly run: every leg with every extra pass ([The tiers](ci-agentic.md#the-tiers)) | Linux and Windows, plus hosted |
+| Mon 03:45 / 03:50 / 04:00 | ICL Forge | `osv-scanner.yml` / `zizmor.yml` / `scorecard.yml` | none (hosted) |
 | Tue 21:42 / 22:17 / 22:27 / 22:37 | aqualink-automate | `automated-codescanning.yml` (CodeQL and MSVC on the `big` runners; SonarCloud hosted) / trivy / osv / scorecard - weekly today; code scanning is to move to 04:07, the minute that repo picked | Linux big, Windows big |
 
 These are the cron times. GitHub starts this repository's scheduled workflows hours after them:
@@ -231,14 +231,14 @@ container and scan outside it, keeping the compile database's paths consistent b
 
 A runner (self-hosted or GitHub-hosted) picking up a job is one problem; that runner actually
 having the *right versions* of the compiler, CMake, Qt, and vcpkg once it does is a separate
-one. ac3forge ports the manifest-driven version check
+one. ICL Forge ports the manifest-driven version check
 [`aqualink-automate`](https://github.com/iainchesworthlabs/aqualink-automate) and
 [`ci-runners`](https://github.com/iainchesworthlabs/ci-runners) both use, adapted to this
 repo's own architecture (see [Why no separate drift-warning action](#why-no-separate-drift-warning-action)
 below for what differs and why).
 
 1. **One manifest, several sources.**
-   [`.github/toolchain-versions.json`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/toolchain-versions.json)
+   [`.github/toolchain-versions.json`](https://github.com/iainchesworthlabs/iclforge/blob/main/.github/toolchain-versions.json)
    holds only the three pins that have no other canonical home in this repo: the MSVC
    toolset prefix (`msvc_toolset`), the Qt version (`qt`), and the exact LLVM point release
    the Windows LLVM leg (`_ci-windows.yml`) downloads as a win64 installer (`llvm_windows_version` -
@@ -252,7 +252,7 @@ below for what differs and why).
    track the same toolchain), CMake's minimum from
    `CMakePresets.json`'s `cmakeMinimumRequired`, and vcpkg's baseline from `vcpkg.json`'s
    `builtin-baseline`.
-   [`_toolchain-versions.yml`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/_toolchain-versions.yml)
+   [`_toolchain-versions.yml`](https://github.com/iainchesworthlabs/iclforge/blob/main/.github/workflows/_toolchain-versions.yml)
    is a small reusable `workflow_call` that
    reads the manifest plus those four other files once and exposes `gcc_version` / `llvm_version`
    / `llvm_windows_version` / `msvc_toolset` / `qt_version` / `cmake_min` / `vcpkg_commit`
@@ -286,7 +286,7 @@ whatever `ci-runners`' Packer image happened to bake in - a mismatch there means
 externally-provisioned image has drifted, which is `ci-runners`' problem to fix, not a reason
 to block a PR against unrelated code.
 
-ac3forge's own design already differs in the one place that matters: every Linux leg runs
+ICL Forge's own design already differs in the one place that matters: every Linux leg runs
 inside a pinned `ubuntu:26.04` **container** (the leg's `container:` in `_ci-linux.yml`, and the
 gate's Linux job in `pr-gate.yml`), so
 GCC/LLVM/Qt/ffmpeg/Ninja are installed fresh into that container on *every* run, self-hosted

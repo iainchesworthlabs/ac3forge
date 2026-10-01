@@ -1,4 +1,4 @@
-# apps/windows: the Windows-only pieces of AC3Forge Crucible
+# apps/windows: the Windows-only pieces of Crucible
 
 The application itself moved to [`apps/crucible/`](../crucible/) when it was promoted from a
 Windows demo to a cross-platform product (Crucible cross-platform promotion,
@@ -8,7 +8,7 @@ that cannot move, because it is Windows and nothing else:
 | Directory | What it is |
 |---|---|
 | [`driver/`](driver/) | `Ac3ForgeNullSink`, the silent render endpoint applications play into. A kernel-mode ACX driver, **separately licensed** (MS-PL, derived from Microsoft's ACX AudioCodec sample) — see its own `LICENSE` and `README`. Nothing in it is included, linked or copied anywhere else in the repository. |
-| [`driver-vm/`](driver-vm/) | The throwaway VMware guest the driver is verified in: create, install, test and verify scripts, plus `Deploy-Desk.ps1`, which pushes a built `ac3crucible` into that guest. |
+| [`driver-vm/`](driver-vm/) | The throwaway VMware guest the driver is verified in: create, install, test and verify scripts, plus `Deploy-Desk.ps1`, which pushes a built `crucible` into that guest. |
 
 ## Why the driver did not move with the application
 

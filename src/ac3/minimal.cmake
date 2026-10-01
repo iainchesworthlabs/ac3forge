@@ -35,7 +35,7 @@
 add_library(iclforge_ac3_minimal STATIC)
 add_library(iclforge::ac3_minimal ALIAS iclforge_ac3_minimal)
 
-# Which "ac3/internal/profiling.hpp" the profile's sources see. Off, the
+# Which "iclforge/base/detail/profiling.hpp" the profile's sources see. Off, the
 # markers expand to nothing (tracy_disabled/); with ICLFORGE_STAGE_TIMERS they
 # become calls into whatever application links this archive
 # (stage_timers/, and apps/baremetal/stage_timers.cpp for the probe). A
@@ -76,7 +76,7 @@ target_sources(iclforge_ac3_minimal
         src/verify/mirror.cpp
         src/verify/eac3_mirror.cpp
         # Runtime AVX2 dispatch. mdct.cpp asks
-        # ac3::internal::cpu::has_avx2() before each vectorised kernel, so
+        # iclforge::internal::cpu::has_avx2() before each vectorised kernel, so
         # this profile has to answer - and both answers must LINK, not just
         # compile.
         #
@@ -210,7 +210,7 @@ target_include_directories(iclforge_ac3_minimal
         "${_ac3_minimal_profiling_dir}"
         # The SIMD arch seam is resolved by src/arithmetic/CMakeLists.txt and comes
         # with iclforge::arithmetic, linked below: mdct.cpp/bitalloc.cpp/exponents.cpp
-        # include ac3/internal/arch/simd.hpp unconditionally, so this profile needs
+        # include iclforge/arithmetic/detail/simd.hpp unconditionally, so this profile needs
         # a directory the same way the ordinary build does.
         #
         # Both of the profile's bare-metal targets resolve to generic/ - an

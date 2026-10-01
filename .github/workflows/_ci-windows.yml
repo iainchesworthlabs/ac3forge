@@ -217,7 +217,7 @@ jobs:
             return $result
           }
 
-          # DIAGNOSTIC (ci-runners#26): a 2026-09-22 occurrence (ac3forge#796,
+          # DIAGNOSTIC (ci-runners#26): a 2026-09-22 occurrence (iclforge#796,
           # job 106819480284) showed the process tree/network/thread-state
           # diagnostics above earning their keep - winget itself now works
           # (see the source-agreements fix elsewhere in this step's git
@@ -395,7 +395,7 @@ jobs:
             if ($winget) {
               Write-Host "winget found ($($winget.Source)) - using it"
               # The `msstore` source goes first, best-effort: an earlier
-              # occurrence (ac3forge#796, job 106687216920) caught winget
+              # occurrence (iclforge#796, job 106687216920) caught winget
               # blocked on that source's unaccepted terms prompt with no
               # console to answer it (0x8a150042 "Error reading input in
               # prompt"). Nothing here installs from it, so removing it

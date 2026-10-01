@@ -2,7 +2,7 @@
 // package": everything a consumer touches has a real interface instead of
 // the `any` an untyped Embind wrapper would otherwise force on callers.
 
-/** ac3::DownmixTarget's own numeric order (core/downmix_target.hpp) - kept in sync by hand, there being only four values. */
+/** iclforge::DownmixTarget's own numeric order (core/downmix_target.hpp) - kept in sync by hand, there being only four values. */
 export enum DownmixTarget {
   AsCoded = 0,
   LoRo = 1,
@@ -50,7 +50,7 @@ export interface FlushEntry {
 
 export interface ObjectFrame {
   label: string;
-  /** [x, y, z, gain_db, width, depth, height] - see ac3::oba::DisplayObject's own comment. */
+  /** [x, y, z, gain_db, width, depth, height] - see iclforge::oba::DisplayObject's own comment. */
   position: Float32Array;
 }
 
@@ -58,7 +58,7 @@ export type ScanOutcome =
   | { ok: true; kind: string; sampleRate: number; accessUnits: readonly { offset: number; length: number }[] }
   | { ok: false; error: string };
 
-/** The Embind class ac3::forge's WASM build exposes (apps/wasm/decoder_bindings.cpp's `PushDecoder`). */
+/** The Embind class iclforge::ac3's WASM build exposes (apps/wasm/decoder_bindings.cpp's `PushDecoder`). */
 export interface NativePushDecoder {
   pushAccessUnit(bytes: Uint8Array): RawPushResult;
   flush(): RawFlushEntry[];

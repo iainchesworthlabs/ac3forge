@@ -164,7 +164,7 @@ def snr_db(reference: list[float], actual: list[float]) -> float:
     return 10.0 * math.log10(signal_power / noise_power)
 
 
-# WAV channel order ac3::io::ac3_layout_for(6) expects - see
+# WAV channel order iclforge::io::ac3_layout_for(6) expects - see
 # tools/generators/gen_gold_reference_wav.py, and docs/quality-trend.md's own
 # copy of this list for the rendered table. Naming the channels in this
 # script's output rather than only numbering them is what lets a CI log say

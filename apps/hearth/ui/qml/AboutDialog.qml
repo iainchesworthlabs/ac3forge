@@ -52,7 +52,7 @@ Dialog {
     // glancing at About. Collapses it to the build target and a short
     // commit on one line, matching docs/hearth/design/screenshots/about.png,
     // and never shows the dirty-state line here; the export still reads
-    // ac3::version_details() itself, untouched by this.
+    // iclforge::version_details() itself, untouched by this.
     function compactVersion(details) {
         const lines = details.split("\n").map(line => line.trim()).filter(line => line.length > 0);
         const headline = lines.shift() || "";
@@ -128,7 +128,7 @@ Dialog {
         }
         Body {
             Layout.topMargin: Theme.space2
-            text: "<a href=\"https://github.com/iainchesworthlabs/ac3forge\">github.com/iainchesworthlabs/ac3forge</a>"
+            text: "<a href=\"https://github.com/iainchesworthlabs/iclforge\">github.com/iainchesworthlabs/iclforge</a>"
             textFormat: Text.RichText
             linkColor: Theme.accent
         }

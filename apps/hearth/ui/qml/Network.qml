@@ -19,10 +19,10 @@ import Hearth
 // offering to create or join one right there (the group-creation UX gap
 // raised in hearth-followups-group-ux-and-live-diagnostics-2026-09-26).
 // Groups (NetworkGroupEdit.qml, issue #874: create, add, remove, volume,
-// mute, and playing to one) are backed by an actual ac3::sendspin::Group.
+// mute, and playing to one) are backed by an actual iclforge::sendspin::Group.
 //
 // Still the rest of A6, not built here: a warning BEFORE this computer takes
-// a paired sink another server is playing to needs ac3::sendspin to grow a
+// a paired sink another server is playing to needs iclforge::sendspin to grow a
 // way to ask without taking (network_sinks.hpp's own comment says why it
 // cannot today); only the after-the-fact notice is here.
 Item {

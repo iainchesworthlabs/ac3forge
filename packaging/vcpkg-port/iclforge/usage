@@ -1,20 +1,20 @@
 iclforge provides CMake targets via find_package(iclforge):
 
     find_package(iclforge CONFIG REQUIRED)
-    target_link_libraries(main PRIVATE ac3::forge)
+    target_link_libraries(main PRIVATE iclforge::ac3)
 
 Every other library is a separate, opt-in feature - none installed by default, since each adds its
 own public API, CMake targets and binaries. When present, their own targets are also available:
 
-    matroska  ->  matroska::matroska  (Matroska/.mkv)
-    mp4       ->  mp4::mp4            (MP4/ISOBMFF, plus fMP4/CMAF + HLS/DASH)
-    mpegts    ->  mpegts::mpegts      (MPEG-2 Transport Stream)
-    capi      ->  ac3::forge_c        (C11 API over the codecs; AC-4 too with the ac4 feature)
-    ac4       ->  ac4::decoder, ac4::encoder, ac4::ac4  (AC-4 decoding, encoding and reading)
-    iab       ->  ac3iab::ac3iab      (SMPTE ST 2098-2 Immersive Audio Bitstream reading)
-    iamf      ->  iamf::iamf          (IAMF writing)
+    matroska  ->  iclforge::matroska                                 (Matroska/.mkv)
+    mp4       ->  iclforge::mp4                                      (MP4/ISOBMFF, plus fMP4/CMAF + HLS/DASH)
+    mpegts    ->  iclforge::mpegts                                   (MPEG-2 Transport Stream)
+    capi      ->  iclforge::c                                        (C11 API over the codecs; AC-4 too with the ac4 feature)
+    ac4       ->  iclforge::ac4dec, iclforge::ac4enc, iclforge::ac4  (AC-4 decoding, encoding and reading)
+    iab       ->  iclforge::iab                                      (SMPTE ST 2098-2 Immersive Audio Bitstream reading)
+    iamf      ->  iclforge::iamf                                     (IAMF writing)
 
-    target_link_libraries(main PRIVATE matroska::matroska mp4::mp4 mpegts::mpegts)
+    target_link_libraries(main PRIVATE iclforge::matroska iclforge::mp4 iclforge::mpegts)
 
 To install the three container writers alongside the codec:
 

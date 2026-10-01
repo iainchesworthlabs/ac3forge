@@ -83,7 +83,7 @@ jobs:
   # iclforge-tests coverage over every library component: src/ac3 plus audio,
   # signing, matroska, mp4, mpegts, capi, and - via the coverage preset's
   # ICLFORGE_BUILD_ADM=ON with vcpkg's 'adm' feature, the same pair
-  # adm-validate passes by hand - ac3adm/admbridge. Originally src/ac3 only
+  # adm-validate passes by hand - iclforge::adm/admbridge. Originally src/ac3 only
   # ("the library is what was asked for"); extended once the rest of the
   # library surface existed and was already being EXERCISED by this same
   # suite, just uninstrumented and unreported. apps/cli and apps/gui stay out
@@ -531,7 +531,7 @@ jobs:
             --iclforge-tests ./build/config-linux-gcc/bin/iclforge-tests
 
       # A6's own exit (same planning doc): the scripted player as one member of a group alongside
-      # a burst-taking test sink, played from the app's own ac3::hearth::Engine - not just Group
+      # a burst-taking test sink, played from the app's own iclforge::hearth::Engine - not just Group
       # directly, the way the step above's own host case does for A4. Reuses the venv above.
       - name: aiosendspin 9.1.1 player, as a group member
         shell: bash

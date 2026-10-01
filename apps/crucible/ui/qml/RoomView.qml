@@ -8,7 +8,7 @@ import Crucible
 // up, ceiling at the top). Markers for placed applications are dragged
 // here; a drop from the bed tray lands here too.
 //
-// Room coordinates are ac3::oba::Position's: x 0..1 left to right, y 0..1
+// Room coordinates are iclforge::oba::Position's: x 0..1 left to right, y 0..1
 // front to back, z -1..1 floor to ceiling.
 //
 // Dragging: a marker follows the engine's position except while it is

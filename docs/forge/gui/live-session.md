@@ -58,12 +58,12 @@ run entry a real session opens says so too — its rate text is always the fixed
 A live session encodes AC-3 or E-AC-3. With AC-4 chosen as the codec on the
 [Format tab](format-and-channels.md#ac-4), **Start session** and the rail's **Monitor** both refuse,
 with a status line saying a live session encodes AC-3 or E-AC-3, and nothing starts; pick one of
-those codecs first. The command line goes further here: `ac3cli live` takes `codec=ac4` (mono,
+those codecs first. The command line goes further here: `forge live` takes `codec=ac4` (mono,
 stereo, 5.0 or 5.1), monitors the AC-4 it encodes and hands a receiver the parallel 5.1 AC-3 leg,
 since no receiver found takes AC-4 over IEC 61937 — see
 [CLI → Commands → Live & hardware](../cli/commands.md#live-hardware). The GUI has no AC-4 live
 path, and the rail's **Record…** has no AC-4 encoder behind it either (it builds the AC-3 and
-E-AC-3 encoders only); record an AC-4 take with `ac3cli record … codec=ac4`.
+E-AC-3 encoders only); record an AC-4 take with `forge record … codec=ac4`.
 
 ## Two-device capture: clock-master model
 
@@ -80,14 +80,14 @@ left alone, the slave's stream drifts against the master's a sample at a time. T
 Qt-free, allocation-free library pieces (`src/audio/include/iclforge/audio/resampler.hpp`) correct
 that:
 
-- **`ac3::audio::DriftResampler`** — a streaming linear-interpolation fractional resampler.
+- **`iclforge::audio::DriftResampler`** — a streaming linear-interpolation fractional resampler.
   Linear interpolation, not a windowed-sinc design: at the drift magnitudes a free-running consumer
   clock actually exhibits (tens of parts-per-million) linear interpolation's error sits far below
   the codec's psychoacoustic floor, and at a nominal-rate conversion (44.1 → 48 kHz) it
   trades some high-frequency accuracy near Nyquist for an allocation-free, state-tiny
   implementation appropriate to a live capture hot path. It carries only a fractional read position
   between `render()` calls — no sample data of its own.
-- **`ac3::audio::ClockDriftEstimator`** — the servo that decides the resampler's ratio: a small
+- **`iclforge::audio::ClockDriftEstimator`** — the servo that decides the resampler's ratio: a small
   proportional controller steering the worker's own slave-side scratch FIFO back towards a target
   occupancy (one frame period's worth), smoothed with a one-pole filter so the ratio moves in
   small, audio-safe steps rather than jumping. `ratio()` is the nominal conversion
@@ -127,7 +127,7 @@ low-ceremony treatment a failed monitor-sink open gets. The silence watchdog cov
 device independently: either going silent for three seconds fails the session, and the failure
 text names the one that actually went quiet.
 
-**CLI parity.** `ac3cli live` takes a trailing `capture2=<index>` token naming the second device,
+**CLI parity.** `forge live` takes a trailing `capture2=<index>` token naming the second device,
 built on the same shared resampler and drift estimator — see
 [CLI → Options & grammars](../cli/metadata-options.md#capture2) for its grammar.
 The GUI's own command bar emits it whenever the rail has two devices selected, so the line stays
@@ -258,7 +258,7 @@ chosen destination — there is no separate spool file for any of them:
   on — a crash leaves exactly what was captured, playable up to that point.
 - **Matroska** (`.mkv`): batch muxing needs the whole frame list to compute anything, which a
   live session never has until it decides to stop — so this container instead pushes each unit
-  into an incremental Matroska writer (`matroska::Writer`, `src/matroska`) built for exactly this
+  into an incremental Matroska writer (`iclforge::matroska::Writer`, `src/matroska`) built for exactly this
   case. Segment is written with EBML's reserved "unknown size" pattern, the standard way a
   streamed Matroska declares a length it cannot know yet, and Duration is omitted for the same
   reason — real players handle both the way they handle any other live-streamed Matroska. The
@@ -271,7 +271,7 @@ chosen destination — there is no separate spool file for any of them:
   "playable up to where it stopped" guarantee the elementary-stream path gives, not a companion
   file to fold in by hand afterward.
 - **Fragmented MP4/CMAF**: a folder, not a file, and the only container here whose *manifests*
-  change as the take runs. Each unit goes into `mp4::FragmentWriter` (`src/mp4`), the incremental
+  change as the take runs. Each unit goes into `iclforge::mp4::FragmentWriter` (`src/mp4`), the incremental
   fragmenter built for exactly this case, which hands back a complete CMAF media segment every
   time a fragment closes (48 access units, about 1.5 s); that segment is written as
   `segment<N>.m4s` and `audio.m3u8`/`master.m3u8`/`manifest.mpd` are rewritten beside it. While
@@ -293,10 +293,10 @@ The Container combo's other three choices — S/PDIF, MP4, MPEG-TS — fall into
 elementary-stream path above during a live session, not their own. For MP4 that is a format
 limit: `moov`/`stco` need every frame's final offset, so there is nothing to push a live unit
 into. S/PDIF and MPEG-TS both *do* have streaming writers, and a *recording* — the Record
-button's capture-to-file take — uses them through `RecordingSink`; `ac3cli live` reaches them too,
+button's capture-to-file take — uses them through `RecordingSink`; `forge live` reaches them too,
 with `container=spdif` and `container=ts`. The gap is on this side:
 `EncoderController::openLiveOutputWriters` special-cases exactly two incremental writers,
-`matroska::Writer` and `mp4::FragmentWriter`, and everything else falls through to the plain
+`iclforge::matroska::Writer` and `iclforge::mp4::FragmentWriter`, and everything else falls through to the plain
 write. So a live session with one of those three selected keeps writing the plain stream, exactly
 the file it would write with the combo left on Elementary stream; the container only changes what
 a *file* encode wraps it as afterward (see
@@ -306,7 +306,7 @@ There is also an optional **raw-WAV safety copy**: the pre-flight "Raw-WAV safet
 is only consulted once the take is also being written to disk. When on, it streams the raw
 captured PCM — device channel order, unencoded, before any routing or mixing — to a sibling
 `.raw.wav` file (beside a fragmented-MP4 folder, not inside it: the safety copy is source audio,
-not part of the CMAF asset a packager would be pointed at) through a streaming WAV writer (`ac3::io::WavStreamWriter`) that appends
+not part of the CMAF asset a packager would be pointed at) through a streaming WAV writer (`iclforge::io::WavStreamWriter`) that appends
 interleaved samples as they arrive and, like the take itself, periodically re-patches its RIFF
 header rather than only at close. Without that, a process kill mid-session leaves a WAV
 whose header still claims zero data bytes even though the file holds real audio — most readers
@@ -316,7 +316,7 @@ is undersell the last fraction of a second.
 
 ## Device-drop detection
 
-The capture read loop runs a silence watchdog (`ac3::audio::SilenceWatchdog`) that tracks how
+The capture read loop runs a silence watchdog (`iclforge::audio::SilenceWatchdog`) that tracks how
 long ago the last read attempt actually delivered audio, with a three-second timeout.
 
 Once that gap passes, the session stops as a failure, not a silent "still running": the status
@@ -407,13 +407,13 @@ legend says that instead. The switcher refuses two states: object mode (the layo
 fixed at a 5.1 bed — the card says so) and a take being written to disk (a restart would clobber
 the first half of the file; stop the session and start a new take instead).
 
-This is the GUI equivalent of `ac3cli live`: capture → encode → optional live monitor and/or
+This is the GUI equivalent of `forge live`: capture → encode → optional live monitor and/or
 passthrough, running continuously and still writing the file `record` always has. See
 [CLI → Commands](../cli/commands.md#live-hardware) for the command-line form, including the
 `live mode` distinction between `channels` and `atmos` — the GUI's Atmos-mode live room is that
 same `atmos` mode, with the timeline replaced by real-time motion.
 
-**What is now at parity**. `ac3cli record` and `ac3cli live` reach the same
+**What is now at parity**. `forge record` and `forge live` reach the same
 capabilities this page describes, through the same code where the code is shareable:
 
 - **Wide layouts and E-AC-3.** `record` and `live mode=channels` take `layout=` and `codec=`
@@ -428,7 +428,7 @@ capabilities this page describes, through the same code where the code is sharea
   the same way, with the same bounded memory and the same
   [mid-session crash safety](#take-durability).
 - **[Device-drop detection](#device-drop-detection).** Both take `watchdog=<seconds>` (default 3,
-  `0` disables) and stop the session as a failure the first time `ac3::audio::SilenceWatchdog`
+  `0` disables) and stop the session as a failure the first time `iclforge::audio::SilenceWatchdog`
   fires — the same class, the same default, the same rule. `capture2=` gets its own watchdog, so
   a dropped slave is reported as the slave.
 - **The live object-slot budget.** `live mode=atmos` takes `objects=<N>` and binds capture
@@ -447,13 +447,13 @@ capabilities this page describes, through the same code where the code is sharea
 **What is still GUI-only**: [receiver hot-swap](#receiver-hot-swap) (changing the
 passthrough endpoint mid-session), the live latency readout, and every interactive affordance this
 page describes — the soundfield view, the chips, the banners. A command line has no mid-session
-input, so a hot-swap has nothing to be triggered by; `ac3cli live` resolves its receiver once, at
+input, so a hot-swap has nothing to be triggered by; `forge live` resolves its receiver once, at
 session start, including whether the downmix leg runs.
 
-**What is CLI-only**: an AC-4 take. `ac3cli record` and `ac3cli live` take `codec=ac4`; the GUI's
+**What is CLI-only**: an AC-4 take. `forge record` and `forge live` take `codec=ac4`; the GUI's
 live session and Monitor refuse it, and its Record has no AC-4 encoder (see [AC-4](#ac-4) above).
 
 ## Next
 
 That's the whole app. Back to [Concepts](../../concepts/index.md) for the standards this all
-implements, or [Library](../../library/index.md) to build something with `ac3::forge` directly.
+implements, or [Library](../../library/index.md) to build something with `iclforge::ac3` directly.

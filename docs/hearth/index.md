@@ -1,15 +1,15 @@
-# AC3Forge Hearth
+# Hearth
 
 Hearth plays AC-3, E-AC-3, E-AC-3 with Atmos objects, and AC-4 through local speakers, an HDMI or
-S-PDIF receiver, or synchronised network sinks. The desktop player, `ac3hearth`, decodes a stream
+S-PDIF receiver, or synchronised network sinks. The desktop player, `hearth`, decodes a stream
 for its local outputs, passes AC-3 and E-AC-3 to a receiver that accepts them, and plays a stream
 to a group of network sinks over Sendspin, a protocol for synchronised network audio.
 `hearth_sink` is the firmware for the ESP32 boards that join such a group.
 
 ## The desktop player
 
-`ac3hearth` runs on Windows, Linux, and macOS with a Qt 6.8 or later kit, and builds as the
-`ac3forge-hearth` package on each. It reads raw `.ac3`, `.ec3` and `.ac4` elementary streams.
+`hearth` runs on Windows, Linux, and macOS with a Qt 6.8 or later kit, and builds as the
+`iclforge-hearth` package on each. It reads raw `.ac3`, `.ec3` and `.ac4` elementary streams.
 **Add folder…** also lists MP4, Matroska and MPEG-TS files, and any file can be added or dropped.
 The queue marks a file it cannot read as not playable, with the reason, when it reaches it, and
 skips it or stops there as Settings > Playback > **An item fails** says. Every MP4, Matroska and
@@ -32,7 +32,7 @@ a bitstream, and the network groups. Its **Play here** button moves playback to 
 A network sink that another server holds, such as one Music Assistant holds, shows as in use by
 another server, with a **Take it back** button. From a paired ESP32 sink's settings page the app
 updates that sink's firmware. The engine and the Sendspin protocol are tested in CI, including
-against `ac3hearth-testsink` and the aiosendspin 9.1.1 server library that Music Assistant uses;
+against `hearth-testsink` and the aiosendspin 9.1.1 server library that Music Assistant uses;
 Music Assistant itself has not been tested.
 
 ### AC-4
@@ -107,7 +107,7 @@ diagnostics…** writes it to a file, **View live…** shows it in a window that
 second, and **Copy diagnostics** puts it on the clipboard. Pairing keys, codes and file paths are
 left out of it, and nothing is sent anywhere.
 
-Setting `AC3FORGE_HEARTH_DIAGNOSTICS_PORT` to a port number, before Hearth starts, also serves
+Setting `ICLFORGE_HEARTH_DIAGNOSTICS_PORT` to a port number, before Hearth starts, also serves
 the report at `http://127.0.0.1:<port>/diagnostics`. The endpoint listens on the loopback address
 only, and stays off when the variable is unset, does not name a port, or names one that cannot be
 bound. On Windows every note Hearth records for the report is also sent to the debugger output
@@ -126,7 +126,7 @@ and updating a board over its network.
 
 **AC-4 on the sinks.** No ESP32 sink takes AC-4 in a Sendspin group: every `hearth_sink` build
 lists `ac3` and `eac3` as its data types and none lists `ac4`, so a group's ESP32 member gets
-nothing for an AC-4 item. Phase I6 of [`planning/ac4.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/ac4.md)
+nothing for an AC-4 item. Phase I6 of [`planning/ac4.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/ac4.md)
 would change that and is not built. The desktop player sends AC-4 bursts to a member that lists
 `ac4`, which today is the development test sink alone. Separately, a `hearth_sink` built for the
 ESP32-P4 with `sdkconfig.ac4` (CI builds it; the published firmware images have the decoder off)
@@ -138,13 +138,13 @@ nothing wider ([AC-4 on the P4](../platforms/bare-metal/esp32-p4.md#ac-4)).
 | Target | What runs there | Strongest evidence |
 |---|---|---|
 | [ESP32-S3](../platforms/bare-metal/esp32-s3.md) | `hearth_sink`, a Sendspin sink ([setup guide](sink-esp32-s3.md)); `i2s_player`, which loops a fixed test stream | Two boards in a Wi-Fi group for ten minutes without an underrun; all decode fixtures run in real time on a board; the sink pairs and plays under QEMU in CI |
-| [ESP32-P4](../platforms/bare-metal/esp32-p4.md) | The AC-3 and E-AC-3 decoder, and `hearth_sink` built for boards of silicon revision v1.x, which reach Wi-Fi through the board's onboard ESP32-C6 ([firmware image](sink-firmware.md#which-image)); AC-4 decode in a build with `CONFIG_AC3FORGE_AC4` (off in the published images; [AC-4 on the P4](../platforms/bare-metal/esp32-p4.md#ac-4)) | All AC-3 and E-AC-3 decode fixtures run in real time on a board at 360 MHz; CI builds the sink firmware |
+| [ESP32-P4](../platforms/bare-metal/esp32-p4.md) | The AC-3 and E-AC-3 decoder, and `hearth_sink` built for boards of silicon revision v1.x, which reach Wi-Fi through the board's onboard ESP32-C6 ([firmware image](sink-firmware.md#which-image)); AC-4 decode in a build with `CONFIG_ICLFORGE_AC4` (off in the published images; [AC-4 on the P4](../platforms/bare-metal/esp32-p4.md#ac-4)) | All AC-3 and E-AC-3 decode fixtures run in real time on a board at 360 MHz; CI builds the sink firmware |
 | [ESP32-C3](../platforms/bare-metal/esp32-c3.md) | The same decoder, in the fixed-point tier | Correct under `qemu-riscv32` emulation. No board has run it |
-| [ESP32-C6](../platforms/bare-metal/esp32-c6.md) | Fixed-point decoder; `hearth_sink`'s Sendspin player, stereo only | All decode fixtures run on a board; a stereo Sendspin group with an ESP32-S3 played ten minutes with no underruns on either board ([setup guide](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/iclforge/examples/hearth_sink/README.md#on-the-esp32-c6)). CI builds the Sendspin player for this part, for the 4 MB and the 16 MB flash layouts, and does not run it: ESP-IDF's RISC-V QEMU emulates the ESP32-C3 and no other part |
+| [ESP32-C6](../platforms/bare-metal/esp32-c6.md) | Fixed-point decoder; `hearth_sink`'s Sendspin player, stereo only | All decode fixtures run on a board; a stereo Sendspin group with an ESP32-S3 played ten minutes with no underruns on either board ([setup guide](https://github.com/iainchesworthlabs/iclforge/blob/main/esp-idf/iclforge/examples/hearth_sink/README.md#on-the-esp32-c6)). CI builds the Sendspin player for this part, for the 4 MB and the 16 MB flash layouts, and does not run it: ESP-IDF's RISC-V QEMU emulates the ESP32-C3 and no other part |
 | [ESPHome](../platforms/bare-metal/esphome.md) | An external component wrapping the ESP32-S3 decoder | Config-checked in CI against the manifest; not yet a `media_player` or `speaker` source |
-| Windows, Linux and macOS | `ac3hearth` (the desktop window, Qt 6.8+) with its engine and Network page; `ac3hearth-testsink`, `ac3hearth-testserver` and `ac3hearth-render` development tools | Engine and Sendspin interoperability tests run in CI, and the window builds there on all three platforms; each committed AC-4 test stream that the decoder accepts plays through the engine sample for sample as the library decodes it |
+| Windows, Linux and macOS | `hearth` (the desktop window, Qt 6.8+) with its engine and Network page; `hearth-testsink`, `hearth-testserver` and `hearth-render` development tools | Engine and Sendspin interoperability tests run in CI, and the window builds there on all three platforms; each committed AC-4 test stream that the decoder accepts plays through the engine sample for sample as the library decodes it |
 
-The desktop player's passthrough design uses the same path as `ac3cli play`. That command has
+The desktop player's passthrough design uses the same path as `forge play`. That command has
 played the AC-3, E-AC-3 and signed Atmos stream shapes listed there to a receiver through a
 Raspberry Pi 4B without an underrun. See
 [Raspberry Pi passthrough](../platforms/raspberry-pi.md#live-hdmi-passthrough-to-a-real-receiver).
@@ -171,5 +171,5 @@ Raspberry Pi 4B without an underrun. See
 - [AC-4](../concepts/ac4.md) and [AC-4 decoding and encoding](../library/ac4.md) — the format and
   the library's decoder.
 - [The design record](design/player-appliance.md) — decisions and current implementation status.
-- [Hearth QML feature coverage](https://github.com/iainchesworthlabs/ac3forge/blob/main/apps/hearth/ui/tests/FEATURE_COVERAGE.md) — what the headless QML suites exercise.
+- [Hearth QML feature coverage](https://github.com/iainchesworthlabs/iclforge/blob/main/apps/hearth/ui/tests/FEATURE_COVERAGE.md) — what the headless QML suites exercise.
 - [Roadmap](../roadmap.md) — planned work.

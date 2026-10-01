@@ -1,6 +1,6 @@
 # Raspberry Pi
 
-ac3forge runs on Raspberry Pi as a plain **aarch64 Debian/Ubuntu Linux** target, with no
+ICL Forge runs on Raspberry Pi as a plain **aarch64 Debian/Ubuntu Linux** target, with no
 Pi-specific code. This page covers what's specific to that arm64 target and its HDMI output; for the
 general Linux picture (toolchains, the ALSA backend, the GUI, packaging), see
 [Linux](linux.md) and [Building from source](../building.md) - everything there applies here
@@ -42,7 +42,7 @@ triplet Apple Silicon already uses.
 |---|---|
 | Raspberry Pi 4 Model B | Supported. Validated hardware - see [Verified configuration](#verified-configuration) below. |
 | Raspberry Pi 5 | Expected to work identically (same BCM27xx SoC family, same `vc4`/`v3d` HDMI/GPU driver stack as the Pi 4) but **not yet validated on real Pi 5 hardware** - don't take this as tested until this page says otherwise. |
-| Raspberry Pi 3 | **Not a supported target.** It would use the same arm64 build path as the Pi 4, but its Cortex-A53 CPU is materially weaker than the Pi 4/5's Cortex-A72/A76, and `tests/performance/test_performance.cpp`'s `ac3perf` suite gates on a hard real-time encode budget, so some layouts may not make it in time on that CPU class. Building it is possible; it is not validated or promised to keep up in real time. |
+| Raspberry Pi 3 | **Not a supported target.** It would use the same arm64 build path as the Pi 4, but its Cortex-A53 CPU is materially weaker than the Pi 4/5's Cortex-A72/A76, and `tests/performance/test_performance.cpp`'s `iclforge-perf` suite gates on a hard real-time encode budget, so some layouts may not make it in time on that CPU class. Building it is possible; it is not validated or promised to keep up in real time. |
 
 A 64-bit OS is required (`aarch64`, not `armhf`/`armv7`) - the project defines no 32-bit ARM triplet,
 and none is planned.
@@ -97,7 +97,7 @@ preset name:
 
 ```bash
 export VCPKG_ROOT=/opt/vcpkg
-cmake --preset config-linux-gcc-arm64-debug -DAC3FORGE_BUILD_GUI=ON
+cmake --preset config-linux-gcc-arm64-debug -DICLFORGE_BUILD_GUI=ON
 cmake --build --preset build-linux-gcc-arm64-debug
 ctest --preset test-linux-gcc-arm64-debug
 ```
@@ -110,14 +110,14 @@ select by default.
 ## HDMI output
 
 The Pi's only audio-capable HDMI path is its VideoCore HDMI ALSA card, normally exposed under a name
-like `vc4-hdmi` (`bcm2835` on older firmware/kernel combinations). ac3forge doesn't special-case
+like `vc4-hdmi` (`bcm2835` on older firmware/kernel combinations). ICL Forge doesn't special-case
 this name - `src/audio/src/backend/alsa/device_names.hpp`'s `classify_digital_output()` already
 recognizes any ALSA PCM whose name contains `hdmi` and builds the IEC 60958 channel-status device
 string generically. Find the name on a given Pi with:
 
 ```bash
 aplay -L
-build/config-linux-gcc-arm64-debug/bin/ac3cli outputs
+build/config-linux-gcc-arm64-debug/bin/forge outputs
 ```
 
 See [Verified configuration](#verified-configuration) for the exact device name found during
@@ -152,9 +152,9 @@ Run over SSH and recorded on 2026-08-15, on:
 
 Both `config-linux-gcc-arm64[-debug]` and `config-linux-llvm-arm64[-debug]` configure, build and
 `ctest` all clean: **440/440 tests passing on both compilers**, including the `Performance` label
-(`ac3perf`'s hard real-time encode gate) - both the Atmos/JOC and plain 5.1 encoders stay
+(`iclforge-perf`'s hard real-time encode gate) - both the Atmos/JOC and plain 5.1 encoders stay
 inside their real-time budget on this hardware, and the Qt Quick Test GUI harness
-(`ac3gui_qmltests`) passes headless. `ac3gui --smoke` (`QT_QPA_PLATFORM=offscreen`) also runs clean,
+(`forge_gui_qmltests`) passes headless. `forge-gui --smoke` (`QT_QPA_PLATFORM=offscreen`) also runs clean,
 encoding audio and instantiating the QML channel meters. A full Release build (`config-linux-gcc-arm64`)
 and `cpack --preset pack-linux-gcc-arm64` were also run, producing a `.deb` with
 `Architecture: arm64` and a correctly auto-resolved Qt runtime `Depends:` list (`libqt6core6t64`,
@@ -209,13 +209,13 @@ PCM's kind from the name alsa-lib's `snd_pcm_info_get_name()` gives it - "HDMI 0
 on most drivers. vc4-hdmi doesn't follow that convention: every one of its PCMs is named
 identically, `MAI PCM i2s-hifi-0`, regardless of which HDMI port it is - "hdmi" only ever appears
 in the *card's* own id (`vc4hdmi0`) and name (`vc4-hdmi-0`), which the classifier never looked at.
-The result: every vc4-hdmi candidate silently classified as `kNone` and was dropped, so `ac3cli
+The result: every vc4-hdmi candidate silently classified as `kNone` and was dropped, so `forge
 outputs` reported "no active render endpoints found" even with the receiver fully connected,
 EDID-populated, and its `HDMI Jack` ALSA control reading `on`. Fixed by falling back to the card's
 id/name when the PCM's own name gives no signal; a regression test in `test_alsa_device_names.cpp`
 pins the vc4-hdmi case specifically, alongside the existing HDA-style cases it doesn't change.
 
-With the fix, `ac3cli outputs` reported both HDMI ports correctly (the columns as that build
+With the fix, `forge outputs` reported both HDMI ports correctly (the columns as that build
 printed them; the current build adds a `ch` column and `speakers` and `rates` lines under each
 row):
 
@@ -238,7 +238,7 @@ idx  AC-3       E-AC-3     excl PCM   name
 | Atmos `objects`, unsigned (object container present, no EMDF tag) | Dolby Digital Plus, 5.1 - a graceful fallback, not the hard refusal [object signing](../concepts/object-signing.md#desktop-cli) warns an unsigned-but-present container can get from a validating decoder. This receiver falls back gracefully instead. |
 | Atmos `objects`, signed with a Dolby encoder license key (key and signed assets not part of this repo - see [object signing](../concepts/object-signing.md)) | Atmos confirmed on the receiver's own OSD, 4 height channels active (5.0.4 layout) |
 
-Every case submitted its bursts cleanly - `ac3cli play`'s own stats read 0 underruns throughout,
+Every case submitted its bursts cleanly - `forge play`'s own stats read 0 underruns throughout,
 every time. A couple of early runs looked like they hadn't synced, but that was down to the
 short (12 s) clips ending before the receiver's own display could be checked in time; the same
 files replayed and locked correctly once watched for their full length. Nothing here needed a
@@ -255,9 +255,9 @@ Everything above is passthrough — the receiver does the decoding. The other di
 Pi decodes and drives the speakers itself, needs two things confirming on this hardware:
 
 ```bash
-build/config-linux-gcc-arm64-debug/bin/ac3cli outputs
-build/config-linux-gcc-arm64-debug/bin/ac3cli identify 0 7.1.4 3
-build/config-linux-gcc-arm64-debug/bin/ac3cli identify 0 7.1.4 3 1,0,2,3,4,5,6,7,8,9,10,11
+build/config-linux-gcc-arm64-debug/bin/forge outputs
+build/config-linux-gcc-arm64-debug/bin/forge identify 0 7.1.4 3
+build/config-linux-gcc-arm64-debug/bin/forge identify 0 7.1.4 3 1,0,2,3,4,5,6,7,8,9,10,11
 ```
 
 `outputs` should print a channel count and a speaker list per endpoint, from ALSA's own channel

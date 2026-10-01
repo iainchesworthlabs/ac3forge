@@ -12,11 +12,11 @@
 #
 # Staged here (packaging/homebrew/Formula/iclforge.rb) for local
 # `brew install --build-from-source` validation against this repo, and
-# copied into the live personal tap (iainchesworthlabs/homebrew-ac3forge) as
+# copied into the live personal tap (iainchesworthlabs/homebrew-iclforge) as
 # Formula/iclforge.rb after each bump - see docs/releasing.md.
 class Iclforge < Formula
   desc "Clean-room AC-3/E-AC-3/AC-4 encoder, decoder and Atmos object-layer CLI"
-  homepage "https://github.com/iainchesworthlabs/ac3forge"
+  homepage "https://github.com/iainchesworthlabs/iclforge"
   url "https://github.com/iainchesworthlabs/ac3forge/archive/refs/tags/v0.10.0-beta.1.tar.gz"
   # Computed directly (sha256sum) from the same release tarball the vcpkg
   # port's portfile.cmake pins by SHA512 - see that file's comment. If
@@ -24,7 +24,7 @@ class Iclforge < Formula
   # one and update it here.
   sha256 "e9a54c509f8af73d51d75ca465816d8579e3e33715fe2c02f19873a2f08f5cf5"
   license "GPL-3.0-or-later"
-  head "https://github.com/iainchesworthlabs/ac3forge.git", branch: "main"
+  head "https://github.com/iainchesworthlabs/iclforge.git", branch: "main"
 
   depends_on "cmake" => :build
 

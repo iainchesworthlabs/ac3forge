@@ -1,9 +1,9 @@
 """Export a decode's per-block bap/exponent/mask/SNR-offset trace as CSV.
 
 docs/library/python-api.md excerpts the functions below directly - this file is what the build
-actually runs, not a snippet copied by hand. See ac3/verify/trace_export.hpp for the row schema
-and why there is no Parquet writer here - pandas.read_csv(...).to_parquet() is the intended route,
-not exercised in this script so it stays runnable without a pandas dependency.
+actually runs, not a snippet copied by hand. See iclforge/ac3/verify/trace_export.hpp for the row
+schema and why there is no Parquet writer here - pandas.read_csv(...).to_parquet() is the
+intended route, not exercised in this script so it stays runnable without a pandas dependency.
 
 Run with: python examples/python/trace_export.py
 """

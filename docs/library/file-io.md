@@ -1,14 +1,14 @@
-# File I/O: `ac3::io::wav`
+# File I/O: `iclforge::io::wav`
 
-`ac3/io/wav.hpp`. WAV reading and writing, shared by the CLI and the GUI so neither carries its
+`iclforge/ac3/io/wav.hpp`. WAV reading and writing, shared by the CLI and the GUI so neither carries its
 own copy. Every other example in this section stays in memory: PCM is synthesized straight into
 an encoder and decoded samples are only ever counted. A pipeline that reads a file a caller
 handed it and writes one back has to cross WAV's own channel order
 (`WAVE_FORMAT_EXTENSIBLE`: FL, FR, FC, LFE, BL, BR) against A/52 Table 5.8's (L, C, R, SL, SR,
 LFE) twice — once on the way in, once on the way out.
 
-This header reads and writes WAV only. The readers for coded streams (`ac3/io/elementary.hpp`) take
-AC-3 and E-AC-3; none of `ac3::io` reads AC-4, whose decoder is a separate library (see
+This header reads and writes WAV only. The readers for coded streams (`iclforge/ac3/io/elementary.hpp`) take
+AC-3 and E-AC-3; none of `iclforge::io` reads AC-4, whose decoder is a separate library (see
 [AC-4 decoding](ac4.md)).
 
 ## What reads
@@ -48,22 +48,22 @@ that after about an hour.
 ```cpp
 // Synthesize 5.1 in AC-3 order and write it out in WAV order -
 // wav_channel_order says where each AC-3 channel belongs in the interleave.
-const auto write_order = ac3::io::wav_channel_order(kAcmod, kLfe);
-ac3::io::write_wav_f32(source_path, ac3_order, 48000, write_order);
+const auto write_order = iclforge::io::wav_channel_order(kAcmod, kLfe);
+iclforge::io::write_wav_f32(source_path, ac3_order, 48000, write_order);
 ```
 
 ```cpp
 // Read it back - read_wav hands the samples back in WAV order, so
 // ac3_layout_for's wav_index permutes them onto AC-3 channel k.
-const auto read = ac3::io::read_wav(source_path);
-const auto layout = ac3::io::ac3_layout_for(read->channels.size());
+const auto read = iclforge::io::read_wav(source_path);
+const auto layout = iclforge::io::ac3_layout_for(read->channels.size());
 std::vector<std::vector<float>> from_wav(layout->wav_index.size());
 for (std::size_t k = 0; k < layout->wav_index.size(); ++k) {
     from_wav[k] = read->channels[layout->wav_index[k]];
 }
 ```
 
-Full program: [`examples/wav_roundtrip.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/wav_roundtrip.cpp)
+Full program: [`examples/wav_roundtrip.cpp`](https://github.com/iainchesworthlabs/iclforge/blob/main/examples/wav_roundtrip.cpp)
 — writes a 5.1 WAV, reads it back, encodes and decodes it, and writes the decoded result out
 as a second WAV.
 

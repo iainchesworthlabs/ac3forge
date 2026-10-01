@@ -204,7 +204,7 @@ elseif(APPLE)
         OBJCXX_EXTENSIONS OFF)
     # The library's own CoreAudio helpers (address(), get_property<T>(),
     # CFOwned, to_utf8, device_uid, default_device) are reused rather than
-    # reimplemented, exactly as the Linux arm reuses ac3::pipewire's, so this
+    # reimplemented, exactly as the Linux arm reuses iclforge::pipewire's, so this
     # needs that private header's directory.
     target_include_directories(crucible_engine
         PRIVATE "${CMAKE_SOURCE_DIR}/src/audio/src/backend/macos")
@@ -248,7 +248,7 @@ endif()
 # controller carry Tracy zones whichever platform half is compiled in. This
 # sat inside the Windows arm when there was only one arm, and lived inside
 # the Linux arm for a while after the second was added - which is how a
-# Windows build came to lose ac3/internal/profiling.hpp.
+# Windows build came to lose iclforge/base/detail/profiling.hpp.
 target_include_directories(crucible_engine PUBLIC
     "$<IF:$<BOOL:${ICLFORGE_ENABLE_TRACY}>,${CMAKE_SOURCE_DIR}/src/base/variants/profiling-tracy_enabled,${CMAKE_SOURCE_DIR}/src/base/variants/profiling-tracy_disabled>")
 

@@ -1,5 +1,5 @@
 // iclforge-wasm-decoder: a streaming AC-3/E-AC-3 decoder for the browser,
-// compiled from ac3::forge (https://github.com/iainchesworthlabs/ac3forge)
+// compiled from iclforge (https://github.com/iainchesworthlabs/iclforge)
 // to WebAssembly. See README.md for usage; docs/platforms/wasm.md in the
 // main repository for how the underlying WASM module is built.
 export { PushDecoder, scanStream } from "./push-decoder.js";

@@ -51,7 +51,7 @@ set(ICLFORGE_BUILD_HEARTH OFF CACHE BOOL "" FORCE)
 # (see the comment above the MATROSKA/MP4/MPEGTS block just below) - this app never links
 # iclforge::c, so there is no reason to compile src/capi at all here. Off explicitly rather
 # than relying on the root CMakeLists.txt's default ON: leaving it on would silently compile
-# iclforge_capi_objects/forge_c_static/forge_c_shared into every Shield build for nothing.
+# iclforge_capi_objects/iclforge_c_static/iclforge_c_shared into every Shield build for nothing.
 set(ICLFORGE_BUILD_CAPI OFF CACHE BOOL "" FORCE)
 
 # The AC-4 libraries (src/ac4, src/ac4core, src/ac4dec, src/ac4enc) build at the root
@@ -104,7 +104,7 @@ target_compile_features(iclforge_jni PRIVATE cxx_std_23)
 # android: android/asset_manager_jni.h (AAssetManager_fromJava), used by
 # live_cursor.cpp to load the bundled lead-object voice sample and by
 # shield_signing_hook.cpp to load the bundled signing key.
-# ac3::signing: the committed clean-room EMDF object signer (built by the repo
+# iclforge::signing: the committed clean-room EMDF object signer (built by the repo
 # root add_subdirectory above, dependency-free). Always linked now - the signer
 # has no embedded secret to keep out of the tree; whether it actually signs
 # depends on the runtime key asset, not on a build variant. See

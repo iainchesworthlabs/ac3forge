@@ -73,9 +73,9 @@ TestCase {
     }
 
     // presetIndex 0 ("All presets") reports every named delivery gate in
-    // ac3::meta::kQcPresetIds order; picking one narrows the list to it. The
+    // iclforge::meta::kQcPresetIds order; picking one narrows the list to it. The
     // target/tolerance/ceiling numbers are fixed constants from
-    // ac3::meta::qc_preset() (qc.hpp), so asserting their exact values is a
+    // iclforge::meta::qc_preset() (qc.hpp), so asserting their exact values is a
     // check against known, non-random data - proof the QML is reading the
     // real C++ table, not inventing display numbers of its own.
     function test_presetSelectionNarrowsToTheChosenPresetsRealNumbers() {

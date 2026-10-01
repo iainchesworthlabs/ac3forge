@@ -91,7 +91,7 @@ channel, in order of L:R:C:LFE:LS:RS:LRS:RRS", per `dee_ddp_encoder
 per-channel RMS through the full encode/decode: 6983/6983/3146/7282/700/1151
 out against 7025/7025/3165/7517/717/1174 in, every channel present including
 index 4. That list order is also this project's own WAV channel order
-(FL FR FC LFE BL BR - ac3::io::ac3_layout_for), unlike the SMPTE order the
+(FL FR FC LFE BL BR - iclforge::io::ac3_layout_for), unlike the SMPTE order the
 single-multichannel path wants, so split_for_dee() below needs no
 permutation at all where reorder_for_dee() needed _SMPTE_FROM_WAVE_51. The
 single-file path is gone rather than kept as a fallback: it is the one that

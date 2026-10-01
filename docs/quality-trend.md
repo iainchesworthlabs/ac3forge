@@ -2,9 +2,9 @@
 
 This page has two series. The first, from here to "Where the data lives", is the
 [gold-reference
-gate](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/checks/verify_gold_reference.sh)'s
+gate](https://github.com/iainchesworthlabs/iclforge/blob/main/tools/checks/verify_gold_reference.sh)'s
 (encode the checked-in golden 5.1 WAV, strict-decode with FFmpeg and with
-`ac3cli`'s own decoder, delay-compensated SNR between the two), which covers
+`forge`'s own decoder, delay-compensated SNR between the two), which covers
 AC-3 and E-AC-3, and its measure is Decode accuracy: how closely this decoder agrees with
 FFmpeg's. [AC-4 decode quality](#ac-4-decode-quality) is the second, scored
 against the source instead.
@@ -47,7 +47,7 @@ top octave that no real programme material has, and tuning the encoder's
 bandwidth default against it once produced a measured 2.1 dB "win" that was
 purely an artefact of the fixture. Real speech and music fixtures exist for
 that question — see [Landscape](landscape.md) and
-[tools/generators/README.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/generators/README.md).
+[tools/generators/README.md](https://github.com/iainchesworthlabs/iclforge/blob/main/tools/generators/README.md).
 
 <div id="quality-trend-app">
   <p class="quality-trend-status">Loading trend data…</p>
@@ -80,7 +80,12 @@ that question — see [Landscape](landscape.md) and
 
 <script>
 (function () {
-  const REPO = "iainchesworthlabs/ac3forge";
+  // The site is served under the repository's name, so the repository is read off the address:
+  // it is right before and after the repository is renamed. A local preview, and the stub
+  // tools/ci/render_measurement_tiles.js runs the scripts in, have no such address.
+  const REPO = typeof location !== "undefined" && location.hostname.endsWith(".github.io")
+    ? location.hostname.split(".")[0] + "/" + location.pathname.split("/")[1]
+    : "iainchesworthlabs/iclforge";
   const HISTORY_BRANCH = "quality-history";
   const MAIN_COLOR = "#00acc1";
   // Muted and dashed (see buildChart) rather than a third saturated colour -
@@ -96,7 +101,7 @@ that question — see [Landscape](landscape.md) and
   const REGRESSION_WINDOW = 10;
   const REGRESSION_DROP_DB = 0.5;
   const TABLE_ROWS = 40;
-  // WAV channel order ac3::io::ac3_layout_for(6) expects - see
+  // WAV channel order iclforge::io::ac3_layout_for(6) expects - see
   // tools/generators/gen_gold_reference_wav.py - and so the order compare_wav.py's
   // channels_db is written in. Only meaningful for the current 6-channel 5.1
   // golden reference; anything else (e.g. a future Atmos-bed layout with a
@@ -704,9 +709,9 @@ commit SHA already in quality-history, not a separate data source.
 ## The fixed-point decode has its own series too
 
 `_fixed`-suffixed checks are the gate run against a decoder built with
-`-DAC3FORGE_DECODE_SCALAR=fixed` - Q7.24 integer arithmetic under a block
+`-DICLFORGE_DECODE_SCALAR=fixed` - Q7.24 integer arithmetic under a block
 exponent, the tier for a part with no FPU
-([`planning/arithmetic-tiers.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/arithmetic-tiers.md)).
+([`planning/arithmetic-tiers.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/arithmetic-tiers.md)).
 It differs from the double decode at 121 dB and above on the gold streams
 (`tools/checks/check_decode_scalar_snr.py`, held to 110 in the same pass), which is as
 far below this gate's coding noise as the float32 decode's 139, so the same
@@ -718,7 +723,7 @@ makes, so the series has a point a night rather than one for each run after a me
 ## The float32 decode has its own series
 
 `_float32`-suffixed checks are the same gate run against a decoder built with
-`-DAC3FORGE_DECODE_SCALAR=float` — the arithmetic the minimum-footprint profile
+`-DICLFORGE_DECODE_SCALAR=float` — the arithmetic the minimum-footprint profile
 uses, and the arithmetic every fixture on both bare-metal legs is decoded
 through. Until that option existed the float32 path could not be built into
 anything with a CLI, so nothing here had ever measured it: `docs/building.md`
@@ -744,7 +749,7 @@ of the nightly run's `scalar_variants`.
 direct-form transforms in place of the fast paths
 ([Validation](verification.md#performance-and-reference-modes)). The `linux-gcc` leg makes
 this pass in the run after a merge as well as in the nightly run. `_encfloat`-suffixed
-checks are the gate run against an encoder built with `-DAC3FORGE_ENCODE_SCALAR=float`, the
+checks are the gate run against an encoder built with `-DICLFORGE_ENCODE_SCALAR=float`, the
 arithmetic the ESP32-S3's minimum-footprint profile encodes in. A float encoder makes its
 own decisions and produces a different, equally valid stream, so these rows are held to the
 same floors as the double encoder's and `tools/checks/check_encode_scalar_quality.py` holds
@@ -760,7 +765,7 @@ there outside of what `mkdocs build` itself generates. This page prefers each
 history's generated `.recent.jsonl` window and falls back to the full file,
 both fetched from `raw.githubusercontent.com`, so a new
 push shows up here without waiting on a docs deploy (which,
-per [docs.yml](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/docs.yml),
+per [docs.yml](https://github.com/iainchesworthlabs/iclforge/blob/main/.github/workflows/docs.yml),
 only runs on push to `main`).
 
 `develop.jsonl` stopped gaining rows on 2026-08-24, `develop`'s last commit
@@ -797,7 +802,7 @@ its own, and nothing was dropped.
 Two runs can still write here at once, for example the nightly run and a run
 after a merge. The run that pushes second is rejected, rebases onto the first,
 and meets a conflict: both runs added records to the end of the same file.
-[`tools/ci/resolve_history_conflict.py`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/ci/resolve_history_conflict.py)
+[`tools/ci/resolve_history_conflict.py`](https://github.com/iainchesworthlabs/iclforge/blob/main/tools/ci/resolve_history_conflict.py)
 settles it by keeping both runs' records and writing the `.recent.jsonl`
 window again from the result, so what this page reads carries every run's
 numbers whichever run finishes first. Anything it cannot account for fails the
@@ -808,14 +813,14 @@ publishing job rather than being guessed at, which is what happened to
 
 Everything above is AC-3 and E-AC-3. AC-4 has its own series, because its oracle is different:
 FFmpeg does not decode AC-4, so
-[`tools/checks/score_ac4_decode.py`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/checks/score_ac4_decode.py)
+[`tools/checks/score_ac4_decode.py`](https://github.com/iainchesworthlabs/iclforge/blob/main/tools/checks/score_ac4_decode.py)
 decodes the Dolby Encoding Engine's AC-4 streams and scores each against the source it was encoded
 from ([Validation](verification.md#ac-4) describes how). Its measure is Decode accuracy against
 that source, not against another decoder. It runs in FFmpeg Validate, a nightly job, on the
 `linux-llvm` build, and its pinned floors fail that run. The same run writes the scores as a JSON
 artifact, and the `Publish quality trend` job appends one row per stream to
 `ac4-quality-main.jsonl` on the same `quality-history` branch, by
-[`tools/ci/append_ac4_quality_history.py`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/ci/append_ac4_quality_history.py):
+[`tools/ci/append_ac4_quality_history.py`](https://github.com/iainchesworthlabs/iclforge/blob/main/tools/ci/append_ac4_quality_history.py):
 one set of rows per nightly run. It covers 10 of the 15 committed legs, described below the
 chart. The AC-4 encoder's own scores (`score_ac4_encode.py`) are held to pinned floors only, and
 its race against the Dolby encoder runs locally, so neither has a series; nor do AC-4's objects.
@@ -826,7 +831,12 @@ its race against the Dolby encoder runs locally, so neither has a series; nor do
 
 <script>
 (function () {
-  const REPO = "iainchesworthlabs/ac3forge";
+  // The site is served under the repository's name, so the repository is read off the address:
+  // it is right before and after the repository is renamed. A local preview, and the stub
+  // tools/ci/render_measurement_tiles.js runs the scripts in, have no such address.
+  const REPO = typeof location !== "undefined" && location.hostname.endsWith(".github.io")
+    ? location.hostname.split(".")[0] + "/" + location.pathname.split("/")[1]
+    : "iainchesworthlabs/iclforge";
   const HISTORY_BRANCH = "quality-history";
   const HISTORY_FILE = "ac4-quality-main";
   // Mirrors tools/ci/append_ac4_quality_history.py's thresholds - a display

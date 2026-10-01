@@ -8,8 +8,8 @@
 # the same components and options. iclforge::adm/iclforge::admbridge (the ADM/BW64
 # reader and its Atmos bridge) are deliberately NOT options here even though upstream now
 # installs/exports both (shared-only - see cmake/InstallLibrary.cmake's ICLFORGE_BUILD_ADM
-# block): ac3adm needs Boost, and out-of-scope-for-now applies here the same way it does for the
-# vcpkg port's own missing "adm" feature.
+# block): iclforge::adm needs Boost, and out-of-scope-for-now applies here the same way it does
+# for the vcpkg port's own missing "adm" feature.
 #
 # This recipe wraps cmake/InstallLibrary.cmake's own install()/export()
 # rules rather than reimplementing them: package() just runs `cmake --install`
@@ -36,8 +36,8 @@ class IclforgeConan(ConanFile):
         "object layer, in C++23."
     )
     license = "GPL-3.0-or-later"
-    homepage = "https://github.com/iainchesworthlabs/ac3forge"
-    url = "https://github.com/iainchesworthlabs/ac3forge"
+    homepage = "https://github.com/iainchesworthlabs/iclforge"
+    url = "https://github.com/iainchesworthlabs/iclforge"
     topics = ("audio", "codec", "ac3", "dolby-digital", "atmos", "eac3", "ac4")
     package_type = "library"
 
@@ -148,7 +148,7 @@ class IclforgeConan(ConanFile):
         # cli_args -D, like vcpkg_cmake_configure()'s OPTIONS in
         # portfile.cmake, is visible immediately instead. Confirmed by
         # running the toolchain-file version first: it silently fell back to
-        # "0.0.0-dev" in the installed ac3/version.hpp.
+        # "0.0.0-dev" in the installed iclforge/ac3/version.hpp.
         cmake.configure(cli_args=[f"-DDERIVED_VERSION_OVERRIDE=v{self.version}"])
         cmake.build()
 

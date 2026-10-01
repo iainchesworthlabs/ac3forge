@@ -12,7 +12,7 @@ release. This guide is for someone with a board and a release. It covers:
 - what to do when a board does not come back.
 
 To build the firmware yourself instead, see [An ESP32-S3 sink](sink-esp32-s3.md#build-and-flash).
-[planning/esp32-ota.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-ota.md)
+[planning/esp32-ota.md](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/esp32-ota.md)
 has the design and the reasons for it.
 
 !!! note "Status as of 2026-09-30: unsigned development images"
@@ -64,11 +64,11 @@ Each file also has a build provenance attestation, which says which repository, 
 commit built it:
 
 ```bash
-gh attestation verify hearth-sink-esp32s3-v0.11.0-factory.bin --repo iainchesworthlabs/ac3forge
+gh attestation verify hearth-sink-esp32s3-v0.11.0-factory.bin --repo iainchesworthlabs/iclforge
 ```
 
 When a release is GPG-signed, each file has a `.asc` signature beside it, and the release carries
-`ac3forge-signing-key.asc`. [Releasing](../releasing.md) says how the signing works.
+`iclforge-signing-key.asc`. [Releasing](../releasing.md) says how the signing works.
 
 `ota.py push --release` and the [browser installer](sink-installer.md) check what they download
 against the release's manifest and `SHA512SUMS` before they write anything.
@@ -123,7 +123,7 @@ Any one of these sends a board a new app image. The board checks it and restarts
     stops the rest.
 - **The board's page,** `http://<board>/`: **Update firmware…** under Firmware, with the image's
   `.bin`. The page reads the image's head first and refuses a file for another chip or project.
-- **ac3hearth,** the desktop app: the **Firmware** tab of a paired sink's settings page.
+- **hearth,** the desktop app: the **Firmware** tab of a paired sink's settings page.
 - **curl:** `curl -T hearth-sink-esp32s3-v0.11.0.bin http://hearth-eb2c64.local/firmware`.
   This does no checks of its own; the board still makes all of its own.
 
@@ -147,14 +147,14 @@ board's reason), or **did not come back** (with what to try). An upload that bre
 way, or that a restart of the board cuts short, is sent once more, with the board's own account
 of what happened. A push that fails does not leave the board waiting in flash mode: the tool
 tells it to go back to what it runs. The page shows the same in its
-Firmware section, and ac3hearth in its Firmware tab. Every board keeps its recent console output,
+Firmware section, and hearth in its Firmware tab. Every board keeps its recent console output,
 and the C6 and the P4 also keep a crash's core dump, both readable over the network; the board's
-[README](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/iclforge/examples/hearth_sink/README.md)
+[README](https://github.com/iainchesworthlabs/iclforge/blob/main/esp-idf/iclforge/examples/hearth_sink/README.md)
 covers them.
 
 ## Going back
 
-- **Roll back** on the board's page or in ac3hearth, or `python ota.py rollback --host <board>`.
+- **Roll back** on the board's page or in hearth, or `python ota.py rollback --host <board>`.
   The board restarts into the image in its other slot, which then has a trial of its own.
 - **An older release,** pushed as any other: `python ota.py push --release <tag> --host <board>`.
 

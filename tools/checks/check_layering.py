@@ -13,12 +13,11 @@ _static.yml's static job and runnable the same way locally:
 
     python3 tools/checks/check_layering.py [--root <repo>] [--table <json>] [--edges]
 
-What counts as a library is the second component of a path under src/, with two adjustments the
-table's "layout" section describes, both there because the tree is in the middle of a
-re-layout (planning/layout.md): a directory that holds several libraries (src/ac3) is split
-by path rules, first match wins, and a directory renamed for the library it holds (src/adm
-is `adm`) is renamed. When the re-layout is done both sections are empty and the rule is the
-plain one: src/<library>/.
+What counts as a library is the second component of a path under src/: src/<library>/. While the
+tree was being re-laid out (planning/layout.md) the table had a "layout" section with two
+adjustments, a directory that holds several libraries split by path rules, first match wins, and a
+directory renamed for the library it holds; the script still reads such a section, and a table
+without one gives the plain rule.
 
 Four things fail the check, each with a line that names the file and the line of the include:
 

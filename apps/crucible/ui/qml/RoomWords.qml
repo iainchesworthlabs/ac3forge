@@ -10,7 +10,7 @@ import QtQuick
 // heard one form, the row showed another and the card a third. They come
 // from here now, and a change to the wording changes all of them.
 //
-// Room coordinates are ac3::oba::Position's: x 0..1 left to right, y 0..1
+// Room coordinates are iclforge::oba::Position's: x 0..1 left to right, y 0..1
 // front to back, z -1..1 floor to ceiling.
 QtObject {
     id: words

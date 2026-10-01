@@ -7,9 +7,9 @@ because DEE is licensed and never runs in CI; see [Validation](verification.md#a
 The commit-level half of the external-encoder landscape comparison — see
 [Landscape](landscape.md) for the release-facing headline number. Each nightly run on
 `main` encodes the same eight fixed legs
-[`tools/generators/gen_external_baseline.py`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/generators/gen_external_baseline.py)
+[`tools/generators/gen_external_baseline.py`](https://github.com/iainchesworthlabs/iclforge/blob/main/tools/generators/gen_external_baseline.py)
 measures FFmpeg's and Dolby DEE's encoders against, scores this build's own
-output through `ac3cli`'s own decoder (no FFmpeg, no DEE, at CI time — see
+output through `forge`'s own decoder (no FFmpeg, no DEE, at CI time — see
 `tools/ci/quality_race.py`'s `trend` mode), and appends the numbers here. The
 job that computes them, FFmpeg Validate, runs nightly, so the series has a point a
 night, not one per merge. It
@@ -30,7 +30,7 @@ It carries `vs_ffmpeg`/`vs_dee` columns —
 the delta against the committed baseline's numbers for the *same* leg — that
 the other rows don't, since only `landscape` has a matching external number
 to compare against. A leg whose DEE score is marked unverified in
-[`tests/golden/external-baseline/manifest.json`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tests/golden/external-baseline/manifest.json)
+[`tests/golden/external-baseline/manifest.json`](https://github.com/iainchesworthlabs/iclforge/blob/main/tests/golden/external-baseline/manifest.json)
 (see that file's own header) shows no `vs_dee` value rather than one
 computed against a number that was never real. At baseline version 2 that is the two
 64 kbit/s stereo legs, where DEE's stereo range starts at 96 kbit/s, and rows recorded
@@ -94,7 +94,12 @@ the column was never populated. Rows from that point on carry real numbers.
 
 <script>
 (function () {
-  const REPO = "iainchesworthlabs/ac3forge";
+  // The site is served under the repository's name, so the repository is read off the address:
+  // it is right before and after the repository is renamed. A local preview, and the stub
+  // tools/ci/render_measurement_tiles.js runs the scripts in, have no such address.
+  const REPO = typeof location !== "undefined" && location.hostname.endsWith(".github.io")
+    ? location.hostname.split(".")[0] + "/" + location.pathname.split("/")[1]
+    : "iainchesworthlabs/iclforge";
   const HISTORY_BRANCH = "quality-history";
   const MAIN_COLOR = "#00acc1";
   // Muted and dashed (see buildChart) rather than a third saturated colour -
@@ -546,7 +551,7 @@ release.
 **vs FFmpeg** / **vs DEE** are only populated on `landscape` rows — the
 delta between this build's own `auto`-tools E-AC-3 encode (or AC-3's
 automatic-everything encode) and the corresponding tool's number in the
-checked-in [external baseline](https://github.com/iainchesworthlabs/ac3forge/blob/main/tests/golden/external-baseline/manifest.json)
+checked-in [external baseline](https://github.com/iainchesworthlabs/iclforge/blob/main/tests/golden/external-baseline/manifest.json)
 for that same leg, at the `baseline_version` recorded alongside it. A blank
 `vs DEE` cell on a `landscape` row means that leg's DEE score is marked
 unverified in the baseline manifest, not that the delta was zero — at

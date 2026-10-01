@@ -3398,7 +3398,7 @@ class StreamWalker:
             toc = ac4_parse.parse_ac4_toc(r)
             # Substreams that run past the frame make the frame's table of
             # contents wrong, so none of them is read: the decoder's
-            # ac4::parse_raw_frame() reports no table of contents at all.
+            # iclforge::ac4::parse_raw_frame() reports no table of contents at all.
             offset = toc['toc_bytes'] + toc['payload_base']
             sizes = toc['substream_sizes'] if toc['b_size_present'] else [max(0, len(raw) - offset)]
             end = offset

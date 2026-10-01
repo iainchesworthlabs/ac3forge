@@ -8,7 +8,7 @@
 #
 # Link it PRIVATE into every first-party target whose coverage should be
 # measured - today that is every library component (forge, audio, signing,
-# matroska, mp4, mpegts, the C API, ac3adm, admbridge) plus forge and
+# matroska, mp4, mpegts, the C API, iclforge::adm, admbridge) plus forge and
 # iclforge-tests.
 #
 # The distinction that matters, and that cost a measurement run to notice:

@@ -6,17 +6,17 @@ fixture used to test the pipeline.
 
 ## How it fits together
 
-Translation source files live at `apps/gui/translations/ac3gui_<code>.ts` (Qt Linguist XML), one
+Translation source files live at `apps/gui/translations/forge_gui_<code>.ts` (Qt Linguist XML), one
 per language:
 
 | Code | Language | File |
 | --- | --- | --- |
-| `fr` | Français | `ac3gui_fr.ts` |
-| `de` | Deutsch | `ac3gui_de.ts` |
-| `es` | Español | `ac3gui_es.ts` |
-| `ar` | العربية | `ac3gui_ar.ts` |
-| `he` | עברית | `ac3gui_he.ts` |
-| `yi` | יידיש | `ac3gui_yi.ts` |
+| `fr` | Français | `forge_gui_fr.ts` |
+| `de` | Deutsch | `forge_gui_de.ts` |
+| `es` | Español | `forge_gui_es.ts` |
+| `ar` | العربية | `forge_gui_ar.ts` |
+| `he` | עברית | `forge_gui_he.ts` |
+| `yi` | יידיש | `forge_gui_yi.ts` |
 
 English has no `.ts` file — it is the literal `qsTr()` source text. `apps/gui/CMakeLists.txt`'s
 `qt_add_translations()` call wires these in: it scans the target's sources — every QML file
@@ -51,7 +51,7 @@ for one thing. [Crucible's languages page](../../crucible/localisation.md) carri
 shared six are held to and what an audit of the mechanical output found; the review that confirms
 or replaces each rendering has not run for either app.
 
-Both windows say that in their own note under the language chooser, in the same words: `ac3gui`'s
+Both windows say that in their own note under the language chooser, in the same words: `forge-gui`'s
 Preferences → Appearance note reads "The translations are machine-made and have not been read by a
 speaker."
 
@@ -59,18 +59,18 @@ Two checks hold the completeness above. The `[gui][translations]` case in
 `tests/crucible/test_translations.cpp` reads the seven `apps/gui` catalogues — the six languages
 and `xx` — and fails on any `unfinished`, `vanished` or `obsolete` entry, naming it; it runs on
 every platform. The other check is drift: that the committed catalogues match what `lupdate`
-extracts. It reruns `ac3gui_lupdate` and fails on a diff, in the pull-request gate
+extracts. It reruns `forge-gui_lupdate` and fails on a diff, in the pull-request gate
 (`pr-gate.yml`, when the change touches the GUI) and on the Linux GCC leg of `_ci-linux.yml`.
 
 ## Crucible shares this pipeline
 
-Everything above is `ac3gui`, half of [Forge](../index.md).
+Everything above is `forge-gui`, half of [Forge](../index.md).
 [Crucible](../../crucible/index.md) (`apps/crucible/`) is the family's other Qt
 application, and reuses `LanguageManager` rather than copying it: the class takes a translation
-basename (`"ac3gui"` by default, `"ac3crucible"` for Crucible) that names the `.qm` files it
+basename (`"forge-gui"` by default, `"crucible"` for Crucible) that names the `.qm` files it
 loads from `:/i18n/`, and `useSystemLanguage()` forgets a saved override so the app follows the
 system locale again. Crucible ships the same six languages (`apps/crucible/translations/`), has
-its own `ac3crucible_lupdate` target, and honours the same `AC3GUI_LOCALE` override for smoke
+its own `crucible_lupdate` target, and honours the same `ICLFORGE_GUI_LOCALE` override for smoke
 checks. What is Crucible's own — the glossary its six languages are held to, the window's
 right-to-left half, and the gate over its catalogues — is on
 [Crucible's languages page](../../crucible/localisation.md).
@@ -80,7 +80,7 @@ right-to-left half, and the gate over its catalogues — is on
 1. Regenerate the `.ts` files from current source strings:
 
    ```sh
-   cmake --build --preset <preset> --target ac3gui_lupdate
+   cmake --build --preset <preset> --target forge-gui_lupdate
    ```
 
    Any new or changed `qsTr()` string shows up as a `<translation type="unfinished">` entry
@@ -105,8 +105,8 @@ area of a large `.ts` file.
 
 ## Adding a new language
 
-1. Add `translations/ac3gui_<code>.ts` to the `TS_FILES` list in `qt_add_translations()`
-   (`apps/gui/CMakeLists.txt`'s `AC3_TS_FILES`), then run `ac3gui_lupdate` to generate the initial
+1. Add `translations/forge_gui_<code>.ts` to the `TS_FILES` list in `qt_add_translations()`
+   (`apps/gui/CMakeLists.txt`'s `AC3_TS_FILES`), then run `forge-gui_lupdate` to generate the initial
    file and translate it as above.
 2. Add `{code, "Native name"}` to the `kLanguages` array in `apps/gui/language_manager.cpp`. Miss
    this and `LanguageManager::setLanguage()` rejects the code as unsupported — the language never
@@ -126,25 +126,25 @@ never appears in `LanguageManager::availableLanguages()` or Preferences' picker.
 the extraction → compile → load pipeline works end to end without depending on any one language's
 catalogue, and to catch a string that bypasses `qsTr()` entirely.
 
-`tools/generators/gen_pseudo_locale.py` reads `ac3gui_fr.ts` for the message set and mechanically
+`tools/generators/gen_pseudo_locale.py` reads `forge_gui_fr.ts` for the message set and mechanically
 decorates **every** message it finds there — accented characters, a bracketed and length-padded
 wrapper (`[Àccéntéd téxt ~~~~]`) — so what it writes is complete for the extraction it was run
 against. A visible string that reaches the screen *without* that decoration under the
 pseudo-locale either never went through `qsTr()`, or was added after the fixture was last
 generated.
 
-The fixture is not in `AC3_TS_FILES`, so `ac3gui_lupdate` does not touch it and CI's drift check
+The fixture is not in `AC3_TS_FILES`, so `forge-gui_lupdate` does not touch it and CI's drift check
 cannot see it going stale. It matches the six languages today, at 837 messages, and the
 `[gui][translations]` case above holds it to the same no-unfinished rule. Regenerate it after
-`ac3gui_lupdate` picks up new source strings:
+`forge-gui_lupdate` picks up new source strings:
 
 ```sh
-cmake --build --preset <preset> --target ac3gui_lupdate
+cmake --build --preset <preset> --target forge-gui_lupdate
 python tools/generators/gen_pseudo_locale.py
 ```
 
-It is loaded only through an `AC3GUI_LOCALE=xx` environment override
+It is loaded only through an `ICLFORGE_GUI_LOCALE=xx` environment override
 (`LanguageManager::applyInitialLanguage()`, checked ahead of the persisted setting and the system
 locale) — `apps/gui/tests/CMakeLists.txt` sets this for `tst_localisation_pipeline.qml`'s ctest
-entry alone, and it is embedded only into `ac3gui_qmltests`, never into the shipped `ac3gui`
+entry alone, and it is embedded only into `forge_gui_qmltests`, never into the shipped `forge-gui`
 binary (`apps/gui/CMakeLists.txt`'s own comment on `AC3_PSEUDO_TS_FILE` says why).

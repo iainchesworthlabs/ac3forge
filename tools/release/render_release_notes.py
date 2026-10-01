@@ -72,7 +72,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--changelog", type=Path, default=Path("CHANGELOG.md"))
     parser.add_argument("--version", required=True, help="bare version, e.g. 0.9.0-beta.1")
     parser.add_argument("--tag", required=True, help="full tag, e.g. v0.9.0-beta.1")
-    parser.add_argument("--repo", required=True, help="owner/repo, e.g. iainchesworthlabs/ac3forge")
+    parser.add_argument("--repo", required=True, help="owner/repo, e.g. iainchesworthlabs/iclforge")
     parser.add_argument("--output", type=Path, help="write notes here instead of stdout")
     args = parser.parse_args(argv)
 

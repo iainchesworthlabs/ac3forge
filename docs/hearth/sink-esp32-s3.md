@@ -5,8 +5,8 @@ synchronised audio from a compatible server. The board can play stereo PCM, or d
 E-AC-3 (including Atmos objects) for its configured speakers.
 
 This guide covers building, flashing, network setup, pairing, and group playback. The example
-[README](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/iclforge/examples/hearth_sink/README.md)
-and the [ESP-IDF component overview](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/iclforge/README.md)
+[README](https://github.com/iainchesworthlabs/iclforge/blob/main/esp-idf/iclforge/examples/hearth_sink/README.md)
+and the [ESP-IDF component overview](https://github.com/iainchesworthlabs/iclforge/blob/main/esp-idf/iclforge/README.md)
 contain implementation details and measurements. For the stereo ESP32-C6 player, see
 [An ESP32-C6 sink](sink-esp32-c6.md).
 
@@ -14,9 +14,9 @@ contain implementation details and measurements. For the stereo ESP32-C6 player,
     The desktop app discovers sinks, pairs, plays to groups and updates firmware over the network
     ([Hearth index](index.md)). These boards decode AC-3 and E-AC-3 only. AC-4 is not built for the
     ESP32-S3 or the ESP32-C6, and the sink lists `ac3` and `eac3`, not `ac4`, as the streams its
-    Sendspin role takes. An ESP32-P4 built with `CONFIG_AC3FORGE_AC4` decodes AC-4 from an HTTP
+    Sendspin role takes. An ESP32-P4 built with `CONFIG_ICLFORGE_AC4` decodes AC-4 from an HTTP
     source, not from a group ([ESP32-P4](../platforms/bare-metal/esp32-p4.md#ac-4)). For
-    development without Hearth, `ac3hearth-testserver` still plays E-AC-3 to boards
+    development without Hearth, `hearth-testserver` still plays E-AC-3 to boards
     ([Play AC-3 and E-AC-3](#play-ac-3-and-e-ac-3)).
 
 ## What you need
@@ -62,7 +62,7 @@ serial port, such as `COM5` or `/dev/ttyACM0`. The three files over the defaults
 | `sdkconfig.sendspin` | The Sendspin player on Wi-Fi, the page and the REST routes on port 80, nothing played at boot, and lwIP's task on core 0 beside the network |
 
 `idf.py set-target` writes a fresh `sdkconfig` from those files. After that, `idf.py menuconfig`
-changes one build: the pins, the slot width and the layout are under *ac3forge hearth sink*, and
+changes one build: the pins, the slot width and the layout are under *iclforge hearth sink*, and
 the player's buffers under *Sendspin player*. If you build more than one shape, give each its own
 `-B <build directory>` and `-DSDKCONFIG=<build directory>/sdkconfig`, or the second inherits the
 first's settings.
@@ -78,13 +78,13 @@ and its pairings when you flash a new build. `idf.py -p PORT erase-flash` clears
 
 A board that has no network to join listens for [Improv Wi-Fi](https://www.improv-wifi.com/) on
 its console port. A freshly flashed board has none, since a build names a network only if you set
-one under *ac3forge hearth sink* in `idf.py menuconfig` (for boards flashed from one image), so it
+one under *iclforge hearth sink* in `idf.py menuconfig` (for boards flashed from one image), so it
 listens at once:
 
 1. Close the serial monitor (`Ctrl+]`), so the port is free.
 2. Open [improv-wifi.com](https://www.improv-wifi.com/) in a browser with Web Serial (Chrome or
    Edge on a computer) and connect to the board's serial port.
-3. The board says it is an *AC3Forge Hearth sink* and gives its name. It does not scan for
+3. The board says it is a *Hearth sink* and gives its name. It does not scan for
    networks, so type the network's name, then its passphrase.
 4. The board stores both and joins, then advertises itself and starts its player. Improv offers
    a link to the board's page, `http://<address>/`. If the join fails, Improv says the board
@@ -173,23 +173,23 @@ in progress is not interrupted.
 ## Play AC-3 and E-AC-3
 
 AC-3 and E-AC-3, with any Atmos objects, go to the board undecoded through Hearth's own role,
-`_ac3forge_player@v1`. The board decodes the stream, renders it onto its layout, and applies the
+`_iclforge_player@v1`. The board decodes the stream, renders it onto its layout, and applies the
 server's settings: the layout, routing, trims, delays and decoder settings.
 
-`ac3hearth`, the desktop app, sends it: its Network page pairs with the board and makes groups, and
-the output picker plays to a group ([Hearth](index.md)). `ac3hearth-testserver` plays one file to
+`hearth`, the desktop app, sends it: its Network page pairs with the board and makes groups, and
+the output picker plays to a group ([Hearth](index.md)). `hearth-testserver` plays one file to
 one or more boards as a group. It is a developer tool, built from this repository with the
 `hearth` feature:
 
 ```bash
-cmake --preset config-linux-gcc -DVCPKG_MANIFEST_FEATURES=hearth -DAC3FORGE_BUILD_HEARTH=ON -DAC3FORGE_BUILD_EXAMPLES=OFF
-cmake --build --preset build-linux-gcc --target ac3hearth-testserver
+cmake --preset config-linux-gcc -DVCPKG_MANIFEST_FEATURES=hearth -DICLFORGE_BUILD_HEARTH=ON -DICLFORGE_BUILD_EXAMPLES=OFF
+cmake --build --preset build-linux-gcc --target hearth-testserver
 ```
 
 Then, with the board's address and the token from its console:
 
 ```bash
-build/config-linux-gcc/bin/ac3hearth-testserver --play programme.ec3 \
+build/config-linux-gcc/bin/hearth-testserver --play programme.ec3 \
   --player ws://192.168.1.40:8928/sendspin --token SP:0... --layout 5.1 \
   --status http://192.168.1.40/status
 ```
@@ -210,7 +210,7 @@ outputs together.
 With the test server, give a `--player` and its options for each board:
 
 ```bash
-ac3hearth-testserver --play programme.ec3 \
+hearth-testserver --play programme.ec3 \
   --player ws://192.168.1.40:8928/sendspin --token SP:0... --layout 2.0 \
   --player ws://192.168.1.41:8928/sendspin --token SP:0... --layout 5.1
 ```
@@ -221,10 +221,10 @@ Music Assistant group playback has not been tested.
 
 | Signal | Default GPIO | Kconfig |
 |---|---|---|
-| Bit clock (BCLK) | 5 | `CONFIG_AC3FORGE_EXAMPLE_I2S_BCLK_GPIO` |
-| Word select (WS, LRCK) | 6 | `CONFIG_AC3FORGE_EXAMPLE_I2S_WS_GPIO` |
-| Data out (DOUT) | 7 | `CONFIG_AC3FORGE_EXAMPLE_I2S_DOUT_GPIO` |
-| Second line's data out | 8 | `CONFIG_AC3FORGE_EXAMPLE_I2S_DOUT2_GPIO` |
+| Bit clock (BCLK) | 5 | `CONFIG_ICLFORGE_EXAMPLE_I2S_BCLK_GPIO` |
+| Word select (WS, LRCK) | 6 | `CONFIG_ICLFORGE_EXAMPLE_I2S_WS_GPIO` |
+| Data out (DOUT) | 7 | `CONFIG_ICLFORGE_EXAMPLE_I2S_DOUT_GPIO` |
+| Second line's data out | 8 | `CONFIG_ICLFORGE_EXAMPLE_I2S_DOUT2_GPIO` |
 
 The defaults avoid the S3's strapping pins, its USB pair and the console UART; any free GPIO will
 do. The signals are 3.3 V. The board sends no MCLK, so a DAC that needs one needs it added.
@@ -232,14 +232,14 @@ do. The signals are 3.3 V. The board sends no MCLK, so a DAC that needs one need
 - **A stereo I2S DAC**, such as a PCM5102 or MAX98357A, plays a `2.0` or `1.0` layout: one or two
   channels open standard I2S.
 - **A TDM DAC** plays three or more channels, which open TDM. A TDM DAC set up for one frame
-  shape over I2C, such as an ESS ES9080, needs `CONFIG_AC3FORGE_EXAMPLE_I2S_FIXED_FRAME=1`, which
+  shape over I2C, such as an ESS ES9080, needs `CONFIG_ICLFORGE_EXAMPLE_I2S_FIXED_FRAME=1`, which
   opens the full TDM frame for every layout, stereo included. The firmware does not set the DAC
   up over I2C: whatever does has to match the slot width below.
 - **A second line** carries a second DAC. Wire its data pin, and tick *A second I2S line is wired
   to a DAC* on the page (or `PUT /wiring` with `1`). It shares the first line's bit clock and
   word select. Whether the two lines stay sample-aligned with DACs on both has not been checked.
 - **A DSP that supplies the clocks**, such as an ADAU1452, needs
-  `CONFIG_AC3FORGE_EXAMPLE_I2S_SLAVE=1`. This has not been tried.
+  `CONFIG_ICLFORGE_EXAMPLE_I2S_SLAVE=1`. This has not been tried.
 
 ## Slot widths
 
@@ -265,7 +265,7 @@ the page or with `PUT /layout`, and it applies from the next chunk the board pla
 sends its own settings replaces it. At `2.0` and `1.0` the decoder folds the programme down. On a
 wider layout each channel plays at its own location, objects are placed by their positions when
 the layout has height speakers, and nothing is upmixed. The
-[README](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/iclforge/examples/hearth_sink/README.md#layouts-and-more-than-two-channels)
+[README](https://github.com/iainchesworthlabs/iclforge/blob/main/esp-idf/iclforge/examples/hearth_sink/README.md#layouts-and-more-than-two-channels)
 has the grammar and the rules.
 
 ## Memory
@@ -313,9 +313,9 @@ an earlier one-minute run a 108-byte allocation did, with no effect on the strea
 
 ## Where to go next
 
-- [The example's README](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/iclforge/examples/hearth_sink/README.md):
+- [The example's README](https://github.com/iainchesworthlabs/iclforge/blob/main/esp-idf/iclforge/examples/hearth_sink/README.md):
   every setting, the REST routes, and the measurements.
 - [ESP32-S3](../platforms/bare-metal/esp32-s3.md): the decoder on this part, and its timing and
   memory.
-- [The plan](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/hearth-reference-player.md):
+- [The plan](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/hearth-reference-player.md):
   what Hearth is building, and in what order.

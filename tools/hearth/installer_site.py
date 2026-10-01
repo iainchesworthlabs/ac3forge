@@ -122,7 +122,7 @@ def unpack_parts(
 def empty_index() -> dict[str, Any]:
     """What the page reads when no release has sink firmware yet."""
     return {
-        "repository": ota.REPOSITORY,
+        "repository": ota.repository(),
         "manifest": ota.MANIFEST_NAME,
         "version": "",
         "tag": "",

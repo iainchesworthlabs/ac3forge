@@ -31,9 +31,9 @@
 # prompted using the EBU's own reference implementations instead).
 #
 # Neither library's own types appear in this module's public headers
-# (ac3adm/ac3adm.hpp, ac3adm/model.hpp) - see model.hpp's own header comment
+# (iclforge/adm/ac3adm.hpp, iclforge/adm/model.hpp) - see model.hpp's own header comment
 # for why (libadm's own C++ namespace is `adm`, which is also why this
-# module's namespace is `ac3adm` and not `adm`).
+# module's namespace is `iclforge::adm` and not `adm`).
 #
 # NOT wired into the Android/Shield CMake tree - matroska/mp4/mpegts stay out
 # of that tree too (see apps/android's own notes - not an NDK build-gap issue
@@ -47,9 +47,9 @@
 # ICLFORGE_INSTALL_BOTH_LINKAGES. bw64/adm are third-party FetchContent targets this project
 # doesn't install or export in their own right (re-exporting libbw64/libadm as first-class
 # packages of their own - including libadm's Boost header dependency - was judged out of scope
-# for this module). A STATIC ac3adm still has genuinely unresolved symbol references into adm's
+# for this module). A STATIC iclforge::adm still has genuinely unresolved symbol references into adm's
 # object code that only a downstream consumer's own final link step would resolve, which would
-# require shipping libadm/libbw64 too; a SHARED ac3adm.so is self-contained instead, since adm is
+# require shipping libadm/libbw64 too; a SHARED libiclforge_adm.so is self-contained instead, since adm is
 # forced STATIC and embedded into it at iclforge_adm_shared's own build step (see the
 # FetchContent_MakeAvailable(libadm) comment above). See target_link_libraries(iclforge_adm_objects...)
 # below for how bw64/adm are kept out of the exported package's Targets.cmake entirely.
@@ -177,7 +177,7 @@ set(BUILD_SHARED_LIBS "${_ac3adm_saved_build_shared_libs}" CACHE BOOL "" FORCE)
 unset(_ac3adm_saved_build_shared_libs)
 
 # ---------------------------------------------------------------------------
-# ac3adm's own targets - built and installed as both a static and a shared
+# iclforge::adm's own targets - built and installed as both a static and a shared
 # library, same OBJECT-library-plus-two-thin-wrappers shape as every other
 # component here; see src/ac3/CMakeLists.txt's iclforge::ac3 for the full
 # explanation of why.
@@ -213,7 +213,7 @@ target_compile_features(iclforge_adm_objects PUBLIC cxx_std_23)
 # $<BUILD_INTERFACE:...> wrapping iclforge::warnings - see src/ac3/CMakeLists.txt's identical
 # iclforge_ac3_objects treatment for why a plain PRIVATE link isn't enough for an OBJECT
 # library that's part of an install(EXPORT) set. bw64/adm are PRIVATE too: neither
-# library's types cross ac3adm's own public API (see this file's header comment), so
+# library's types cross iclforge::adm's own public API (see this file's header comment), so
 # nothing downstream needs to link them transitively.
 # -Wnull-dereference false positive, GNU only: adm.cpp's read_pcm() calls into libbw64's inlined
 # chunk accessors (bw64::DataSize64Chunk::size(), etc. - plain member-variable getters, nothing
@@ -288,7 +288,7 @@ set_target_properties(iclforge_adm_static PROPERTIES OUTPUT_NAME "iclforge_adm_s
 # --exclude-libs,ALL: confirmed empirically necessary, not a defensive guess - without this,
 # iclforge_adm_shared's dynamic symbol table carries ~16,800 exported symbols (a real linux-llvm-shared
 # build measured it), nearly all adm::/boost:: template instantiations (VTTs, boost::optional<
-# adm::X>::operator=, adm::xml::detail::toString<...>, ...) reachable from ac3adm's own .cpp
+# adm::X>::operator=, adm::xml::detail::toString<...>, ...) reachable from iclforge::adm's own .cpp
 # files including adm.hpp/model.hpp. CXX_VISIBILITY_PRESET hidden + VISIBILITY_INLINES_HIDDEN
 # (set on iclforge_adm_objects above) do NOT suppress these: libadm's own class declarations carry an
 # explicit default-visibility attribute of their own (for libadm's own shared-library builds),

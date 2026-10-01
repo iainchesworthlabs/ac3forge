@@ -34,7 +34,7 @@ RATE = 48000
 DURATION_S = 2.5
 N = int(RATE * DURATION_S)
 
-# WAV channel order ac3::io::ac3_layout_for(6) expects: FL FR FC LFE BL BR.
+# WAV channel order iclforge::io::ac3_layout_for(6) expects: FL FR FC LFE BL BR.
 CHANNELS = 6
 PEAK = 0.55  # headroom so nothing in the mix approaches full scale
 

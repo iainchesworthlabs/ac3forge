@@ -47,7 +47,7 @@ endif()
 # identity those records are bound to with them. NetworkSinks (discovery and
 # pairing, A6) needs the same server half - ServerHost and the computer's own
 # mdns backend - plus PairingStore itself. network_group_sink.cpp is the same
-# reason: it wraps ac3::sendspin::Group.
+# reason: it wraps iclforge::sendspin::Group.
 if(NOT ICLFORGE_SENDSPIN_CORE_ONLY)
     target_sources(hearth_engine PRIVATE pairing_store.cpp server_identity.cpp network_sinks.cpp
                                             network_group_sink.cpp)
@@ -69,7 +69,7 @@ endif()
 # loader hands over (container_input.hpp, whose functions the application's
 # loader compiles), probe's JSON stream summary, which the media information
 # writes as forge probe does, and Ac4ObjectRenderer (planning/ac4.md, I5),
-# the same ac3::render::LayoutRenderer-based panner forge's own 'decode'
+# the same iclforge::render::LayoutRenderer-based panner forge's own 'decode'
 # plays AC-4 objects through, compiled in here so the engine's AC-4 path can
 # take it up too.
 target_sources(hearth_engine PRIVATE

@@ -1,6 +1,6 @@
 # The null-sink driver on ACX: plan and record
 
-AC3Forge Crucible's silent output device ([windows-demo.md](windows-demo.md), "Routing:
+Crucible's silent output device ([windows-demo.md](windows-demo.md), "Routing:
 separation and silencing") is a kernel driver because Windows offers no other way to make an
 audio endpoint. The driver in the tree is an ACX driver, about 1,800 lines of C++. On 2026-09-04
 it replaced a PortCls/WaveRT miniport derived from Microsoft's Simple Audio Sample, which held
@@ -11,7 +11,7 @@ after a review of the options (recorded under
 
 | | |
 |---|---|
-| Driver | An ACX driver on KMDF in `apps/windows/driver/`; [its README](https://github.com/iainchesworthlabs/ac3forge/blob/main/apps/windows/driver/README.md) says what each file does |
+| Driver | An ACX driver on KMDF in `apps/windows/driver/`; [its README](https://github.com/iainchesworthlabs/iclforge/blob/main/apps/windows/driver/README.md) says what each file does |
 | Signing | **Test-signed only.** It loads with test signing on and memory integrity off. The EV certificate and the attestation submission are not done |
 | CI | The `windows-driver` job builds and test-signs the package and runs Code Analysis at the driver rule set. It installs nothing |
 | Verification | Static tier and dynamic tier (Driver Verifier with DDI compliance and code-integrity checking, the KMDF verifier, KASAN) clean in a throwaway VMware guest on 2026-09-04. A guest sleep and resume is not done |

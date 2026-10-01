@@ -4,6 +4,12 @@
 by phase — for using the application today, see [What it is](../index.md) and
 [Install and first run](../install.md) instead.
 
+!!! info "Names"
+    The record keeps the names of the time it describes: AC3Forge Crucible, `ac3crucible`,
+    `ac3forge`, the `AC3FORGE_` variables and the `ac3::` namespaces. The application is Crucible,
+    `crucible`, in the family ICL Forge; [Renamed](../../renamed.md) puts each old name beside its
+    new one.
+
 !!! success "Where this stands: built and run on Windows and Linux; written but not run on macOS"
     Written 2026-09-04 as a plan, and kept as the record of the work. Crucible exists, runs on
     Windows and Linux, and reached a real receiver over PipeWire on 2026-09-05. What is open is
@@ -43,7 +49,7 @@ built and what is not, against the tree today.
 | 9. Verification | On the Pi: the Linux tap, the silent device, and a bitstream over PipeWire that a receiver decoded | A Windows bitstream to a receiver; the driver on a normal machine; macOS at runtime |
 
 The window's Qt Quick suites are 16 files and 141 cases today
-([feature coverage](https://github.com/iainchesworthlabs/ac3forge/blob/main/apps/crucible/ui/tests/FEATURE_COVERAGE.md)).
+([feature coverage](https://github.com/iainchesworthlabs/iclforge/blob/main/apps/crucible/ui/tests/FEATURE_COVERAGE.md)).
 
 ## The name
 
@@ -829,7 +835,7 @@ places one, and encodes; the signal path renders with the null sink as the defau
     because a 2 GB Pi could not run the one thing that would: an address sanitiser, or Qt's own
     debug symbols. So the next step was a machine that could.
 
-    **The VM.** [`apps/linux/tray-vm/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/apps/linux/tray-vm) is a scripted VMware guest,
+    **The VM.** [`apps/linux/tray-vm/`](https://github.com/iainchesworthlabs/iclforge/tree/main/apps/linux/tray-vm) is a scripted VMware guest,
     the same shape as the Windows driver guest in `apps/windows/driver-vm/`: Debian 13, which
     carries the Pi's exact Qt (6.8.2) and publishes matching `-dbgsym` packages, on labwc with
     waybar as the panel — the Pi's own stack a step out, since `wf-panel-pi` has no amd64 build

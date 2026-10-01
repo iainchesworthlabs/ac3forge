@@ -14,14 +14,14 @@
 # (see CONTRIBUTING.md's repository-layout section on what a bare
 # `include/iamf/` prefix, with no `ac3/`, means).
 #
-# Like ac3iab (src/iab), this module has no third-party dependency of its
+# Like iclforge::iab (src/iab), this module has no third-party dependency of its
 # own - it writes IAMF's OBU/ISOBMFF syntax directly against the published
-# spec, the same way ac3iab hand-rolls its own bit reader for SMPTE ST
-# 2098-2 - so, like the three container writers and ac3iab, it defaults ON
-# rather than OFF (unlike ac3adm, src/adm, whose opt-in/excluded-from-
+# spec, the same way iclforge::iab hand-rolls its own bit reader for SMPTE ST
+# 2098-2 - so, like the three container writers and iclforge::iab, it defaults ON
+# rather than OFF (unlike iclforge::adm, src/adm, whose opt-in/excluded-from-
 # install treatment exists specifically because IT vendors third-party
 # Boost/libadm code - a reason that does not apply here). It has no opt-in
-# vcpkg feature of its own yet, following ac3iab's own precedent: new in
+# vcpkg feature of its own yet, following iclforge::iab's own precedent: new in
 # this PR, nothing downstream (CLI, GUI, examples beyond mux_iamf.cpp)
 # consumes it yet.
 #

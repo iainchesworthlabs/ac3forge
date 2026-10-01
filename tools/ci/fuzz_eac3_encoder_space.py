@@ -143,8 +143,8 @@ SAMPLE_RATES = [48000, 44100, 32000, 24000, 22050, 16000]
 FSCOD2_RATES = [24000, 22050, 16000]
 
 # §E2.3.1.3: frmsiz is 11 bits and holds (words - 1), so 2048 words is the
-# largest syncframe the format can signal at any rate - ac3::eac3::
-# kMaxFrameWords, and the arithmetic below is ac3::eac3::frame_words().
+# largest syncframe the format can signal at any rate - iclforge::eac3::
+# kMaxFrameWords, and the arithmetic below is iclforge::eac3::frame_words().
 #
 # This is not a detail. At 48 kHz the ceiling binds nowhere near the 640 kbit/s
 # top of LEGAL_RATES (it would take 1024); at the half rates it binds INSIDE
@@ -166,7 +166,7 @@ CEILING_WORDS = 2048
 
 
 def frame_words(sample_rate, bitrate_kbps):
-    """Words per syncframe - ac3::eac3::frame_words, in Python."""
+    """Words per syncframe - iclforge::eac3::frame_words, in Python."""
     return bitrate_kbps * 1000 * FRAME // sample_rate // 16
 
 
@@ -192,7 +192,7 @@ MIN_STREAM_BYTES = ac3space.MIN_STREAM_BYTES
 # Where each layout's usable rate range starts, measured against this build at
 # 48 kHz rather than derived from the spec, with exactly the two columns the
 # AC-3 harness's LAYOUTS table has and for the same reason: the refusal is
-# ac3::eac3::FrameEncoder's own budget check, and its cost moves with how many
+# iclforge::eac3::FrameEncoder's own budget check, and its cost moves with how many
 # substreams the layout codes, with the Annex E tools, and - through the
 # exponent strategy and the delta bit allocation - with the AUDIO. So there is
 # no one floor; there are two, and conflating them would make this table
@@ -263,7 +263,7 @@ DMIXMOD = ["ltrt", "loro", "none"]
 # thing this file found was an ABORT that a blanket "non-zero means skip"
 # would have swallowed whole - see classify().
 REFUSALS = {
-    # ac3::eac3's own budget check, reported by the CLI whenever an access
+    # iclforge::eac3's own budget check, reported by the CLI whenever an access
     # unit cannot be built at the chosen settings. Two distinct causes reach
     # this one message, both measured against the CLI rather than assumed:
     #

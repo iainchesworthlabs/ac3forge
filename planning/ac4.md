@@ -1,13 +1,15 @@
 # AC-4: a decoder, an encoder and the applications
 
-!!! note "Status as of 2026-09-30: built except I6, D14c, D14d and N1"
+!!! note "Status as of 2026-09-30: built except I6, D14c and D14d; N1 has been built since, on 2026-10-01"
     The decoder (D1 to D11), the encoder (E1 to E10), the application phases (I1 to I5b), the golden
     masters (G0, G1) and the first two parts of D14, the ESP32 work (D14a on the host, D14b on the
     ESP32-P4), are merged; [State on 2026-09-30](#state-on-2026-09-30) lists each phase with its pull
-    request. Not built: the ESP32 sinks taking AC-4 in a Sendspin group (I6), the S3 and C6 parts of
-    D14 (D14c, D14d), and N1, the program names and the layout of `src/`, which
-    [a study](layout.md) has priced and the user has not yet decided. The design sections below say
-    what was proposed and why, and where the built code differs from a sketch they say so.
+    request. Not built: the ESP32 sinks taking AC-4 in a Sendspin group (I6) and the S3 and C6 parts
+    of D14 (D14c, D14d). N1, the program names and the layout of `src/`, was built after that date:
+    [N1](#n1-the-names) says what ran, in which pull requests, and what is left. The design
+    sections below say what was proposed and why, and where the built code differs from a sketch
+    they say so, and they keep the names of the time they were written (`ac3cli`, `ac3::forge`,
+    `ac3forge`: [Renamed](../docs/renamed.md) puts each beside its new name).
 
     Written on 2026-09-15 as phase D0 of chip D in the Hearth plan, as a plan for a decoder.
     Extended on 2026-09-24, when the user widened the scope to a decoder, an encoder and their
@@ -100,7 +102,7 @@ checked. The table is of `main` at `5ef9eeafc`.
 | I5 | immersive and object content in the applications | #1100, 2026-09-29 | merged; exit met, apart from two failures in suites it did not touch (fixed since) |
 | I5b | the encoder page's AC-4 objects | #1117, 2026-09-29 | merged; exit met, with the ADM master's audio as the page's source and its scene authored there: the page has no ADM or IAB reader |
 | I6 | the ESP32 sinks | | not built |
-| N1 | the program names and the layout of `src/` | study #1122, 2026-09-29 | not built; N1A and N1B are studied and the study's 14 decisions await the user; the PyPI project and the Homebrew names are decided (40, 41) and the open vcpkg pull request is not |
+| N1 | the program names and the layout of `src/` | study #1122; S2 #1160; S3 #1161; S4 #1162; N1A #1164; S5 | built in the repository, 2026-09-30 and 2026-10-01; the owner's renames, S6 and U1 are left (see N1); the PyPI project and the Homebrew names are decided (40, 41) and the open vcpkg pull request is not |
 
 Not built, beside those: a quality series for the encoder (the decoder's has one, `ac4-quality-main.jsonl`;
 the encoder's scores and the race against DEE are held to pinned floors and keep no history), Pro
@@ -111,9 +113,8 @@ memory benchmarks carry AC-4's rows (and the transforms of `src/ac4core`), and s
 (2026-09-29) a merge queue entry that changes `src/` fails if any workload, AC-4's included, takes
 twice as long as at the commit it is queued on, or doubles its heap churn.
 
-Left to the user, each with its options in the pull request or section named: N1's 14 decisions
-([the study](layout.md#i-decisions)) and what to do with the open vcpkg pull request
-([N1B](#n1-the-names)); D14b's four, of which the libm change and the frame-rate converter were taken on
+Left to the user, each with its options in the pull request or section named: N1's steps outside
+the repository and what to do with the open vcpkg pull request ([N1](#n1-the-names)); D14b's four, of which the libm change and the frame-rate converter were taken on
 2026-09-30 and are D14a4, and the allocation policy and what comes next on the P4 are still open (#1118);
 D14a4's, which are what to do about the 1001/960 table's 5.9 s first frame and PSRAM reads;
 I5's two, whether to spend a check on the `zone_mask` reading and a native
@@ -1315,7 +1316,7 @@ and, in the last column, where it stands; [State on 2026-09-30](#state-on-2026-0
 | 22 | [D14](#d14-ac-4-on-the-esp32s) | AC-4 on the ESP32s: the P4 first, then the S3 and the C6 | D10 | D14a and D14b merged (#1096, #1102, #1123, #1118); D14c and D14d not built |
 | | [D14a4](#d14a4-libm-parity-and-the-converter-at-float) | libm parity and the frame-rate converter at `float`: what D14b's board work left in D14a's build | D14a, D14b | open |
 | 23 | [I6](#i6-the-esp32-sinks) | the ESP32 sinks | each part's D14 figures | not built |
-| 24 | [N1](#n1-the-names) | the names | I5 | not built; studied in #1122 |
+| 24 | [N1](#n1-the-names) | the names | I5 | built in the repository, 2026-09-30 and 2026-10-01 (#1160 to #1164 and S5); the owner's renames and S6 are left |
 | | [G1](#g0-the-gold-set) | the golden masters, extending G0's set | any time before DEE's licence ends on 2026-11-06 | merged, #1051 |
 | | [D11](#d11-ac-4-over-iec-61937) | AC-4 over IEC 61937 | D1; any time | merged, #1052 |
 | | [E10](#e10-a-spx-noise-floors-on-sweeps) | A-SPX noise floors on sweeps: the gap E8 left to DEE | E2, E8 | merged, #1113 |
@@ -3161,8 +3162,28 @@ accepts AC-4 ([decision 20](#decisions-for-the-encoder-and-the-applications)).
 
 #### N1: the names
 
-**Status:** not built. The pull request that studied N1B (#1122, 2026-09-29) moved no source file;
-the study's 14 decisions await the user, and no program, library or path has been renamed.
+**Status on 2026-10-01:** built in the repository, in one freeze that began with #1160 on 2026-09-30 and
+ends with the S5 pull request. The study (#1122, 2026-09-29) moved no source file; the user took its
+recommendation on each of its 14 decisions on 2026-09-30 (L2, the root `iclforge`, flat
+`src/<library>`), and the stages ran from [its plan](layout.md#f-the-migration-plan), each in a pull
+request of its own with its scripts under `tools/n1b/`:
+
+| stage | pull requests | what it did |
+|---|---|---|
+| S0, S1 | #1153 to #1155, #1158, #1159 | the seven cuts that let five codec-blind libraries leave `forge`, the scripts, and the hand-written part of S2 as a patch |
+| S2 | #1160 | `src/` and `tests/` moved to the L2 layout: 404 renames and 22 libraries |
+| S3 | #1161 | the namespace root `ac3` became `iclforge` in 1,208 files, and 294 files were wrapped again to 100 columns |
+| S4 | #1162 | `ac3forge` became `iclforge` in identifiers, names and wire strings (713 files), `sendspin::ac3forge` became `sendspin::player`, and 211 package files moved |
+| N1A | #1164 | `ac3cli`, `ac3gui`, `ac3hearth` and `ac3crucible` became `forge`, `forge-gui`, `hearth` and `crucible`, with what they register |
+| S5 | the pull request that carries this text | the pages, the addresses, the build and tool text and the install routes follow the names; [Renamed](../docs/renamed.md) is the page that puts each old name beside its new one |
+
+[What the runs found](layout.md#what-the-runs-found-that-the-plan-did-not) gives the counts that
+differed from the study's and the hazards it did not name. **Left:** the owner renames the
+repository, the Homebrew tap and the SonarCloud project key, creates the pending publisher of the
+PyPI project `iclforge` and publishes the first release under the new names; S6 nests the AC-3
+codec's own symbols under `iclforge::ac3`; U1 revises wording that is not a name; and the Windows
+driver's installed identity, which the tree still carries as `Ac3ForgeNullSink`, is renamed in its
+own change (N1D) on the owner's decision of 2026-10-01. What follows is the plan as it was written.
 
 Asked by the user on 2026-09-25, since libraries and programs named `ac3` now do AC-4. A survey of
 the tree found `ac3forge` already the family's name for parts with no AC-3 in them (Hearth,

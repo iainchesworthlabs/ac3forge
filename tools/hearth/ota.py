@@ -95,6 +95,7 @@ from __future__ import annotations
 import argparse
 import base64
 import dataclasses
+import functools
 import hashlib
 import http.client
 import json
@@ -1425,11 +1426,41 @@ def boards_from(args: argparse.Namespace) -> list[Board]:
 
 # --- published images (planning/esp32-ota.md, O8) ---------------------------------------------
 
-REPOSITORY = "iainchesworthlabs/ac3forge"
+# The name the repository had when this was written; repository() answers with the current one.
+FALLBACK_REPOSITORY = "iainchesworthlabs/iclforge"
 MANIFEST_NAME = "hearth-sink-manifest.json"
 FIRMWARE_ARTIFACT = "esp32-firmware"
 GITHUB_API = "https://api.github.com"
 DOWNLOAD_TIMEOUT = 120.0
+
+
+@functools.cache
+def repository() -> str:
+    """owner/name of the repository whose releases and CI runs hold the images.
+
+    A CI run names it in GITHUB_REPOSITORY. A checkout asks the GitHub CLI, which answers with the
+    name the repository has now, so the answer is right before and after the repository is
+    renamed. With neither, the name it had when this was written.
+    """
+    named = os.environ.get("GITHUB_REPOSITORY", "").strip()
+    if named:
+        return named
+    command = ["gh", "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"]
+    try:
+        done = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=20,
+            cwd=Path(__file__).resolve().parent,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return FALLBACK_REPOSITORY
+    answer = done.stdout.strip()
+    if done.returncode == 0 and answer.count("/") == 1:
+        return answer
+    return FALLBACK_REPOSITORY
 
 
 @dataclass
@@ -1484,7 +1515,7 @@ def fetch_release(tag: str, into: Path) -> Published:
     release so far is one.
     """
     if tag == "latest":
-        releases = json.loads(github_get(f"{GITHUB_API}/repos/{REPOSITORY}/releases?per_page=30"))
+        releases = json.loads(github_get(f"{GITHUB_API}/repos/{repository()}/releases?per_page=30"))
         release = next(
             (
                 entry
@@ -1494,9 +1525,9 @@ def fetch_release(tag: str, into: Path) -> Published:
             None,
         )
         if release is None:
-            raise NoPublishedFirmware(f"no release of {REPOSITORY} publishes {MANIFEST_NAME} yet")
+            raise NoPublishedFirmware(f"no release of {repository()} publishes {MANIFEST_NAME} yet")
     else:
-        release = json.loads(github_get(f"{GITHUB_API}/repos/{REPOSITORY}/releases/tags/{tag}"))
+        release = json.loads(github_get(f"{GITHUB_API}/repos/{repository()}/releases/tags/{tag}"))
     urls = {
         str(asset.get("name")): str(asset.get("browser_download_url"))
         for asset in release.get("assets", [])
@@ -1526,7 +1557,7 @@ def fetch_run(run_id: str, into: Path) -> Published:
     if not run_id.isdigit():
         raise UsageError(f"--run takes a workflow run's number, not '{run_id}'")
     command = [
-        "gh", "run", "download", run_id, "--repo", REPOSITORY,
+        "gh", "run", "download", run_id, "--repo", repository(),
         "--name", FIRMWARE_ARTIFACT, "--dir", str(into),
     ]  # fmt: skip
     try:

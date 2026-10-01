@@ -2,7 +2,7 @@
 //! frame 0" discipline as roundtrip.rs's AC-3/E-AC-3 tests (CONTRIBUTING.md).
 //!
 //! Unlike AC-3/E-AC-3, AC-4's frame length is not a crate-wide constant (it varies by frame
-//! rate - see ac4::DecodedFrame::samples_per_channel()'s own doc comment), so this file picks
+//! rate - see iclforge::ac4::DecodedFrame::samples_per_channel()'s own doc comment), so this file picks
 //! the default configuration's own length (frame_rate_index 13, 2048 samples) explicitly rather
 //! than importing SAMPLES_PER_FRAME.
 
