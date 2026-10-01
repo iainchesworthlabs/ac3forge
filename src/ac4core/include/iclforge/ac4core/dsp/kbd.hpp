@@ -28,7 +28,25 @@ namespace iclforge::ac4::detail::dsp {
 [[nodiscard]] std::vector<double> kbd_left(int length, double alpha);
 
 // The zeroth-order modified Bessel function of the first kind, by the series
-// the clause gives: sum_{k>=0} ((x/2)^k / k!)^2.
-[[nodiscard]] double bessel_i0(double x) noexcept;
+// the clause gives: sum_{k>=0} ((x/2)^k / k!)^2. Plain double arithmetic in a fixed
+// order and constexpr, so that the converter's float table (dsp/resampler_design.hpp)
+// is designed with the same function at compile time and at run time.
+[[nodiscard]] constexpr double bessel_i0(double x) noexcept {
+    // Terms grow while (x/2)/k > 1, then fall faster than geometrically; stop
+    // once one no longer changes the sum.
+    const double half = x / 2.0;
+    double term = 1.0;  // ((x/2)^k / k!), squared when added
+    double sum = 1.0;
+    for (int k = 1; k < 500; ++k) {
+        term *= half / static_cast<double>(k);
+        const double add = term * term;
+        const double next = sum + add;
+        if (next == sum) {
+            break;
+        }
+        sum = next;
+    }
+    return sum;
+}
 
 }  // namespace iclforge::ac4::detail::dsp
