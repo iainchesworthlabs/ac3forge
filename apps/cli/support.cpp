@@ -102,16 +102,17 @@ std::vector<std::string_view> split(std::string_view text, char sep) {
 // prints. "off" is the -inf row, which is a real value there rather than an
 // absent field.
 bool parse_mix_level(std::string_view text, iclforge::ac3::meta::MixLevel& out) {
-    static constexpr std::array<std::pair<std::string_view, iclforge::ac3::meta::MixLevel>, 8> kLevels{{
-        {"+3", iclforge::ac3::meta::MixLevel::kPlus3dB},
-        {"+1.5", iclforge::ac3::meta::MixLevel::kPlus1_5dB},
-        {"0", iclforge::ac3::meta::MixLevel::kUnity},
-        {"-1.5", iclforge::ac3::meta::MixLevel::kMinus1_5dB},
-        {"-3", iclforge::ac3::meta::MixLevel::kMinus3dB},
-        {"-4.5", iclforge::ac3::meta::MixLevel::kMinus4_5dB},
-        {"-6", iclforge::ac3::meta::MixLevel::kMinus6dB},
-        {"off", iclforge::ac3::meta::MixLevel::kSilent},
-    }};
+    static constexpr std::array<std::pair<std::string_view, iclforge::ac3::meta::MixLevel>, 8>
+        kLevels{{
+            {"+3", iclforge::ac3::meta::MixLevel::kPlus3dB},
+            {"+1.5", iclforge::ac3::meta::MixLevel::kPlus1_5dB},
+            {"0", iclforge::ac3::meta::MixLevel::kUnity},
+            {"-1.5", iclforge::ac3::meta::MixLevel::kMinus1_5dB},
+            {"-3", iclforge::ac3::meta::MixLevel::kMinus3dB},
+            {"-4.5", iclforge::ac3::meta::MixLevel::kMinus4_5dB},
+            {"-6", iclforge::ac3::meta::MixLevel::kMinus6dB},
+            {"off", iclforge::ac3::meta::MixLevel::kSilent},
+        }};
     for (const auto& [name, level] : kLevels) {
         if (name == text) {
             out = level;
@@ -1437,11 +1438,13 @@ std::expected<void, iclforge::ac3::io::WavError> write_wav_f32_arg(
         std::uint32_t sample_rate, std::span<const std::size_t> channel_order = {}) {
     if (is_stdio_path(path)) {
         iclforge::cli::platform::set_stdio_binary();
-        auto result = iclforge::ac3::io::write_wav_f32(std::cout, channels, sample_rate, channel_order);
+        auto result =
+            iclforge::ac3::io::write_wav_f32(std::cout, channels, sample_rate, channel_order);
         std::cout.flush();
         return result;
     }
-    return iclforge::ac3::io::write_wav_f32(std::string{path}, channels, sample_rate, channel_order);
+    return iclforge::ac3::io::write_wav_f32(std::string{path}, channels, sample_rate,
+                                            channel_order);
 }
 
 }  // namespace
@@ -3114,8 +3117,9 @@ std::optional<int> finish_measurement(const iclforge::ac3::meta::LoudnessMeter& 
     return dialnorm;
 }
 
-std::optional<int> measured_dialnorm(const iclforge::ac3::io::WavData& wav, iclforge::ac3::SampleRate rate,
-                                     iclforge::ac3::Acmod acmod, bool lfe, FILE* out) {
+std::optional<int> measured_dialnorm(const iclforge::ac3::io::WavData& wav,
+                                     iclforge::ac3::SampleRate rate, iclforge::ac3::Acmod acmod,
+                                     bool lfe, FILE* out) {
     iclforge::ac3::meta::LoudnessMeter meter{rate, acmod, lfe};
     // LoudnessMeter takes its spans in AC-3 CODED order (Table 5.8: L, C, R,
     // Ls, Rs, LFE), which is not WAV order (FL, FR, FC, LFE, BL, BR) for any
@@ -3151,8 +3155,9 @@ std::optional<int> measured_dialnorm(const iclforge::ac3::io::WavData& wav, iclf
 }
 
 std::optional<int> measured_dialnorm_channel(std::span<const float> channel,
-                                             iclforge::ac3::SampleRate rate, std::string_view programme,
-                                             std::string_view field, FILE* out) {
+                                             iclforge::ac3::SampleRate rate,
+                                             std::string_view programme, std::string_view field,
+                                             FILE* out) {
     iclforge::ac3::meta::LoudnessMeter meter{rate, iclforge::ac3::Acmod::k1_0, false};
     const std::array<std::span<const float>, 1> views{channel};
     meter.push(views);
@@ -3191,7 +3196,8 @@ bool prepare_dual_mono_source(iclforge::ac3::io::WavData& wav, std::string_view 
     }
     auto second = iclforge::ac3::io::read_wav(std::string{in2_path});
     if (!second.has_value()) {
-        fmt::println(stderr, "error: {}: {}", in2_path, iclforge::ac3::io::describe(second.error()));
+        fmt::println(stderr, "error: {}: {}", in2_path,
+                     iclforge::ac3::io::describe(second.error()));
         return false;
     }
     if (second->channels.size() != 1) {
@@ -3298,9 +3304,9 @@ iclforge::ac3::OutputConfig resolve_output(const Options& meta, std::span<const 
     // No dmixmod found at all is the same "no preference" case
     // automatic_stereo_target() answers Lo/Ro to for any acmod, so there is no
     // acmod to invent one for here.
-    output.target = preferred.has_value()
-                        ? iclforge::ac3::automatic_stereo_target(preferred->acmod, preferred->dmixmod)
-                        : iclforge::ac3::DownmixTarget::kLoRo;
+    output.target = preferred.has_value() ? iclforge::ac3::automatic_stereo_target(
+                                                preferred->acmod, preferred->dmixmod)
+                                          : iclforge::ac3::DownmixTarget::kLoRo;
     status_println(
         status, "  downmix=auto: dmixmod {} -> {} (§D3.1.1)",
         preferred.has_value() ? fmt::format("{} ({})", static_cast<int>(preferred->dmixmod),
@@ -3676,7 +3682,8 @@ std::vector<std::byte> read_elementary_stream(std::string_view in_path) {
     return std::move(result.bytes);
 }
 
-std::expected<iclforge::ac3::io::WavData, iclforge::ac3::io::WavError> read_wav_arg(std::string_view path) {
+std::expected<iclforge::ac3::io::WavData, iclforge::ac3::io::WavError> read_wav_arg(
+    std::string_view path) {
     if (is_stdio_path(path)) {
         iclforge::cli::platform::set_stdio_binary();
         return iclforge::ac3::io::read_wav(std::cin);
@@ -3880,8 +3887,9 @@ bool resolve_layout(std::string_view name, iclforge::ac3::plan::Codec codec,
         return false;
     }
     if (codec == iclforge::ac3::plan::Codec::kAc3 && !allocated->dependents.empty()) {
-        fmt::println(stderr, "error: {} cannot carry '{}' - {}", iclforge::ac3::plan::codec_label(codec),
-                     name, iclforge::ac3::plan::describe(iclforge::ac3::plan::PlanError::kLayoutNeedsEac3));
+        fmt::println(
+            stderr, "error: {} cannot carry '{}' - {}", iclforge::ac3::plan::codec_label(codec),
+            name, iclforge::ac3::plan::describe(iclforge::ac3::plan::PlanError::kLayoutNeedsEac3));
         return false;
     }
     plan_out.custom_locations = custom;
@@ -3941,14 +3949,16 @@ std::optional<TakePlan> resolve_take_plan(const Options& meta, std::uint32_t bit
         const auto allocated = iclforge::ac3::eac3::chanmap::allocate(*take.plan.custom_locations);
         ac3_can_carry = allocated.has_value() && allocated->dependents.empty();
     } else {
-        ac3_can_carry = iclforge::ac3::plan::carries(iclforge::ac3::plan::Codec::kAc3, take.plan.layout);
+        ac3_can_carry =
+            iclforge::ac3::plan::carries(iclforge::ac3::plan::Codec::kAc3, take.plan.layout);
     }
     take.plan.codec = meta.take_codec.value_or(ac3_can_carry ? iclforge::ac3::plan::Codec::kAc3
                                                             : iclforge::ac3::plan::Codec::kEac3);
     if (take.plan.codec == iclforge::ac3::plan::Codec::kAc3 && !ac3_can_carry) {
-        fmt::println(stderr, "error: {} cannot carry {} - {}",
-                     iclforge::ac3::plan::codec_label(iclforge::ac3::plan::Codec::kAc3), take.label,
-                     iclforge::ac3::plan::describe(iclforge::ac3::plan::PlanError::kLayoutNeedsEac3));
+        fmt::println(
+            stderr, "error: {} cannot carry {} - {}",
+            iclforge::ac3::plan::codec_label(iclforge::ac3::plan::Codec::kAc3), take.label,
+            iclforge::ac3::plan::describe(iclforge::ac3::plan::PlanError::kLayoutNeedsEac3));
         return std::nullopt;
     }
     if (const auto bad = iclforge::ac3::plan::validate(take.plan)) {
@@ -3957,7 +3967,8 @@ std::optional<TakePlan> resolve_take_plan(const Options& meta, std::uint32_t bit
     }
     take.eac3 = take.plan.codec == iclforge::ac3::plan::Codec::kEac3;
     const auto channel_plan = iclforge::ac3::plan::resolve(take.plan);
-    take.coded_channels = static_cast<int>(iclforge::ac3::plan::coded_channels(channel_plan).size());
+    take.coded_channels =
+        static_cast<int>(iclforge::ac3::plan::coded_channels(channel_plan).size());
     take.rendered_channels = iclforge::ac3::plan::rendered_channel_count(channel_plan);
     return take;
 }
@@ -4027,8 +4038,8 @@ RecordingSink::Config take_sink_config(const Options& meta, const TakePlan& take
 std::optional<iclforge::ac3::meta::ProfileId> profile_id_of(const iclforge::ac3::meta::Profile& p) {
     for (const auto id :
          {iclforge::ac3::meta::ProfileId::kFilmStandard, iclforge::ac3::meta::ProfileId::kFilmLight,
-          iclforge::ac3::meta::ProfileId::kMusicStandard, iclforge::ac3::meta::ProfileId::kMusicLight,
-          iclforge::ac3::meta::ProfileId::kSpeech}) {
+          iclforge::ac3::meta::ProfileId::kMusicStandard,
+          iclforge::ac3::meta::ProfileId::kMusicLight, iclforge::ac3::meta::ProfileId::kSpeech}) {
         const iclforge::ac3::meta::Profile q = iclforge::ac3::meta::profile(id);
         if (p.null_low_db == q.null_low_db && p.null_high_db == q.null_high_db &&
             p.boost_ratio == q.boost_ratio && p.max_boost_db == q.max_boost_db &&

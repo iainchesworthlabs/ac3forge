@@ -47,7 +47,8 @@ TEST_CASE("symmetric quantizer maps zero to the middle code", "[mantissas]") {
     CHECK(iclforge::ac3::quantize_mantissa(0, 4) == 5);   // 11-level
     CHECK(iclforge::ac3::quantize_mantissa(0, 5) == 7);   // 15-level
     for (int bap = 1; bap <= 5; ++bap) {
-        CHECK(iclforge::ac3::dequantize_mantissa(iclforge::ac3::quantize_mantissa(0, bap), bap) == 0.0);
+        CHECK(iclforge::ac3::dequantize_mantissa(iclforge::ac3::quantize_mantissa(0, bap), bap) ==
+              0.0);
     }
 }
 

@@ -25,7 +25,8 @@ bool is_ceiling_location(iclforge::ac3::eac3::chanmap::Location location) {
     }
 }
 
-std::vector<iclforge::ac3::eac3::chanmap::Location> ac3_bed_locations(iclforge::ac3::Acmod acmod, bool lfe) {
+std::vector<iclforge::ac3::eac3::chanmap::Location> ac3_bed_locations(iclforge::ac3::Acmod acmod,
+                                                                      bool lfe) {
     using iclforge::ac3::Acmod;
     using iclforge::ac3::eac3::chanmap::Location;
     std::vector<Location> out;

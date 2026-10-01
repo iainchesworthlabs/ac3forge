@@ -69,7 +69,8 @@ namespace {
 // unioned in Table E2.5 order as the decoder assembles it (§E3.8.2). Needed
 // before the decode, since the block form hands the samples over during the
 // call. The same reading as the test sink's.
-[[nodiscard]] std::optional<ac3::eac3::chanmap::Layout> peek_layout(std::span<const std::byte> unit) {
+[[nodiscard]] std::optional<ac3::eac3::chanmap::Layout> peek_layout(
+    std::span<const std::byte> unit) {
     std::uint16_t map = 0;
     std::size_t offset = 0;
     while (offset < unit.size()) {
@@ -92,7 +93,8 @@ namespace {
     return ac3::eac3::chanmap::expand(map);
 }
 
-[[nodiscard]] bool same_layout(const ac3::eac3::chanmap::Layout& a, const ac3::eac3::chanmap::Layout& b) {
+[[nodiscard]] bool same_layout(const ac3::eac3::chanmap::Layout& a,
+                               const ac3::eac3::chanmap::Layout& b) {
     if (a.count != b.count) {
         return false;
     }
@@ -136,9 +138,10 @@ void report_frame(const ac3::DecodedFrame& frame, UnitReport& out) {
     out.acmod = frame.acmod;
     out.lfe = frame.lfe;
     out.substreams = 1;
-    out.layout = frame.acmod == ac3::Acmod::kDualMono
-                     ? ac3::eac3::chanmap::Layout{}
-                     : ac3::eac3::chanmap::expand(ac3::eac3::chanmap::acmod_map(frame.acmod, frame.lfe));
+    out.layout =
+        frame.acmod == ac3::Acmod::kDualMono
+            ? ac3::eac3::chanmap::Layout{}
+            : ac3::eac3::chanmap::expand(ac3::eac3::chanmap::acmod_map(frame.acmod, frame.lfe));
     out.bsmod = frame.bsmod;
     out.dialnorm = frame.dialnorm;
     out.dialnorm2 = frame.dialnorm2;
@@ -566,8 +569,9 @@ void StreamDecoder::report_ac4(const iclforge::ac4::DecodedFrame& info, std::siz
     out.blocks = 0;
     out.short_blocks.reset();
     out.levels = ac3::MixLevels{};
-    out.concealed =
-        info.concealed ? std::optional<ac3::Concealment>{concealment_of(*info.concealed)} : std::nullopt;
+    out.concealed = info.concealed
+                        ? std::optional<ac3::Concealment>{concealment_of(*info.concealed)}
+                        : std::nullopt;
     out.objects.reset();
     const iclforge::ac4::PresentationMetadata& metadata = ac4_decoder_->metadata();
     out.ac4 = Ac4UnitReport{.presentation = info.presentation,
@@ -686,9 +690,10 @@ std::size_t StreamDecoder::render_flushed(std::span<ac3::DecodedSubstream> subst
         }
         for (std::size_t o = 0; o < object_views.size(); ++o) {
             const std::vector<float>& audio = independent->object_audio[o];
-            object_views[o] = audio.size() >= offset + ac3::kSamplesPerBlock
-                                  ? std::span<const float>(audio).subspan(offset, ac3::kSamplesPerBlock)
-                                  : std::span<const float>{};
+            object_views[o] =
+                audio.size() >= offset + ac3::kSamplesPerBlock
+                    ? std::span<const float>(audio).subspan(offset, ac3::kSamplesPerBlock)
+                    : std::span<const float>{};
         }
         const ac3::PcmBlock block{
             .index = static_cast<int>(b),
@@ -709,7 +714,8 @@ std::size_t StreamDecoder::render_flushed(std::span<ac3::DecodedSubstream> subst
         report_.acmod = independent->acmod;
         report_.lfe = independent->lfe;
         report_.substreams = static_cast<int>(1 + dependents.size());
-        report_.layout = independent->acmod == ac3::Acmod::kDualMono ? ac3::eac3::chanmap::Layout{} : layout;
+        report_.layout =
+            independent->acmod == ac3::Acmod::kDualMono ? ac3::eac3::chanmap::Layout{} : layout;
         report_.bsmod = bsmod_of(independent->info);
         report_.dialnorm = independent->dialnorm;
         report_.dialnorm2 = independent->dialnorm2;

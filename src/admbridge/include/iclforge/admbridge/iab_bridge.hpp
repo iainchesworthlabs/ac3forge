@@ -12,14 +12,15 @@
 #include "iclforge/iab/ac3iab.hpp"
 
 // Roadmap item IM1 phase 3 of 3 ("IAB (SMPTE ST 2098-2) reader"): maps the parsed
-// IAB bed/object graph (iclforge::iab, phases 1-2) onto iclforge::ac3::oba::AtmosEncoder's input shape -
-// one iclforge::oba::ObjectPath plus one mono PCM buffer per bed speaker feed or dynamic object,
-// the same destination shape build() (bridge.hpp) already produces for ADM. This is still the one
-// place iclforge::iab and iclforge::ac3/iclforge::oba are allowed to meet - see bridge.hpp's own
-// top comment on why that boundary exists - just a second source feeding it. Gated by the same
-// ICLFORGE_BUILD_ADM flag as the rest of iclforge::admbridge (this module's own CMakeLists.txt has
-// the full reasoning); ICLFORGE_BUILD_IAB (default ON) is a separate, always-satisfied prerequisite
-// this module's own CMakeLists.txt now enforces with a FATAL_ERROR guard.
+// IAB bed/object graph (iclforge::iab, phases 1-2) onto iclforge::ac3::oba::AtmosEncoder's input
+// shape - one iclforge::oba::ObjectPath plus one mono PCM buffer per bed speaker feed or dynamic
+// object, the same destination shape build() (bridge.hpp) already produces for ADM. This is still
+// the one place iclforge::iab and iclforge::ac3/iclforge::oba are allowed to meet - see
+// bridge.hpp's own top comment on why that boundary exists - just a second source feeding it. Gated
+// by the same ICLFORGE_BUILD_ADM flag as the rest of iclforge::admbridge (this module's own
+// CMakeLists.txt has the full reasoning); ICLFORGE_BUILD_IAB (default ON) is a separate,
+// always-satisfied prerequisite this module's own CMakeLists.txt now enforces with a FATAL_ERROR
+// guard.
 //
 // What is structurally different from build()'s own ADM mapping, and why:
 //
@@ -79,9 +80,9 @@
 namespace iclforge::admbridge {
 
 // The result of bridging a whole parsed IAB frame sequence - everything needed to construct and
-// drive an iclforge::ac3::oba::AtmosEncoder, one entry per channel, all vectors indexed identically. See
-// this header's own top comment for exactly how each field differs from BridgeResult's own ADM
-// shape.
+// drive an iclforge::ac3::oba::AtmosEncoder, one entry per channel, all vectors indexed
+// identically. See this header's own top comment for exactly how each field differs from
+// BridgeResult's own ADM shape.
 struct IabBridgeResult {
     std::vector<std::string> channel_ids;      // "bed:<MetaID>:<ChannelID>" / "object:<MetaID>",
                                                 // for diagnostics - IAB has no free-text channel

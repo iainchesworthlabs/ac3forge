@@ -108,8 +108,10 @@ std::vector<std::byte> ac3_source_stream() {
 
 std::vector<std::byte> eac3_source_stream() {
     perf::FrameSource source{fixture(), perf::kFiveOneChannels};
-    iclforge::ac3::eac3::FrameEncoder encoder{
-        {.bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true, .auto_tools = true}};
+    iclforge::ac3::eac3::FrameEncoder encoder{{.bitrate_kbps = 448,
+                                               .acmod = iclforge::ac3::Acmod::k3_2,
+                                               .lfe = true,
+                                               .auto_tools = true}};
     std::vector<std::byte> stream;
     for (int frame = 0; frame < kDecodeSourceFrames; ++frame) {
         const auto result = encoder.encode_frame(source.frame(static_cast<std::size_t>(frame)));
@@ -212,8 +214,10 @@ TEST_CASE("the plain 5.1 encoder stays faster than real time") {
 // rate-crossover heuristic changes.
 TEST_CASE("the E-AC-3 5.1 encoder stays faster than real time") {
     perf::FrameSource source{fixture(), perf::kFiveOneChannels};
-    iclforge::ac3::eac3::FrameEncoder encoder{
-        {.bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true, .auto_tools = true}};
+    iclforge::ac3::eac3::FrameEncoder encoder{{.bitrate_kbps = 448,
+                                               .acmod = iclforge::ac3::Acmod::k3_2,
+                                               .lfe = true,
+                                               .auto_tools = true}};
 
     const auto start = std::chrono::steady_clock::now();
     for (int frame = 0; frame < kFrames; ++frame) {

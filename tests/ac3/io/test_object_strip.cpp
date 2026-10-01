@@ -54,9 +54,9 @@ Bytes encode_atmos_stream(int frames, bool emit_objects, int objects = 2) {
     Bytes stream;
     for (int f = 0; f < frames; ++f) {
         for (int o = 0; o < objects; ++o) {
-            essence[static_cast<std::size_t>(o)] =
-                tone(440.0 * (o + 1), static_cast<std::uint64_t>(f) *
-                                          static_cast<std::uint64_t>(iclforge::ac3::kSamplesPerFrame));
+            essence[static_cast<std::size_t>(o)] = tone(
+                440.0 * (o + 1), static_cast<std::uint64_t>(f) *
+                                     static_cast<std::uint64_t>(iclforge::ac3::kSamplesPerFrame));
             views[static_cast<std::size_t>(o)] = essence[static_cast<std::size_t>(o)];
         }
         auto unit = encoder.encode_frame(views, placement);

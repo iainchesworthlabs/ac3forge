@@ -151,10 +151,12 @@ IRAM_ATTR bool on_sent(i2s_chan_handle_t /*handle*/, i2s_event_data_t* /*event*/
 // so I2S_LL_SLOT_FRAME_BIT_MAX/8 bytes serves both, four times sink/i2s's
 // buffer at this part's 512-bit frame.
 union LineBuffer {
-    std::array<std::int32_t, iclforge::ac3::kSamplesPerBlock * (I2S_LL_SLOT_FRAME_BIT_MAX / 32)> wide;
-    std::array<std::int16_t, iclforge::ac3::kSamplesPerBlock * (I2S_LL_SLOT_FRAME_BIT_MAX / 16)> narrow;
+    std::array<std::int32_t, iclforge::ac3::kSamplesPerBlock*(I2S_LL_SLOT_FRAME_BIT_MAX / 32)> wide;
+    std::array<std::int16_t, iclforge::ac3::kSamplesPerBlock*(I2S_LL_SLOT_FRAME_BIT_MAX / 16)>
+        narrow;
 };
-static_assert(sizeof(LineBuffer) == iclforge::ac3::kSamplesPerBlock * (I2S_LL_SLOT_FRAME_BIT_MAX / 8),
+static_assert(sizeof(LineBuffer) ==
+                  iclforge::ac3::kSamplesPerBlock * (I2S_LL_SLOT_FRAME_BIT_MAX / 8),
               "a line's block is I2S_LL_SLOT_FRAME_BIT_MAX/8 bytes a frame at either slot width");
 LineBuffer g_buffer{};
 

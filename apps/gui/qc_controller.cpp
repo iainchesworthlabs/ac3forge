@@ -444,7 +444,8 @@ QStringList QcController::presetNames() const {
 }
 
 void QcController::setPresetIndex(int index) {
-    const int clamped = std::clamp(index, 0, static_cast<int>(iclforge::ac3::meta::kQcPresetIds.size()));
+    const int clamped =
+        std::clamp(index, 0, static_cast<int>(iclforge::ac3::meta::kQcPresetIds.size()));
     if (clamped == preset_index_) {
         return;
     }
@@ -542,7 +543,8 @@ QVariantList QcController::programmes() const {
                 add_preset(id);
             }
         } else {
-            add_preset(iclforge::ac3::meta::kQcPresetIds[static_cast<std::size_t>(preset_index_ - 1)]);
+            add_preset(
+                iclforge::ac3::meta::kQcPresetIds[static_cast<std::size_t>(preset_index_ - 1)]);
         }
         row[QStringLiteral("presets")] = presets;
 

@@ -50,7 +50,8 @@ TEST_CASE("analysis window reproduces spec Table 7.33", "[window]") {
     // must round to exactly the printed value.
     for (std::size_t n = 0; n < 256; ++n) {
         CAPTURE(n);
-        CHECK(std::abs(iclforge::ac3::kAnalysisWindow[n] - iclforge::golden::kTable733[n]) < 5.01e-6);
+        CHECK(std::abs(iclforge::ac3::kAnalysisWindow[n] - iclforge::golden::kTable733[n]) <
+              5.01e-6);
     }
 }
 

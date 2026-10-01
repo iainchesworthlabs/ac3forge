@@ -94,9 +94,10 @@ TEST_CASE("a CRC mismatch reaches the sink even when concealment hides the error
     // DecodedFrame::concealed, which a caller must poll every frame to find.
     auto frames = encode_damaged_ac3();
     std::vector<iclforge::ac3::Diagnostic> events;
-    iclforge::ac3::FrameDecoder decoder{{.concealment = iclforge::ac3::ConcealmentPolicy::kRepeatFade,
-                              .diagnostics = &record,
-                              .diagnostics_context = &events}};
+    iclforge::ac3::FrameDecoder decoder{
+        {.concealment = iclforge::ac3::ConcealmentPolicy::kRepeatFade,
+         .diagnostics = &record,
+         .diagnostics_context = &events}};
 
     for (std::size_t i = 0; i < frames.size(); ++i) {
         const auto decoded = decoder.decode_frame(frames[i]);
@@ -120,7 +121,8 @@ TEST_CASE("a null diagnostics sink changes nothing", "[decoder][diagnostics]") {
 }
 
 TEST_CASE("an E-AC-3 CRC mismatch reaches the diagnostic sink", "[eac3][decoder][diagnostics]") {
-    iclforge::ac3::eac3::FrameEncoder encoder{{.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k2_0}};
+    iclforge::ac3::eac3::FrameEncoder encoder{
+        {.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k2_0}};
     const auto nchans = static_cast<std::size_t>(encoder.channel_count());
     const std::vector<float> silence(iclforge::ac3::kSamplesPerFrame, 0.0f);
     const std::vector<std::span<const float>> views(nchans, silence);
@@ -150,7 +152,8 @@ TEST_CASE("an unrecognised EMDF payload id reaches the diagnostic sink",
     const std::vector<iclforge::emdf::Payload> payloads = {{.id = 5, .bytes = payload_bytes}};
     const auto container = iclforge::emdf::build_container(payloads);
 
-    iclforge::ac3::eac3::FrameEncoder encoder{{.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k2_0}};
+    iclforge::ac3::eac3::FrameEncoder encoder{
+        {.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k2_0}};
     const auto nchans = static_cast<std::size_t>(encoder.channel_count());
     const std::vector<float> silence(iclforge::ac3::kSamplesPerFrame, 0.0f);
     const std::vector<std::span<const float>> views(nchans, silence);
@@ -174,7 +177,8 @@ TEST_CASE("a recognised EMDF payload id (OAMD/JOC) does not reach the sink",
         {.id = iclforge::emdf::kPayloadIdOamd, .bytes = payload_bytes}};
     const auto container = iclforge::emdf::build_container(payloads);
 
-    iclforge::ac3::eac3::FrameEncoder encoder{{.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k2_0}};
+    iclforge::ac3::eac3::FrameEncoder encoder{
+        {.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k2_0}};
     const auto nchans = static_cast<std::size_t>(encoder.channel_count());
     const std::vector<float> silence(iclforge::ac3::kSamplesPerFrame, 0.0f);
     const std::vector<std::span<const float>> views(nchans, silence);

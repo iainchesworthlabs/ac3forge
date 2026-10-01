@@ -271,7 +271,8 @@ TEST_CASE("read_wav clamps to the bytes actually present when the data chunk ove
 }
 
 TEST_CASE("read_wav rejects a path that cannot be opened", "[wav]") {
-    const auto result = iclforge::ac3::io::read_wav((scratch_dir() / "does_not_exist.wav").string());
+    const auto result =
+        iclforge::ac3::io::read_wav((scratch_dir() / "does_not_exist.wav").string());
     REQUIRE_FALSE(result.has_value());
     CHECK(result.error() == iclforge::ac3::io::WavError::kCannotOpen);
 }

@@ -57,11 +57,11 @@ std::string scratch_path(std::string_view name) {
     return (std::filesystem::temp_directory_path() / leaf).string();
 }
 
-// Exclusively creates an empty file at a scratch_path() result before iclforge::ac3::io::write_wav_f32
-// (below) ever opens it. That's a general library function callers also point at a
-// caller-chosen path (e.g. forge's own output paths), so it can't itself refuse to replace an
-// existing file; this closes the shared-temp-dir symlink/TOCTOU race up front instead, the same
-// pattern examples/encode_iab.cpp's claim_temp_path uses for the same reason.
+// Exclusively creates an empty file at a scratch_path() result before
+// iclforge::ac3::io::write_wav_f32 (below) ever opens it. That's a general library function callers
+// also point at a caller-chosen path (e.g. forge's own output paths), so it can't itself refuse to
+// replace an existing file; this closes the shared-temp-dir symlink/TOCTOU race up front instead,
+// the same pattern examples/encode_iab.cpp's claim_temp_path uses for the same reason.
 bool claim_temp_path(const std::string& path) {
     std::ofstream claim(path, std::ios::binary | std::ios::noreplace);
     return static_cast<bool>(claim);

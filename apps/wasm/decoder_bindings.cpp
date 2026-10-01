@@ -140,9 +140,10 @@ class PushDecoder {
     // foldChannelCount then always report nothing, and apply_fold's copy is
     // skipped entirely.
     PushDecoder(int fold_target, bool fold_apply_dialnorm, bool fold_mix_lfe)
-        : fold_(iclforge::ac3::OutputConfig{.target = static_cast<iclforge::ac3::DownmixTarget>(fold_target),
-                                  .apply_dialnorm = fold_apply_dialnorm,
-                                  .mix_lfe = fold_mix_lfe}) {
+        : fold_(iclforge::ac3::OutputConfig{
+              .target = static_cast<iclforge::ac3::DownmixTarget>(fold_target),
+              .apply_dialnorm = fold_apply_dialnorm,
+              .mix_lfe = fold_mix_lfe}) {
         for (auto& channel : pcm_) {
             channel.resize(iclforge::ac3::kSamplesPerFrame);
         }
@@ -206,7 +207,8 @@ class PushDecoder {
             auto entry = emscripten::val::object();
             entry.set("ok", true);
             entry.set("holdBack", false);
-            entry.set("sampleRate", static_cast<int>(iclforge::ac3::sample_rate_hz(sub.sample_rate)));
+            entry.set("sampleRate",
+                      static_cast<int>(iclforge::ac3::sample_rate_hz(sub.sample_rate)));
             entry.set("frameSamples", iclforge::ac3::eac3::blocks_per_syncframe(sub.numblkscod) *
                                           iclforge::ac3::kSamplesPerBlock);
             entry.set("dialnorm", sub.dialnorm);
@@ -368,16 +370,17 @@ class PushDecoder {
                                      static_cast<std::size_t>(last_frame_samples_));
         }
         const auto levels = iclforge::ac3::mix_levels(unit.mixing);
-        const bool has_lfe = unit.layout.count > 0 &&
-                             unit.layout.index_of(iclforge::ac3::eac3::chanmap::Location::kLfe) >= 0;
+        const bool has_lfe =
+            unit.layout.count > 0 &&
+            unit.layout.index_of(iclforge::ac3::eac3::chanmap::Location::kLfe) >= 0;
         if (unit.layout.count > 0) {
             fold_.apply(fold_views_, unit.layout, unit.acmod, has_lfe, levels, unit.dialnorm,
                        unit.dialnorm2);
         } else {
             fold_.apply(fold_views_, unit.acmod, has_lfe, levels, unit.dialnorm, unit.dialnorm2);
         }
-        fold_channel_count_ =
-            static_cast<int>(iclforge::ac3::output_channel_count(fold_.config(), unit.acmod, has_lfe));
+        fold_channel_count_ = static_cast<int>(
+            iclforge::ac3::output_channel_count(fold_.config(), unit.acmod, has_lfe));
     }
 
     iclforge::ac3::Eac3Decoder decoder_;  // Default DecoderConfig: always raw/coded output.

@@ -559,8 +559,8 @@ void StreamPlayerController::play() {
     jobs_.run([this, result = result_] {
         std::uint64_t at = read_frame_.load(std::memory_order_relaxed);
         const std::size_t channels = result->channels.size();
-        iclforge::ac3::analysis::LevelMeter meter{result->acmod, result->lfe, result->sample_rate_hz,
-                                        static_cast<int>(channels)};
+        iclforge::ac3::analysis::LevelMeter meter{
+            result->acmod, result->lfe, result->sample_rate_hz, static_cast<int>(channels)};
         auto published_at = std::chrono::steady_clock::now() - kPublishInterval;
         std::vector<float> chunk(kChunkFrames * channels);
         std::vector<std::span<const float>> views(channels);
@@ -760,8 +760,9 @@ void StreamPlayerController::exportObjects(const QUrl& url) {
             const auto written = iclforge::ac3::io::write_wav_f32(object_path.toStdString(), mono,
                                                              result->sample_rate_hz);
             if (!written) {
-                error = QStringLiteral("Could not write %1: %2")
-                            .arg(object_path, to_qstring(iclforge::ac3::io::describe(written.error())));
+                error =
+                    QStringLiteral("Could not write %1: %2")
+                        .arg(object_path, to_qstring(iclforge::ac3::io::describe(written.error())));
                 break;
             }
         }

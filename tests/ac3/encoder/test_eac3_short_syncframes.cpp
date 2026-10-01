@@ -193,7 +193,8 @@ TEST_CASE("frame_words scales with numblkscod", "[eac3][numblkscod]") {
     // frame's words at the same rate, exactly, since both are the same exact
     // bit budget rounded to whole 16-bit words.
     const auto six = iclforge::ac3::eac3::frame_words(iclforge::ac3::SampleRate::k48000, 192, 6);
-    STATIC_CHECK(iclforge::ac3::eac3::frame_words(iclforge::ac3::SampleRate::k48000, 192, 1) * 6 == 384);
+    STATIC_CHECK(iclforge::ac3::eac3::frame_words(iclforge::ac3::SampleRate::k48000, 192, 1) * 6 ==
+                 384);
     CHECK(six == 384);
     CHECK(iclforge::ac3::eac3::frame_words(iclforge::ac3::SampleRate::k48000, 192, 2) * 3 == six);
     CHECK(iclforge::ac3::eac3::frame_words(iclforge::ac3::SampleRate::k48000, 192, 3) * 2 == six);
@@ -285,8 +286,11 @@ TEST_CASE("a silent frame at every numblkscod decodes cleanly", "[eac3][numblksc
     // audio, including a dependent substream.
     for (const int code : {0, 1, 2, 3}) {
         CAPTURE(code);
-        const auto frame = iclforge::ac3::eac3::build_silent_frame(
-            {.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true, .numblkscod = code});
+        const auto frame =
+            iclforge::ac3::eac3::build_silent_frame({.bitrate_kbps = 192,
+                                                     .acmod = iclforge::ac3::Acmod::k3_2,
+                                                     .lfe = true,
+                                                     .numblkscod = code});
         REQUIRE(frame.has_value());
         const auto units = iclforge::ac3::split_access_units(*frame);
         REQUIRE(units.has_value());

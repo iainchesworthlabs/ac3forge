@@ -122,9 +122,9 @@ fs::path tones_wav(const std::string& name, std::size_t count, int rate = 48000)
             }
             channels.push_back(std::move(x));
         }
-        REQUIRE(
-            iclforge::ac3::io::write_wav_f32(path.string(), channels, static_cast<std::uint32_t>(rate))
-                .has_value());
+        REQUIRE(iclforge::ac3::io::write_wav_f32(path.string(), channels,
+                                                 static_cast<std::uint32_t>(rate))
+                    .has_value());
     }
     return path;
 }

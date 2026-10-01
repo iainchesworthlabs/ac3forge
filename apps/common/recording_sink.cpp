@@ -149,8 +149,9 @@ std::string RecordingSink::open(const std::string& path, const Config& config) {
                                    : iclforge::mpegts::AudioCodec::kAc3,
             .sample_rate = config.sample_rate,
             .channels = ac4 ? 2 : config.channels,
-            .samples_per_frame = ac4 ? config.ac4->samples_per_frame
-                                     : static_cast<std::uint32_t>(iclforge::ac3::kSamplesPerFrame)});
+            .samples_per_frame =
+                ac4 ? config.ac4->samples_per_frame
+                    : static_cast<std::uint32_t>(iclforge::ac3::kSamplesPerFrame)});
         if (!writer.has_value()) {
             return std::string{iclforge::mpegts::describe(writer.error())};
         }

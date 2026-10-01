@@ -78,7 +78,8 @@ inline iclforge::ac3::io::WavData load_real_audio(const std::string& path, std::
                      "perf: failed to read real-audio fixture '%s' (%s) - bench inputs must "
                      "come from real audio, not synthetic silence, so there is no fallback "
                      "here\n",
-                     path.c_str(), std::string(iclforge::ac3::io::describe(result.error())).c_str());
+                     path.c_str(),
+                     std::string(iclforge::ac3::io::describe(result.error())).c_str());
         std::exit(1);
     }
     if (result->channels.size() < min_channels) {

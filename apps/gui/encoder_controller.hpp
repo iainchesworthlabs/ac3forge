@@ -882,14 +882,18 @@ public:
     [[nodiscard]] QStringList cmixNames() const;
     [[nodiscard]] int surmixIndex() const { return static_cast<int>(meta_.surmixlev); }
     [[nodiscard]] QStringList surmixNames() const;
-    [[nodiscard]] bool mixmetaAvailable() const { return codec_ == iclforge::ac3::plan::Codec::kEac3; }
+    [[nodiscard]] bool mixmetaAvailable() const {
+        return codec_ == iclforge::ac3::plan::Codec::kEac3;
+    }
     [[nodiscard]] bool mixmeta() const { return meta_.mixmeta; }
     [[nodiscard]] int lfeMix() const { return meta_.lfemix.value_or(-1); }
     [[nodiscard]] int dmixIndex() const { return static_cast<int>(meta_.dmixmod); }
     [[nodiscard]] QStringList dmixNames() const;
     [[nodiscard]] int bsmodIndex() const { return static_cast<int>(meta_.info.bsmod); }
     [[nodiscard]] QStringList bsmodNames() const;
-    [[nodiscard]] bool surroundModeAvailable() const { return bed_acmod_ == iclforge::ac3::Acmod::k2_0; }
+    [[nodiscard]] bool surroundModeAvailable() const {
+        return bed_acmod_ == iclforge::ac3::Acmod::k2_0;
+    }
     [[nodiscard]] int dsurmodIndex() const { return static_cast<int>(meta_.info.dsurmod); }
     [[nodiscard]] QStringList dsurmodNames() const;
     [[nodiscard]] int dheadphonIndex() const {
@@ -902,8 +906,9 @@ public:
     [[nodiscard]] int dsurexIndex() const { return static_cast<int>(meta_.info.dsurexmod); }
     [[nodiscard]] QStringList dsurexNames() const;
     [[nodiscard]] int mixLevelDbSpl() const {
-        return meta_.info.audprod ? iclforge::ac3::meta::mix_level_db_spl(meta_.info.audprod->mixlevel)
-                                  : -1;
+        return meta_.info.audprod
+                   ? iclforge::ac3::meta::mix_level_db_spl(meta_.info.audprod->mixlevel)
+                   : -1;
     }
     [[nodiscard]] int roomTypeIndex() const {
         return meta_.info.audprod ? static_cast<int>(meta_.info.audprod->roomtyp) : 0;
@@ -913,7 +918,9 @@ public:
     [[nodiscard]] QStringList adConvNames() const;
     [[nodiscard]] bool copyrightBit() const { return meta_.info.copyrightb; }
     [[nodiscard]] bool originalBitstream() const { return meta_.info.origbs; }
-    [[nodiscard]] bool annexDAvailable() const { return codec_ == iclforge::ac3::plan::Codec::kAc3; }
+    [[nodiscard]] bool annexDAvailable() const {
+        return codec_ == iclforge::ac3::plan::Codec::kAc3;
+    }
     [[nodiscard]] bool annexD() const { return meta_.annexd; }
 
     [[nodiscard]] QString routingSummary() const { return routing_summary_; }
@@ -1771,7 +1778,8 @@ private:
     // A channel the source cannot fill reads -inf for a legitimate reason, and
     // that is a different thing from a meter wired to nothing; an empty vector
     // means every channel is fed.
-    void setLayout(iclforge::ac3::Acmod acmod, bool lfe, const QStringList& names, const QString& label,
+    void setLayout(iclforge::ac3::Acmod acmod, bool lfe, const QStringList& names,
+                   const QString& label,
                    const std::vector<iclforge::ac3::plan::CodedChannel>& coded,
                    const std::vector<bool>& fed = {});
     // Which coded channels the current plan feeds, sized to the layout.

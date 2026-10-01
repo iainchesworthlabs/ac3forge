@@ -198,7 +198,8 @@ TEST_CASE("transcoder: the source's dialnorm, compr and service reach each frame
     Ac3Transcoder transcoder{48000, {}};
     Output output;
     for (std::size_t unit = 0; unit < units.size(); ++unit) {
-        take(transcoder, tones(iclforge::ac3::kSamplesPerFrame, unit * iclforge::ac3::kSamplesPerFrame), 0);
+        take(transcoder,
+             tones(iclforge::ac3::kSamplesPerFrame, unit * iclforge::ac3::kSamplesPerFrame), 0);
         transcoder.describe_source(units[unit], iclforge::ac3::kSamplesPerFrame, 0);
         REQUIRE(transcoder.encode_ready(output.sink()).has_value());
     }
@@ -239,7 +240,8 @@ TEST_CASE("transcoder: a frame with no compr word gets one for its own dialnorm"
     // at 20, where dialogue sits 11 dB higher already - and then quiet, with
     // the loud frame's tail still in reach of the quiet one's word.
     Planar input = tones(3 * iclforge::ac3::kSamplesPerFrame, 0, 0.7);
-    const Planar quiet = tones(iclforge::ac3::kSamplesPerFrame, 3 * iclforge::ac3::kSamplesPerFrame, 0.01);
+    const Planar quiet =
+        tones(iclforge::ac3::kSamplesPerFrame, 3 * iclforge::ac3::kSamplesPerFrame, 0.01);
     for (std::size_t slot = 0; slot < input.size(); ++slot) {
         input[slot].insert(input[slot].end(), quiet[slot].begin(), quiet[slot].end());
     }
@@ -288,9 +290,9 @@ TEST_CASE("transcoder: a frame with no compr word gets one for its own dialnorm"
         CAPTURE(frame);
         std::array<std::span<const float>, Ac3Transcoder::kChannels> views{};
         for (std::size_t slot = 0; slot < views.size(); ++slot) {
-            views[slot] =
-                std::span<const float>(input[slot])
-                    .subspan(frame * iclforge::ac3::kSamplesPerFrame, iclforge::ac3::kSamplesPerFrame);
+            views[slot] = std::span<const float>(input[slot])
+                              .subspan(frame * iclforge::ac3::kSamplesPerFrame,
+                                       iclforge::ac3::kSamplesPerFrame);
         }
         const auto encoded = encoder.encode_frame(views);
         REQUIRE(encoded.has_value());

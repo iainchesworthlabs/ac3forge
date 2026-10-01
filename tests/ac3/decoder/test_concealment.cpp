@@ -43,8 +43,8 @@ std::vector<std::vector<float>> tones(std::span<const double> hz, std::uint64_t 
 // Several frames of real coded audio - more than three, so the MDCT overlap
 // is genuine by the time anything is damaged (CONTRIBUTING.md's validation
 // discipline: silence and frame 0 give false passes).
-std::vector<std::vector<std::byte>> encode_ac3(int frames,
-                                               iclforge::ac3::Acmod acmod = iclforge::ac3::Acmod::k2_0) {
+std::vector<std::vector<std::byte>> encode_ac3(
+    int frames, iclforge::ac3::Acmod acmod = iclforge::ac3::Acmod::k2_0) {
     iclforge::ac3::EncoderConfig config;
     config.acmod = acmod;
     config.bitrate_kbps = 192;
@@ -128,7 +128,8 @@ TEST_CASE("repeat-and-fade conceals a damaged frame and reports that it did",
           "[decoder][concealment]") {
     auto frames = encode_ac3(6);
     damage(frames[3]);
-    iclforge::ac3::FrameDecoder decoder{{.concealment = iclforge::ac3::ConcealmentPolicy::kRepeatFade}};
+    iclforge::ac3::FrameDecoder decoder{
+        {.concealment = iclforge::ac3::ConcealmentPolicy::kRepeatFade}};
 
     std::vector<std::vector<float>> stream(2);
     iclforge::ac3::DecodedFrame concealed_frame;
@@ -206,7 +207,8 @@ TEST_CASE("a damaged first frame is still an error", "[decoder][concealment]") {
     // substituting audio rather than concealing a gap in it.
     auto frames = encode_ac3(4);
     damage(frames[0]);
-    iclforge::ac3::FrameDecoder decoder{{.concealment = iclforge::ac3::ConcealmentPolicy::kRepeatFade}};
+    iclforge::ac3::FrameDecoder decoder{
+        {.concealment = iclforge::ac3::ConcealmentPolicy::kRepeatFade}};
     const auto decoded = decoder.decode_frame(frames[0]);
     REQUIRE_FALSE(decoded.has_value());
     CHECK(decoded.error() == iclforge::ac3::DecodeError::kBadCrc);
@@ -220,7 +222,8 @@ TEST_CASE("consecutive losses keep decaying instead of looping a block forever",
     for (std::size_t i = 3; i < 7; ++i) {
         damage(frames[i]);
     }
-    iclforge::ac3::FrameDecoder decoder{{.concealment = iclforge::ac3::ConcealmentPolicy::kRepeatFade}};
+    iclforge::ac3::FrameDecoder decoder{
+        {.concealment = iclforge::ac3::ConcealmentPolicy::kRepeatFade}};
     std::vector<double> concealed_rms;
     for (std::size_t i = 0; i < frames.size(); ++i) {
         const auto decoded = decoder.decode_frame(frames[i]);
@@ -250,7 +253,8 @@ TEST_CASE("the frame after a concealed one decodes normally", "[decoder][conceal
     damage(damaged[3]);
 
     iclforge::ac3::FrameDecoder reference;
-    iclforge::ac3::FrameDecoder concealing{{.concealment = iclforge::ac3::ConcealmentPolicy::kRepeatFade}};
+    iclforge::ac3::FrameDecoder concealing{
+        {.concealment = iclforge::ac3::ConcealmentPolicy::kRepeatFade}};
     std::vector<float> reference_tail;
     std::vector<float> recovered_tail;
     for (std::size_t i = 0; i < clean.size(); ++i) {
@@ -339,7 +343,8 @@ TEST_CASE("E-AC-3 conceals a damaged substream from its own identity's history",
     }();
     REQUIRE(refused == 3);
 
-    iclforge::ac3::Eac3Decoder decoder{{.concealment = iclforge::ac3::ConcealmentPolicy::kRepeatFade}};
+    iclforge::ac3::Eac3Decoder decoder{
+        {.concealment = iclforge::ac3::ConcealmentPolicy::kRepeatFade}};
     for (std::size_t i = 0; i < frames.size(); ++i) {
         const auto decoded = decoder.decode_substream(frames[i]);
         REQUIRE(decoded.has_value());
@@ -420,7 +425,8 @@ TEST_CASE("an access unit whose dependent will not decode still renders its bed"
         // block rather than dropped.
         auto damaged = units;
         break_dependent(damaged[3]);
-        iclforge::ac3::Eac3Decoder decoder{{.concealment = iclforge::ac3::ConcealmentPolicy::kRepeatFade}};
+        iclforge::ac3::Eac3Decoder decoder{
+            {.concealment = iclforge::ac3::ConcealmentPolicy::kRepeatFade}};
         bool saw_repeat = false;
         for (std::size_t i = 0; i < damaged.size(); ++i) {
             const auto decoded = decoder.decode_access_unit(damaged[i]);
@@ -447,7 +453,8 @@ TEST_CASE("an access unit whose dependent will not decode still renders its bed"
         // bed is rendered on its own and the narrowing is reported.
         auto damaged = units;
         break_dependent(damaged[0]);
-        iclforge::ac3::Eac3Decoder decoder{{.concealment = iclforge::ac3::ConcealmentPolicy::kRepeatFade}};
+        iclforge::ac3::Eac3Decoder decoder{
+            {.concealment = iclforge::ac3::ConcealmentPolicy::kRepeatFade}};
         const auto decoded = decoder.decode_access_unit(damaged[0]);
         REQUIRE(decoded.has_value());
         REQUIRE(decoded->has_value());

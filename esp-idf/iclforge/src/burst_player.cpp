@@ -386,10 +386,10 @@ struct BurstPlayer::Impl {
         iclforge::ac3::DecoderConfig decoder = config.decoder;
         const ac::DecoderSettings& d = s.decoder;
         if (d.mode) {
-            decoder.output.mode = *d.mode == ac::DecoderMode::kRf ? iclforge::ac3::OperatingMode::kRf
-                                  : *d.mode == ac::DecoderMode::kLine
-                                      ? iclforge::ac3::OperatingMode::kLine
-                                      : iclforge::ac3::OperatingMode::kCustom;
+            decoder.output.mode =
+                *d.mode == ac::DecoderMode::kRf     ? iclforge::ac3::OperatingMode::kRf
+                : *d.mode == ac::DecoderMode::kLine ? iclforge::ac3::OperatingMode::kLine
+                                                    : iclforge::ac3::OperatingMode::kCustom;
         }
         if (d.heavy_compression) {
             decoder.heavy_compression = *d.heavy_compression;
@@ -417,10 +417,11 @@ struct BurstPlayer::Impl {
         }
         iclforge::ac3::render::ObjectsPolicy objects = config.objects;
         if (d.objects) {
-            objects =
-                *d.objects == ac::ObjectsPolicy::kAlways  ? iclforge::ac3::render::ObjectsPolicy::kAlways
-                : *d.objects == ac::ObjectsPolicy::kNever ? iclforge::ac3::render::ObjectsPolicy::kNever
-                                                          : iclforge::ac3::render::ObjectsPolicy::kAuto;
+            objects = *d.objects == ac::ObjectsPolicy::kAlways
+                          ? iclforge::ac3::render::ObjectsPolicy::kAlways
+                      : *d.objects == ac::ObjectsPolicy::kNever
+                          ? iclforge::ac3::render::ObjectsPolicy::kNever
+                          : iclforge::ac3::render::ObjectsPolicy::kAuto;
         }
         std::optional<Routing> new_routing;
         if (s.routing) {

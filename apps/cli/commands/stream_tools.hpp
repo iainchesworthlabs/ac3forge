@@ -80,8 +80,9 @@ struct DecodeRenderStats {
 using RenderedFrame = std::function<bool(std::span<const std::span<const float>>, std::size_t)>;
 
 [[nodiscard]] std::optional<DecodeRenderStats> decode_and_render(
-    std::string_view in_path, const LoadedStream& loaded, const iclforge::ac3::plan::Routing& routing,
-    std::size_t coded_channels, const RenderedFrame& on_frame,
+    std::string_view in_path, const LoadedStream& loaded,
+    const iclforge::ac3::plan::Routing& routing, std::size_t coded_channels,
+    const RenderedFrame& on_frame,
     const std::function<void()>& on_abort = [] { /* default: nothing to clean up */ });
 
 // Decode and re-encode, preserving dialnorm, DRC and the mix metadata the

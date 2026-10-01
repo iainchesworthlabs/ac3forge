@@ -420,7 +420,8 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
         for (const auto& frame : *frames) {
             const auto decoded = decoder.decode_frame(frame);
             if (!decoded.has_value()) {
-                fmt::println(stderr, "error: {}: {}", in_path, iclforge::ac3::describe(decoded.error()));
+                fmt::println(stderr, "error: {}: {}", in_path,
+                             iclforge::ac3::describe(decoded.error()));
                 return kExitInput;
             }
             if (order.empty()) {
@@ -935,10 +936,12 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
         }
         capture2_channels = capture2.channels();
         slave_resampler.emplace(capture2_channels);
-        slave_drift.emplace(nominal_ratio, static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame));
+        slave_drift.emplace(nominal_ratio,
+                            static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame));
         slave_scratch.resize(4 * static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame) *
                              capture2_channels);
-        slave_out.resize(static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame) * capture2_channels);
+        slave_out.resize(static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame) *
+                         capture2_channels);
         slave_resampler->reset();
         status_println(status, "capture2: \"{}\", {} ch @ {} Hz (nominal ratio {:.6f})",
                        device2->name, device2->channels, device2->sample_rate, nominal_ratio);
@@ -1043,8 +1046,8 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
                                                           take->rendered_channels);
     const auto bed_acmod = atmos ? iclforge::ac3::Acmod::k3_2 : channel_plan.bed_acmod;
     const bool bed_lfe = atmos ? true : channel_plan.bed_lfe;
-    const std::size_t bed_channels =
-        static_cast<std::size_t>(iclforge::ac3::fullbw_channel_count(bed_acmod) + (bed_lfe ? 1 : 0));
+    const std::size_t bed_channels = static_cast<std::size_t>(
+        iclforge::ac3::fullbw_channel_count(bed_acmod) + (bed_lfe ? 1 : 0));
 
     auto resolve_render_device =
         [&](int index) -> std::optional<iclforge::audio::RenderDeviceInfo> {
@@ -1202,12 +1205,13 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
         }
     }
 
-    std::vector<float> interleaved(static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame) * channels);
+    std::vector<float> interleaved(static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame) *
+                                   channels);
     // Object mode fills one block per SLOT; channel mode one per captured
     // channel, routed into `coded_block` below. Sized for whichever is
     // running, never both.
-    std::vector<std::vector<float>> block(atmos ? nobjects : channels,
-                                          std::vector<float>(iclforge::ac3::kSamplesPerFrame, 0.0F));
+    std::vector<std::vector<float>> block(
+        atmos ? nobjects : channels, std::vector<float>(iclforge::ac3::kSamplesPerFrame, 0.0F));
     std::vector<std::vector<float>> coded_block(
         atmos ? 0 : coded_channels, std::vector<float>(iclforge::ac3::kSamplesPerFrame, 0.0F));
     std::vector<std::span<const float>> views(atmos ? nobjects : channels);
@@ -1552,8 +1556,8 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
             }
         }
         ++frames_written;
-        print_live_meter(meter, static_cast<double>(frames_written * iclforge::ac3::kSamplesPerFrame) /
-                                    rate_hz);
+        print_live_meter(
+            meter, static_cast<double>(frames_written * iclforge::ac3::kSamplesPerFrame) / rate_hz);
     }
     status_println(status);
 

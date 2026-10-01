@@ -120,9 +120,9 @@ void print_table(std::string_view path, const io::ProbeReport& report,
         if (sub.chanmap.has_value()) {
             chanmap = fmt::format("chanmap 0x{:04x}", *sub.chanmap);
         }
-        fmt::println("  {:<14}{} id {}, {}, {} syncframe(s), {}", "",
-                     strmtyp_token(sub.strmtyp), sub.substreamid,
-                     iclforge::ac3::analysis::layout_name(sub.acmod, sub.lfe), sub.syncframes, chanmap);
+        fmt::println("  {:<14}{} id {}, {}, {} syncframe(s), {}", "", strmtyp_token(sub.strmtyp),
+                     sub.substreamid, iclforge::ac3::analysis::layout_name(sub.acmod, sub.lfe),
+                     sub.syncframes, chanmap);
     }
 
     fmt::println("{:<16}{} ({} syncframe(s)), {} bytes", "access units", report.access_units,
@@ -410,8 +410,9 @@ void write_syncframe(JsonWriter& json, const io::ProbeSyncframe& frame, Detail d
         }
         json.end_array();
         if (block.coupling) {
-            json.member("coupling_exponent_strategy",
-                        exp_strategy_token(block.exp_strategy[iclforge::ac3::kCouplingSyntaxStream]));
+            json.member(
+                "coupling_exponent_strategy",
+                exp_strategy_token(block.exp_strategy[iclforge::ac3::kCouplingSyntaxStream]));
         } else {
             json.member_null("coupling_exponent_strategy");
         }
@@ -761,8 +762,8 @@ int run_probe(std::string_view in_path, const Options& meta) {
             break;
         }
         if (const auto pushed = prober.push(*unit); !pushed) {
-            fmt::println(stderr, "error: {} at byte {}", iclforge::ac3::io::describe(pushed.error()),
-                         reader.byte_offset());
+            fmt::println(stderr, "error: {} at byte {}",
+                         iclforge::ac3::io::describe(pushed.error()), reader.byte_offset());
             return 1;
         }
     }

@@ -129,7 +129,8 @@ std::vector<std::vector<float>> reconstruct_wide_bed(const std::array<PositionTo
     // of them there are.
     iclforge::ac3::eac3::FrameEncoder dependent{
         {.bitrate_kbps = 192,
-         .acmod = dependent_tones.size() == 4 ? iclforge::ac3::Acmod::k2_2 : iclforge::ac3::Acmod::k2_0,
+         .acmod =
+             dependent_tones.size() == 4 ? iclforge::ac3::Acmod::k2_2 : iclforge::ac3::Acmod::k2_0,
          .strmtyp = iclforge::ac3::eac3::StreamType::kDependent,
          .substreamid = 0,
          .chanmap = dependent_chanmap,
@@ -140,10 +141,10 @@ std::vector<std::vector<float>> reconstruct_wide_bed(const std::array<PositionTo
     std::vector<std::byte> stream;
     std::uint64_t n0 = 0;
     for (int f = 0; f < kFrames; ++f) {
-        std::vector<std::vector<float>> bed_block(6,
-                                                  std::vector<float>(iclforge::ac3::kSamplesPerFrame));
-        std::vector<std::vector<float>> dep_block(dependent_tones.size(),
-                                                   std::vector<float>(iclforge::ac3::kSamplesPerFrame));
+        std::vector<std::vector<float>> bed_block(
+            6, std::vector<float>(iclforge::ac3::kSamplesPerFrame));
+        std::vector<std::vector<float>> dep_block(
+            dependent_tones.size(), std::vector<float>(iclforge::ac3::kSamplesPerFrame));
         for (int i = 0; i < iclforge::ac3::kSamplesPerFrame; ++i) {
             const double t = static_cast<double>(n0 + static_cast<std::uint64_t>(i)) / 48000.0;
             for (std::size_t ch = 0; ch < 6; ++ch) {
@@ -274,9 +275,10 @@ TEST_CASE(
                                                      {Location::kLfe, 55.0}}};
     const std::array<PositionTone, 2> dependent_tones = {
         {{Location::kVhl, 463.0}, {Location::kVhr, 2089.0}}};
-    const auto accumulated = reconstruct_wide_bed(bed_tones, cm::k512Height, dependent_tones,
-                                                  iclforge::ac3::oba::joc::kDmxConfig5XPlus2PhaseShift,
-                                                  iclforge::ac3::oba::joc::kNumChannels5X + 2);
+    const auto accumulated =
+        reconstruct_wide_bed(bed_tones, cm::k512Height, dependent_tones,
+                             iclforge::ac3::oba::joc::kDmxConfig5XPlus2PhaseShift,
+                             iclforge::ac3::oba::joc::kNumChannels5X + 2);
 
     const std::array<double, 7> expected = {919.0, 1181.0, 647.0, 1523.0, 1847.0, 463.0, 2089.0};
     REQUIRE(accumulated.size() == 7);

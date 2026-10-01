@@ -429,7 +429,8 @@ TEST_CASE("a 5.1 layout measures identically through Annex 1 and Annex 3",
     const std::array<std::span<const float>, 6> channels = {tone,    quieter, tone,
                                                              quieter, tone,    quieter};
 
-    iclforge::ac3::meta::LoudnessMeter annex1{iclforge::ac3::SampleRate::k48000, iclforge::ac3::Acmod::k3_2, true};
+    iclforge::ac3::meta::LoudnessMeter annex1{iclforge::ac3::SampleRate::k48000,
+                                              iclforge::ac3::Acmod::k3_2, true};
     iclforge::ac3::meta::LoudnessMeter annex3{iclforge::ac3::SampleRate::k48000, layout};
     annex1.push(channels);
     annex3.push(channels);
@@ -462,8 +463,8 @@ TEST_CASE("the two algorithms disagree only about the lone surround of 2/1 and 3
     // channel's weighted contribution.
     const std::array<std::span<const float>, 3> channels = {silence, silence, tone};
 
-    iclforge::ac3::meta::LoudnessMeter annex1{iclforge::ac3::SampleRate::k48000, iclforge::ac3::Acmod::k2_1,
-                                         false};
+    iclforge::ac3::meta::LoudnessMeter annex1{iclforge::ac3::SampleRate::k48000,
+                                              iclforge::ac3::Acmod::k2_1, false};
     iclforge::ac3::meta::LoudnessMeter annex3{iclforge::ac3::SampleRate::k48000, layout};
     annex1.push(channels);
     annex3.push(channels);

@@ -394,8 +394,9 @@ TEST_CASE("float32 batch transforms agree with their scalar float forms", "[mdct
     }
 
     std::array<std::array<float, 512>, 4> batched_inv{};
-    iclforge::ac3::imdct512_windowed_batch4(coeffs[0], coeffs[1], coeffs[2], coeffs[3], batched_inv[0],
-                                  batched_inv[1], batched_inv[2], batched_inv[3]);
+    iclforge::ac3::imdct512_windowed_batch4(coeffs[0], coeffs[1], coeffs[2], coeffs[3],
+                                            batched_inv[0], batched_inv[1], batched_inv[2],
+                                            batched_inv[3]);
     for (std::size_t lane = 0; lane < coeffs.size(); ++lane) {
         CAPTURE(lane);
         std::array<float, 512> one{};

@@ -291,8 +291,9 @@ int run_atmos(std::string_view out_path, std::uint32_t seconds, std::uint32_t bi
     // default numblkscod, 256/512/768 under a short syncframe. Derived
     // once, next to the config that set it, so the feed loop below and
     // the encoder can never disagree about a frame's length.
-    const std::size_t frame_samples = static_cast<std::size_t>(
-        iclforge::ac3::eac3::blocks_per_syncframe(meta.atmos_numblkscod) * iclforge::ac3::kSamplesPerBlock);
+    const std::size_t frame_samples =
+        static_cast<std::size_t>(iclforge::ac3::eac3::blocks_per_syncframe(meta.atmos_numblkscod) *
+                                 iclforge::ac3::kSamplesPerBlock);
     iclforge::ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = bitrate,
                                     .dialnorm = meta.p.dialnorm,
                                     .num_bands_idx = 4,
@@ -442,8 +443,9 @@ int run_atmos_path(std::string_view out_path, std::string_view paths_path, std::
     // default numblkscod, 256/512/768 under a short syncframe. Derived
     // once, next to the config that set it, so the feed loop below and
     // the encoder can never disagree about a frame's length.
-    const std::size_t frame_samples = static_cast<std::size_t>(
-        iclforge::ac3::eac3::blocks_per_syncframe(meta.atmos_numblkscod) * iclforge::ac3::kSamplesPerBlock);
+    const std::size_t frame_samples =
+        static_cast<std::size_t>(iclforge::ac3::eac3::blocks_per_syncframe(meta.atmos_numblkscod) *
+                                 iclforge::ac3::kSamplesPerBlock);
     iclforge::ac3::oba::AtmosEncoder encoder{
         {.bitrate_kbps = bitrate, .dialnorm = meta.p.dialnorm, .num_bands_idx = 4,
          .fast_mdct = meta.fast_mdct,
@@ -656,8 +658,9 @@ int run_atmos_encode_multi(std::string_view in_path, std::string_view out_path,
     // default numblkscod, 256/512/768 under a short syncframe. Derived
     // once, next to the config that set it, so the feed loop below and
     // the encoder can never disagree about a frame's length.
-    const std::size_t frame_samples = static_cast<std::size_t>(
-        iclforge::ac3::eac3::blocks_per_syncframe(meta.atmos_numblkscod) * iclforge::ac3::kSamplesPerBlock);
+    const std::size_t frame_samples =
+        static_cast<std::size_t>(iclforge::ac3::eac3::blocks_per_syncframe(meta.atmos_numblkscod) *
+                                 iclforge::ac3::kSamplesPerBlock);
     iclforge::ac3::oba::AtmosEncoder encoder{
         {.sample_rate = *sr, .bitrate_kbps = bitrate, .dialnorm = dialnorm, .num_bands_idx = 4,
          .fast_mdct = meta.fast_mdct, .numblkscod = meta.atmos_numblkscod},
@@ -702,7 +705,8 @@ int run_atmos_encode_multi(std::string_view in_path, std::string_view out_path,
         }
     }
 
-    iclforge::ac3::analysis::LevelMeter meter{iclforge::ac3::Acmod::k3_2, true, sources->sample_rate};
+    iclforge::ac3::analysis::LevelMeter meter{iclforge::ac3::Acmod::k3_2, true,
+                                              sources->sample_rate};
     const std::size_t total = sources->total_frames;
     std::vector<std::vector<float>> gathered(total_channels,
                                              std::vector<float>(frame_samples));
@@ -832,7 +836,8 @@ int run_atmos_encode_ac4(std::string_view in_path, std::string_view out_path, st
     } else {
         auto wav = read_wav_arg(in_path);
         if (!wav.has_value()) {
-            fmt::println(stderr, "error: {}: {}", in_path, iclforge::ac3::io::describe(wav.error()));
+            fmt::println(stderr, "error: {}: {}", in_path,
+                         iclforge::ac3::io::describe(wav.error()));
             return kExitInput;
         }
         shapes.push_back({.channels = wav->channels.size(), .label = std::string{in_path}});
@@ -983,7 +988,8 @@ int run_atmos_encode(std::string_view in_path, std::string_view out_path,
     if (!streaming) {
         wav = read_wav_arg(in_path);
         if (!wav.has_value()) {
-            fmt::println(stderr, "error: {}: {}", in_path, iclforge::ac3::io::describe(wav.error()));
+            fmt::println(stderr, "error: {}: {}", in_path,
+                         iclforge::ac3::io::describe(wav.error()));
             return kExitInput;        }
     }
     const std::uint32_t src_rate = streaming ? stream_in.sample_rate() : wav->sample_rate;
@@ -1028,8 +1034,9 @@ int run_atmos_encode(std::string_view in_path, std::string_view out_path,
     // default numblkscod, 256/512/768 under a short syncframe. Derived
     // once, next to the config that set it, so the feed loop below and
     // the encoder can never disagree about a frame's length.
-    const std::size_t frame_samples = static_cast<std::size_t>(
-        iclforge::ac3::eac3::blocks_per_syncframe(meta.atmos_numblkscod) * iclforge::ac3::kSamplesPerBlock);
+    const std::size_t frame_samples =
+        static_cast<std::size_t>(iclforge::ac3::eac3::blocks_per_syncframe(meta.atmos_numblkscod) *
+                                 iclforge::ac3::kSamplesPerBlock);
     iclforge::ac3::oba::AtmosEncoder encoder{
         {.sample_rate = *sr, .bitrate_kbps = bitrate, .dialnorm = dialnorm, .num_bands_idx = 4,
          .fast_mdct = meta.fast_mdct,
@@ -1095,8 +1102,8 @@ int run_atmos_encode(std::string_view in_path, std::string_view out_path,
             const auto got = stream_in.read_planar(stream_dst, valid);
             if (!got || *got != valid) {
                 fmt::println(stderr, "error: {}: {}", in_path,
-                             iclforge::ac3::io::describe(got ? iclforge::ac3::io::WavError::kTruncated
-                                                   : got.error()));
+                             iclforge::ac3::io::describe(
+                                 got ? iclforge::ac3::io::WavError::kTruncated : got.error()));
                 out_sink.abort();
                 return kExitInput;
             }
@@ -1178,11 +1185,11 @@ int run_atmos_encode(std::string_view in_path, std::string_view out_path,
 int run_atmos_adm(std::string_view in_path, std::string_view out_path, std::uint32_t bitrate,
                   const Options& meta, std::string_view programme_id) {
     // No fixed source layout to measure a pre-encode loudness figure against the way
-    // atmos-encode's WAV input has (iclforge::ac3::io::ac3_layout_for) - an ADM document's channels are
-    // an arbitrary mix of bed speaker feeds and dynamic objects, not one of the handful of layouts
-    // that function maps. Refusing clearly beats silently keeping the fixed default dialnorm:
-    // "a silently ignored metadata flag looks exactly like metadata that did not work" (see
-    // parse_options's own comment above).
+    // atmos-encode's WAV input has (iclforge::ac3::io::ac3_layout_for) - an ADM document's channels
+    // are an arbitrary mix of bed speaker feeds and dynamic objects, not one of the handful of
+    // layouts that function maps. Refusing clearly beats silently keeping the fixed default
+    // dialnorm: "a silently ignored metadata flag looks exactly like metadata that did not work"
+    // (see parse_options's own comment above).
     if (meta.p.measure_dialnorm) {
         fmt::println(stderr,
                      "error: dialnorm=auto is not supported by atmos-adm - an ADM document's bed/"
@@ -1223,8 +1230,9 @@ int run_atmos_adm(std::string_view in_path, std::string_view out_path, std::uint
     // default numblkscod, 256/512/768 under a short syncframe. Derived
     // once, next to the config that set it, so the feed loop below and
     // the encoder can never disagree about a frame's length.
-    const std::size_t frame_samples = static_cast<std::size_t>(
-        iclforge::ac3::eac3::blocks_per_syncframe(meta.atmos_numblkscod) * iclforge::ac3::kSamplesPerBlock);
+    const std::size_t frame_samples =
+        static_cast<std::size_t>(iclforge::ac3::eac3::blocks_per_syncframe(meta.atmos_numblkscod) *
+                                 iclforge::ac3::kSamplesPerBlock);
     iclforge::ac3::oba::AtmosEncoder encoder{
         {.sample_rate = *sr, .bitrate_kbps = bitrate, .dialnorm = meta.p.dialnorm,
          .num_bands_idx = 4, .fast_mdct = meta.fast_mdct,
@@ -1234,7 +1242,8 @@ int run_atmos_adm(std::string_view in_path, std::string_view out_path, std::uint
 
     // Metered the same way run_atmos_encode meters its own bed: 3/2 + LFE is AtmosEncoder's own
     // fixed bed layout regardless of how many dynamic objects/bed feeds fed it.
-    iclforge::ac3::analysis::LevelMeter meter{iclforge::ac3::Acmod::k3_2, true, source->sample_rate};
+    iclforge::ac3::analysis::LevelMeter meter{iclforge::ac3::Acmod::k3_2, true,
+                                              source->sample_rate};
     const std::size_t total = source->pcm.empty() ? 0 : source->pcm.front().size();
     std::vector<std::vector<float>> block(count, std::vector<float>(frame_samples));
     std::vector<std::span<const float>> views(count);
@@ -1309,8 +1318,8 @@ int run_atmos_adm(std::string_view in_path, std::string_view out_path, std::uint
 int run_atmos_iab(std::string_view in_path, std::string_view out_path, std::uint32_t bitrate,
                   const Options& meta) {
     // Same refusal, same reason as run_atmos_adm's own: an IAB file's Bed/Object channels are an
-    // arbitrary mix, not one of iclforge::ac3::io::ac3_layout_for's fixed layouts - see that function's
-    // own comment above.
+    // arbitrary mix, not one of iclforge::ac3::io::ac3_layout_for's fixed layouts - see that
+    // function's own comment above.
     if (meta.p.measure_dialnorm) {
         fmt::println(stderr,
                      "error: dialnorm=auto is not supported by atmos-iab - an IAB file's Bed/"
@@ -1350,8 +1359,9 @@ int run_atmos_iab(std::string_view in_path, std::string_view out_path, std::uint
     // default numblkscod, 256/512/768 under a short syncframe. Derived
     // once, next to the config that set it, so the feed loop below and
     // the encoder can never disagree about a frame's length.
-    const std::size_t frame_samples = static_cast<std::size_t>(
-        iclforge::ac3::eac3::blocks_per_syncframe(meta.atmos_numblkscod) * iclforge::ac3::kSamplesPerBlock);
+    const std::size_t frame_samples =
+        static_cast<std::size_t>(iclforge::ac3::eac3::blocks_per_syncframe(meta.atmos_numblkscod) *
+                                 iclforge::ac3::kSamplesPerBlock);
     iclforge::ac3::oba::AtmosEncoder encoder{
         {.sample_rate = *sr, .bitrate_kbps = bitrate, .dialnorm = meta.p.dialnorm,
          .num_bands_idx = 4, .fast_mdct = meta.fast_mdct,
@@ -1360,7 +1370,8 @@ int run_atmos_iab(std::string_view in_path, std::string_view out_path, std::uint
         static_cast<int>(count)};
 
     // Metered the same way run_atmos_adm meters its own bed.
-    iclforge::ac3::analysis::LevelMeter meter{iclforge::ac3::Acmod::k3_2, true, source->sample_rate};
+    iclforge::ac3::analysis::LevelMeter meter{iclforge::ac3::Acmod::k3_2, true,
+                                              source->sample_rate};
     const std::size_t total = source->pcm.empty() ? 0 : source->pcm.front().size();
     std::vector<std::vector<float>> block(count, std::vector<float>(frame_samples));
     std::vector<std::span<const float>> views(count);
@@ -1456,7 +1467,8 @@ int run_atmos_cbi(std::string_view in_path, std::string_view out_path, std::uint
     if (!streaming) {
         wav = read_wav_arg(in_path);
         if (!wav.has_value()) {
-            fmt::println(stderr, "error: {}: {}", in_path, iclforge::ac3::io::describe(wav.error()));
+            fmt::println(stderr, "error: {}: {}", in_path,
+                         iclforge::ac3::io::describe(wav.error()));
             return kExitInput;
         }
     }
@@ -1497,8 +1509,9 @@ int run_atmos_cbi(std::string_view in_path, std::string_view out_path, std::uint
     // default numblkscod, 256/512/768 under a short syncframe. Derived once,
     // next to the config that set it, the same convention every other Atmos-
     // encode command here uses.
-    const std::size_t frame_samples = static_cast<std::size_t>(
-        iclforge::ac3::eac3::blocks_per_syncframe(meta.atmos_numblkscod) * iclforge::ac3::kSamplesPerBlock);
+    const std::size_t frame_samples =
+        static_cast<std::size_t>(iclforge::ac3::eac3::blocks_per_syncframe(meta.atmos_numblkscod) *
+                                 iclforge::ac3::kSamplesPerBlock);
     iclforge::ac3::oba::AtmosEncoder encoder{
         {.sample_rate = *sr, .bitrate_kbps = bitrate, .dialnorm = meta.p.dialnorm,
          .num_bands_idx = 4, .fast_mdct = meta.fast_mdct, .joc_domain = meta.joc_domain,
@@ -1533,9 +1546,9 @@ int run_atmos_cbi(std::string_view in_path, std::string_view out_path, std::uint
             }
             const auto got = stream_in.read_planar(stream_dst, valid);
             if (!got || *got != valid) {
-                fmt::println(
-                    stderr, "error: {}: {}", in_path,
-                    iclforge::ac3::io::describe(got ? iclforge::ac3::io::WavError::kTruncated : got.error()));
+                fmt::println(stderr, "error: {}: {}", in_path,
+                             iclforge::ac3::io::describe(
+                                 got ? iclforge::ac3::io::WavError::kTruncated : got.error()));
                 out_sink.abort();
                 return kExitInput;
             }

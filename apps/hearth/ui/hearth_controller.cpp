@@ -159,8 +159,8 @@ constexpr int kPollMs = 60;
             QVariantMap codec_box;
             codec_box[QStringLiteral("bsid")] = box.bsid;
             codec_box[QStringLiteral("bsmod")] = box.bsmod;
-            codec_box[QStringLiteral("bsmodLabel")] =
-                to_qstring(apps::probe_json::bsmod_label(box.bsmod, static_cast<ac3::Acmod>(box.acmod)));
+            codec_box[QStringLiteral("bsmodLabel")] = to_qstring(
+                apps::probe_json::bsmod_label(box.bsmod, static_cast<ac3::Acmod>(box.acmod)));
             codec_box[QStringLiteral("lfeon")] = box.lfeon;
             codec_box[QStringLiteral("dataRateKbps")] = box.data_rate_kbps;
             codec_box[QStringLiteral("independentSubstreams")] = box.independent_substreams;
@@ -231,8 +231,10 @@ constexpr int kPollMs = 60;
         map[QStringLiteral("copyright")] = info.copyrightb;
         map[QStringLiteral("original")] = info.origbs;
         if (info.audprod) {
-            map[QStringLiteral("mixLevelDbSpl")] = ac3::meta::mix_level_db_spl(info.audprod->mixlevel);
-            map[QStringLiteral("roomTypeLabel")] = to_qstring(ac3::meta::describe(info.audprod->roomtyp));
+            map[QStringLiteral("mixLevelDbSpl")] =
+                ac3::meta::mix_level_db_spl(info.audprod->mixlevel);
+            map[QStringLiteral("roomTypeLabel")] =
+                to_qstring(ac3::meta::describe(info.audprod->roomtyp));
         }
     }
     const ac3::MixLevels& levels = bits.levels;
@@ -248,7 +250,8 @@ constexpr int kPollMs = 60;
     if (levels.lfe_mix_level_db) {
         mix[QStringLiteral("lfeDb")] = *levels.lfe_mix_level_db;
     }
-    mix[QStringLiteral("preferredDownmixLabel")] = to_qstring(ac3::meta::describe(levels.preferred));
+    mix[QStringLiteral("preferredDownmixLabel")] =
+        to_qstring(ac3::meta::describe(levels.preferred));
     map[QStringLiteral("mixLevels")] = mix;
     return map;
 }

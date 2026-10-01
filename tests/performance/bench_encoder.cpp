@@ -152,8 +152,10 @@ constexpr int kWarmupFrames = 8;
 // against exactly the configuration whose encode series sits above it.
 
 iclforge::ac3::FrameEncoder make_ac3_51(bool fast_mdct) {
-    return iclforge::ac3::FrameEncoder{
-        {.bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true, .fast_mdct = fast_mdct}};
+    return iclforge::ac3::FrameEncoder{{.bitrate_kbps = 448,
+                                        .acmod = iclforge::ac3::Acmod::k3_2,
+                                        .lfe = true,
+                                        .fast_mdct = fast_mdct}};
 }
 
 // E-AC-3 with auto_tools: the landscape configuration, not a corner. `auto`
@@ -205,8 +207,8 @@ Result bench_ac3_51(perf::FrameSource& source, bool fast_mdct) {
     return timer.result(name);
 }
 
-Result bench_eac3_auto(std::string name, perf::FrameSource& source, iclforge::ac3::Acmod acmod, bool lfe,
-                       std::uint32_t bitrate_kbps) {
+Result bench_eac3_auto(std::string name, perf::FrameSource& source, iclforge::ac3::Acmod acmod,
+                       bool lfe, std::uint32_t bitrate_kbps) {
     {
         auto warm = make_eac3_auto(acmod, lfe, bitrate_kbps);
         for (int frame = 0; frame < kWarmupFrames; ++frame) {
@@ -478,8 +480,8 @@ int main(int argc, char** argv) {
         return only.empty() || std::ranges::contains(only, name);
     };
 
-    const iclforge::ac3::io::WavData audio =
-        perf::load_real_audio(wav_path, 6, static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame));
+    const iclforge::ac3::io::WavData audio = perf::load_real_audio(
+        wav_path, 6, static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame));
     perf::FrameSource six_channel{audio, perf::kFiveOneChannels};
     perf::FrameSource two_channel{audio, perf::kStereoChannels};
     perf::FrameSource four_object{audio, perf::kFourObjectChannels};
@@ -508,11 +510,12 @@ int main(int argc, char** argv) {
         results.push_back(bench_ac3_51(six_channel, /*fast_mdct=*/true));
     }
     if (wanted("eac3_51_auto")) {
-        results.push_back(
-            bench_eac3_auto("eac3_51_auto", six_channel, iclforge::ac3::Acmod::k3_2, /*lfe=*/true, 448));
+        results.push_back(bench_eac3_auto("eac3_51_auto", six_channel, iclforge::ac3::Acmod::k3_2,
+                                          /*lfe=*/true, 448));
     }
     if (wanted("eac3_stereo_auto")) {
-        results.push_back(bench_eac3_auto("eac3_stereo_auto", two_channel, iclforge::ac3::Acmod::k2_0,
+        results.push_back(bench_eac3_auto("eac3_stereo_auto", two_channel,
+                                          iclforge::ac3::Acmod::k2_0,
                                           /*lfe=*/false, 192));
     }
     if (wanted("atmos_4obj")) {

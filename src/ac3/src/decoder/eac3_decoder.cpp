@@ -3503,7 +3503,8 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                                       exponent_scale<Scalar>(cpl_exps[ubin] - shared_norm)
                                 : shared[ubin];
                         if constexpr (internal::kNormalisedStore<Scalar>) {
-                            target[ubin] = iclforge::internal::scalar_ldexp(coeff * coordinate * sign, shift);
+                            target[ubin] =
+                                iclforge::internal::scalar_ldexp(coeff * coordinate * sign, shift);
                         } else {
                             target[ubin] = coeff * coordinate * Scalar{8} * sign;
                         }
@@ -3754,10 +3755,11 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                             const auto at = static_cast<std::size_t>(low + i);
                             const Scalar blended =
                                 iclforge::internal::scalar_product_unsaturated(tc[at], sscale) +
-                                iclforge::internal::scalar_product_unsaturated(spx_noise.next_as<Scalar>(),
-                                                                     nscale);
+                                iclforge::internal::scalar_product_unsaturated(
+                                    spx_noise.next_as<Scalar>(), nscale);
                             tc[at] = iclforge::internal::scalar_ldexp(
-                                iclforge::internal::scalar_product_unsaturated(blended, mantissa), shift);
+                                iclforge::internal::scalar_product_unsaturated(blended, mantissa),
+                                shift);
                         }
                     } else {
                         const Scalar coordinate =
@@ -4697,9 +4699,10 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
                 continue;
             }
             const auto params = oba::joc::parse_payload(sub.joc_pending_bytes);
-            const auto indices = out.object_metadata.has_value()
-                                      ? iclforge::oba::joc_object_indices(out.object_metadata->program)
-                                      : std::vector<int>{};
+            const auto indices =
+                out.object_metadata.has_value()
+                    ? iclforge::oba::joc_object_indices(out.object_metadata->program)
+                    : std::vector<int>{};
             if (!params || !out.object_metadata.has_value() ||
                 params->objects != static_cast<int>(indices.size())) {
                 break;
@@ -4741,9 +4744,9 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
             // pinned by golden decode hashes (joc.cpp's own comments), while
             // reconstruct_mdct_band is already generic in params.channels -
             // this is new wiring onto an existing generic path, not new DSP.
-            out.object_audio =
-                oba::joc::reconstruct(bed, *params, *joc_slot, impl_->config_.fast_mdct,
-                                      impl_->config_.fast_imdct, iclforge::oba::joc::Domain::kMdctBand);
+            out.object_audio = oba::joc::reconstruct(
+                bed, *params, *joc_slot, impl_->config_.fast_mdct, impl_->config_.fast_imdct,
+                iclforge::oba::joc::Domain::kMdctBand);
             out.object_indices = indices;
             break;
         }

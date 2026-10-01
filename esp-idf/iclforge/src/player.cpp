@@ -102,7 +102,8 @@ std::optional<iclforge::ac3::eac3::chanmap::Layout> peek_layout(std::span<const 
         if (!header || header->bytes == 0) {
             return std::nullopt;
         }
-        const std::uint16_t own = iclforge::ac3::eac3::chanmap::acmod_map(header->acmod, header->lfe);
+        const std::uint16_t own =
+            iclforge::ac3::eac3::chanmap::acmod_map(header->acmod, header->lfe);
         if (header->kind == iclforge::ac3::io::StreamKind::kEac3 &&
             header->strmtyp == iclforge::ac3::eac3::StreamType::kDependent) {
             map |= header->chanmap.value_or(own);
@@ -655,7 +656,8 @@ struct Player::Impl {
                           .objects = false,
                           .objects_rendered = false,
                           .slots = static_cast<int>(config.layout.slots())};
-                describe_stream(peek_layout(unit), decoded->acmod == iclforge::ac3::Acmod::kDualMono);
+                describe_stream(peek_layout(unit),
+                                decoded->acmod == iclforge::ac3::Acmod::kDualMono);
                 have_stream.store(true);
             }
             return delivered;

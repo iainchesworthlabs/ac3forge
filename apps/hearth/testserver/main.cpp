@@ -909,8 +909,9 @@ int main(int argc, char** argv) {
             group->add(run.client_id);
         }
     }
-    const ac::DataType data_type =
-        stream->kind == iclforge::ac3::io::StreamKind::kAc3 ? ac::DataType::kAc3 : ac::DataType::kEac3;
+    const ac::DataType data_type = stream->kind == iclforge::ac3::io::StreamKind::kAc3
+                                       ? ac::DataType::kAc3
+                                       : ac::DataType::kEac3;
     if (!group->start({.pcm = std::nullopt,
                        .bursts = ac::StreamStart{.data_type = data_type, .sample_rate = static_cast<std::int32_t>(kSampleRate)},
                        .buffered = true})) {

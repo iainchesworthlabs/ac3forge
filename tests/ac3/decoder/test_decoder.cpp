@@ -189,7 +189,8 @@ TEST_CASE("every acmod round-trips at every sample rate", "[decoder]") {
             for (const bool lfe : {false, true}) {
                 CAPTURE(static_cast<int>(sr), static_cast<int>(acmod), lfe);
                 const auto nchans =
-                    static_cast<std::size_t>(iclforge::ac3::fullbw_channel_count(acmod)) + (lfe ? 1 : 0);
+                    static_cast<std::size_t>(iclforge::ac3::fullbw_channel_count(acmod)) +
+                    (lfe ? 1 : 0);
                 std::vector<double> tones(nchans);
                 for (std::size_t ch = 0; ch < nchans; ++ch) {
                     tones[ch] = 200.0 + 150.0 * static_cast<double>(ch);
@@ -320,7 +321,8 @@ TEST_CASE("a channel left out of coupling does not take the shared channel with 
     // affected - so this pins it per channel instead.
     using iclforge::ac3::Acmod;
     constexpr int kFrames = 4;
-    iclforge::ac3::FrameEncoder encoder{{.bitrate_kbps = 448, .acmod = Acmod::k3_2, .coupling = true}};
+    iclforge::ac3::FrameEncoder encoder{
+        {.bitrate_kbps = 448, .acmod = Acmod::k3_2, .coupling = true}};
     iclforge::ac3::FrameDecoder decoder;
     const auto nchans = static_cast<std::size_t>(encoder.channel_count());
     REQUIRE(nchans == 5);
@@ -411,8 +413,9 @@ TEST_CASE("grouped coupling bands land on the bins they were measured from",
     constexpr double kRate = 48000.0;
     constexpr double kLow = 12000.0;   // sub-band 6 of the coupled region
     constexpr double kHigh = 20000.0;  // near the top, where bands are widest
-    const auto rt = round_trip(
-        {.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k2_0, .coupling = true}, {kLow, kHigh}, 4);
+    const auto rt =
+        round_trip({.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k2_0, .coupling = true},
+                   {kLow, kHigh}, 4);
 
     const double left_own = tone_energy(rt.decoded[0], kLow, kRate);
     const double left_other = tone_energy(rt.decoded[0], kHigh, kRate);
@@ -721,7 +724,8 @@ TEST_CASE("decode_frame_by_block hands over the identical samples a block at a t
     iclforge::ac3::FrameDecoder by_value;
     iclforge::ac3::FrameDecoder by_block;
     const auto nchans = static_cast<std::size_t>(encoder.channel_count());
-    std::vector<std::vector<float>> block(nchans, std::vector<float>(iclforge::ac3::kSamplesPerFrame));
+    std::vector<std::vector<float>> block(nchans,
+                                          std::vector<float>(iclforge::ac3::kSamplesPerFrame));
     std::vector<std::span<const float>> views(nchans);
     std::uint64_t n0 = 0;
     for (int f = 0; f < 4; ++f) {
@@ -787,9 +791,11 @@ TEST_CASE("decode_frame_into writes the identical samples the value form allocat
     iclforge::ac3::FrameDecoder by_value;
     iclforge::ac3::FrameDecoder by_span;
     const auto nchans = static_cast<std::size_t>(encoder.channel_count());
-    std::vector<std::vector<float>> block(nchans, std::vector<float>(iclforge::ac3::kSamplesPerFrame));
+    std::vector<std::vector<float>> block(nchans,
+                                          std::vector<float>(iclforge::ac3::kSamplesPerFrame));
     std::vector<std::span<const float>> views(nchans);
-    std::vector<std::vector<float>> target(nchans, std::vector<float>(iclforge::ac3::kSamplesPerFrame));
+    std::vector<std::vector<float>> target(nchans,
+                                           std::vector<float>(iclforge::ac3::kSamplesPerFrame));
     std::vector<std::span<float>> spans(target.begin(), target.end());
     std::uint64_t n0 = 0;
     for (int f = 0; f < 4; ++f) {
@@ -833,7 +839,8 @@ TEST_CASE("fast_imdct reconstructs the same PCM as the direct transform, long an
     // per-sample meaningful. A tone stretch covers the long transform;
     // a sudden onset (the same shape the blksw test above uses) forces
     // block switching so the short imdct256_pair path is provably covered.
-    const iclforge::ac3::EncoderConfig config{.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k2_0};
+    const iclforge::ac3::EncoderConfig config{.bitrate_kbps = 192,
+                                              .acmod = iclforge::ac3::Acmod::k2_0};
     iclforge::ac3::FrameEncoder encoder{config};
     // Both sides pinned explicitly - fast_imdct's default has since flipped
     // to true, and a default-constructed "direct" decoder would silently
@@ -904,8 +911,10 @@ TEST_CASE("dual mono's output-stage dialnorm normalisation levels Ch2 by its own
     // tone at the SAME amplitude, so any difference between their normalised
     // peaks is attributable only to dialnorm/dialnorm2 - never to the two
     // programmes carrying different signal levels of their own.
-    const iclforge::ac3::EncoderConfig config{
-        .bitrate_kbps = 192, .dialnorm = 27, .dialnorm2 = 18, .acmod = iclforge::ac3::Acmod::kDualMono};
+    const iclforge::ac3::EncoderConfig config{.bitrate_kbps = 192,
+                                              .dialnorm = 27,
+                                              .dialnorm2 = 18,
+                                              .acmod = iclforge::ac3::Acmod::kDualMono};
     iclforge::ac3::FrameEncoder encoder{config};
     std::vector<float> tone(iclforge::ac3::kSamplesPerFrame);
     std::uint64_t n0 = 0;

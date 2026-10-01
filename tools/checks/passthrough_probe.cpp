@@ -112,7 +112,8 @@ int main(int argc, char** argv) {
     // Whole access units for E-AC-3 (an independent substream's frame plus
     // any dependents), which is the granularity the burst packer wants;
     // single syncframes for AC-3, each of which is its own burst.
-    const auto units = eac3 ? iclforge::ac3::split_access_units(stream) : iclforge::ac3::split_frames(stream);
+    const auto units =
+        eac3 ? iclforge::ac3::split_access_units(stream) : iclforge::ac3::split_frames(stream);
     if (!units || units->empty()) {
         std::printf("could not split %s into frames\n", path.c_str());
         return 2;

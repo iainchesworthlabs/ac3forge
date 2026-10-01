@@ -5,8 +5,10 @@
 
 using iclforge_c::guard;
 
-static_assert(static_cast<int>(iclforge::ac3::eac3::chanmap::Location::kLeft) == ICLFORGE_LOCATION_L);
-static_assert(static_cast<int>(iclforge::ac3::eac3::chanmap::Location::kLfe) == ICLFORGE_LOCATION_LFE);
+static_assert(static_cast<int>(iclforge::ac3::eac3::chanmap::Location::kLeft) ==
+              ICLFORGE_LOCATION_L);
+static_assert(static_cast<int>(iclforge::ac3::eac3::chanmap::Location::kLfe) ==
+              ICLFORGE_LOCATION_LFE);
 static_assert(static_cast<int>(iclforge::ac3::eac3::chanmap::kMaxChannels) == 22);
 
 static_assert(iclforge::oba::bed::kLR == ICLFORGE_BED_LR);
@@ -154,7 +156,8 @@ int iclforge_decoded_substream_is_independent(const iclforge_decoded_substream_t
     // kIndependent and kConvertible both begin an access unit and decode
     // alone; only kDependent extends a preceding one (see StreamType's own
     // comment, ac3/core/eac3_tables.hpp).
-    return substream != nullptr && substream->data.strmtyp != iclforge::ac3::eac3::StreamType::kDependent
+    return substream != nullptr &&
+                   substream->data.strmtyp != iclforge::ac3::eac3::StreamType::kDependent
                ? 1
                : 0;
 }
@@ -501,8 +504,8 @@ iclforge_status_t split_into_spans(const uint8_t* stream, size_t stream_size,
     }
     return guard([&stream, &stream_size, &out_spans, &access_units]() -> iclforge_status_t {
         const auto bytes = std::as_bytes(std::span<const uint8_t>(stream, stream_size));
-        auto result =
-            access_units ? iclforge::ac3::split_access_units(bytes) : iclforge::ac3::split_frames(bytes);
+        auto result = access_units ? iclforge::ac3::split_access_units(bytes)
+                                   : iclforge::ac3::split_frames(bytes);
         if (!result.has_value()) {
             return iclforge_c::from_cpp(result.error());
         }

@@ -131,7 +131,8 @@ void write_legacy_core_oamd_stream(const fs::path& path, const iclforge::oba::Pr
         {.id = iclforge::emdf::kPayloadIdOamd, .bytes = payload}};
     const auto container = iclforge::emdf::build_container(payloads);
 
-    iclforge::ac3::FrameEncoder core{{.bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true}};
+    iclforge::ac3::FrameEncoder core{
+        {.bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true}};
     iclforge::ac3::eac3::FrameEncoder dependent{{.bitrate_kbps = 192,
                                        .acmod = iclforge::ac3::Acmod::k2_2,
                                        .strmtyp = iclforge::ac3::eac3::StreamType::kDependent,

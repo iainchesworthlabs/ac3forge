@@ -54,7 +54,8 @@ double sum(const std::array<double, 5>& a) {
 TEST_CASE("stereo_downmix: 2/0 source passes straight through, unattenuated", "[mixing]") {
     // Already a stereo Lo/Ro signal - §7.8 has nothing to fold. Sum is
     // exactly 1 either way, so normalize() never touches it.
-    const auto dm = iclforge::ac3::meta::stereo_downmix(iclforge::ac3::Acmod::k2_0, kMinus3dB, kMinus3dB);
+    const auto dm =
+        iclforge::ac3::meta::stereo_downmix(iclforge::ac3::Acmod::k2_0, kMinus3dB, kMinus3dB);
     CHECK(dm.left == std::array<double, 5>{1.0, 0.0, 0.0, 0.0, 0.0});
     CHECK(dm.right == std::array<double, 5>{0.0, 1.0, 0.0, 0.0, 0.0});
 }
@@ -73,7 +74,8 @@ TEST_CASE("stereo_downmix: 3/0 with clev=unity sums to exactly 2 pre-normalizati
     // left[0]=1 (L) and left[1]=clev=1 (C) before normalizing: equal
     // contributions, sum 2 > 1, so each is scaled by 1/2 - an exact result
     // that does not depend on transcribing any of normalize()'s division.
-    const auto dm = iclforge::ac3::meta::stereo_downmix(iclforge::ac3::Acmod::k3_0, kUnity, kMinus3dB);
+    const auto dm =
+        iclforge::ac3::meta::stereo_downmix(iclforge::ac3::Acmod::k3_0, kUnity, kMinus3dB);
     CHECK(dm.left[0] == Approx(0.5));   // L
     CHECK(dm.left[1] == Approx(0.5));   // C
     CHECK(dm.left[2] == 0.0);           // R never reaches the left output
@@ -85,7 +87,8 @@ TEST_CASE("stereo_downmix: 3/0 with clev=unity sums to exactly 2 pre-normalizati
 TEST_CASE("stereo_downmix: a discrete surround pair keeps its side, no cross-talk", "[mixing]") {
     // 2/2: Ls must contribute to Lo only, Rs to Ro only - unlike the single-
     // surround acmods below, there is no spreading across both fronts.
-    const auto dm = iclforge::ac3::meta::stereo_downmix(iclforge::ac3::Acmod::k2_2, kMinus3dB, kMinus6dB);
+    const auto dm =
+        iclforge::ac3::meta::stereo_downmix(iclforge::ac3::Acmod::k2_2, kMinus3dB, kMinus6dB);
     CHECK(dm.left[2] > 0.0);   // Ls -> Lo
     CHECK(dm.right[2] == 0.0);  // Ls does not leak into Ro
     CHECK(dm.right[3] > 0.0);  // Rs -> Ro
@@ -97,7 +100,8 @@ TEST_CASE("stereo_downmix: a single coded surround spreads equally across both f
     // 2/1: one surround channel, no surround loudspeaker pairing - §7.8
     // spreads it into both Lo and Ro identically (at slev - 3 dB each),
     // unlike 2/2's discrete pair above.
-    const auto dm = iclforge::ac3::meta::stereo_downmix(iclforge::ac3::Acmod::k2_1, kMinus3dB, kUnity);
+    const auto dm =
+        iclforge::ac3::meta::stereo_downmix(iclforge::ac3::Acmod::k2_1, kMinus3dB, kUnity);
     CHECK(dm.left[2] > 0.0);
     CHECK(dm.left[2] == Approx(dm.right[2]));
 }
@@ -108,7 +112,8 @@ TEST_CASE("stereo_downmix: 3/2 (full 5.1) combines centre and surround pair, "
     for (const auto clev : {kMinus3dB, kMinus4_5dB, kMinus6dB}) {
         for (const auto slev : {kMinus3dB, kMinus6dB, kSilent}) {
             CAPTURE(clev, slev);
-            const auto dm = iclforge::ac3::meta::stereo_downmix(iclforge::ac3::Acmod::k3_2, clev, slev);
+            const auto dm =
+                iclforge::ac3::meta::stereo_downmix(iclforge::ac3::Acmod::k3_2, clev, slev);
             double left_sum = 0.0, right_sum = 0.0;
             for (const double v : dm.left) {
                 left_sum += v;
@@ -135,7 +140,8 @@ TEST_CASE("mono_downmix: 1/0 source passes straight through at unity, ignoring c
     // §7.8's 1/0 branch routes the centre straight through rather than
     // applying clev*+3dB - the +3 dB centre boost only applies when the
     // source actually has separate L/R to boost the centre relative to.
-    const auto dm = iclforge::ac3::meta::mono_downmix(iclforge::ac3::Acmod::k1_0, kSilent, kMinus3dB);
+    const auto dm =
+        iclforge::ac3::meta::mono_downmix(iclforge::ac3::Acmod::k1_0, kSilent, kMinus3dB);
     CHECK(dm[0] == 1.0);
     for (std::size_t i = 1; i < 5; ++i) {
         CHECK(dm[i] == 0.0);
@@ -147,7 +153,8 @@ TEST_CASE("mono_downmix: 2/0 source folds L and R to equal weight, sum normalize
     // Both entries are the identical constant kMinus3dB before normalizing,
     // so - whatever that constant's value - dividing by their own sum always
     // lands each one on exactly 0.5: a/(a+a) = 1/2 for any a != 0.
-    const auto dm = iclforge::ac3::meta::mono_downmix(iclforge::ac3::Acmod::k2_0, kMinus3dB, kMinus3dB);
+    const auto dm =
+        iclforge::ac3::meta::mono_downmix(iclforge::ac3::Acmod::k2_0, kMinus3dB, kMinus3dB);
     CHECK(dm[0] == Approx(0.5));
     CHECK(dm[1] == Approx(0.5));
     CHECK(sum(dm) == Approx(1.0));
@@ -160,7 +167,8 @@ TEST_CASE("mono_downmix: 2/1 with slev=unity gives three equal contributors, "
     // normalizing (slev=kUnity leaves the surround's slev*kMinus3dB term
     // equal to the other two) - three equal entries normalize to 1/3 each
     // regardless of what that shared constant actually is.
-    const auto dm = iclforge::ac3::meta::mono_downmix(iclforge::ac3::Acmod::k2_1, kMinus3dB, kUnity);
+    const auto dm =
+        iclforge::ac3::meta::mono_downmix(iclforge::ac3::Acmod::k2_1, kMinus3dB, kUnity);
     CHECK(dm[0] == Approx(1.0 / 3.0));
     CHECK(dm[1] == Approx(1.0 / 3.0));
     CHECK(dm[2] == Approx(1.0 / 3.0));
@@ -170,7 +178,8 @@ TEST_CASE("mono_downmix: 2/1 with slev=unity gives three equal contributors, "
 TEST_CASE("mono_downmix: 3/0 centre gets clev+3dB gain relative to L and R, preserving that "
          "ratio through normalization",
          "[mixing]") {
-    const auto dm = iclforge::ac3::meta::mono_downmix(iclforge::ac3::Acmod::k3_0, kUnity, kMinus3dB);
+    const auto dm =
+        iclforge::ac3::meta::mono_downmix(iclforge::ac3::Acmod::k3_0, kUnity, kMinus3dB);
     // Pre-normalization: L = R = kMinus3dB, C = kUnity*kPlus3dB = kPlus3dB.
     // L and R get the identical weight mono_downmix gives every 3-front-
     // channel source's outer pair, so they survive normalization equal to
@@ -183,7 +192,8 @@ TEST_CASE("mono_downmix: 3/0 centre gets clev+3dB gain relative to L and R, pres
 
 TEST_CASE("mono_downmix: 1+1 dual mono has no defined downmix and returns all zeros",
          "[mixing]") {
-    const auto dm = iclforge::ac3::meta::mono_downmix(iclforge::ac3::Acmod::kDualMono, kMinus3dB, kMinus3dB);
+    const auto dm =
+        iclforge::ac3::meta::mono_downmix(iclforge::ac3::Acmod::kDualMono, kMinus3dB, kMinus3dB);
     CHECK(dm == std::array<double, 5>{});
 }
 
@@ -231,24 +241,31 @@ TEST_CASE("mono_downmix_peak_dbfs: the two-history-block overload delegates to t
 TEST_CASE("mono_downmix_peak_dbfs: no channels pushed reads as silence, not -inf",
          "[mixing][peak]") {
     const double peak = iclforge::ac3::meta::mono_downmix_peak_dbfs(
-        std::span<const std::span<const float>>{}, iclforge::ac3::Acmod::k2_0, kMinus3dB, kMinus3dB);
+        std::span<const std::span<const float>>{}, iclforge::ac3::Acmod::k2_0, kMinus3dB,
+        kMinus3dB);
     CHECK(peak == -200.0);
 }
 
 // --- mix-level coefficient tables and LFE formula ---------------------------
 
 TEST_CASE("coefficient(): CentreMixLevel matches Table 5.9's three legal codes", "[mixing]") {
-    CHECK(iclforge::ac3::meta::coefficient(iclforge::ac3::meta::CentreMixLevel::kMinus3dB) == kMinus3dB);
-    CHECK(iclforge::ac3::meta::coefficient(iclforge::ac3::meta::CentreMixLevel::kMinus4_5dB) == kMinus4_5dB);
-    CHECK(iclforge::ac3::meta::coefficient(iclforge::ac3::meta::CentreMixLevel::kMinus6dB) == kMinus6dB);
+    CHECK(iclforge::ac3::meta::coefficient(iclforge::ac3::meta::CentreMixLevel::kMinus3dB) ==
+          kMinus3dB);
+    CHECK(iclforge::ac3::meta::coefficient(iclforge::ac3::meta::CentreMixLevel::kMinus4_5dB) ==
+          kMinus4_5dB);
+    CHECK(iclforge::ac3::meta::coefficient(iclforge::ac3::meta::CentreMixLevel::kMinus6dB) ==
+          kMinus6dB);
 }
 
 TEST_CASE("coefficient(): SurroundMixLevel matches Table 5.10's three legal codes, "
          "including the genuine 'surrounds dropped' value",
          "[mixing]") {
-    CHECK(iclforge::ac3::meta::coefficient(iclforge::ac3::meta::SurroundMixLevel::kMinus3dB) == kMinus3dB);
-    CHECK(iclforge::ac3::meta::coefficient(iclforge::ac3::meta::SurroundMixLevel::kMinus6dB) == kMinus6dB);
-    CHECK(iclforge::ac3::meta::coefficient(iclforge::ac3::meta::SurroundMixLevel::kSilent) == kSilent);
+    CHECK(iclforge::ac3::meta::coefficient(iclforge::ac3::meta::SurroundMixLevel::kMinus3dB) ==
+          kMinus3dB);
+    CHECK(iclforge::ac3::meta::coefficient(iclforge::ac3::meta::SurroundMixLevel::kMinus6dB) ==
+          kMinus6dB);
+    CHECK(iclforge::ac3::meta::coefficient(iclforge::ac3::meta::SurroundMixLevel::kSilent) ==
+          kSilent);
 }
 
 TEST_CASE("coefficient(): the 8-value MixLevel table (Tables D2.3/D2.5) is exact end to end",

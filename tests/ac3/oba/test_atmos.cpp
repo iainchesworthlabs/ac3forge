@@ -55,7 +55,8 @@ std::complex<double> project(std::span<const float> x, double hz) {
 // Nyquist evenly, so at 48 kHz each is 375 Hz wide, and Table 54 groups them.
 int band_of(double hz, int num_bands_idx) {
     const auto subband = static_cast<std::size_t>(hz / (24000.0 / 64.0));
-    return iclforge::ac3::oba::joc::kSubbandToBand[static_cast<std::size_t>(num_bands_idx)][subband];
+    return iclforge::ac3::oba::joc::kSubbandToBand[static_cast<std::size_t>(num_bands_idx)]
+                                                  [subband];
 }
 
 // §6.6.6, evaluated at one frequency. The decoder applies the matrix band by
@@ -452,7 +453,8 @@ TEST_CASE("oba::joc::reconstruct recovers well-separated objects through the rea
     const std::array<double, 4> hz{311.0, 997.0, 2200.0, 5000.0};
     const std::array<double, 4> amplitude{0.30, 0.25, 0.20, 0.22};
 
-    constexpr std::array<int, iclforge::ac3::oba::joc::kNumChannels5X> kAc3FromJoc = {0, 2, 1, 3, 4};
+    constexpr std::array<int, iclforge::ac3::oba::joc::kNumChannels5X> kAc3FromJoc = {0, 2, 1, 3,
+                                                                                      4};
 
     iclforge::ac3::Eac3Decoder decoder;
     iclforge::ac3::oba::joc::ReconstructionState state;
@@ -574,7 +576,8 @@ TEST_CASE("QMF-domain JOC reconstructs objects at least as well as the MDCT-band
         const std::array<double, kObjects> hz{311.0, 997.0, 2200.0, 5000.0};
         const std::array<double, kObjects> amplitude{0.30, 0.25, 0.20, 0.22};
 
-        constexpr std::array<int, iclforge::ac3::oba::joc::kNumChannels5X> kAc3FromJoc = {0, 2, 1, 3, 4};
+        constexpr std::array<int, iclforge::ac3::oba::joc::kNumChannels5X> kAc3FromJoc = {0, 2, 1,
+                                                                                          3, 4};
         iclforge::ac3::Eac3Decoder decoder;
         iclforge::ac3::oba::joc::ReconstructionState state;
         std::vector<std::span<const float>> views(kObjects);
@@ -606,7 +609,8 @@ TEST_CASE("QMF-domain JOC reconstructs objects at least as well as the MDCT-band
             const auto params = iclforge::ac3::oba::joc::parse_payload(*joc_bytes);
             REQUIRE(params.has_value());
 
-            std::array<std::span<const float>, iclforge::ac3::oba::joc::kNumChannels5X> bed_joc_order{};
+            std::array<std::span<const float>, iclforge::ac3::oba::joc::kNumChannels5X>
+                bed_joc_order{};
             for (int jc = 0; jc < iclforge::ac3::oba::joc::kNumChannels5X; ++jc) {
                 bed_joc_order[static_cast<std::size_t>(jc)] = sub.channels[static_cast<std::size_t>(
                     kAc3FromJoc[static_cast<std::size_t>(jc)])];
@@ -711,7 +715,8 @@ TEST_CASE("JOC bed analysis's fast forward MDCT agrees with the direct form", "[
     // feed the transform exactly as a real decode would.
     constexpr auto kDomain = iclforge::oba::joc::Domain::kMdctBand;
     constexpr int kObjects = 3;
-    iclforge::ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 640, .joc_domain = kDomain}, kObjects};
+    iclforge::ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 640, .joc_domain = kDomain},
+                                             kObjects};
     const std::array<iclforge::oba::ObjectPlacement, kObjects> placement{{
         {.position = {.x = 0.1, .y = 0.3, .z = 0.0}},
         {.position = {.x = 0.9, .y = 0.3, .z = 0.5}},
@@ -720,7 +725,8 @@ TEST_CASE("JOC bed analysis's fast forward MDCT agrees with the direct form", "[
     const std::array<double, kObjects> hz{233.0, 1500.0, 4200.0};
     const std::array<double, kObjects> amplitude{0.28, 0.24, 0.20};
 
-    constexpr std::array<int, iclforge::ac3::oba::joc::kNumChannels5X> kAc3FromJoc = {0, 2, 1, 3, 4};
+    constexpr std::array<int, iclforge::ac3::oba::joc::kNumChannels5X> kAc3FromJoc = {0, 2, 1, 3,
+                                                                                      4};
     iclforge::ac3::Eac3Decoder decoder;
     iclforge::ac3::oba::joc::ReconstructionState direct_state;
     iclforge::ac3::oba::joc::ReconstructionState fast_state;
@@ -761,9 +767,9 @@ TEST_CASE("JOC bed analysis's fast forward MDCT agrees with the direct form", "[
         const auto direct_out =
             iclforge::ac3::oba::joc::reconstruct(bed_joc_order, *params, direct_state,
                                             /*fast_mdct=*/false, /*fast_imdct=*/true, kDomain);
-        const auto fast_out = iclforge::ac3::oba::joc::reconstruct(bed_joc_order, *params, fast_state,
-                                                     /*fast_mdct=*/true, /*fast_imdct=*/true,
-                                                     kDomain);
+        const auto fast_out =
+            iclforge::ac3::oba::joc::reconstruct(bed_joc_order, *params, fast_state,
+                                                 /*fast_mdct=*/true, /*fast_imdct=*/true, kDomain);
         REQUIRE(direct_out.size() == kObjects);
         REQUIRE(fast_out.size() == kObjects);
         for (std::size_t i = 0; i < kObjects; ++i) {
@@ -1074,7 +1080,8 @@ TEST_CASE("the splice counter starts at zero and wraps to one", "[atmos]") {
 // motion to interpolate across.
 TEST_CASE("short syncframes carry the object layer end to end",
           "[atmos][decoder][numblkscod]") {
-    constexpr std::array<int, iclforge::ac3::oba::joc::kNumChannels5X> kAc3FromJoc = {0, 2, 1, 3, 4};
+    constexpr std::array<int, iclforge::ac3::oba::joc::kNumChannels5X> kAc3FromJoc = {0, 2, 1, 3,
+                                                                                      4};
     const std::array<iclforge::oba::ObjectPlacement, 4> placement{{
         {.position = {.x = 0.0, .y = 0.0, .z = 0.0}},
         {.position = {.x = 1.0, .y = 0.0, .z = 0.0}},

@@ -302,7 +302,8 @@ int main(int argc, char** argv) {
 
     // --- encode_exponents -------------------------------------------------
     results.push_back(time_kernel("encode_exponents", [&] {
-        const auto encoded = iclforge::ac3::encode_exponents(exps4, iclforge::ac3::ExpStrategy::kD15);
+        const auto encoded =
+            iclforge::ac3::encode_exponents(exps4, iclforge::ac3::ExpStrategy::kD15);
         g_sink += encoded.absolute;
     }));
 
@@ -361,8 +362,8 @@ int main(int argc, char** argv) {
     results.push_back(time_kernel("ecpl_channel_spectrum", [&] {
         std::array<double, 256> real_out{};
         std::array<double, 256> imag_out{};
-        iclforge::ac3::eac3::ecpl_channel_spectrum(ch0_coeffs[3], ch0_coeffs[4], ch0_coeffs[5], real_out,
-                                         imag_out);
+        iclforge::ac3::eac3::ecpl_channel_spectrum(ch0_coeffs[3], ch0_coeffs[4], ch0_coeffs[5],
+                                                   real_out, imag_out);
         g_sink += real_out[64];
     }));
     // The same call with its three step-1 inverses on the fast path - what a
@@ -372,8 +373,8 @@ int main(int argc, char** argv) {
     results.push_back(time_kernel("ecpl_channel_spectrum_fast", [&] {
         std::array<double, 256> real_out{};
         std::array<double, 256> imag_out{};
-        iclforge::ac3::eac3::ecpl_channel_spectrum(ch0_coeffs[3], ch0_coeffs[4], ch0_coeffs[5], real_out,
-                                         imag_out, /*fast=*/true);
+        iclforge::ac3::eac3::ecpl_channel_spectrum(ch0_coeffs[3], ch0_coeffs[4], ch0_coeffs[5],
+                                                   real_out, imag_out, /*fast=*/true);
         g_sink += real_out[64];
     }));
 
@@ -432,8 +433,8 @@ int main(int argc, char** argv) {
             static_cast<std::size_t>(iclforge::ac3::oba::joc::kNumChannels5X),
             std::vector<float>(static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame)));
         for (std::size_t ch = 0; ch < bed_storage.size(); ++ch) {
-            const auto source =
-                audio.channel(ch).subspan(0, static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame));
+            const auto source = audio.channel(ch).subspan(
+                0, static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame));
             std::copy(source.begin(), source.end(), bed_storage[ch].begin());
         }
         std::vector<std::span<const float>> bed;
@@ -614,8 +615,8 @@ int main(int argc, char** argv) {
         for (int ch = 0; ch < 6; ++ch) {
             const std::span<const std::uint8_t> exps{
                 bits_at_exps_full[static_cast<std::size_t>(ch)].data(), kEndmant};
-            iclforge::ac3::compute_bit_allocation(exps, iclforge::ac3::SampleRate::k48000, codes, 10, 0,
-                                        bap[static_cast<std::size_t>(ch)]);
+            iclforge::ac3::compute_bit_allocation(exps, iclforge::ac3::SampleRate::k48000, codes,
+                                                  10, 0, bap[static_cast<std::size_t>(ch)]);
             views.push_back(bap[static_cast<std::size_t>(ch)]);
         }
         g_sink += static_cast<double>(iclforge::ac3::mantissa_bits_per_block(views));

@@ -39,7 +39,8 @@ std::optional<LoadedSources> load_sources(
     std::span<const std::pair<std::size_t, double>> offsets) {
     auto primary = iclforge::ac3::io::read_wav(std::string{in_path});
     if (!primary) {
-        fmt::println(stderr, "error: {}: {}", in_path, iclforge::ac3::io::describe(primary.error()));
+        fmt::println(stderr, "error: {}: {}", in_path,
+                     iclforge::ac3::io::describe(primary.error()));
         return std::nullopt;
     }
     LoadedSources out;

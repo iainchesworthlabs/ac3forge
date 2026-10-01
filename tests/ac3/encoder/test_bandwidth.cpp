@@ -240,7 +240,8 @@ TEST_CASE("AC-3 narrows chbwcod to the content under the rate ceiling") {
     // 192 kbit/s stereo is 96 per channel: under the ceiling above which
     // the content is not consulted, and the rate ceiling there is already
     // 60 - so whatever chbwcod comes out is the content's own answer.
-    const iclforge::ac3::EncoderConfig config{.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k2_0};
+    const iclforge::ac3::EncoderConfig config{.bitrate_kbps = 192,
+                                              .acmod = iclforge::ac3::Acmod::k2_0};
     const int wide_code = ac3_chbwcod(encode_ac3(config, 20000.0, 8));
     const int narrow_code = ac3_chbwcod(encode_ac3(config, 8000.0, 8));
 
@@ -290,7 +291,8 @@ TEST_CASE("E-AC-3 narrows the coded bandwidth where it used to send 60") {
     // chbwcod, the thing under test here, never consulted. Forcing both
     // tools off isolates chbwcod's own behaviour from whatever `auto`
     // otherwise decides.
-    iclforge::ac3::eac3::FrameConfig auto_bw{.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k2_0};
+    iclforge::ac3::eac3::FrameConfig auto_bw{.bitrate_kbps = 192,
+                                             .acmod = iclforge::ac3::Acmod::k2_0};
     iclforge::ac3::eac3::FrameConfig fixed_60 = auto_bw;
     fixed_60.chbwcod = 60;
 
@@ -323,10 +325,14 @@ TEST_CASE("accumulate_peak_exponents' float form agrees with the double one") {
         std::copy(coefficients.begin(), coefficients.end(), out.begin());
         return out;
     }();
-    std::vector<std::uint8_t> from_float(256, static_cast<std::uint8_t>(iclforge::ac3::kMaxExponent));
-    std::vector<std::uint8_t> from_double(256, static_cast<std::uint8_t>(iclforge::ac3::kMaxExponent));
-    iclforge::ac3::encoder::accumulate_peak_exponents(std::span<const float>{coefficients}, from_float);
-    iclforge::ac3::encoder::accumulate_peak_exponents(std::span<const double>{widened}, from_double);
+    std::vector<std::uint8_t> from_float(256,
+                                         static_cast<std::uint8_t>(iclforge::ac3::kMaxExponent));
+    std::vector<std::uint8_t> from_double(256,
+                                          static_cast<std::uint8_t>(iclforge::ac3::kMaxExponent));
+    iclforge::ac3::encoder::accumulate_peak_exponents(std::span<const float>{coefficients},
+                                                      from_float);
+    iclforge::ac3::encoder::accumulate_peak_exponents(std::span<const double>{widened},
+                                                      from_double);
     CHECK(from_float == from_double);
     CHECK(from_float[0] == 0);  // the loudest bin sits in the top exponent
 }

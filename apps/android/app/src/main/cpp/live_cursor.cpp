@@ -972,8 +972,8 @@ void run_loop() {
     // the signing key asset ever sets this true.
     const bool emit_objects = shield::signing_available();
     stream_stats().signed_stream.store(emit_objects, std::memory_order_relaxed);
-    iclforge::ac3::oba::AtmosEncoder encoder({.bitrate_kbps = 448, .emit_object_metadata = emit_objects},
-                                   kObjects);
+    iclforge::ac3::oba::AtmosEncoder encoder(
+        {.bitrate_kbps = 448, .emit_object_metadata = emit_objects}, kObjects);
     __android_log_print(ANDROID_LOG_INFO, kLogTag,
                         "object container: %s", emit_objects ? "objects (signed)" : "bed51 (omitted, unsigned build)");
     {
@@ -1247,7 +1247,8 @@ void run_loop() {
                                                         std::memory_order_relaxed);
             }
 
-            const auto vector = iclforge::ac3::analysis::energy_vector(levels, iclforge::ac3::Acmod::k3_2);
+            const auto vector =
+                iclforge::ac3::analysis::energy_vector(levels, iclforge::ac3::Acmod::k3_2);
             stream_stats().energy_azimuth_deg.store(static_cast<float>(vector.azimuth_deg),
                                                     std::memory_order_relaxed);
             stream_stats().energy_magnitude.store(static_cast<float>(vector.magnitude),
@@ -1260,8 +1261,8 @@ void run_loop() {
             if (const auto lkfs = loudness_meter.integrated_lkfs()) {
                 stream_stats().integrated_lkfs.store(static_cast<float>(*lkfs),
                                                      std::memory_order_relaxed);
-                stream_stats().implied_dialnorm.store(iclforge::ac3::meta::dialnorm_from_lkfs(*lkfs),
-                                                      std::memory_order_relaxed);
+                stream_stats().implied_dialnorm.store(
+                    iclforge::ac3::meta::dialnorm_from_lkfs(*lkfs), std::memory_order_relaxed);
                 stream_stats().loudness_valid.store(true, std::memory_order_relaxed);
             }
         }
@@ -1309,9 +1310,10 @@ void run_loop() {
                 stripped_storage = std::move(stripped->bytes);
                 unit_bytes = stripped_storage;
             } else if (frames % 96 == 0) {  // ~3s apart, not once per frame
-                __android_log_print(ANDROID_LOG_WARN, kLogTag,
-                                    "strip_objects failed (%s) - sending the unstripped unit",
-                                    std::string(iclforge::ac3::io::describe(stripped.error())).c_str());
+                __android_log_print(
+                    ANDROID_LOG_WARN, kLogTag,
+                    "strip_objects failed (%s) - sending the unstripped unit",
+                    std::string(iclforge::ac3::io::describe(stripped.error())).c_str());
             }
         } else {
             stream_stats().stripped_bytes_per_frame.store(0, std::memory_order_relaxed);

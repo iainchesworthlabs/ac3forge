@@ -29,8 +29,9 @@ iclforge::ac3::EncoderConfig encoder_config_to_cpp(const iclforge_encoder_config
     out.fast_mdct = config.fast_mdct != 0;
     out.drc = config.has_drc ? std::optional<iclforge::ac3::meta::Profile>(iclforge::ac3::meta::profile(to_cpp(config.drc_profile)))
                               : std::nullopt;
-    out.heavy = config.has_heavy ? std::optional<iclforge::ac3::meta::HeavyConfig>(to_cpp(config.heavy))
-                                  : std::nullopt;
+    out.heavy = config.has_heavy
+                    ? std::optional<iclforge::ac3::meta::HeavyConfig>(to_cpp(config.heavy))
+                    : std::nullopt;
     out.drc2 = config.has_drc2
                    ? std::optional<iclforge::ac3::meta::Profile>(iclforge::ac3::meta::profile(to_cpp(config.drc2_profile)))
                    : std::nullopt;

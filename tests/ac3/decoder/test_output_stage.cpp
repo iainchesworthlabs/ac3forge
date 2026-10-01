@@ -105,13 +105,13 @@ TEST_CASE("Lo/Ro reproduces the section 7.8 coefficients, normalised", "[decoder
         double right;
     };
     const std::array<Expect, 5> expected = {
-        Expect{.channel = 0, .left = 1.0, .right = 0.0},                                 // L
+        Expect{.channel = 0, .left = 1.0, .right = 0.0},  // L
         Expect{.channel = 1,
                .left = iclforge::ac3::meta::level::kMinus3dB,
-               .right = iclforge::ac3::meta::level::kMinus3dB},                                    // C
-        Expect{.channel = 2, .left = 0.0, .right = 1.0},                                 // R
-        Expect{.channel = 3, .left = iclforge::ac3::meta::level::kMinus6dB, .right = 0.0},         // Ls
-        Expect{.channel = 4, .left = 0.0, .right = iclforge::ac3::meta::level::kMinus6dB},         // Rs
+               .right = iclforge::ac3::meta::level::kMinus3dB},                             // C
+        Expect{.channel = 2, .left = 0.0, .right = 1.0},                                    // R
+        Expect{.channel = 3, .left = iclforge::ac3::meta::level::kMinus6dB, .right = 0.0},  // Ls
+        Expect{.channel = 4, .left = 0.0, .right = iclforge::ac3::meta::level::kMinus6dB},  // Rs
     };
     for (const auto& e : expected) {
         iclforge::ac3::OutputStage stage{{.target = iclforge::ac3::DownmixTarget::kLoRo}};
@@ -134,7 +134,8 @@ TEST_CASE("section 7.8.1 normalisation bounds a REAL matrix by the loudest coded
     //
     // Lt/Rt with its phase shift is deliberately NOT in this list, and the
     // next test says why.
-    for (const auto target : {iclforge::ac3::DownmixTarget::kLoRo, iclforge::ac3::DownmixTarget::kMono}) {
+    for (const auto target :
+         {iclforge::ac3::DownmixTarget::kLoRo, iclforge::ac3::DownmixTarget::kMono}) {
         iclforge::ac3::OutputStage stage{{.target = target}};
         std::vector<std::vector<float>> channels(5, std::vector<float>(256, 1.0F));
         stage.apply(channels, iclforge::ac3::Acmod::k3_2, false, iclforge::ac3::MixLevels{}, 31);
@@ -182,8 +183,8 @@ TEST_CASE("a mono fold takes the section 7.8 1/0 branch", "[decoder][output]") {
     REQUIRE(channels.size() == 1);
     // "mix center into center using clev and +3 dB gain", then normalised by
     // the same sum the builder computes.
-    const auto coeffs = iclforge::ac3::meta::mono_downmix(iclforge::ac3::Acmod::k3_2, levels.loro_clev,
-                                                levels.loro_slev);
+    const auto coeffs = iclforge::ac3::meta::mono_downmix(iclforge::ac3::Acmod::k3_2,
+                                                          levels.loro_clev, levels.loro_slev);
     CHECK(static_cast<double>(channels[0][0]) == Catch::Approx(coeffs[1]).margin(1e-6));
 }
 
@@ -320,7 +321,8 @@ TEST_CASE("dual mono normalises Ch2 by its own dialnorm2, not Ch1's", "[decoder]
     // they do here.
     iclforge::ac3::OutputStage stage{{.apply_dialnorm = true}};
     std::vector<std::vector<float>> channels(2, std::vector<float>(64, 1.0F));
-    stage.apply(channels, iclforge::ac3::Acmod::kDualMono, false, iclforge::ac3::MixLevels{}, 27, 18);
+    stage.apply(channels, iclforge::ac3::Acmod::kDualMono, false, iclforge::ac3::MixLevels{}, 27,
+                18);
     // Dual mono is never folded (OutputStage refuses it outright - see
     // apply()'s own comment), so the channel count is untouched and only the
     // level moved, on each channel by its own reference.
@@ -347,7 +349,8 @@ TEST_CASE("dual mono normalises Ch2 by its own dialnorm2, not Ch1's", "[decoder]
 TEST_CASE("the LFE joins a fold only when asked, and never against the stream's wishes",
           "[decoder][output]") {
     const auto fold = [](bool mix_lfe, std::optional<double> lfe_level) {
-        iclforge::ac3::OutputStage stage{{.target = iclforge::ac3::DownmixTarget::kLoRo, .mix_lfe = mix_lfe}};
+        iclforge::ac3::OutputStage stage{
+            {.target = iclforge::ac3::DownmixTarget::kLoRo, .mix_lfe = mix_lfe}};
         std::vector<std::vector<float>> channels(6, std::vector<float>(16, 0.0F));
         channels[5][0] = 1.0F;  // the LFE, and nothing else
         iclforge::ac3::MixLevels levels;
@@ -413,21 +416,23 @@ TEST_CASE("mix-level overrides fold as if the stream had sent those levels",
         return channels;
     };
 
-    for (const auto target : {iclforge::ac3::DownmixTarget::kLoRo, iclforge::ac3::DownmixTarget::kLtRt,
-                              iclforge::ac3::DownmixTarget::kMono}) {
+    for (const auto target :
+         {iclforge::ac3::DownmixTarget::kLoRo, iclforge::ac3::DownmixTarget::kLtRt,
+          iclforge::ac3::DownmixTarget::kMono}) {
         INFO("target " << static_cast<int>(target));
         const iclforge::ac3::OutputConfig plain_config{.target = target, .mix_lfe = true};
         const iclforge::ac3::OutputConfig override_config{
             .target = target, .mix_lfe = true, .mix_override = chosen};
 
         auto overridden = source;
-        iclforge::ac3::OutputStage{override_config}.apply(overridden, iclforge::ac3::Acmod::k3_2, true,
-                                                     stream, 31);
+        iclforge::ac3::OutputStage{override_config}.apply(overridden, iclforge::ac3::Acmod::k3_2,
+                                                          true, stream, 31);
         auto sent = source;
-        iclforge::ac3::OutputStage{plain_config}.apply(sent, iclforge::ac3::Acmod::k3_2, true, as_sent, 31);
+        iclforge::ac3::OutputStage{plain_config}.apply(sent, iclforge::ac3::Acmod::k3_2, true,
+                                                       as_sent, 31);
         auto untouched = source;
-        iclforge::ac3::OutputStage{plain_config}.apply(untouched, iclforge::ac3::Acmod::k3_2, true, stream,
-                                                  31);
+        iclforge::ac3::OutputStage{plain_config}.apply(untouched, iclforge::ac3::Acmod::k3_2, true,
+                                                       stream, 31);
         REQUIRE(overridden.size() == sent.size());
         CHECK(same(overridden, sent, sent.size()));
         CHECK_FALSE(same(overridden, untouched, untouched.size()));
@@ -495,8 +500,9 @@ TEST_CASE("mix_levels resolves both generations' downmix syntax", "[decoder][out
     CHECK(ac3_default.loro_clev == iclforge::ac3::meta::level::kMinus4_5dB);
     CHECK(ac3_default.loro_slev == iclforge::ac3::meta::level::kMinus6dB);
 
-    const auto ac3_stated = iclforge::ac3::mix_levels(iclforge::ac3::meta::CentreMixLevel::kMinus3dB,
-                                            iclforge::ac3::meta::SurroundMixLevel::kMinus3dB);
+    const auto ac3_stated =
+        iclforge::ac3::mix_levels(iclforge::ac3::meta::CentreMixLevel::kMinus3dB,
+                                  iclforge::ac3::meta::SurroundMixLevel::kMinus3dB);
     CHECK(ac3_stated.loro_clev == iclforge::ac3::meta::level::kMinus3dB);
     CHECK(ac3_stated.loro_slev == iclforge::ac3::meta::level::kMinus3dB);
 
@@ -556,17 +562,18 @@ TEST_CASE("automatic_stereo_target follows Lt/Rt and folds everything else Lo/Ro
                                             iclforge::ac3::meta::DownmixMode::kReserved) ==
           iclforge::ac3::DownmixTarget::kLoRo);
     // A MixLevels nobody filled in says nothing, so it folds Lo/Ro as well.
-    CHECK(
-        iclforge::ac3::automatic_stereo_target(iclforge::ac3::Acmod::k3_2, iclforge::ac3::MixLevels{}.preferred) ==
-        iclforge::ac3::DownmixTarget::kLoRo);
+    CHECK(iclforge::ac3::automatic_stereo_target(iclforge::ac3::Acmod::k3_2,
+                                                 iclforge::ac3::MixLevels{}.preferred) ==
+          iclforge::ac3::DownmixTarget::kLoRo);
 
     // Table D2.2's own note leaves dmixmod's meaning reserved below acmod
     // 3/0 - at 1+1, 1/0 and 2/0 the field is reserved whatever code it
     // carries, so a preference that would choose Lt/Rt at a wider acmod
     // still folds Lo/Ro at each of these three.
-    for (const auto acmod :
-         {iclforge::ac3::Acmod::kDualMono, iclforge::ac3::Acmod::k1_0, iclforge::ac3::Acmod::k2_0}) {
-        CHECK(iclforge::ac3::automatic_stereo_target(acmod, iclforge::ac3::meta::DownmixMode::kLtRt) ==
+    for (const auto acmod : {iclforge::ac3::Acmod::kDualMono, iclforge::ac3::Acmod::k1_0,
+                             iclforge::ac3::Acmod::k2_0}) {
+        CHECK(iclforge::ac3::automatic_stereo_target(acmod,
+                                                     iclforge::ac3::meta::DownmixMode::kLtRt) ==
               iclforge::ac3::DownmixTarget::kLoRo);
     }
     // k3_0 is the narrowest acmod the note DOES define the field for - the
@@ -589,8 +596,9 @@ TEST_CASE("a plain 5.1 layout folds identically through the acmod and the layout
         iclforge::ac3::eac3::chanmap::acmod_map(iclforge::ac3::Acmod::k3_2, false));
     REQUIRE(layout.count == 5);
 
-    for (const auto target : {iclforge::ac3::DownmixTarget::kLoRo, iclforge::ac3::DownmixTarget::kLtRt,
-                              iclforge::ac3::DownmixTarget::kMono}) {
+    for (const auto target :
+         {iclforge::ac3::DownmixTarget::kLoRo, iclforge::ac3::DownmixTarget::kLtRt,
+          iclforge::ac3::DownmixTarget::kMono}) {
         auto by_acmod = source;
         iclforge::ac3::OutputStage plain{{.target = target}};
         plain.apply(by_acmod, iclforge::ac3::Acmod::k3_2, false, iclforge::ac3::MixLevels{}, 31);
@@ -601,7 +609,8 @@ TEST_CASE("a plain 5.1 layout folds identically through the acmod and the layout
             views.emplace_back(channel);
         }
         iclforge::ac3::OutputStage rendered{{.target = target}};
-        rendered.apply(views, layout, iclforge::ac3::Acmod::k3_2, false, iclforge::ac3::MixLevels{}, 31);
+        rendered.apply(views, layout, iclforge::ac3::Acmod::k3_2, false, iclforge::ac3::MixLevels{},
+                       31);
 
         INFO("target " << static_cast<int>(target));
         const auto width = by_acmod.size();
@@ -675,7 +684,8 @@ TEST_CASE("a folded decode of real coded audio keeps every channel's content",
     iclforge::ac3::FrameDecoder folding{
         {.output = {.target = iclforge::ac3::DownmixTarget::kLoRo, .apply_dialnorm = true}}};
     iclforge::ac3::FrameDecoder plain;
-    iclforge::ac3::OutputStage after{{.target = iclforge::ac3::DownmixTarget::kLoRo, .apply_dialnorm = true}};
+    iclforge::ac3::OutputStage after{
+        {.target = iclforge::ac3::DownmixTarget::kLoRo, .apply_dialnorm = true}};
     for (const auto& frame : frames) {
         const auto in_decoder = folding.decode_frame(frame);
         REQUIRE(in_decoder.has_value());
@@ -771,7 +781,8 @@ iclforge::ac3::EncoderConfig annex_d_config(const iclforge::ac3::meta::MixMetada
 
 // `count` syncframes of a distinct tone per channel, as the round-trip test
 // above encodes them.
-std::vector<std::vector<std::byte>> encode_tones(const iclforge::ac3::EncoderConfig& config, int count) {
+std::vector<std::vector<std::byte>> encode_tones(const iclforge::ac3::EncoderConfig& config,
+                                                 int count) {
     const std::array<double, 5> hz = {200.0, 400.0, 800.0, 1600.0, 3200.0};
     iclforge::ac3::FrameEncoder encoder{config};
     std::vector<std::vector<std::byte>> frames;
@@ -799,9 +810,10 @@ struct FoldCheck {
 // plain one whose coded channels are then folded by hand with `levels`.
 // `concealment` goes to both decoders, so a frame they conceal is concealed
 // the same way before either fold sees it.
-FoldCheck check_fold(std::span<const std::vector<std::byte>> frames, iclforge::ac3::DownmixTarget target,
-                     const iclforge::ac3::MixLevels& levels,
-                     iclforge::ac3::ConcealmentPolicy concealment = iclforge::ac3::ConcealmentPolicy::kNone) {
+FoldCheck check_fold(
+    std::span<const std::vector<std::byte>> frames, iclforge::ac3::DownmixTarget target,
+    const iclforge::ac3::MixLevels& levels,
+    iclforge::ac3::ConcealmentPolicy concealment = iclforge::ac3::ConcealmentPolicy::kNone) {
     iclforge::ac3::FrameDecoder folding{{.output = {.target = target}, .concealment = concealment}};
     iclforge::ac3::FrameDecoder plain{{.concealment = concealment}};
     iclforge::ac3::OutputStage by_hand{{.target = target}};
@@ -862,9 +874,9 @@ TEST_CASE("mix_levels takes Annex D's xbsi1 levels in place of bsi's", "[decoder
     const iclforge::ac3::meta::AlternateBsi annex_d{.mix = annex_d_levels()};
     // bsi's surmixlev '10' would silence the Lt/Rt surrounds on its own (see
     // the bsid-8 case above); xbsi1 states that level itself, so it is xbsi1's.
-    const auto levels =
-        iclforge::ac3::mix_levels(iclforge::ac3::Acmod::k3_2, iclforge::ac3::meta::CentreMixLevel::kMinus3dB,
-                             iclforge::ac3::meta::SurroundMixLevel::kSilent, annex_d);
+    const auto levels = iclforge::ac3::mix_levels(
+        iclforge::ac3::Acmod::k3_2, iclforge::ac3::meta::CentreMixLevel::kMinus3dB,
+        iclforge::ac3::meta::SurroundMixLevel::kSilent, annex_d);
     CHECK(levels.loro_clev == kAnnexDLevels.loro_clev);
     CHECK(levels.loro_slev == kAnnexDLevels.loro_slev);
     CHECK(levels.ltrt_clev == kAnnexDLevels.ltrt_clev);
@@ -878,8 +890,8 @@ TEST_CASE("mix_levels takes Annex D's xbsi1 levels in place of bsi's", "[decoder
     // Table D2.2's note defines dmixmod for 3/0 and wider only.
     CHECK(iclforge::ac3::mix_levels(iclforge::ac3::Acmod::k3_0, std::nullopt, std::nullopt, annex_d)
               .preferred == iclforge::ac3::meta::DownmixMode::kLtRt);
-    for (const auto acmod :
-         {iclforge::ac3::Acmod::kDualMono, iclforge::ac3::Acmod::k1_0, iclforge::ac3::Acmod::k2_0}) {
+    for (const auto acmod : {iclforge::ac3::Acmod::kDualMono, iclforge::ac3::Acmod::k1_0,
+                             iclforge::ac3::Acmod::k2_0}) {
         INFO("acmod " << static_cast<int>(acmod));
         CHECK(iclforge::ac3::mix_levels(acmod, std::nullopt, std::nullopt, annex_d).preferred ==
               iclforge::ac3::meta::DownmixMode::kNotIndicated);
@@ -894,13 +906,14 @@ TEST_CASE("mix_levels takes Annex D's xbsi1 levels in place of bsi's", "[decoder
     };
     const auto bsid8 = iclforge::ac3::mix_levels(iclforge::ac3::meta::CentreMixLevel::kMinus3dB,
                                        iclforge::ac3::meta::SurroundMixLevel::kSilent);
-    CHECK(
-        same(iclforge::ac3::mix_levels(iclforge::ac3::Acmod::k3_2, iclforge::ac3::meta::CentreMixLevel::kMinus3dB,
-                                  iclforge::ac3::meta::SurroundMixLevel::kSilent, std::nullopt),
-             bsid8));
     CHECK(same(iclforge::ac3::mix_levels(
                    iclforge::ac3::Acmod::k3_2, iclforge::ac3::meta::CentreMixLevel::kMinus3dB,
-                   iclforge::ac3::meta::SurroundMixLevel::kSilent, iclforge::ac3::meta::AlternateBsi{}),
+                   iclforge::ac3::meta::SurroundMixLevel::kSilent, std::nullopt),
+               bsid8));
+    CHECK(same(iclforge::ac3::mix_levels(iclforge::ac3::Acmod::k3_2,
+                                         iclforge::ac3::meta::CentreMixLevel::kMinus3dB,
+                                         iclforge::ac3::meta::SurroundMixLevel::kSilent,
+                                         iclforge::ac3::meta::AlternateBsi{}),
                bsid8));
 }
 
@@ -920,7 +933,8 @@ TEST_CASE("an Annex D stream folds to Lo/Ro and mono with its own Lo/Ro levels",
     // Mono is included because §7.8.2 defines it as Lo/Ro summed, so it takes
     // lorocmixlev/lorosurmixlev too.
     const auto frames = encode_tones(annex_d_config(annex_d_levels()), 5);
-    for (const auto target : {iclforge::ac3::DownmixTarget::kLoRo, iclforge::ac3::DownmixTarget::kMono}) {
+    for (const auto target :
+         {iclforge::ac3::DownmixTarget::kLoRo, iclforge::ac3::DownmixTarget::kMono}) {
         INFO("target " << static_cast<int>(target));
         CHECK(check_fold(frames, target, kAnnexDLevels).matched == frames.size());
         CHECK(check_fold(frames, target, kBsiLevels).matched == 0);
@@ -989,7 +1003,8 @@ TEST_CASE("xbsi1's reserved surround levels fold as -1.5 dB", "[decoder][output]
     auto levels = kAnnexDLevels;
     levels.ltrt_slev = iclforge::ac3::meta::level::kMinus1_5dB;
     levels.loro_slev = iclforge::ac3::meta::level::kMinus1_5dB;
-    for (const auto target : {iclforge::ac3::DownmixTarget::kLtRt, iclforge::ac3::DownmixTarget::kLoRo}) {
+    for (const auto target :
+         {iclforge::ac3::DownmixTarget::kLtRt, iclforge::ac3::DownmixTarget::kLoRo}) {
         INFO("target " << static_cast<int>(target));
         CHECK(check_fold(reserved, target, levels).matched == reserved.size());
     }

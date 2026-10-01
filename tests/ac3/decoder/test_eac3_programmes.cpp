@@ -51,8 +51,10 @@ constexpr double kCommentaryTone = 300.0;
 constexpr double kLfeTone = 60.0;
 
 iclforge::ac3::eac3::FrameConfig bed(std::uint32_t kbps, int dialnorm) {
-    return {
-        .bitrate_kbps = kbps, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true, .dialnorm = dialnorm};
+    return {.bitrate_kbps = kbps,
+            .acmod = iclforge::ac3::Acmod::k3_2,
+            .lfe = true,
+            .dialnorm = dialnorm};
 }
 
 // I0 5.1 at dialnorm 27, I1 mono at dialnorm 20 - two different levels,
@@ -93,7 +95,8 @@ std::vector<std::byte> encode(const iclforge::ac3::eac3::AccessUnitConfig& confi
     const auto append = [&](const iclforge::ac3::eac3::ProgrammeConfig& programme, double hz) {
         const auto take = [&](const iclforge::ac3::eac3::FrameConfig& sub) {
             tone.insert(tone.end(),
-                        static_cast<std::size_t>(iclforge::ac3::fullbw_channel_count(sub.acmod)), hz);
+                        static_cast<std::size_t>(iclforge::ac3::fullbw_channel_count(sub.acmod)),
+                        hz);
             if (sub.lfe) {
                 tone.push_back(kLfeTone);
             }
@@ -109,7 +112,8 @@ std::vector<std::byte> encode(const iclforge::ac3::eac3::AccessUnitConfig& confi
     }
     REQUIRE(tone.size() == nchans);
 
-    std::vector<std::vector<float>> block(nchans, std::vector<float>(iclforge::ac3::kSamplesPerFrame));
+    std::vector<std::vector<float>> block(nchans,
+                                          std::vector<float>(iclforge::ac3::kSamplesPerFrame));
     std::vector<std::span<const float>> views(nchans);
     std::vector<std::byte> stream;
     std::uint64_t n0 = 0;
@@ -265,8 +269,9 @@ TEST_CASE("a second independent substream is a second programme, not more frames
         for (int ch = 0; ch < main.layout.count; ++ch) {
             CAPTURE(ch, iclforge::ac3::eac3::chanmap::name(main.layout[ch]));
             const auto& channel = main.channels[static_cast<std::size_t>(ch)];
-            const double want =
-                main.layout[ch] == iclforge::ac3::eac3::chanmap::Location::kLfe ? kLfeTone : kMainTone;
+            const double want = main.layout[ch] == iclforge::ac3::eac3::chanmap::Location::kLfe
+                                    ? kLfeTone
+                                    : kMainTone;
             CHECK(std::abs(dominant_freq_hz(channel) - want) < 10.0);
         }
         CHECK(std::abs(dominant_freq_hz(commentary.channels[0]) - kCommentaryTone) < 10.0);

@@ -154,7 +154,8 @@ int record_passthrough(std::string_view out_path, std::uint32_t seconds,
     const auto rate = capture.sample_rate();
     const std::uint64_t target_frames = static_cast<std::uint64_t>(seconds) * rate;
     std::uint64_t captured = 0;
-    std::vector<float> interleaved(static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame) * channels);
+    std::vector<float> interleaved(static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame) *
+                                   channels);
     std::vector<std::byte> carrier;
     iclforge::audio::SilenceWatchdog watchdog{meta.watchdog};
     watchdog.reset(std::chrono::steady_clock::now());
@@ -325,7 +326,8 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
     // for how that briefer, opportunistic check works.
     if (!encodable_rate) {
         iclforge::iec61937::PassthroughDetector detector;
-        std::vector<float> probe(static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame) * channels);
+        std::vector<float> probe(static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame) *
+                                 channels);
         while (!detector.decided() && !device_lost) {
             read_frame(probe);
             if (device_lost) {
@@ -411,11 +413,12 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
     };
 
     const auto nchans = static_cast<std::size_t>(routing->coded_channels);
-    std::vector<float> interleaved(static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame) * channels);
-    std::vector<std::vector<float>> source(channels,
-                                           std::vector<float>(iclforge::ac3::kSamplesPerFrame, 0.0F));
-    std::vector<std::vector<float>> block(nchans,
-                                          std::vector<float>(iclforge::ac3::kSamplesPerFrame, 0.0F));
+    std::vector<float> interleaved(static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame) *
+                                   channels);
+    std::vector<std::vector<float>> source(
+        channels, std::vector<float>(iclforge::ac3::kSamplesPerFrame, 0.0F));
+    std::vector<std::vector<float>> block(
+        nchans, std::vector<float>(iclforge::ac3::kSamplesPerFrame, 0.0F));
     std::vector<std::span<const float>> in(channels);
     std::vector<std::span<float>> out(nchans);
     std::vector<std::span<const float>> views(nchans);
@@ -489,8 +492,8 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
         ++frames_written;
         // One frame is 32 ms at 48 kHz, so the meter redraws about 30 times a
         // second without any throttling of its own.
-        print_live_meter(meter, static_cast<double>(frames_written * iclforge::ac3::kSamplesPerFrame) /
-                                    rate_hz);
+        print_live_meter(
+            meter, static_cast<double>(frames_written * iclforge::ac3::kSamplesPerFrame) / rate_hz);
     }
     status_println(status);
 
@@ -837,8 +840,8 @@ struct SplitStream {
         }
         result.units = *split;
     }
-    result.content_rate = sample_rate_hz(
-        static_cast<iclforge::ac3::SampleRate>(std::to_integer<std::uint32_t>(result.units[0][4]) >> 6));
+    result.content_rate = sample_rate_hz(static_cast<iclforge::ac3::SampleRate>(
+        std::to_integer<std::uint32_t>(result.units[0][4]) >> 6));
     return result;
 }
 

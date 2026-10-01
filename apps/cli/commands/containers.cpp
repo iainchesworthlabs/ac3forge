@@ -63,16 +63,17 @@ void warn_if_programmes_dropped(const iclforge::ac3::io::ScannedStream& scanned)
 // Every container writer here holds ONE samples_per_frame for the whole
 // track (iclforge::mp4::AudioTrack, iclforge::mpegts::AudioTrack, iclforge::matroska::AudioTrack),
 // so a stream whose access units differ in length cannot be described to any of them. That was
-// invisible while this passed iclforge::ac3::kSamplesPerFrame outright: an E-AC-3 stream coding fewer
-// than six blocks per syncframe (numblkscod 0/1/2, §E2.3.1.4 - legal, and nothing this project's
-// own encoders emit) got a track claiming 1536 samples a frame when its units really carry 256, 512
-// or 768, and every timestamp downstream was wrong by the ratio.
+// invisible while this passed iclforge::ac3::kSamplesPerFrame outright: an E-AC-3 stream coding
+// fewer than six blocks per syncframe (numblkscod 0/1/2, §E2.3.1.4 - legal, and nothing this
+// project's own encoders emit) got a track claiming 1536 samples a frame when its units really
+// carry 256, 512 or 768, and every timestamp downstream was wrong by the ratio.
 //
 // iclforge::ac3::io::uniform_access_unit_samples answers the question these writers
 // can actually act on. Nothing means the units genuinely differ from each
 // other, which no fixed-duration track models at all - refused with a real
 // reason rather than muxed to a silently wrong timeline.
-std::optional<std::uint32_t> track_samples_per_frame(const iclforge::ac3::io::ScannedStream& scanned) {
+std::optional<std::uint32_t> track_samples_per_frame(
+    const iclforge::ac3::io::ScannedStream& scanned) {
     const auto uniform = iclforge::ac3::io::uniform_access_unit_samples(scanned);
     if (!uniform.has_value()) {
         fmt::println(stderr,

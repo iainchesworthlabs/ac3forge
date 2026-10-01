@@ -219,11 +219,12 @@ TEST_CASE("RecordingSink's fragmented-MP4 take matches iclforge::mp4::fragment's
     }
     const auto scanned = iclforge::ac3::io::scan(stream);
     REQUIRE(scanned.has_value());
-    const iclforge::mp4::AudioTrack track{.codec_id = std::string{iclforge::mp4::kCodecAc3},
-                                .sample_rate = 48000,
-                                .channels = scanned->channels,
-                                .samples_per_frame = iclforge::ac3::kSamplesPerFrame,
-                                .codec_config = iclforge::ac3::io::build_codec_config_box(*scanned)};
+    const iclforge::mp4::AudioTrack track{
+        .codec_id = std::string{iclforge::mp4::kCodecAc3},
+        .sample_rate = 48000,
+        .channels = scanned->channels,
+        .samples_per_frame = iclforge::ac3::kSamplesPerFrame,
+        .codec_config = iclforge::ac3::io::build_codec_config_box(*scanned)};
     const auto batch = iclforge::mp4::fragment(track, as_views(frames));
     REQUIRE(batch.has_value());
     REQUIRE(batch->media_segments.size() == 3);
@@ -752,8 +753,8 @@ TEST_CASE("RecordingSink packs an AC-4 take in IEC 61937-14 bursts as the packer
         payload.insert(payload.end(), burst->begin(), burst->end());
     }
     const auto one_shot = scratch_dir() / "take_ac4_spdif_one_shot.wav";
-    REQUIRE(iclforge::ac3::io::write_wav_pcm16_raw(one_shot.string(), payload, carriage.carrier_rate_hz,
-                                         carriage.carrier_channels)
+    REQUIRE(iclforge::ac3::io::write_wav_pcm16_raw(
+                one_shot.string(), payload, carriage.carrier_rate_hz, carriage.carrier_channels)
                 .has_value());
     CHECK(read_file_bytes(file) == read_file_bytes(one_shot));
 }

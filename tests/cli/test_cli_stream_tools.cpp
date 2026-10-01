@@ -161,7 +161,8 @@ fs::path write_legacy_core_stream(const std::string& name) {
     if (fs::exists(out)) {
         return out;
     }
-    iclforge::ac3::FrameEncoder core{{.bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true}};
+    iclforge::ac3::FrameEncoder core{
+        {.bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true}};
     iclforge::ac3::eac3::FrameEncoder rear{{.bitrate_kbps = 192,
                                   .acmod = iclforge::ac3::Acmod::k2_2,
                                   .strmtyp = iclforge::ac3::eac3::StreamType::kDependent,
@@ -295,7 +296,8 @@ TEST_CASE("metadata stamps compr onto a stream that carries one", "[cli][metadat
     // does NOT exceed the requested one, so the ceiling stays a ceiling.
     // A small tolerance for the dB conversion itself, not for the rounding
     // rule: the stamped word must not represent a gain ABOVE the request.
-    CHECK(iclforge::ac3::meta::to_db(iclforge::ac3::meta::compr_gain(*after->compr)) <= -6.0 + 1e-9);
+    CHECK(iclforge::ac3::meta::to_db(iclforge::ac3::meta::compr_gain(*after->compr)) <=
+          -6.0 + 1e-9);
     require_same_audio(source, out, "meta_compr_audio");
 }
 
@@ -532,7 +534,8 @@ TEST_CASE("transcode carries a reserved dmixmod across as not indicated", "[cli]
     REQUIRE(frames.has_value());
     for (const auto frame : *frames) {
         const auto at = static_cast<std::size_t>(frame.data() - merged.data());
-        REQUIRE(iclforge::ac3::io::restamp_crc(std::span{merged}.subspan(at, frame.size())).has_value());
+        REQUIRE(iclforge::ac3::io::restamp_crc(std::span{merged}.subspan(at, frame.size()))
+                    .has_value());
     }
     const auto before = iclforge::ac3::io::read_frame_metadata(merged);
     REQUIRE(before.has_value());

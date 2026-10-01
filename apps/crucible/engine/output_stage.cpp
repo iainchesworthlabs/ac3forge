@@ -282,12 +282,14 @@ const OutputStatus& OutputStage::apply(std::vector<EndpointFacts> facts, bool si
             if (!started.has_value()) {
                 return refuse(started.error());
             }
-            impl_->ac3_encoder = std::make_unique<iclforge::ac3::FrameEncoder>(iclforge::ac3::EncoderConfig{
-                .sample_rate = iclforge::ac3::SampleRate::k48000,
-                .bitrate_kbps = iclforge::ac3::clamp_to_legal_ac3_bitrate(config_.ac3_bitrate_kbps),
-                .dialnorm = 31,
-                .acmod = iclforge::ac3::Acmod::k3_2,
-                .lfe = true});
+            impl_->ac3_encoder =
+                std::make_unique<iclforge::ac3::FrameEncoder>(iclforge::ac3::EncoderConfig{
+                    .sample_rate = iclforge::ac3::SampleRate::k48000,
+                    .bitrate_kbps =
+                        iclforge::ac3::clamp_to_legal_ac3_bitrate(config_.ac3_bitrate_kbps),
+                    .dialnorm = 31,
+                    .acmod = iclforge::ac3::Acmod::k3_2,
+                    .lfe = true});
             break;
         }
         case OutputMode::kPcmSurround: {
@@ -297,7 +299,8 @@ const OutputStatus& OutputStage::apply(std::vector<EndpointFacts> facts, bool si
             if (!started.has_value()) {
                 return refuse(started.error());
             }
-            impl_->decoder = std::make_unique<iclforge::ac3::Eac3Decoder>(iclforge::ac3::DecoderConfig{});
+            impl_->decoder =
+                std::make_unique<iclforge::ac3::Eac3Decoder>(iclforge::ac3::DecoderConfig{});
             break;
         }
         case OutputMode::kStereo: {
@@ -307,8 +310,9 @@ const OutputStatus& OutputStage::apply(std::vector<EndpointFacts> facts, bool si
             if (!started.has_value()) {
                 return refuse(started.error());
             }
-            impl_->decoder = std::make_unique<iclforge::ac3::Eac3Decoder>(
-                iclforge::ac3::DecoderConfig{.output = {.target = iclforge::ac3::DownmixTarget::kLoRo}});
+            impl_->decoder =
+                std::make_unique<iclforge::ac3::Eac3Decoder>(iclforge::ac3::DecoderConfig{
+                    .output = {.target = iclforge::ac3::DownmixTarget::kLoRo}});
             break;
         }
         case OutputMode::kHeadphones: {

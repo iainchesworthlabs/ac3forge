@@ -238,7 +238,8 @@ TEST_CASE("test sink: paired by its token over loopback, it writes what it plays
         REQUIRE(decoded.has_value());
         expected.insert(expected.end(), decoded->begin(), decoded->end());
     }
-    const auto wav = iclforge::ac3::io::read_wav((options.output_directory / "stream-1-1.wav").string());
+    const auto wav =
+        iclforge::ac3::io::read_wav((options.output_directory / "stream-1-1.wav").string());
     REQUIRE(wav.has_value());
     CHECK(wav->sample_rate == 48000);
     REQUIRE(wav->channels.size() == 2);

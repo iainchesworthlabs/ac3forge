@@ -105,7 +105,8 @@ TEST_CASE("Table 54 matches the standard's worked example", "[oba][joc]") {
 }
 
 TEST_CASE("JOC payload decodes back to the matrix it was given", "[oba][joc]") {
-    iclforge::ac3::oba::joc::FrameParameters params{.objects = 4, .num_bands_idx = 4, .seq_count = 7};
+    iclforge::ac3::oba::joc::FrameParameters params{
+        .objects = 4, .num_bands_idx = 4, .seq_count = 7};
     params.matrix.resize(params.coefficient_count());
     // A matrix with structure rather than noise: each object leans on a
     // different channel, and the lean varies across bands. Constant values
@@ -142,7 +143,8 @@ TEST_CASE("JOC payload decodes back to the matrix it was given", "[oba][joc]") {
 
     // --- joc_data, undone exactly as §6.6.2 Pseudocode 3 specifies ---
     constexpr int kNquant = 96;
-    const std::span<const iclforge::ac3::oba::joc::HuffCode> table{iclforge::ac3::oba::joc::kMtxCoarse};
+    const std::span<const iclforge::ac3::oba::joc::HuffCode> table{
+        iclforge::ac3::oba::joc::kMtxCoarse};
     for (int object = 0; object < params.objects; ++object) {
         for (int channel = 0; channel < params.channels; ++channel) {
             int previous = kNquant / 2;  // the offset Pseudocode 3 starts from
@@ -183,8 +185,8 @@ TEST_CASE("reconstruct is a delayed identity when the matrix is a pure passthrou
             params.at(0, 0, band) = 1.0;
         }
 
-        std::vector<std::vector<float>> bed(5,
-                                            std::vector<float>(iclforge::ac3::kSamplesPerFrame, 0.0f));
+        std::vector<std::vector<float>> bed(
+            5, std::vector<float>(iclforge::ac3::kSamplesPerFrame, 0.0f));
         for (int n = 0; n < iclforge::ac3::kSamplesPerFrame; ++n) {
             bed[0][static_cast<std::size_t>(n)] = static_cast<float>(
                 0.3 * std::sin(2.0 * std::numbers::pi * 440.0 * static_cast<double>(n) / 48000.0));
@@ -194,8 +196,9 @@ TEST_CASE("reconstruct is a delayed identity when the matrix is a pure passthrou
         const std::vector<std::span<const float>> bed_views(bed.begin(), bed.end());
         std::vector<std::vector<float>> out;
         for (int frame = 0; frame < 3; ++frame) {
-            out = iclforge::ac3::oba::joc::reconstruct(bed_views, params, state, /*fast_mdct=*/false,
-                                       /*fast_imdct=*/false, domain);
+            out =
+                iclforge::ac3::oba::joc::reconstruct(bed_views, params, state, /*fast_mdct=*/false,
+                                                     /*fast_imdct=*/false, domain);
         }
         REQUIRE(out.size() == 1);
 
@@ -236,8 +239,8 @@ TEST_CASE("clip_gain scales reconstructed object PCM by exactly that factor", "[
         // multiply is based on.
         scaled.clip_gain = 1.0 + (25.0 / 32.0) * std::exp2(4.0 - 4.0);
 
-        std::vector<std::vector<float>> bed(5,
-                                            std::vector<float>(iclforge::ac3::kSamplesPerFrame, 0.0f));
+        std::vector<std::vector<float>> bed(
+            5, std::vector<float>(iclforge::ac3::kSamplesPerFrame, 0.0f));
         for (int n = 0; n < iclforge::ac3::kSamplesPerFrame; ++n) {
             bed[0][static_cast<std::size_t>(n)] = static_cast<float>(
                 0.3 * std::sin(2.0 * std::numbers::pi * 440.0 * static_cast<double>(n) / 48000.0));
@@ -292,11 +295,12 @@ TEST_CASE("an object's overlap tail drains while absent instead of staying stale
     absent_params.shapes = {iclforge::ac3::oba::joc::ObjectShape{.present = false}};
     absent_params.matrix.clear();  // the one object is absent, so coefficient_count() == 0
 
-    iclforge::ac3::oba::joc::FrameParameters silent_present_params{.objects = 1, .num_bands_idx = 4};
+    iclforge::ac3::oba::joc::FrameParameters silent_present_params{.objects = 1,
+                                                                   .num_bands_idx = 4};
     silent_present_params.matrix.assign(silent_present_params.coefficient_count(), 0.0);
 
-    std::vector<std::vector<float>> loud_bed(5,
-                                             std::vector<float>(iclforge::ac3::kSamplesPerFrame, 0.0f));
+    std::vector<std::vector<float>> loud_bed(
+        5, std::vector<float>(iclforge::ac3::kSamplesPerFrame, 0.0f));
     for (int n = 0; n < iclforge::ac3::kSamplesPerFrame; ++n) {
         loud_bed[0][static_cast<std::size_t>(n)] = static_cast<float>(
             0.5 * std::sin(2.0 * std::numbers::pi * 440.0 * static_cast<double>(n) / 48000.0));
@@ -326,8 +330,9 @@ TEST_CASE("an object's overlap tail drains while absent instead of staying stale
     // failed to drain the tail, frame 1's energy leaks back in here via a stale overlap-add.
     std::vector<std::vector<float>> out;
     for (int f = 0; f < 2; ++f) {
-        out = iclforge::ac3::oba::joc::reconstruct(silent_views, silent_present_params, state, false,
-                                              false, iclforge::oba::joc::Domain::kMdctBand);
+        out =
+            iclforge::ac3::oba::joc::reconstruct(silent_views, silent_present_params, state, false,
+                                                 false, iclforge::oba::joc::Domain::kMdctBand);
     }
     double energy_after = 0.0;
     for (const float v : out[0]) {
@@ -370,7 +375,8 @@ TEST_CASE("a smooth two-data-point object ramps from the first coefficient towar
         ramp.at(0, 1, 0, band) = 0.0;  // data point 1: silence
     }
 
-    std::vector<std::vector<float>> bed(5, std::vector<float>(iclforge::ac3::kSamplesPerFrame, 0.0f));
+    std::vector<std::vector<float>> bed(5,
+                                        std::vector<float>(iclforge::ac3::kSamplesPerFrame, 0.0f));
     for (int n = 0; n < iclforge::ac3::kSamplesPerFrame; ++n) {
         bed[0][static_cast<std::size_t>(n)] = static_cast<float>(
             0.4 * std::sin(2.0 * std::numbers::pi * 600.0 * static_cast<double>(n) / 48000.0));
@@ -1238,10 +1244,12 @@ TEST_CASE("OAMD writes several metadata updates within one frame", "[oba][oamd]"
 TEST_CASE("JOC parses every Table 47 downmix configuration it can", "[oba][joc]") {
     CHECK(iclforge::ac3::oba::joc::dmx_channel_count(iclforge::ac3::oba::joc::kDmxConfig5X) == 5);
     CHECK(iclforge::ac3::oba::joc::dmx_channel_count(iclforge::ac3::oba::joc::kDmxConfig7X) == 7);
-    CHECK(iclforge::ac3::oba::joc::dmx_channel_count(iclforge::ac3::oba::joc::kDmxConfig5XPlus2) == 7);
-    CHECK(iclforge::ac3::oba::joc::dmx_channel_count(iclforge::ac3::oba::joc::kDmxConfig5XPhaseShift) == 5);
-    CHECK(iclforge::ac3::oba::joc::dmx_channel_count(iclforge::ac3::oba::joc::kDmxConfig5XPlus2PhaseShift) ==
+    CHECK(iclforge::ac3::oba::joc::dmx_channel_count(iclforge::ac3::oba::joc::kDmxConfig5XPlus2) ==
           7);
+    CHECK(iclforge::ac3::oba::joc::dmx_channel_count(
+              iclforge::ac3::oba::joc::kDmxConfig5XPhaseShift) == 5);
+    CHECK(iclforge::ac3::oba::joc::dmx_channel_count(
+              iclforge::ac3::oba::joc::kDmxConfig5XPlus2PhaseShift) == 7);
     // Table 48 reserves 5..7 and gives them no channel count, which is what
     // parse_payload keys its refusal off.
     CHECK(iclforge::ac3::oba::joc::dmx_channel_count(5) == 0);

@@ -97,7 +97,8 @@ template <typename Rank>
         return iclforge::ac3::Acmod::k3_2;
     }
     if (has(iclforge::ac4::Speaker::kLeft)) {
-        return has(iclforge::ac4::Speaker::kCentre) ? iclforge::ac3::Acmod::k3_0 : iclforge::ac3::Acmod::k2_0;
+        return has(iclforge::ac4::Speaker::kCentre) ? iclforge::ac3::Acmod::k3_0
+                                                    : iclforge::ac3::Acmod::k2_0;
     }
     return iclforge::ac3::Acmod::k1_0;
 }

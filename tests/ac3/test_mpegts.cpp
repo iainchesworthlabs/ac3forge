@@ -735,7 +735,8 @@ TEST_CASE("MPEG-TS muxer rejects what it cannot describe", "[mpegts]") {
           iclforge::mpegts::MuxError::kFrameTooLarge);
 }
 
-TEST_CASE("MPEG-TS mux of real encoded AC-3 round-trips through iclforge::ac3::io::scan", "[mpegts]") {
+TEST_CASE("MPEG-TS mux of real encoded AC-3 round-trips through iclforge::ac3::io::scan",
+          "[mpegts]") {
     // Real, non-silent, multi-frame material - a silent or single-frame
     // stream would exercise almost none of the encoder and none of the
     // frame-2-onward MDCT overlap state (CONTRIBUTING.md's validation
@@ -769,10 +770,11 @@ TEST_CASE("MPEG-TS mux of real encoded AC-3 round-trips through iclforge::ac3::i
         frames.emplace_back(unit.begin(), unit.end());
     }
 
-    const iclforge::mpegts::AudioTrack track{.codec = iclforge::mpegts::AudioCodec::kAc3,
-                                   .sample_rate = iclforge::ac3::sample_rate_hz(scanned->sample_rate),
-                                   .channels = scanned->channels,
-                                   .samples_per_frame = iclforge::ac3::kSamplesPerFrame};
+    const iclforge::mpegts::AudioTrack track{
+        .codec = iclforge::mpegts::AudioCodec::kAc3,
+        .sample_rate = iclforge::ac3::sample_rate_hz(scanned->sample_rate),
+        .channels = scanned->channels,
+        .samples_per_frame = iclforge::ac3::kSamplesPerFrame};
     const auto file = iclforge::mpegts::mux(track, frames);
     REQUIRE(file.has_value());
 

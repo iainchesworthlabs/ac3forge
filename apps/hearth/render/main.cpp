@@ -221,8 +221,8 @@ bool apply(std::string_view key, std::string_view value, DecoderSettings& settin
         if (value != "loro" && value != "ltrt") {
             return false;
         }
-        settings.stereo_fold =
-            value == "ltrt" ? iclforge::ac3::DownmixTarget::kLtRt : iclforge::ac3::DownmixTarget::kLoRo;
+        settings.stereo_fold = value == "ltrt" ? iclforge::ac3::DownmixTarget::kLtRt
+                                               : iclforge::ac3::DownmixTarget::kLoRo;
         return true;
     }
     if (key == "lfe") {

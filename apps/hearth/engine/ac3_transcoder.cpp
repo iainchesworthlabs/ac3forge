@@ -115,7 +115,8 @@ void Ac3Transcoder::describe_source(const UnitReport& report, std::uint64_t fram
                                     std::size_t record, DualMonoChoice dual_mono) {
     // Dual mono heard as its second channel is levelled and compressed as
     // that channel is.
-    const bool second = report.acmod == ac3::Acmod::kDualMono && dual_mono == DualMonoChoice::kSecond;
+    const bool second =
+        report.acmod == ac3::Acmod::kDualMono && dual_mono == DualMonoChoice::kSecond;
     Said said{.from = taken_ - std::min(frames, taken_),
               .record = record,
               .dialnorm = valid_dialnorm(second && report.dialnorm2 ? *report.dialnorm2
@@ -124,8 +125,8 @@ void Ac3Transcoder::describe_source(const UnitReport& report, std::uint64_t fram
               .bsmod = std::nullopt};
     // Table 5.5's code 7 is a voice-over below 2/0 and karaoke from 2/0 up;
     // this writes 3/2. A unit that sends no service keeps its item's last.
-    if (report.bsmod &&
-        (*report.bsmod != 7 || static_cast<int>(report.acmod) >= static_cast<int>(ac3::Acmod::k2_0))) {
+    if (report.bsmod && (*report.bsmod != 7 ||
+                         static_cast<int>(report.acmod) >= static_cast<int>(ac3::Acmod::k2_0))) {
         said.bsmod = report.bsmod;
     } else if (!said_.empty() && said_.back().record == record) {
         said.bsmod = said_.back().bsmod;

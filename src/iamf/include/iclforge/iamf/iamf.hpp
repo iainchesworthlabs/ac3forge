@@ -25,8 +25,8 @@
 // iclforge::iab already are: it links nothing from iclforge::ac3 and knows nothing about AC-3,
 // E-AC-3 or JOC (see CONTRIBUTING.md's repository-layout section on what a bare `include/iamf/`
 // prefix, with no `ac3/`, means). A caller decoding a natively-7.1.4-coded E-AC-3 stream
-// (iclforge::ac3::plan::LayoutId::k714 - independent substream plus two E-AC-3 dependents) already gets
-// the 12 discrete channels straight off iclforge::ac3::Eac3Decoder::decode_access_unit's
+// (iclforge::ac3::plan::LayoutId::k714 - independent substream plus two E-AC-3 dependents) already
+// gets the 12 discrete channels straight off iclforge::ac3::Eac3Decoder::decode_access_unit's
 // DecodedAccessUnit - this module just needs them permuted into the channel order below and handed
 // over as PCM; see examples/mux_iamf.cpp for the full round trip.
 //

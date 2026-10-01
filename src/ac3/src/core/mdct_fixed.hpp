@@ -84,7 +84,9 @@ struct ImdctValue {
     // Times a twiddle or a window entry: Fixed32's product rounded half up,
     // without the saturation test (fixed32.hpp's product_unsaturated).
     friend constexpr ImdctValue operator*(ImdctValue a, iclforge::internal::Fixed32 w) {
-        return {iclforge::internal::Fixed32::product_unsaturated(iclforge::internal::Fixed32::from_raw(a.raw), w).raw};
+        return {iclforge::internal::Fixed32::product_unsaturated(
+                    iclforge::internal::Fixed32::from_raw(a.raw), w)
+                    .raw};
     }
 };
 
@@ -177,7 +179,9 @@ inline void imdct512_windowed_fixed(std::span<const iclforge::internal::Fixed32,
     // Step 5: windowing and de-interleaving, the same field-for-field
     // transcription as the double form's.
     const auto& w = t.window;
-    const auto out = [&x](std::size_t i, ImdctValue v) { x[i] = iclforge::internal::Fixed32::from_raw(v.raw); };
+    const auto out = [&x](std::size_t i, ImdctValue v) {
+        x[i] = iclforge::internal::Fixed32::from_raw(v.raw);
+    };
     for (std::size_t n = 0; n < kEighth; ++n) {
         out(2 * n, -y_im[kEighth + n] * w[2 * n]);
         out((2 * n) + 1, y_re[kEighth - n - 1] * w[(2 * n) + 1]);
@@ -244,7 +248,9 @@ inline void imdct256_pair_windowed_fixed(std::span<const iclforge::internal::Fix
 
     // Step 5, N = 512 throughout as the spec's own note has it.
     const auto& w = t.window;
-    const auto out = [&x](std::size_t i, ImdctValue v) { x[i] = iclforge::internal::Fixed32::from_raw(v.raw); };
+    const auto out = [&x](std::size_t i, ImdctValue v) {
+        x[i] = iclforge::internal::Fixed32::from_raw(v.raw);
+    };
     for (std::size_t n = 0; n < kEighth; ++n) {
         out(2 * n, -y1_im[n] * w[2 * n]);
         out((2 * n) + 1, y1_re[kEighth - n - 1] * w[(2 * n) + 1]);

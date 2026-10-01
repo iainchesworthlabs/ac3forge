@@ -115,7 +115,8 @@ TEST_CASE("session: a handover releases the unit the old decoder was holding, an
     decoder.emplace(*layout, 48000);
 
     while (!session->finished()) {
-        REQUIRE(session->render(*decoder, deliver, 4 * iclforge::ac3::kSamplesPerFrame).has_value());
+        REQUIRE(
+            session->render(*decoder, deliver, 4 * iclforge::ac3::kSamplesPerFrame).has_value());
     }
     // Every frame of the stream, once.
     CHECK(delivered == static_cast<std::uint64_t>(kFrames) * iclforge::ac3::kSamplesPerFrame);

@@ -122,7 +122,8 @@ std::vector<std::byte> reserved_dmixmod_stream(std::span<const std::byte> ltrt,
     REQUIRE(frames.has_value());
     for (const auto frame : *frames) {
         const auto at = static_cast<std::size_t>(frame.data() - ltrt.data());
-        REQUIRE(iclforge::ac3::io::restamp_crc(std::span{out}.subspan(at, frame.size())).has_value());
+        REQUIRE(
+            iclforge::ac3::io::restamp_crc(std::span{out}.subspan(at, frame.size())).has_value());
     }
     return out;
 }
@@ -423,8 +424,9 @@ TEST_CASE("probe reports the lead programme's dmixmod, the reserved code include
             iclforge::ac3::eac3::FrameEncoder encoder{config};
             return encode_with(encoder, 6, 3);
         };
-        const auto reserved = reserved_dmixmod_stream(encode(iclforge::ac3::meta::DownmixMode::kLtRt),
-                                                      encode(iclforge::ac3::meta::DownmixMode::kLoRo));
+        const auto reserved =
+            reserved_dmixmod_stream(encode(iclforge::ac3::meta::DownmixMode::kLtRt),
+                                    encode(iclforge::ac3::meta::DownmixMode::kLoRo));
         const auto report = iclforge::ac3::io::probe(reserved);
         REQUIRE(report.has_value());
         CHECK(report->kind == iclforge::ac3::io::StreamKind::kEac3);

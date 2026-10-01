@@ -75,7 +75,8 @@ std::vector<std::byte> ac3_stream(const iclforge::ac3::EncoderConfig& config, in
     return stream;
 }
 
-std::vector<std::byte> eac3_stream(const iclforge::ac3::eac3::AccessUnitConfig& config, int units = 3) {
+std::vector<std::byte> eac3_stream(const iclforge::ac3::eac3::AccessUnitConfig& config,
+                                   int units = 3) {
     iclforge::ac3::eac3::AccessUnitEncoder encoder{config};
     const auto pcm = tone(static_cast<std::size_t>(encoder.channel_count()));
     const auto views = views_of(pcm);
@@ -90,7 +91,8 @@ std::vector<std::byte> eac3_stream(const iclforge::ac3::eac3::AccessUnitConfig& 
 
 // Every AC-3 frame's decoded PCM, concatenated. A decode failure (a bad CRC
 // included) fails the test rather than returning short.
-std::vector<float> decode_ac3(std::span<const std::byte> stream, iclforge::ac3::DecodedFrame& first) {
+std::vector<float> decode_ac3(std::span<const std::byte> stream,
+                              iclforge::ac3::DecodedFrame& first) {
     const auto frames = iclforge::ac3::split_frames(stream);
     REQUIRE(frames.has_value());
     iclforge::ac3::FrameDecoder decoder;
@@ -244,7 +246,8 @@ TEST_CASE("editing dialnorm changes the metadata and nothing else", "[metadata-e
 }
 
 TEST_CASE("editing dialnorm to the value already there changes no bytes", "[metadata-edit]") {
-    auto stream = ac3_stream({.bitrate_kbps = 192, .dialnorm = 20, .acmod = iclforge::ac3::Acmod::k2_0});
+    auto stream =
+        ac3_stream({.bitrate_kbps = 192, .dialnorm = 20, .acmod = iclforge::ac3::Acmod::k2_0});
     const std::vector<std::byte> original = stream;
     const auto summary = iclforge::ac3::io::edit_stream_metadata(stream, {.dialnorm = 20});
     REQUIRE(summary.has_value());
@@ -416,7 +419,8 @@ TEST_CASE("a rewrite really does re-stamp the CRCs", "[metadata-edit]") {
     // a frame whose bsi was changed without the CRCs being fixed. Without
     // this, every "the decode still worked" assertion above could be passing
     // for the wrong reason - a decoder that never checked.
-    auto stream = ac3_stream({.bitrate_kbps = 192, .dialnorm = 27, .acmod = iclforge::ac3::Acmod::k2_0});
+    auto stream =
+        ac3_stream({.bitrate_kbps = 192, .dialnorm = 27, .acmod = iclforge::ac3::Acmod::k2_0});
     const auto frames = iclforge::ac3::split_frames(stream);
     REQUIRE(frames.has_value());
     const auto frame_bytes = frames->front().size();
@@ -520,7 +524,8 @@ TEST_CASE("every rewritable field is found behind the optional bsi groups ahead 
         CHECK(meta->bsmod == 5);
         CHECK(meta->dsurmod == 2);
 
-        const auto summary = iclforge::ac3::io::edit_stream_metadata(stream, {.bsmod = 1, .dsurmod = 1});
+        const auto summary =
+            iclforge::ac3::io::edit_stream_metadata(stream, {.bsmod = 1, .dsurmod = 1});
         REQUIRE(summary.has_value());
         CHECK(summary->changed == 3);
         const auto after = iclforge::ac3::io::read_frame_metadata(stream);
@@ -594,12 +599,13 @@ TEST_CASE("every rewritable field is found behind the optional bsi groups ahead 
         std::array<std::optional<int>, iclforge::ac3::kBlocksPerFrame> blocks{};
         blocks[0] = 5;
         mix.blkmixcfginfo = blocks;
-        iclforge::ac3::eac3::FrameEncoder encoder{{.bitrate_kbps = 256,
-                                         .acmod = iclforge::ac3::Acmod::k1_0,
-                                         .numblkscod = 0,
-                                         .mixing = mix,
-                                         .info = iclforge::ac3::meta::BsiInfo{
-                                             .bsmod = iclforge::ac3::meta::BitstreamMode::kEmergency}}};
+        iclforge::ac3::eac3::FrameEncoder encoder{
+            {.bitrate_kbps = 256,
+             .acmod = iclforge::ac3::Acmod::k1_0,
+             .numblkscod = 0,
+             .mixing = mix,
+             .info = iclforge::ac3::meta::BsiInfo{
+                 .bsmod = iclforge::ac3::meta::BitstreamMode::kEmergency}}};
         const auto samples = static_cast<std::size_t>(encoder.samples_per_frame());
         REQUIRE(samples == 256);
         std::vector<float> pcm(samples);
@@ -638,7 +644,8 @@ TEST_CASE("every rewritable field is found behind the optional bsi groups ahead 
 
 TEST_CASE("reserved and foreign syncframe headers are refused before anything is written",
           "[metadata-edit]") {
-    const auto ac3_frame = ac3_stream({.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k2_0}, 1);
+    const auto ac3_frame =
+        ac3_stream({.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k2_0}, 1);
     iclforge::ac3::eac3::AccessUnitConfig config;
     config.independent = {.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k2_0};
     const auto eac3_frame = eac3_stream(config, 1);
@@ -679,10 +686,12 @@ TEST_CASE("reserved and foreign syncframe headers are refused before anything is
 }
 
 TEST_CASE("describe() gives every EditError a distinct, non-empty message", "[metadata-edit]") {
-    const iclforge::ac3::io::EditError all[] = {
-        iclforge::ac3::io::EditError::kBadSyncWord,   iclforge::ac3::io::EditError::kTruncated,
-        iclforge::ac3::io::EditError::kUnsupportedBsid, iclforge::ac3::io::EditError::kReservedValue,
-        iclforge::ac3::io::EditError::kFieldAbsent,   iclforge::ac3::io::EditError::kOutOfRange};
+    const iclforge::ac3::io::EditError all[] = {iclforge::ac3::io::EditError::kBadSyncWord,
+                                                iclforge::ac3::io::EditError::kTruncated,
+                                                iclforge::ac3::io::EditError::kUnsupportedBsid,
+                                                iclforge::ac3::io::EditError::kReservedValue,
+                                                iclforge::ac3::io::EditError::kFieldAbsent,
+                                                iclforge::ac3::io::EditError::kOutOfRange};
     for (std::size_t i = 0; i < std::size(all); ++i) {
         CHECK_FALSE(iclforge::ac3::io::describe(all[i]).empty());
         for (std::size_t j = i + 1; j < std::size(all); ++j) {

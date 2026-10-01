@@ -1240,8 +1240,8 @@ inline constexpr double kCouplingEmptyRegionShare = 1.0e-4;
 // no SpxPlan of its own to pull band geometry out of.
 [[nodiscard]] double spx_noise_ratio(const SpxPlan& spx, int bnd, int blend) {
     const auto at = static_cast<std::size_t>(bnd);
-    return ::iclforge::ac3::eac3::spx_noise_ratio(spx.bands.start[at], spx.bands.size[at], spx.endmant,
-                                        blend);
+    return ::iclforge::ac3::eac3::spx_noise_ratio(spx.bands.start[at], spx.bands.size[at],
+                                                  spx.endmant, blend);
 }
 
 [[nodiscard]] int spx_blend(std::span<const internal::encode_scalar_t> region) {

@@ -374,11 +374,12 @@ TEST_CASE("the frame walker reaches addbsi through every optional bsi group", "[
     iclforge::ac3::meta::MixMetadata extended;  // mixdef 3, skipped whole by its length
     extended.mixing.mixdef = iclforge::ac3::meta::MixDefinition::kExtended;
     extended.mixing.external = iclforge::ac3::meta::ExternalScales{.left = 5, .dmixscl = 9};
-    const iclforge::ac3::meta::BsiInfo info{.bsmod = iclforge::ac3::meta::BitstreamMode::kVisuallyImpaired,
-                                  .dsurmod = iclforge::ac3::meta::SurroundMode::kDolbySurround,
-                                  .dsurexmod = iclforge::ac3::meta::SurroundExMode::kSurroundEx,
-                                  .audprod = iclforge::ac3::meta::AudioProduction{.mixlevel = 20},
-                                  .audprod2 = iclforge::ac3::meta::AudioProduction{.mixlevel = 21}};
+    const iclforge::ac3::meta::BsiInfo info{
+        .bsmod = iclforge::ac3::meta::BitstreamMode::kVisuallyImpaired,
+        .dsurmod = iclforge::ac3::meta::SurroundMode::kDolbySurround,
+        .dsurexmod = iclforge::ac3::meta::SurroundExMode::kSurroundEx,
+        .audprod = iclforge::ac3::meta::AudioProduction{.mixlevel = 20},
+        .audprod2 = iclforge::ac3::meta::AudioProduction{.mixlevel = 21}};
 
     struct Case {
         const char* name;
@@ -387,29 +388,46 @@ TEST_CASE("the frame walker reaches addbsi through every optional bsi group", "[
     };
     const std::vector<Case> cases = {
         {"3/2+LFE, full mixmdate",
-         {.bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true, .mixing = full,
+         {.bitrate_kbps = 448,
+          .acmod = iclforge::ac3::Acmod::k3_2,
+          .lfe = true,
+          .mixing = full,
           .oba_complexity_index = 7},
          true},
         {"1+1, both channels' pgmscl, pan and audprod, infomdate",
-         {.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::kDualMono, .dialnorm2 = 20, .mixing = dual,
-          .info = info, .oba_complexity_index = 3},
+         {.bitrate_kbps = 192,
+          .acmod = iclforge::ac3::Acmod::kDualMono,
+          .dialnorm2 = 20,
+          .mixing = dual,
+          .info = info,
+          .oba_complexity_index = 3},
          false},
         {"1/0 one-block frames, blkmixcfginfo as one field",
-         {.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k1_0, .numblkscod = 0,
-          .mixing = [] {
-              iclforge::ac3::meta::MixMetadata m;
-              m.blkmixcfginfo = std::array<std::optional<int>, iclforge::ac3::kBlocksPerFrame>{6, {}};
-              m.pan = iclforge::ac3::meta::PanInfo{.panmean = 90};
-              return m;
-          }(),
+         {.bitrate_kbps = 192,
+          .acmod = iclforge::ac3::Acmod::k1_0,
+          .numblkscod = 0,
+          .mixing =
+              [] {
+                  iclforge::ac3::meta::MixMetadata m;
+                  m.blkmixcfginfo =
+                      std::array<std::optional<int>, iclforge::ac3::kBlocksPerFrame>{6, {}};
+                  m.pan = iclforge::ac3::meta::PanInfo{.panmean = 90};
+                  return m;
+              }(),
           .oba_complexity_index = 4},
          false},
         {"2/0 two-block frames with infomdate",
-         {.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k2_0, .numblkscod = 1, .info = info,
+         {.bitrate_kbps = 192,
+          .acmod = iclforge::ac3::Acmod::k2_0,
+          .numblkscod = 1,
+          .info = info,
           .oba_complexity_index = 9},
          false},
         {"3/2+LFE, per-block mix config",
-         {.bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true, .mixing = per_block,
+         {.bitrate_kbps = 448,
+          .acmod = iclforge::ac3::Acmod::k3_2,
+          .lfe = true,
+          .mixing = per_block,
           .oba_complexity_index = 8},
          true},
         // The per-block form is one flag per block the syncframe carries -
@@ -417,19 +435,33 @@ TEST_CASE("the frame walker reaches addbsi through every optional bsi group", "[
         // slots; infomdate behind it proves the walk came out at the right
         // offset.
         {"2/0 two-block frames, per-block mix config and infomdate",
-         {.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k2_0, .numblkscod = 1, .mixing = per_block,
-          .info = info, .oba_complexity_index = 5},
+         {.bitrate_kbps = 192,
+          .acmod = iclforge::ac3::Acmod::k2_0,
+          .numblkscod = 1,
+          .mixing = per_block,
+          .info = info,
+          .oba_complexity_index = 5},
          false},
         {"2/0 three-block frames, per-block mix config and infomdate",
-         {.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k2_0, .numblkscod = 2, .mixing = per_block,
-          .info = info, .oba_complexity_index = 6},
+         {.bitrate_kbps = 192,
+          .acmod = iclforge::ac3::Acmod::k2_0,
+          .numblkscod = 2,
+          .mixing = per_block,
+          .info = info,
+          .oba_complexity_index = 6},
          false},
         {"3/2+LFE, extended mixdef",
-         {.bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true, .mixing = extended,
+         {.bitrate_kbps = 448,
+          .acmod = iclforge::ac3::Acmod::k3_2,
+          .lfe = true,
+          .mixing = extended,
           .oba_complexity_index = 11},
          true},
         {"3/2 infomdate with dsurexmod",
-         {.bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true, .info = info,
+         {.bitrate_kbps = 448,
+          .acmod = iclforge::ac3::Acmod::k3_2,
+          .lfe = true,
+          .info = info,
           .oba_complexity_index = 2},
          false},
     };

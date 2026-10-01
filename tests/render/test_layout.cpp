@@ -50,7 +50,8 @@ iclforge::ac3::eac3::chanmap::Layout coded(std::uint16_t map) {
     return iclforge::ac3::eac3::chanmap::expand(map);
 }
 
-constexpr std::uint16_t k51 = iclforge::ac3::eac3::chanmap::acmod_map(iclforge::ac3::Acmod::k3_2, true);
+constexpr std::uint16_t k51 =
+    iclforge::ac3::eac3::chanmap::acmod_map(iclforge::ac3::Acmod::k3_2, true);
 constexpr std::uint16_t k71 = k51 | iclforge::ac3::eac3::chanmap::k71Rear;
 
 // A PcmBlock over constant-valued channels and objects, long enough to own
@@ -179,8 +180,10 @@ TEST_CASE("the named layouts that exist, and the ones that do not", "[io][layout
 TEST_CASE("2.0 and 1.0 fold in the decoder; anything else is rendered", "[io][layout]") {
     const auto stereo = OutputLayout::stereo();
     REQUIRE(stereo.slots() == 2);
-    REQUIRE(stereo.fold(iclforge::ac3::DownmixTarget::kLoRo) == iclforge::ac3::DownmixTarget::kLoRo);
-    REQUIRE(stereo.fold(iclforge::ac3::DownmixTarget::kLtRt) == iclforge::ac3::DownmixTarget::kLtRt);
+    REQUIRE(stereo.fold(iclforge::ac3::DownmixTarget::kLoRo) ==
+            iclforge::ac3::DownmixTarget::kLoRo);
+    REQUIRE(stereo.fold(iclforge::ac3::DownmixTarget::kLtRt) ==
+            iclforge::ac3::DownmixTarget::kLtRt);
     REQUIRE(stereo.text() == "2.0");
 
     // §7.8 has no fold that keeps an LFE or places a height, so these render.
@@ -193,11 +196,13 @@ TEST_CASE("2.0 and 1.0 fold in the decoder; anything else is rendered", "[io][la
     // Two speakers by angle alone are still a stereo pair.
     const auto angled = OutputLayout::parse("30/0,-30/0");
     REQUIRE(angled.has_value());
-    REQUIRE(angled->fold(iclforge::ac3::DownmixTarget::kLoRo) == iclforge::ac3::DownmixTarget::kLoRo);
+    REQUIRE(angled->fold(iclforge::ac3::DownmixTarget::kLoRo) ==
+            iclforge::ac3::DownmixTarget::kLoRo);
     // And a stereo DAC wired the other way round is still stereo.
     const auto swapped = OutputLayout::parse("R,L");
     REQUIRE(swapped.has_value());
-    REQUIRE(swapped->fold(iclforge::ac3::DownmixTarget::kLoRo) == iclforge::ac3::DownmixTarget::kLoRo);
+    REQUIRE(swapped->fold(iclforge::ac3::DownmixTarget::kLoRo) ==
+            iclforge::ac3::DownmixTarget::kLoRo);
 }
 
 TEST_CASE("a speaker list is one token per slot, in slot order", "[io][layout]") {
@@ -317,7 +322,8 @@ TEST_CASE("the LFE feeds", "[io][layout][render]") {
     REQUIRE(two_feeds.bed_gain(5, 14) == 0.0F);
 
     // Two coded, two feeds: each to its own.
-    two_feeds.set_bed(coded(static_cast<std::uint16_t>(k51 | iclforge::ac3::eac3::chanmap::kLfe2Bit)));
+    two_feeds.set_bed(
+        coded(static_cast<std::uint16_t>(k51 | iclforge::ac3::eac3::chanmap::kLfe2Bit)));
     const int lfe2 = two_feeds.layout().index_of(Location::kLfe2);
     REQUIRE(lfe2 == 14);
     // Coded order puts LFE2 before LFE (bits 14 and 15).
@@ -328,7 +334,8 @@ TEST_CASE("the LFE feeds", "[io][layout][render]") {
 
     // Two coded, one feed: both arrive on it.
     LayoutRenderer one_feed{*OutputLayout::parse("5.1")};
-    one_feed.set_bed(coded(static_cast<std::uint16_t>(k51 | iclforge::ac3::eac3::chanmap::kLfe2Bit)));
+    one_feed.set_bed(
+        coded(static_cast<std::uint16_t>(k51 | iclforge::ac3::eac3::chanmap::kLfe2Bit)));
     REQUIRE(one_feed.bed_gain(5, 5) == 1.0F);
     REQUIRE(one_feed.bed_gain(6, 5) == 1.0F);
 
@@ -430,7 +437,8 @@ TEST_CASE("every slot is written, including the ones nothing reaches", "[io][lay
     // A bus with an unconnected slot in the middle: the prefill must not
     // survive, or the DAC clocks out whatever the last block left there.
     LayoutRenderer renderer{*OutputLayout::parse("L,-,R,LFE")};
-    renderer.set_bed(coded(iclforge::ac3::eac3::chanmap::acmod_map(iclforge::ac3::Acmod::k2_0, false)));
+    renderer.set_bed(
+        coded(iclforge::ac3::eac3::chanmap::acmod_map(iclforge::ac3::Acmod::k2_0, false)));
     const Block stereo({0.4F, 0.6F}, {});
     Out out(4);
     renderer.render(stereo.block(), false, 1.0F, out.spans);

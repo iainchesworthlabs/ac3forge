@@ -127,11 +127,12 @@ std::optional<Ac4Measured> measure_ac4_programme(std::span<const std::span<const
     const bool lfe_after_five = count == 8 || count == 10 || count == 12;
     const std::size_t bed = count <= 6 ? count : (lfe_after_five ? 6 : 5);
     const bool lfe = bed == 6;
-    const auto acmod = bed == 1   ? iclforge::ac3::Acmod::k1_0
-                       : bed == 2 ? iclforge::ac3::Acmod::k2_0
-                                  : (bed == 3 ? iclforge::ac3::Acmod::k3_0 : iclforge::ac3::Acmod::k3_2);
-    const auto rate =
-        sample_rate == 48000 ? iclforge::ac3::SampleRate::k48000 : iclforge::ac3::SampleRate::k44100;
+    const auto acmod = bed == 1 ? iclforge::ac3::Acmod::k1_0
+                       : bed == 2
+                           ? iclforge::ac3::Acmod::k2_0
+                           : (bed == 3 ? iclforge::ac3::Acmod::k3_0 : iclforge::ac3::Acmod::k3_2);
+    const auto rate = sample_rate == 48000 ? iclforge::ac3::SampleRate::k48000
+                                           : iclforge::ac3::SampleRate::k44100;
     iclforge::ac3::meta::LoudnessMeter meter{rate, acmod, lfe};
     // The meter takes AC-3's coded order, L C R Ls Rs and the LFE last, and
     // the encoder's order for the bed is a 5.1 WAV file's, whose permutation

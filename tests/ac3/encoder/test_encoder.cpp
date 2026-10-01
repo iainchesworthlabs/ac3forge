@@ -41,7 +41,8 @@ std::expected<std::vector<std::byte>, iclforge::ac3::FrameError> encode_same(
 // when those defaults move.
 constexpr int kProbeCplBegf = 6;
 constexpr int kProbeCplEndf = 12;
-constexpr int kProbeCplSubBands = iclforge::ac3::coupling::sub_band_count(kProbeCplBegf, kProbeCplEndf);
+constexpr int kProbeCplSubBands =
+    iclforge::ac3::coupling::sub_band_count(kProbeCplBegf, kProbeCplEndf);
 // The bandwidth code whose last mantissa is the last coupled bin, so an
 // uncoupled frame can be compared with a coupled one over the same spectrum.
 constexpr int kProbeChbwcod = 48;
@@ -653,7 +654,8 @@ TEST_CASE("dithflag follows the content, and never covers digital silence",
     iclforge::ac3::FrameEncoder silent{config};
     std::vector<std::byte> silent_frame;
     for (int f = 0; f < 3; ++f) {
-        const std::vector<float> zeros(static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame), 0.0F);
+        const std::vector<float> zeros(static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame),
+                                       0.0F);
         const std::vector<std::span<const float>> views{zeros, zeros};
         auto encoded = silent.encode_frame(views);
         REQUIRE(encoded.has_value());
@@ -747,7 +749,8 @@ TEST_CASE("invalid encoder configs are rejected", "[encoder]") {
     iclforge::ac3::FrameEncoder bad_rate{{.bitrate_kbps = 100}};
     CHECK(encode_same(bad_rate, silence).error() == iclforge::ac3::FrameError::kInvalidBitrate);
     iclforge::ac3::FrameEncoder bad_dialnorm{{.bitrate_kbps = 192, .dialnorm = 0}};
-    CHECK(encode_same(bad_dialnorm, silence).error() == iclforge::ac3::FrameError::kInvalidDialnorm);
+    CHECK(encode_same(bad_dialnorm, silence).error() ==
+          iclforge::ac3::FrameError::kInvalidDialnorm);
     // 1+1 needs Ch2's own dialnorm; missing or out of range is exactly as
     // invalid as Ch1's own would be.
     iclforge::ac3::FrameEncoder missing_dialnorm2{
@@ -756,7 +759,8 @@ TEST_CASE("invalid encoder configs are rejected", "[encoder]") {
           iclforge::ac3::FrameError::kInvalidDialnorm);
     iclforge::ac3::FrameEncoder bad_dialnorm2{
         {.bitrate_kbps = 192, .dialnorm2 = 0, .acmod = iclforge::ac3::Acmod::kDualMono}};
-    CHECK(encode_same(bad_dialnorm2, silence).error() == iclforge::ac3::FrameError::kInvalidDialnorm);
+    CHECK(encode_same(bad_dialnorm2, silence).error() ==
+          iclforge::ac3::FrameError::kInvalidDialnorm);
 }
 
 TEST_CASE("dual mono codes two independent programmes, never one into the other",
@@ -853,7 +857,8 @@ TEST_CASE("fast_mdct changes output only at the quantization-decision level",
     // direct-vs-fast comparison, so neither leg may drift with the config
     // default (which flipped to fast once the owner accepted the evidence -
     // an unpinned "direct" leg would silently compare fast against fast).
-    iclforge::ac3::EncoderConfig direct_config{.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k2_0};
+    iclforge::ac3::EncoderConfig direct_config{.bitrate_kbps = 192,
+                                               .acmod = iclforge::ac3::Acmod::k2_0};
     direct_config.fast_mdct = false;
     iclforge::ac3::EncoderConfig fast_config = direct_config;
     fast_config.fast_mdct = true;

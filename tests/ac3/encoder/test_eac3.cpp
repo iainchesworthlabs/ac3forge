@@ -86,7 +86,8 @@ TEST_CASE("E-AC-3 layouts and rates produce correctly sized frames", "[eac3]") {
                     continue;
                 }
                 CHECK(frame->size() ==
-                      iclforge::ac3::eac3::frame_words(iclforge::ac3::SampleRate::k48000, kbps) * 2);
+                      iclforge::ac3::eac3::frame_words(iclforge::ac3::SampleRate::k48000, kbps) *
+                          2);
                 CHECK(iclforge::ac3::crc16(std::span{*frame}.subspan(2)) == 0x0000);
             }
         }
@@ -172,8 +173,8 @@ std::vector<std::vector<float>> wideband_frame(int channels, std::uint64_t start
 
 // Encode `count` frames and return the last one, so the MDCT history is real
 // rather than the half-empty window the first frame sees.
-std::vector<std::byte> steady_state_frame(const iclforge::ac3::eac3::FrameConfig& config, int channels,
-                                          int count = 3) {
+std::vector<std::byte> steady_state_frame(const iclforge::ac3::eac3::FrameConfig& config,
+                                          int channels, int count = 3) {
     iclforge::ac3::eac3::FrameEncoder encoder{config};
     std::vector<std::byte> last;
     std::uint64_t n = 0;
@@ -273,7 +274,8 @@ TEST_CASE("E-AC-3 real audio fills the frame it claims", "[eac3]") {
     // The same check across the rate range, plus 5.1, since the allocation
     // scales with both the budget and the channel count.
     for (const int kbps : {192, 384, 640}) {
-        iclforge::ac3::eac3::FrameEncoder encoder{{.bitrate_kbps = static_cast<std::uint32_t>(kbps)}};
+        iclforge::ac3::eac3::FrameEncoder encoder{
+            {.bitrate_kbps = static_cast<std::uint32_t>(kbps)}};
         std::uint64_t n = 0;
         for (int f = 0; f < 3; ++f) {
             auto pcm = tone_frame(2, n);
@@ -450,7 +452,8 @@ TEST_CASE("coupling is refused where Annex E has no syntax for it",
     // express - which a decoder would read as part of the next element.
     const auto frame = steady_state_frame(
         {.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k1_0, .coupling = true}, 1);
-    CHECK(frame.size() == iclforge::ac3::eac3::frame_words(iclforge::ac3::SampleRate::k48000, 192) * 2);
+    CHECK(frame.size() ==
+          iclforge::ac3::eac3::frame_words(iclforge::ac3::SampleRate::k48000, 192) * 2);
     CHECK(iclforge::ac3::crc16(std::span{frame}.subspan(2)) == 0x0000);
     iclforge::BitReader reader{frame};
     // Mono bsi is 38 bits as for stereo; the audfrm flags follow, and with
@@ -1057,7 +1060,8 @@ TEST_CASE("E-AC-3 tools stack without desynchronising the frame", "[eac3][spx]")
                                                        .spxbegf = spxbegf},
                                                       channels);
                 CHECK(frame.size() ==
-                      iclforge::ac3::eac3::frame_words(iclforge::ac3::SampleRate::k48000, kbps) * 2);
+                      iclforge::ac3::eac3::frame_words(iclforge::ac3::SampleRate::k48000, kbps) *
+                          2);
                 CHECK(iclforge::ac3::crc16(std::span{frame}.subspan(2)) == 0x0000);
             }
         }
@@ -1074,7 +1078,8 @@ TEST_CASE("E-AC-3 encodes every supported layout", "[eac3]") {
     }
     const auto frame = encoder.encode_frame(views);
     REQUIRE(frame.has_value());
-    CHECK(frame->size() == iclforge::ac3::eac3::frame_words(iclforge::ac3::SampleRate::k48000, 448) * 2);
+    CHECK(frame->size() ==
+          iclforge::ac3::eac3::frame_words(iclforge::ac3::SampleRate::k48000, 448) * 2);
     CHECK(iclforge::ac3::crc16(std::span{*frame}.subspan(2)) == 0x0000);
 }
 

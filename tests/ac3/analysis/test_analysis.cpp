@@ -206,7 +206,8 @@ TEST_CASE("clipping is detected at PCM16 full scale", "[analysis]") {
     // 32767/32768 is as loud as a PCM16 source can be; a meter that insisted
     // on 1.0f would never flag a file mastered to 0 dBFS.
     std::vector<std::vector<float>> channels = {
-        std::vector<float>(480, iclforge::ac3::analysis::kFullScale), std::vector<float>(480, 0.9f)};
+        std::vector<float>(480, iclforge::ac3::analysis::kFullScale),
+        std::vector<float>(480, 0.9f)};
     meter.process(views(channels));
     CHECK(meter.levels()[0].clipped);
     CHECK(meter.summary()[0].clipped_samples == 480);

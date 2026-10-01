@@ -117,8 +117,8 @@ TEST_CASE("decoded exponents stay in 0..24 for adversarial profiles", "[exponent
         legal_endmant.push_back(37 + 12 * cplbegf);
     }
 
-    for (const auto strategy :
-         {iclforge::ac3::ExpStrategy::kD15, iclforge::ac3::ExpStrategy::kD25, iclforge::ac3::ExpStrategy::kD45}) {
+    for (const auto strategy : {iclforge::ac3::ExpStrategy::kD15, iclforge::ac3::ExpStrategy::kD25,
+                                iclforge::ac3::ExpStrategy::kD45}) {
         for (const int endmant : legal_endmant) {
             const auto size = static_cast<std::size_t>(endmant);
 
@@ -148,8 +148,9 @@ TEST_CASE("decoded exponents stay in 0..24 for adversarial profiles", "[exponent
                     // has to absorb by lowering the absolute exponent.
                     std::vector<std::uint8_t> fall(size);
                     for (int bin = 0; bin < endmant; ++bin) {
-                        const int v = bin <= from ? iclforge::ac3::kMaxExponent
-                                                  : iclforge::ac3::kMaxExponent - (bin - from) * slope;
+                        const int v = bin <= from
+                                          ? iclforge::ac3::kMaxExponent
+                                          : iclforge::ac3::kMaxExponent - (bin - from) * slope;
                         fall[static_cast<std::size_t>(bin)] =
                             static_cast<std::uint8_t>(std::max(v, 0));
                     }
@@ -213,8 +214,8 @@ TEST_CASE("encode/decode properties over random exponent sets", "[exponents]") {
     }
     std::uniform_int_distribution<std::size_t> endmant_pick(0, legal_endmant.size() - 1);
 
-    for (const auto strategy :
-         {iclforge::ac3::ExpStrategy::kD15, iclforge::ac3::ExpStrategy::kD25, iclforge::ac3::ExpStrategy::kD45}) {
+    for (const auto strategy : {iclforge::ac3::ExpStrategy::kD15, iclforge::ac3::ExpStrategy::kD25,
+                                iclforge::ac3::ExpStrategy::kD45}) {
         for (int trial = 0; trial < 40; ++trial) {
             const int endmant = legal_endmant[endmant_pick(rng)];
             std::vector<std::uint8_t> raw(static_cast<std::size_t>(endmant));
@@ -307,6 +308,7 @@ TEST_CASE("the float block conversions agree with to_fixed25 element by element"
         const std::int32_t expected = iclforge::ac3::to_fixed25(values[i]);
         CHECK(fixed[i] == expected);
         CHECK(fused[i] == expected);
-        CHECK(exponents[i] == static_cast<std::uint8_t>(iclforge::ac3::exponent_from_fixed(expected)));
+        CHECK(exponents[i] ==
+              static_cast<std::uint8_t>(iclforge::ac3::exponent_from_fixed(expected)));
     }
 }

@@ -1703,12 +1703,14 @@ int main(int argc, char** argv) {
     // threshold - the same fix applied to FrameEncoder in PR #50.
     constexpr std::uint32_t kBitrateKbps = 640;
     auto objects_encoder = std::make_unique<iclforge::ac3::oba::AtmosEncoder>(
-        iclforge::ac3::oba::AtmosConfig{.bitrate_kbps = kBitrateKbps}, static_cast<int>(kObjectCount));
+        iclforge::ac3::oba::AtmosConfig{.bitrate_kbps = kBitrateKbps},
+        static_cast<int>(kObjectCount));
     // Same scene with the EMDF container omitted: the fallback for decoders
     // that validate emdf_protection (see ac3/oba/atmos.hpp for why this is
     // objects-or-nothing, never both).
     auto bed51_encoder = std::make_unique<iclforge::ac3::oba::AtmosEncoder>(
-        iclforge::ac3::oba::AtmosConfig{.bitrate_kbps = kBitrateKbps, .emit_object_metadata = false},
+        iclforge::ac3::oba::AtmosConfig{.bitrate_kbps = kBitrateKbps,
+                                        .emit_object_metadata = false},
         static_cast<int>(kObjectCount));
 
     const auto scene = build_scene();
@@ -1736,8 +1738,9 @@ int main(int argc, char** argv) {
     std::vector<double> music_scratch(iclforge::ac3::kSamplesPerFrame, 0.0);
     std::vector<double> send_scratch(iclforge::ac3::kSamplesPerFrame, 0.0);
 
-    const auto total_frames = static_cast<std::uint64_t>(
-        (render_until * kRate + (iclforge::ac3::kSamplesPerFrame - 1)) / iclforge::ac3::kSamplesPerFrame);
+    const auto total_frames =
+        static_cast<std::uint64_t>((render_until * kRate + (iclforge::ac3::kSamplesPerFrame - 1)) /
+                                   iclforge::ac3::kSamplesPerFrame);
     const auto first_encoded_frame = static_cast<std::uint64_t>(
         encode_from * kRate / iclforge::ac3::kSamplesPerFrame);
 

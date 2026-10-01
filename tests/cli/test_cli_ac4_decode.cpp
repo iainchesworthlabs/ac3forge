@@ -98,7 +98,8 @@ double energy(const std::vector<float>& x) {
 }
 
 // Decodes `in` with `options` into a WAV and reads it back.
-iclforge::ac3::io::WavData decode(const fs::path& in, const std::string& options, const fs::path& log) {
+iclforge::ac3::io::WavData decode(const fs::path& in, const std::string& options,
+                                  const fs::path& log) {
     const auto wav = scratch_dir() / "ac4_option.wav";
     fs::remove(wav);
     INFO(options);

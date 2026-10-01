@@ -134,8 +134,8 @@ class ProgrammeSource {
             const auto got = stream_.read_planar(dst, want);
             if (!got || *got != want) {
                 fmt::println(stderr, "error: {}: {}", path,
-                             iclforge::ac3::io::describe(got ? iclforge::ac3::io::WavError::kTruncated
-                                                   : got.error()));
+                             iclforge::ac3::io::describe(
+                                 got ? iclforge::ac3::io::WavError::kTruncated : got.error()));
                 return false;
             }
             consumed_ += want;
@@ -268,8 +268,9 @@ std::unique_ptr<PlannedExtraProgramme> open_extra_programme(int n,
         // an extra programme's layout just above.
         const auto cp = plan::resolve(out->p);
         iclforge::ac3::meta::LoudnessMeter meter{rate, cp.bed_acmod, cp.bed_lfe};
-        const auto frame_len = static_cast<std::size_t>(
-            iclforge::ac3::eac3::blocks_per_syncframe(tools.numblkscod) * iclforge::ac3::kSamplesPerBlock);
+        const auto frame_len =
+            static_cast<std::size_t>(iclforge::ac3::eac3::blocks_per_syncframe(tools.numblkscod) *
+                                     iclforge::ac3::kSamplesPerBlock);
         const auto frames = out->source.frame_count();
         std::vector<std::vector<float>> src(out->source.channels(),
                                             std::vector<float>(frame_len));
@@ -366,7 +367,8 @@ bool eac3_config_accepted(int channel_count, std::uint32_t bitrate, iclforge::ac
 class Eac3Units {
    public:
     Eac3Units(const iclforge::ac3::eac3::AccessUnitConfig& config, bool verify)
-        : plain_(verify ? nullptr : std::make_unique<iclforge::ac3::eac3::AccessUnitEncoder>(config)),
+        : plain_(verify ? nullptr
+                        : std::make_unique<iclforge::ac3::eac3::AccessUnitEncoder>(config)),
           checked_(verify ? std::make_unique<iclforge::ac3::verify::Eac3MirrorEncoder>(config)
                           : nullptr) {}
 
@@ -477,8 +479,9 @@ int run_eac3_encode_multi(std::string_view in_path, std::string_view out_path,
     const auto source_channels = static_cast<std::size_t>(routing->source_channels);
     // Usually kSamplesPerFrame - shorter when the caller pinned numblkscod
     // (the "numblkscod:N" tools token) to something below its default 3.
-    const auto samples_per_frame = static_cast<std::size_t>(
-        iclforge::ac3::eac3::blocks_per_syncframe(p.tools.numblkscod) * iclforge::ac3::kSamplesPerBlock);
+    const auto samples_per_frame =
+        static_cast<std::size_t>(iclforge::ac3::eac3::blocks_per_syncframe(p.tools.numblkscod) *
+                                 iclforge::ac3::kSamplesPerBlock);
 
     std::vector<std::vector<float>> source(source_channels,
                                            std::vector<float>(samples_per_frame));
@@ -681,7 +684,8 @@ int run_eac3_encode(std::string_view in_path, std::string_view out_path,
     if (!streaming) {
         wav = read_wav_arg(in_path);
         if (!wav.has_value()) {
-            fmt::println(stderr, "error: {}: {}", in_path, iclforge::ac3::io::describe(wav.error()));
+            fmt::println(stderr, "error: {}: {}", in_path,
+                         iclforge::ac3::io::describe(wav.error()));
             return kExitInput;        }
         if (!prepare_dual_mono_source(*wav, layout, in2_path)) {
             return kExitInput;
@@ -819,8 +823,9 @@ int run_eac3_encode(std::string_view in_path, std::string_view out_path,
     assert(static_cast<int>(nchans + second_nchans) == encoder.channel_count());
     // Usually kSamplesPerFrame - shorter when the caller pinned numblkscod
     // (the "numblkscod:N" tools token) to something below its default 3.
-    const auto samples_per_frame = static_cast<std::size_t>(
-        iclforge::ac3::eac3::blocks_per_syncframe(p.tools.numblkscod) * iclforge::ac3::kSamplesPerBlock);
+    const auto samples_per_frame =
+        static_cast<std::size_t>(iclforge::ac3::eac3::blocks_per_syncframe(p.tools.numblkscod) *
+                                 iclforge::ac3::kSamplesPerBlock);
     // The classic path has exactly one source, always index 0 in offset='s
     // numbering - see LoadedSources::offset_samples for the multi-source
     // equivalent of this same leading silence.
@@ -916,8 +921,8 @@ int run_eac3_encode(std::string_view in_path, std::string_view out_path,
                 const auto got = stream_in.read_planar(stream_dst, want);
                 if (!got || *got != want) {
                     fmt::println(stderr, "error: {}: {}", in_path,
-                                 iclforge::ac3::io::describe(got ? iclforge::ac3::io::WavError::kTruncated
-                                                       : got.error()));
+                                 iclforge::ac3::io::describe(
+                                     got ? iclforge::ac3::io::WavError::kTruncated : got.error()));
                     out_sink.abort();
                     return kExitInput;
                 }
@@ -1071,7 +1076,8 @@ int run_encode_multi(std::string_view in_path, std::string_view out_path, std::u
 
     std::vector<std::vector<float>> source(source_channels,
                                            std::vector<float>(iclforge::ac3::kSamplesPerFrame));
-    std::vector<std::vector<float>> block(nchans, std::vector<float>(iclforge::ac3::kSamplesPerFrame));
+    std::vector<std::vector<float>> block(nchans,
+                                          std::vector<float>(iclforge::ac3::kSamplesPerFrame));
     std::vector<std::span<const float>> in(source_channels);
     std::vector<std::span<float>> out(nchans);
     std::vector<std::span<const float>> views(nchans);
@@ -1127,8 +1133,8 @@ int run_encode_multi(std::string_view in_path, std::string_view out_path, std::u
             whole.emplace(*sr, cp.bed_acmod, cp.bed_lfe);
         }
         Progress progress;
-        progress.start("measuring",
-                       (total + iclforge::ac3::kSamplesPerFrame - 1) / iclforge::ac3::kSamplesPerFrame);
+        progress.start("measuring", (total + iclforge::ac3::kSamplesPerFrame - 1) /
+                                        iclforge::ac3::kSamplesPerFrame);
         for (std::size_t start = 0; start < total; start += iclforge::ac3::kSamplesPerFrame) {
             route_frame(start);
             if (whole.has_value()) {
@@ -1238,7 +1244,8 @@ int run_encode(std::string_view in_path, std::string_view out_path, std::uint32_
     if (!streaming) {
         wav = read_wav_arg(in_path);
         if (!wav.has_value()) {
-            fmt::println(stderr, "error: {}: {}", in_path, iclforge::ac3::io::describe(wav.error()));
+            fmt::println(stderr, "error: {}: {}", in_path,
+                         iclforge::ac3::io::describe(wav.error()));
             return kExitInput;        }
         if (!prepare_dual_mono_source(*wav, layout, in2_path)) {
             return kExitInput;
@@ -1359,7 +1366,8 @@ int run_encode(std::string_view in_path, std::string_view out_path, std::uint32_
 
     std::vector<std::vector<float>> source(src_channels,
                                            std::vector<float>(iclforge::ac3::kSamplesPerFrame));
-    std::vector<std::vector<float>> block(nchans, std::vector<float>(iclforge::ac3::kSamplesPerFrame));
+    std::vector<std::vector<float>> block(nchans,
+                                          std::vector<float>(iclforge::ac3::kSamplesPerFrame));
     std::vector<std::span<const float>> in(source.size());
     std::vector<std::span<float>> out(nchans);
     std::vector<std::span<const float>> views(nchans);
@@ -1399,8 +1407,9 @@ int run_encode(std::string_view in_path, std::string_view out_path, std::uint32_
         const auto valid = std::min<std::size_t>(iclforge::ac3::kSamplesPerFrame, total - start);
         if (streaming) {
             const std::size_t lead =
-                start < offset ? std::min<std::size_t>(offset - start, iclforge::ac3::kSamplesPerFrame)
-                               : 0;
+                start < offset
+                    ? std::min<std::size_t>(offset - start, iclforge::ac3::kSamplesPerFrame)
+                    : 0;
             std::size_t want = 0;
             if (lead < iclforge::ac3::kSamplesPerFrame) {
                 const std::size_t remaining = frame_count - std::min(frame_count, consumed);
@@ -1414,8 +1423,8 @@ int run_encode(std::string_view in_path, std::string_view out_path, std::uint32_
                 const auto got = stream_in.read_planar(stream_dst, want);
                 if (!got || *got != want) {
                     fmt::println(stderr, "error: {}: {}", in_path,
-                                 iclforge::ac3::io::describe(got ? iclforge::ac3::io::WavError::kTruncated
-                                                       : got.error()));
+                                 iclforge::ac3::io::describe(
+                                     got ? iclforge::ac3::io::WavError::kTruncated : got.error()));
                     out_sink.abort();
                     return kExitInput;
                 }
@@ -1467,8 +1476,8 @@ int run_encode(std::string_view in_path, std::string_view out_path, std::uint32_
         return kExitOutput;
     }
     status_println(status, "encoded {} frames ({} kbps, {} Hz, {}) to {}", out_sink.frames(),
-                   bitrate, src_rate, iclforge::ac3::analysis::layout_name(config.acmod, config.lfe),
-                   out_path);
+                   bitrate, src_rate,
+                   iclforge::ac3::analysis::layout_name(config.acmod, config.lfe), out_path);
     print_routing(p, *routing, label, status);
     print_channel_summary(meter, status);
     return kExitOk;

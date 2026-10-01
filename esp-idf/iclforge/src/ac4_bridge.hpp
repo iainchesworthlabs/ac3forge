@@ -43,7 +43,8 @@ namespace iclforge::ac4bridge {
 // surrounds, Lw and Rw the wides, the top front pair the vertical heights, the
 // top back and top side pairs the top surrounds (Table E2.5 has one pair for
 // both), and the second LFE LFE2.
-[[nodiscard]] inline iclforge::ac3::eac3::chanmap::Location location(iclforge::ac4::Speaker speaker) {
+[[nodiscard]] inline iclforge::ac3::eac3::chanmap::Location location(
+    iclforge::ac4::Speaker speaker) {
     using L = iclforge::ac3::eac3::chanmap::Location;
     switch (speaker) {
         case iclforge::ac4::Speaker::kLeft:

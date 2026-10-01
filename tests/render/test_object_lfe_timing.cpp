@@ -48,7 +48,8 @@ using iclforge::render::LayoutRenderer;
 using iclforge::render::OutputLayout;
 using Location = iclforge::ac3::eac3::chanmap::Location;
 
-constexpr std::uint16_t k51 = iclforge::ac3::eac3::chanmap::acmod_map(iclforge::ac3::Acmod::k3_2, true);
+constexpr std::uint16_t k51 =
+    iclforge::ac3::eac3::chanmap::acmod_map(iclforge::ac3::Acmod::k3_2, true);
 // A genuinely different bed from k51's: the LFE sits at coded index 7 rather
 // than 5 (test_layout.cpp's "a channel the layout lacks is panned..." case
 // has the same figures), used to tell set_bed() apart from a mere repeat.
@@ -178,8 +179,8 @@ Rendered encode_decode_render(std::span<const float> in, Domain domain, bool obj
         const auto unit = encoder.encode_frame(audio, placements);
         REQUIRE(unit.has_value());
         bool carried_objects = false;
-        const auto decoded =
-            decoder.decode_access_unit_by_block(unit->bytes, [&](const iclforge::ac3::PcmBlock& pcm) {
+        const auto decoded = decoder.decode_access_unit_by_block(
+            unit->bytes, [&](const iclforge::ac3::PcmBlock& pcm) {
                 if (pcm.index == 0 && serving.reconstruct) {
                     renderer.set_objects(pcm.object_metadata, pcm.objects.size());
                 }
@@ -338,8 +339,9 @@ TEST_CASE("the objects' LFE arrives with the objects", "[render][latency]") {
 
     const int to_speakers = best_lag(in, placed.speakers, 0, 2 * iclforge::ac3::kSamplesPerFrame);
     const int to_lfe = best_lag(in, placed.lfe, 0, 2 * iclforge::ac3::kSamplesPerFrame);
-    const int lfe_to_speakers = best_lag(placed.lfe, placed.speakers, -iclforge::ac3::kSamplesPerFrame,
-                                         iclforge::ac3::kSamplesPerFrame);
+    const int lfe_to_speakers =
+        best_lag(placed.lfe, placed.speakers, -iclforge::ac3::kSamplesPerFrame,
+                 iclforge::ac3::kSamplesPerFrame);
     CAPTURE(to_speakers, to_lfe, lfe_to_speakers);
     // The objects are where test_latency.cpp says a reconstructed object is.
     CHECK(to_speakers == object_lag);

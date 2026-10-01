@@ -220,7 +220,8 @@ void print_drc_summary(FILE* status, double dynrng_min_db, double dynrng_max_db,
 // worth a line, and that describes almost every stream this tool decodes - so
 // a plain decode's report reads exactly as it always did, and anything that
 // does appear below is a claim the encoder deliberately made.
-void print_bsi_summary(FILE* status, const iclforge::ac3::meta::BsiInfo& info, iclforge::ac3::Acmod acmod) {
+void print_bsi_summary(FILE* status, const iclforge::ac3::meta::BsiInfo& info,
+                       iclforge::ac3::Acmod acmod) {
     if (info.bsmod != iclforge::ac3::meta::BitstreamMode::kCompleteMain) {
         status_println(status, "  service: {}", iclforge::ac3::meta::describe(info.bsmod, acmod));
     }
@@ -231,7 +232,8 @@ void print_bsi_summary(FILE* status, const iclforge::ac3::meta::BsiInfo& info, i
         status_println(status, "  dsurexmod: {}", iclforge::ac3::meta::describe(info.dsurexmod));
     }
     if (info.dheadphonmod != iclforge::ac3::meta::HeadphoneMode::kNotIndicated) {
-        status_println(status, "  dheadphonmod: {}", iclforge::ac3::meta::describe(info.dheadphonmod));
+        status_println(status, "  dheadphonmod: {}",
+                       iclforge::ac3::meta::describe(info.dheadphonmod));
     }
     // The A/D converter clause is only ever appended for HDCD: "standard" is
     // what §D2.3.1.10 tells an encoder to send when it does not know, so it
@@ -359,9 +361,10 @@ void print_mix_summary(FILE* status, const iclforge::ac3::meta::MixMetadata& mix
         if (!pan.has_value()) {
             return;
         }
-        status_println(status, "  {}: {:.1f} degrees clockwise from centre (paninfo {})", label,
-                       static_cast<double>(pan->panmean) * iclforge::ac3::meta::kPanMeanDegreesPerStep,
-                       pan->paninfo);
+        status_println(
+            status, "  {}: {:.1f} degrees clockwise from centre (paninfo {})", label,
+            static_cast<double>(pan->panmean) * iclforge::ac3::meta::kPanMeanDegreesPerStep,
+            pan->paninfo);
     };
     print_pan("pan", mix.pan);
     print_pan("Ch2 pan", mix.pan2);
@@ -1035,13 +1038,15 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
             const auto nblks =
                 static_cast<std::size_t>(iclforge::ac3::eac3::blocks_per_syncframe(numblkscod));
             for (std::size_t i = 0; i < nblks; ++i) {
-                const double db = iclforge::ac3::meta::to_db(iclforge::ac3::meta::dynrng_gain(dynrng[i]));
+                const double db =
+                    iclforge::ac3::meta::to_db(iclforge::ac3::meta::dynrng_gain(dynrng[i]));
                 dynrng_min_db = dynrng_words == 0 ? db : std::min(dynrng_min_db, db);
                 dynrng_max_db = dynrng_words == 0 ? db : std::max(dynrng_max_db, db);
                 ++dynrng_words;
             }
             if (compr.has_value()) {
-                const double db = iclforge::ac3::meta::to_db(iclforge::ac3::meta::compr_gain(*compr));
+                const double db =
+                    iclforge::ac3::meta::to_db(iclforge::ac3::meta::compr_gain(*compr));
                 compr_min_db = compr_frames == 0 ? db : std::min(compr_min_db, db);
                 compr_max_db = compr_frames == 0 ? db : std::max(compr_max_db, db);
                 ++compr_frames;
@@ -1107,7 +1112,8 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
     const auto flushed = decoder.flush();
     if (!flushed.empty()) {
         const auto held = iclforge::apps::held_back_unit(
-            flushed, programme_layout, meta.output.target != iclforge::ac3::DownmixTarget::kAsCoded);
+            flushed, programme_layout,
+            meta.output.target != iclforge::ac3::DownmixTarget::kAsCoded);
         if (held.has_value()) {
             // §7.7 words are meaningful at this report's level only from the
             // independent (bed) substream - held_back_unit's dynrng/compr/
@@ -1343,7 +1349,8 @@ int run_decode(std::string_view in_path, std::string_view out_path,
         progress.tick(++frames_done);
         const auto decoded = decoder.decode_frame(frame);
         if (!decoded.has_value()) {
-            fmt::println(stderr, "error: {}: {}", in_path, iclforge::ac3::describe(decoded.error()));
+            fmt::println(stderr, "error: {}: {}", in_path,
+                         iclforge::ac3::describe(decoded.error()));
             sink.abort();
             return kExitInput;
         }
@@ -1364,7 +1371,8 @@ int run_decode(std::string_view in_path, std::string_view out_path,
             ++dynrng_words;
         }
         if (decoded->compr.has_value()) {
-            const double db = iclforge::ac3::meta::to_db(iclforge::ac3::meta::compr_gain(*decoded->compr));
+            const double db =
+                iclforge::ac3::meta::to_db(iclforge::ac3::meta::compr_gain(*decoded->compr));
             compr_min_db = compr_frames == 0 ? db : std::min(compr_min_db, db);
             compr_max_db = compr_frames == 0 ? db : std::max(compr_max_db, db);
             ++compr_frames;
@@ -1379,10 +1387,10 @@ int run_decode(std::string_view in_path, std::string_view out_path,
             // L then R, or the one mono channel - so it takes the identity
             // permutation rather than the coded layout's.
             const bool folded = folding(meta, decoded->acmod);
-            if (!sink.open(out_path, sample_rate_hz(decoded->sample_rate), decoded->channels.size(),
-                           folded
-                               ? std::vector<std::size_t>{}
-                               : iclforge::ac3::io::wav_channel_order(decoded->acmod, decoded->lfe))) {
+            if (!sink.open(
+                    out_path, sample_rate_hz(decoded->sample_rate), decoded->channels.size(),
+                    folded ? std::vector<std::size_t>{}
+                           : iclforge::ac3::io::wav_channel_order(decoded->acmod, decoded->lfe))) {
                 fmt::println(stderr, "error: cannot open {} for writing", out_path);
                 return kExitOutput;
             }
@@ -1429,12 +1437,13 @@ int run_decode(std::string_view in_path, std::string_view out_path,
     // and this report must not land in the middle of them.
     const auto status = status_stream(out_path);
     const bool folded = folding(meta, first.acmod);
-    status_println(status, "decoded {} frames -> {} ({}, {} Hz)", frames->size(), out_path,
-                   folded ? fmt::format("{} -> {}",
-                                        iclforge::ac3::analysis::layout_name(first.acmod, first.lfe),
-                                        fold_name(meta.output.target))
-                          : std::string{iclforge::ac3::analysis::layout_name(first.acmod, first.lfe)},
-                   sample_rate_hz(first.sample_rate));
+    status_println(
+        status, "decoded {} frames -> {} ({}, {} Hz)", frames->size(), out_path,
+        folded
+            ? fmt::format("{} -> {}", iclforge::ac3::analysis::layout_name(first.acmod, first.lfe),
+                          fold_name(meta.output.target))
+            : std::string{iclforge::ac3::analysis::layout_name(first.acmod, first.lfe)},
+        sample_rate_hz(first.sample_rate));
     status_println(status, "metadata: dialnorm {} (dialogue at -{} dBFS){}", first.dialnorm,
                    first.dialnorm, dialnorm_note(meta, first.dialnorm));
     if (first.dialnorm2.has_value()) {
@@ -1461,7 +1470,8 @@ int run_decode(std::string_view in_path, std::string_view out_path,
     if (first.alternate_bsi.has_value() && first.alternate_bsi->extended.has_value()) {
         const auto& extended = *first.alternate_bsi->extended;
         if (extended.dsurexmod != iclforge::ac3::meta::SurroundExMode::kNotIndicated) {
-            status_println(status, "  dsurexmod: {}", iclforge::ac3::meta::describe(extended.dsurexmod));
+            status_println(status, "  dsurexmod: {}",
+                           iclforge::ac3::meta::describe(extended.dsurexmod));
         }
         if (extended.dheadphonmod != iclforge::ac3::meta::HeadphoneMode::kNotIndicated) {
             status_println(status, "  dheadphonmod: {}",
@@ -1474,13 +1484,15 @@ int run_decode(std::string_view in_path, std::string_view out_path,
     }
     if (first.alternate_bsi.has_value() && first.alternate_bsi->mix.has_value()) {
         const auto& mix = *first.alternate_bsi->mix;
-        status_println(status, "  xbsi1: preferred downmix {}, Lt/Rt {:+.1f}/{:+.1f} dB, "
-                               "Lo/Ro {:+.1f}/{:+.1f} dB (centre/surround)",
-                       iclforge::ac3::meta::describe(mix.dmixmod),
-                       iclforge::ac3::meta::to_db(iclforge::ac3::meta::coefficient(mix.ltrtcmixlev)),
-                       iclforge::ac3::meta::to_db(iclforge::ac3::meta::coefficient(mix.ltrtsurmixlev)),
-                       iclforge::ac3::meta::to_db(iclforge::ac3::meta::coefficient(mix.lorocmixlev)),
-                       iclforge::ac3::meta::to_db(iclforge::ac3::meta::coefficient(mix.lorosurmixlev)));
+        status_println(
+            status,
+            "  xbsi1: preferred downmix {}, Lt/Rt {:+.1f}/{:+.1f} dB, "
+            "Lo/Ro {:+.1f}/{:+.1f} dB (centre/surround)",
+            iclforge::ac3::meta::describe(mix.dmixmod),
+            iclforge::ac3::meta::to_db(iclforge::ac3::meta::coefficient(mix.ltrtcmixlev)),
+            iclforge::ac3::meta::to_db(iclforge::ac3::meta::coefficient(mix.ltrtsurmixlev)),
+            iclforge::ac3::meta::to_db(iclforge::ac3::meta::coefficient(mix.lorocmixlev)),
+            iclforge::ac3::meta::to_db(iclforge::ac3::meta::coefficient(mix.lorosurmixlev)));
     }
     print_concealment_summary(status, concealed_frames, frames->size(), "frames");
     // The have_first check above already returned if the frame loop never

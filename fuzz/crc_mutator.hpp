@@ -80,9 +80,9 @@ inline void restamp_syncframe_crcs(std::span<std::byte> stream) {
             if (fscod == 3 || frmsizecod > 37) {
                 return;
             }
-            const auto sized = iclforge::ac3::frame_size_bytes(static_cast<iclforge::ac3::SampleRate>(fscod),
-                                                     iclforge::ac3::kBitratesKbps[frmsizecod >> 1],
-                                                     (frmsizecod & 1) != 0);
+            const auto sized = iclforge::ac3::frame_size_bytes(
+                static_cast<iclforge::ac3::SampleRate>(fscod),
+                iclforge::ac3::kBitratesKbps[frmsizecod >> 1], (frmsizecod & 1) != 0);
             if (!sized) {
                 return;
             }
@@ -108,7 +108,8 @@ inline void restamp_syncframe_crcs(std::span<std::byte> stream) {
             if (region < 4 || region > frame_bytes) {
                 return;
             }
-            const std::uint16_t crc1 = iclforge::ac3::solve_leading_crc(view.subspan(4, region - 4));
+            const std::uint16_t crc1 =
+                iclforge::ac3::solve_leading_crc(view.subspan(4, region - 4));
             frame[2] = static_cast<std::byte>(crc1 >> 8);
             frame[3] = static_cast<std::byte>(crc1 & 0xFF);
         }

@@ -61,10 +61,12 @@ static_assert(static_cast<int>(iclforge::ac3::meta::SurroundMixLevel::kSilent) =
 
 static_assert(static_cast<int>(iclforge::ac3::meta::ProfileId::kFilmStandard) ==
               ICLFORGE_DRC_FILM_STANDARD);
-static_assert(static_cast<int>(iclforge::ac3::meta::ProfileId::kFilmLight) == ICLFORGE_DRC_FILM_LIGHT);
+static_assert(static_cast<int>(iclforge::ac3::meta::ProfileId::kFilmLight) ==
+              ICLFORGE_DRC_FILM_LIGHT);
 static_assert(static_cast<int>(iclforge::ac3::meta::ProfileId::kMusicStandard) ==
               ICLFORGE_DRC_MUSIC_STANDARD);
-static_assert(static_cast<int>(iclforge::ac3::meta::ProfileId::kMusicLight) == ICLFORGE_DRC_MUSIC_LIGHT);
+static_assert(static_cast<int>(iclforge::ac3::meta::ProfileId::kMusicLight) ==
+              ICLFORGE_DRC_MUSIC_LIGHT);
 static_assert(static_cast<int>(iclforge::ac3::meta::ProfileId::kSpeech) == ICLFORGE_DRC_SPEECH);
 
 static_assert(static_cast<int>(iclforge::ac3::eac3::StreamType::kIndependent) ==
@@ -93,7 +95,8 @@ static_assert(static_cast<int>(iclforge::ac3::meta::QcPresetId::kAtscA85) ==
               ICLFORGE_QC_PRESET_ATSC_A85);
 static_assert(static_cast<int>(iclforge::ac3::meta::QcPresetId::kAtscA85Streaming) ==
               ICLFORGE_QC_PRESET_ATSC_A85_STREAMING);
-static_assert(static_cast<int>(iclforge::ac3::meta::QcPresetId::kNetflix) == ICLFORGE_QC_PRESET_NETFLIX);
+static_assert(static_cast<int>(iclforge::ac3::meta::QcPresetId::kNetflix) ==
+              ICLFORGE_QC_PRESET_NETFLIX);
 static_assert(static_cast<int>(iclforge::ac3::meta::QcPresetId::kAppleMusicAtmos) ==
               ICLFORGE_QC_PRESET_APPLE_MUSIC_ATMOS);
 static_assert(iclforge::ac3::meta::kQcPresetIds.size() == 5);
@@ -116,10 +119,12 @@ namespace iclforge_c {
 [[nodiscard]] inline iclforge::ac3::meta::CentreMixLevel to_cpp(iclforge_centre_mix_level_t level) {
     return static_cast<iclforge::ac3::meta::CentreMixLevel>(level);
 }
-[[nodiscard]] inline iclforge_centre_mix_level_t from_cpp(iclforge::ac3::meta::CentreMixLevel level) {
+[[nodiscard]] inline iclforge_centre_mix_level_t from_cpp(
+    iclforge::ac3::meta::CentreMixLevel level) {
     return static_cast<iclforge_centre_mix_level_t>(level);
 }
-[[nodiscard]] inline iclforge::ac3::meta::SurroundMixLevel to_cpp(iclforge_surround_mix_level_t level) {
+[[nodiscard]] inline iclforge::ac3::meta::SurroundMixLevel to_cpp(
+    iclforge_surround_mix_level_t level) {
     return static_cast<iclforge::ac3::meta::SurroundMixLevel>(level);
 }
 [[nodiscard]] inline iclforge_surround_mix_level_t from_cpp(
@@ -135,7 +140,8 @@ namespace iclforge_c {
 [[nodiscard]] inline iclforge::ac3::eac3::StreamType to_cpp(iclforge_stream_type_t type) {
     return static_cast<iclforge::ac3::eac3::StreamType>(type);
 }
-[[nodiscard]] inline iclforge::ac3::meta::HeavyConfig to_cpp(const iclforge_heavy_config_t& config) {
+[[nodiscard]] inline iclforge::ac3::meta::HeavyConfig to_cpp(
+    const iclforge_heavy_config_t& config) {
     return iclforge::ac3::meta::HeavyConfig{.dialogue_target_dbfs = config.dialogue_target_dbfs,
                                    .peak_ceiling_dbfs = config.peak_ceiling_dbfs,
                                    .release_db_per_second = config.release_db_per_second};
@@ -150,14 +156,18 @@ namespace iclforge_c {
 
 [[nodiscard]] inline iclforge_status_t from_cpp(iclforge::ac3::FrameError error) {
     switch (error) {
-        case iclforge::ac3::FrameError::kInvalidBitrate: return ICLFORGE_ERROR_ENCODE_INVALID_BITRATE;
-        case iclforge::ac3::FrameError::kInvalidDialnorm: return ICLFORGE_ERROR_ENCODE_INVALID_DIALNORM;
+        case iclforge::ac3::FrameError::kInvalidBitrate:
+            return ICLFORGE_ERROR_ENCODE_INVALID_BITRATE;
+        case iclforge::ac3::FrameError::kInvalidDialnorm:
+            return ICLFORGE_ERROR_ENCODE_INVALID_DIALNORM;
         case iclforge::ac3::FrameError::kInvalidSubstream:
             return ICLFORGE_ERROR_ENCODE_INVALID_SUBSTREAM;
         case iclforge::ac3::FrameError::kInvalidChannelMap:
             return ICLFORGE_ERROR_ENCODE_INVALID_CHANNEL_MAP;
-        case iclforge::ac3::FrameError::kTooManyChannels: return ICLFORGE_ERROR_ENCODE_TOO_MANY_CHANNELS;
-        case iclforge::ac3::FrameError::kInvalidMixLevel: return ICLFORGE_ERROR_ENCODE_INVALID_MIX_LEVEL;
+        case iclforge::ac3::FrameError::kTooManyChannels:
+            return ICLFORGE_ERROR_ENCODE_TOO_MANY_CHANNELS;
+        case iclforge::ac3::FrameError::kInvalidMixLevel:
+            return ICLFORGE_ERROR_ENCODE_INVALID_MIX_LEVEL;
         case iclforge::ac3::FrameError::kInvalidBsi: return ICLFORGE_ERROR_ENCODE_INVALID_BSI;
         case iclforge::ac3::FrameError::kInvalidObjectAudio:
             return ICLFORGE_ERROR_ENCODE_INVALID_OBJECT_AUDIO;
@@ -170,13 +180,16 @@ namespace iclforge_c {
         case iclforge::ac3::DecodeError::kTruncated: return ICLFORGE_ERROR_DECODE_TRUNCATED;
         case iclforge::ac3::DecodeError::kBadSyncWord: return ICLFORGE_ERROR_DECODE_BAD_SYNC_WORD;
         case iclforge::ac3::DecodeError::kBadCrc: return ICLFORGE_ERROR_DECODE_BAD_CRC;
-        case iclforge::ac3::DecodeError::kReservedValue: return ICLFORGE_ERROR_DECODE_RESERVED_VALUE;
+        case iclforge::ac3::DecodeError::kReservedValue:
+            return ICLFORGE_ERROR_DECODE_RESERVED_VALUE;
         case iclforge::ac3::DecodeError::kUnsupported: return ICLFORGE_ERROR_DECODE_UNSUPPORTED;
-        case iclforge::ac3::DecodeError::kInvalidStream: return ICLFORGE_ERROR_DECODE_INVALID_STREAM;
+        case iclforge::ac3::DecodeError::kInvalidStream:
+            return ICLFORGE_ERROR_DECODE_INVALID_STREAM;
         // Never reaches this API: it has no fast_imdct switch, so its decoders
         // always run the fast transform every build carries. Mapped to the
         // nearest code rather than left to the INTERNAL fallback all the same.
-        case iclforge::ac3::DecodeError::kNoReferenceTransform: return ICLFORGE_ERROR_DECODE_UNSUPPORTED;
+        case iclforge::ac3::DecodeError::kNoReferenceTransform:
+            return ICLFORGE_ERROR_DECODE_UNSUPPORTED;
     }
     return ICLFORGE_ERROR_INTERNAL;
 }
@@ -185,8 +198,10 @@ namespace iclforge_c {
     switch (error) {
         case iclforge::ac3::io::ScanError::kEmpty: return ICLFORGE_ERROR_SCAN_EMPTY;
         case iclforge::ac3::io::ScanError::kLostSync: return ICLFORGE_ERROR_SCAN_LOST_SYNC;
-        case iclforge::ac3::io::ScanError::kUnsupportedBsid: return ICLFORGE_ERROR_SCAN_UNSUPPORTED_BSID;
-        case iclforge::ac3::io::ScanError::kReservedValue: return ICLFORGE_ERROR_SCAN_RESERVED_VALUE;
+        case iclforge::ac3::io::ScanError::kUnsupportedBsid:
+            return ICLFORGE_ERROR_SCAN_UNSUPPORTED_BSID;
+        case iclforge::ac3::io::ScanError::kReservedValue:
+            return ICLFORGE_ERROR_SCAN_RESERVED_VALUE;
         case iclforge::ac3::io::ScanError::kTruncated: return ICLFORGE_ERROR_SCAN_TRUNCATED;
         case iclforge::ac3::io::ScanError::kUnsupportedStructure:
             return ICLFORGE_ERROR_SCAN_UNSUPPORTED_STRUCTURE;

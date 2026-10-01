@@ -14,7 +14,8 @@ using iclforge_c::to_cpp;
 // -Wreturn-type-c-linkage.
 namespace {
 
-iclforge::ac3::eac3::FrameConfig eac3_frame_config_to_cpp(const iclforge_eac3_frame_config_t& config) {
+iclforge::ac3::eac3::FrameConfig eac3_frame_config_to_cpp(
+    const iclforge_eac3_frame_config_t& config) {
     iclforge::ac3::eac3::FrameConfig out;
     out.sample_rate = to_cpp(config.sample_rate);
     out.bitrate_kbps = config.bitrate_kbps;

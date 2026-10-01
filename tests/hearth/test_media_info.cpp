@@ -278,7 +278,8 @@ TEST_CASE("media info: an AC-3 stream's coded mix levels, and Annex D's", "[hear
         mix.dmixmod = iclforge::ac3::meta::DownmixMode::kLtRt;
         mix.ltrtcmixlev = iclforge::ac3::meta::MixLevel::kMinus1_5dB;
         mix.lorocmixlev = iclforge::ac3::meta::MixLevel::kMinus6dB;
-        config.alternate_bsi = iclforge::ac3::meta::AlternateBsi{.mix = mix, .extended = std::nullopt};
+        config.alternate_bsi =
+            iclforge::ac3::meta::AlternateBsi{.mix = mix, .extended = std::nullopt};
         const MediaInfo info = describe_media("xbsi.ac3", load(ac3_stream(4, config)));
         REQUIRE(info.bitstream.has_value());
         REQUIRE(info.bitstream->alternate_bsi.has_value());
@@ -358,9 +359,9 @@ TEST_CASE("media info: an E-AC-3 stream in MP4, with its container and edit list
     CHECK(root["bitstream"]["info"].is_null());
     CHECK(root["probe"]["stream"]["codec"].equals("eac3"));
     CHECK(root["probe"]["stream"]["nominal_bitrate_kbps"].is_null());
-    CHECK(
-        root["channel_map"].as_int() ==
-        static_cast<std::int64_t>(iclforge::ac3::eac3::chanmap::acmod_map(iclforge::ac3::Acmod::k3_2, true)));
+    CHECK(root["channel_map"].as_int() ==
+          static_cast<std::int64_t>(
+              iclforge::ac3::eac3::chanmap::acmod_map(iclforge::ac3::Acmod::k3_2, true)));
 }
 
 TEST_CASE("media info: Matroska and MPEG-TS name their tracks", "[hearth][media-info]") {

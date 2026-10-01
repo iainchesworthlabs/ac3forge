@@ -55,8 +55,8 @@
 // write_wav_f32_arg) stay out of this header entirely and live in an anonymous namespace inside
 // support.cpp instead, preserving the original "internal unless something else needs it" default.
 //
-// Everything about layouts, coding tools and metadata itself lives in iclforge::ac3::plan, so the GUI
-// cannot mean something different by "514" or by "all" than this does. What is here is argument
+// Everything about layouts, coding tools and metadata itself lives in iclforge::ac3::plan, so the
+// GUI cannot mean something different by "514" or by "all" than this does. What is here is argument
 // shape, validation and printing - Options carries plan::Metadata verbatim rather than a second,
 // CLI-specific copy of the same fields.
 namespace forge_cli {
@@ -701,8 +701,9 @@ std::optional<int> finish_measurement(const iclforge::ac3::meta::LoudnessMeter& 
 // blend of two different things rather than either programme's own level;
 // callers route dual mono through measured_dialnorm_channel on each
 // programme's own channel alone instead.
-std::optional<int> measured_dialnorm(const iclforge::ac3::io::WavData& wav, iclforge::ac3::SampleRate rate,
-                                     iclforge::ac3::Acmod acmod, bool lfe, FILE* out = stdout);
+std::optional<int> measured_dialnorm(const iclforge::ac3::io::WavData& wav,
+                                     iclforge::ac3::SampleRate rate, iclforge::ac3::Acmod acmod,
+                                     bool lfe, FILE* out = stdout);
 
 // Same measurement, for one dual-mono programme's own channel alone - never a
 // programme's worth of BS.1770 surround weighting, since a 1+1 channel is not
@@ -710,8 +711,9 @@ std::optional<int> measured_dialnorm(const iclforge::ac3::io::WavData& wav, iclf
 // labels above - "Ch1"/"dialnorm" or "Ch2"/"dialnorm2", the two programmes
 // sharing this one function since the measurement itself does not differ.
 std::optional<int> measured_dialnorm_channel(std::span<const float> channel,
-                                             iclforge::ac3::SampleRate rate, std::string_view programme,
-                                             std::string_view field, FILE* out = stdout);
+                                             iclforge::ac3::SampleRate rate,
+                                             std::string_view programme, std::string_view field,
+                                             FILE* out = stdout);
 
 // Dual mono's Ch1/Ch2 arrive as either one two-channel file or two mono ones;
 // this settles which shape `wav` is in and merges a second file's channel in
@@ -944,7 +946,8 @@ std::vector<std::byte> read_all(std::string_view path);
 // Wraps iclforge::ac3::io::read_wav to honor the "-" stdin convention (is_stdio_path
 // above): "-" reads the WAV from stdin, binary mode set first, instead of
 // opening a file with that literal name.
-std::expected<iclforge::ac3::io::WavData, iclforge::ac3::io::WavError> read_wav_arg(std::string_view path);
+std::expected<iclforge::ac3::io::WavData, iclforge::ac3::io::WavError> read_wav_arg(
+    std::string_view path);
 
 // Streams planar float channels into a WAV as they decode, so the decoded
 // programme never sits in memory whole (it used to: ~69 MB per minute of
@@ -1054,8 +1057,8 @@ void print_live_meter(const iclforge::ac3::analysis::LevelMeter& meter, double s
 // wrong) or false on anything neither a named layout nor a channel list
 // accepts. Tried in that order: a name recognised by parse_layout wins, so a
 // custom list can never shadow one of the seven presets.
-bool resolve_layout(std::string_view name, iclforge::ac3::plan::Codec codec, iclforge::ac3::plan::Plan& plan,
-                    std::string& label);
+bool resolve_layout(std::string_view name, iclforge::ac3::plan::Codec codec,
+                    iclforge::ac3::plan::Plan& plan, std::string& label);
 
 // The bed's LFE is not an object, so it never goes through JOC reconstruction
 // - but a decoded programme's dynamic objects did, and that costs

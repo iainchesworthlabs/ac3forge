@@ -18,7 +18,8 @@ extern "C" {
 size_t iclforge_qc_preset_count(void) { return iclforge::ac3::meta::kQcPresetIds.size(); }
 
 iclforge_qc_preset_t iclforge_qc_preset(iclforge_qc_preset_id_t id) {
-    const auto preset = iclforge::ac3::meta::qc_preset(static_cast<iclforge::ac3::meta::QcPresetId>(id));
+    const auto preset =
+        iclforge::ac3::meta::qc_preset(static_cast<iclforge::ac3::meta::QcPresetId>(id));
     return iclforge_qc_preset_t{
         .target_lkfs = preset.target_lkfs,
         .tolerance_lu = preset.tolerance_lu,
@@ -28,7 +29,8 @@ iclforge_qc_preset_t iclforge_qc_preset(iclforge_qc_preset_id_t id) {
 }
 
 const char* iclforge_qc_preset_name(iclforge_qc_preset_id_t id) {
-    return iclforge::ac3::meta::qc_preset_name(static_cast<iclforge::ac3::meta::QcPresetId>(id)).data();
+    return iclforge::ac3::meta::qc_preset_name(static_cast<iclforge::ac3::meta::QcPresetId>(id))
+        .data();
 }
 
 int iclforge_parse_qc_preset(const char* name, iclforge_qc_preset_id_t* out_id) {

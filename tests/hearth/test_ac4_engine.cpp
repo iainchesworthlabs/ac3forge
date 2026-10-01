@@ -641,7 +641,8 @@ TEST_CASE("hearth ac4: dialogue enhancement raises the dialogue by its gain up t
             REQUIRE(std::abs(before) > kAmplitude / 2.0);
             const double change = db(std::abs(tone_in(on, layout, kToneLocations[c], kTonesHz[c])) /
                                      std::abs(before));
-            const bool centre = kToneLocations[c] == iclforge::ac3::eac3::chanmap::Location::kCentre;
+            const bool centre =
+                kToneLocations[c] == iclforge::ac3::eac3::chanmap::Location::kCentre;
             CHECK(std::abs(change - (centre ? std::min(gain, static_cast<double>(kDeCapDb))
                                             : 0.0)) < kToleranceDb);
         }
@@ -983,8 +984,8 @@ TEST_CASE("hearth ac4: an AC-4 item joins an E-AC-3 one in the same output", "[h
         for (std::size_t n = 0; n < samples.size(); ++n) {
             samples[n] = static_cast<float>(
                 0.1 * std::sin(2.0 * std::numbers::pi * 440.0 *
-                               static_cast<double>(
-                                   n + (static_cast<std::size_t>(f) * iclforge::ac3::kSamplesPerFrame)) /
+                               static_cast<double>(n + (static_cast<std::size_t>(f) *
+                                                        iclforge::ac3::kSamplesPerFrame)) /
                                kRate));
         }
         const std::vector<std::span<const float>> views(6, samples);
@@ -1063,7 +1064,8 @@ TEST_CASE("hearth ac4: a presentation with objects is rendered through Ac4Object
     const iclforge::render::OutputLayout layout = layout_of(kEverySpeaker);
     const Played played = play_item(bytes, layout, as_coded());
 
-    const auto left = tone_in(played, layout, iclforge::ac3::eac3::chanmap::Location::kLeft, kObjectHz);
+    const auto left =
+        tone_in(played, layout, iclforge::ac3::eac3::chanmap::Location::kLeft, kObjectHz);
     const auto right =
         tone_in(played, layout, iclforge::ac3::eac3::chanmap::Location::kRight, kObjectHz);
     CHECK(std::abs(left) > 0.01);

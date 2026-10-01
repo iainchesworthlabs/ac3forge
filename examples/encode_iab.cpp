@@ -5,12 +5,12 @@
 // is iclforge::iab::parse_mxf_iab, src/iab/src/mxf_reader.cpp). This is a minimal, standalone
 // illustration of the same pipeline forge's 'atmos-iab' command drives for real:
 // iclforge::iab::parse_iabitstream() reads the frame sequence, iclforge::admbridge::build_iab()
-// maps it onto iclforge::ac3::oba::AtmosEncoder's flat object-list input shape (one bed channel pinned
-// in place, one dynamic object panned by its own authored motion), and a plain per-frame loop calls
-// iclforge::oba::evaluate_placements() plus AtmosEncoder::encode_frame() the same way every other
-// Atmos example in this directory does. The CLI command and this example deliberately share nothing
-// but that library API - see docs/library/adm-bridge.md's own note on why no separate "driving
-// loop" abstraction exists (the same reasoning applies here).
+// maps it onto iclforge::ac3::oba::AtmosEncoder's flat object-list input shape (one bed channel
+// pinned in place, one dynamic object panned by its own authored motion), and a plain per-frame
+// loop calls iclforge::oba::evaluate_placements() plus AtmosEncoder::encode_frame() the same way
+// every other Atmos example in this directory does. The CLI command and this example deliberately
+// share nothing but that library API - see docs/library/adm-bridge.md's own note on why no separate
+// "driving loop" abstraction exists (the same reasoning applies here).
 //
 // Like examples/read_iab.cpp, this writes its own tiny-but-valid elementary IABitstream fixture to
 // a temp file first, rather than shipping a real Dolby Atmos cinema master this project has no
@@ -341,15 +341,17 @@ int main(int argc, char** argv) {
     iclforge::ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, objects};
 
     const auto total_samples = bridged->pcm.empty() ? std::size_t{0} : bridged->pcm.front().size();
-    const auto total_frames = total_samples / static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame);
+    const auto total_frames =
+        total_samples / static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame);
     std::vector<std::span<const float>> views(bridged->channel_count());
     std::vector<std::byte> stream;
 
     for (std::size_t f = 0; f < total_frames; ++f) {
         const auto start = f * static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame);
         for (std::size_t ch = 0; ch < bridged->channel_count(); ++ch) {
-            views[ch] = std::span<const float>(bridged->pcm[ch])
-                            .subspan(start, static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame));
+            views[ch] =
+                std::span<const float>(bridged->pcm[ch])
+                    .subspan(start, static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame));
         }
         const double t =
             static_cast<double>(start + static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame)) /

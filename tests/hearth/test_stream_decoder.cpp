@@ -503,7 +503,8 @@ TEST_CASE("stream decoder: dual mono plays the programme the settings choose",
     for (int f = 0; f < 6; ++f) {
         const auto offset = static_cast<std::size_t>(f) * iclforge::ac3::kSamplesPerFrame;
         const std::vector<float> first = tone(440.0, 0.3, iclforge::ac3::kSamplesPerFrame, offset);
-        const std::vector<float> second = tone(1000.0, 0.3, iclforge::ac3::kSamplesPerFrame, offset);
+        const std::vector<float> second =
+            tone(1000.0, 0.3, iclforge::ac3::kSamplesPerFrame, offset);
         const std::vector<std::span<const float>> views{first, second};
         auto frame = encoder.encode_frame(views);
         REQUIRE(frame.has_value());

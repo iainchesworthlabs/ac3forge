@@ -92,7 +92,8 @@ TEST_CASE("headroom on bins nobody codes is not worth an exponent set",
     Exps exps{iclforge::ac3::kBlocksPerFrame, kBins, 14};
     exps.set_block(3, 6, kBins);
     const std::vector<std::uint8_t> precision(static_cast<std::size_t>(kBins), 0);
-    const auto plan = iclforge::ac3::internal::plan_exponent_runs(input_for(exps, kBins, precision));
+    const auto plan =
+        iclforge::ac3::internal::plan_exponent_runs(input_for(exps, kBins, precision));
     CHECK(plan.count == 1);
 }
 
@@ -219,7 +220,8 @@ TEST_CASE("the coupling channel never states a strategy its region cannot carry"
     const auto plan = iclforge::ac3::internal::plan_exponent_runs(input);
     REQUIRE(plan.count >= 1);
     for (int i = 0; i < plan.count; ++i) {
-        const int group = iclforge::ac3::exponent_group_size(plan.strategy[static_cast<std::size_t>(i)]);
+        const int group =
+            iclforge::ac3::exponent_group_size(plan.strategy[static_cast<std::size_t>(i)]);
         CHECK(kEcplBins % (3 * group) == 0);
     }
 }
@@ -251,7 +253,8 @@ TEST_CASE("every plan tiles the frame exactly once", "[eac3][exponents]") {
             const auto plan = iclforge::ac3::internal::plan_exponent_runs(input);
             REQUIRE(plan.count >= 1);
             CHECK(plan.starts[0] == 0);
-            CHECK(plan.starts[static_cast<std::size_t>(plan.count)] == iclforge::ac3::kBlocksPerFrame);
+            CHECK(plan.starts[static_cast<std::size_t>(plan.count)] ==
+                  iclforge::ac3::kBlocksPerFrame);
             for (int i = 1; i < plan.count; ++i) {
                 const auto ui = static_cast<std::size_t>(i);
                 CHECK(plan.starts[ui] > plan.starts[ui - 1]);
@@ -288,8 +291,9 @@ TEST_CASE("the planner's exponent model is the real encode, exactly",
         shapes.push_back(ragged);
     }
     for (const auto& shape : shapes) {
-        for (const auto strategy : {iclforge::ac3::ExpStrategy::kD15, iclforge::ac3::ExpStrategy::kD25,
-                                    iclforge::ac3::ExpStrategy::kD45}) {
+        for (const auto strategy :
+             {iclforge::ac3::ExpStrategy::kD15, iclforge::ac3::ExpStrategy::kD25,
+              iclforge::ac3::ExpStrategy::kD45}) {
             std::vector<std::uint8_t> modelled(shape.size());
             iclforge::ac3::internal::banded_run_exponents(shape, strategy, false, modelled);
             const auto coded = iclforge::ac3::encode_exponents(shape, strategy);
@@ -305,8 +309,8 @@ TEST_CASE("the planner's exponent model is the real encode, exactly",
     for (std::size_t bin = 0; bin < cpl.size(); ++bin) {
         cpl[bin] = static_cast<std::uint8_t>(std::min<std::size_t>(3 + bin / 5, 24));
     }
-    for (const auto strategy :
-         {iclforge::ac3::ExpStrategy::kD15, iclforge::ac3::ExpStrategy::kD25, iclforge::ac3::ExpStrategy::kD45}) {
+    for (const auto strategy : {iclforge::ac3::ExpStrategy::kD15, iclforge::ac3::ExpStrategy::kD25,
+                                iclforge::ac3::ExpStrategy::kD45}) {
         std::vector<std::uint8_t> modelled(cpl.size());
         iclforge::ac3::internal::banded_run_exponents(cpl, strategy, true, modelled);
         const auto coded = iclforge::ac3::encode_coupling_exponents(cpl, strategy);
@@ -332,7 +336,8 @@ namespace {
 
 // The previous implementation, verbatim but for its name: one form per
 // call, selected by free_strategy.
-iclforge::ac3::internal::ExponentRunPlan reference_plan(const iclforge::ac3::internal::ExponentRunInput& in) {
+iclforge::ac3::internal::ExponentRunPlan reference_plan(
+    const iclforge::ac3::internal::ExponentRunInput& in) {
     using namespace iclforge;
     using namespace iclforge::ac3;
     using namespace iclforge::ac3::internal;

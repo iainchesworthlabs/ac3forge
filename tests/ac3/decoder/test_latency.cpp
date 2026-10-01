@@ -438,5 +438,6 @@ TEST_CASE("E-AC-3 latency follows the syncframe length", "[latency][eac3]") {
     // long the syncframes are, so the decoder holds 1536 samples back - six
     // one-block syncframes, one six-block one.
     const iclforge::ac3::eac3::FrameConfig held{.numblkscod = 0, .transient_prenoise = true};
-    CHECK(iclforge::ac3::eac3::eac3_latency(held).holdback_samples == iclforge::ac3::kSamplesPerFrame);
+    CHECK(iclforge::ac3::eac3::eac3_latency(held).holdback_samples ==
+          iclforge::ac3::kSamplesPerFrame);
 }

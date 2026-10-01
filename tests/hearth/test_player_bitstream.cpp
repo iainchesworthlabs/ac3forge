@@ -144,7 +144,8 @@ public:
     [[nodiscard]] bool is_open() const override { return log_->open; }
 
     bool submit(std::span<const std::byte> burst) override {
-        const std::uint64_t held = (log_->submitted - log_->heard) / iclforge::ac3::kSamplesPerFrame;
+        const std::uint64_t held =
+            (log_->submitted - log_->heard) / iclforge::ac3::kSamplesPerFrame;
         if (!log_->open || held + 1 > log_->capacity_bursts) {
             return false;
         }
@@ -1668,8 +1669,8 @@ TEST_CASE("transcode: a 7.1 item is transcoded from its own 5.1",
     const auto coded = static_cast<std::size_t>(encoder.channel_count());
     Units a;
     for (int f = 0; f < 6; ++f) {
-        std::vector<std::vector<float>> channels(coded,
-                                                 std::vector<float>(iclforge::ac3::kSamplesPerFrame));
+        std::vector<std::vector<float>> channels(
+            coded, std::vector<float>(iclforge::ac3::kSamplesPerFrame));
         for (std::size_t c = 0; c < coded; ++c) {
             for (std::size_t n = 0; n < channels[c].size(); ++n) {
                 channels[c][n] = 0.02F * static_cast<float>(
@@ -1812,7 +1813,8 @@ TEST_CASE("transcode: an item that folds at other levels reopens, other dialnorm
           "[hearth][player][bitstream][transcode]") {
     // 5.1: a stream with no centre or surrounds sends no levels for them.
     const auto units = [](int count, iclforge::ac3::meta::MixLevel centre, int dialnorm,
-                          std::optional<iclforge::ac3::meta::BitstreamMode> service = std::nullopt) {
+                          std::optional<iclforge::ac3::meta::BitstreamMode> service =
+                              std::nullopt) {
         iclforge::ac3::eac3::FrameConfig config;
         config.bitrate_kbps = 192;
         config.acmod = iclforge::ac3::Acmod::k3_2;
@@ -1840,11 +1842,13 @@ TEST_CASE("transcode: an item that folds at other levels reopens, other dialnorm
         return out;
     };
     Library library;
-    library.files["a.ec3"] = {.bytes =
-                                  joined(units(4, iclforge::ac3::meta::MixLevel::kMinus3dB, 31,
-                                               iclforge::ac3::meta::BitstreamMode::kVisuallyImpaired))};
-    library.files["b.ec3"] = {.bytes = joined(units(4, iclforge::ac3::meta::MixLevel::kMinus3dB, 24))};
-    library.files["c.ec3"] = {.bytes = joined(units(4, iclforge::ac3::meta::MixLevel::kMinus6dB, 24))};
+    library.files["a.ec3"] = {
+        .bytes = joined(units(4, iclforge::ac3::meta::MixLevel::kMinus3dB, 31,
+                              iclforge::ac3::meta::BitstreamMode::kVisuallyImpaired))};
+    library.files["b.ec3"] = {.bytes =
+                                  joined(units(4, iclforge::ac3::meta::MixLevel::kMinus3dB, 24))};
+    library.files["c.ec3"] = {.bytes =
+                                  joined(units(4, iclforge::ac3::meta::MixLevel::kMinus6dB, 24))};
     Rig rig{library};
     rig.policy->bitstream_eac3 = false;
     rig.policy->transcode_eac3 = true;
@@ -2078,8 +2082,8 @@ TEST_CASE("transcode: the last item's encoder is emptied while it is heard out",
     CHECK(rig.link->unheard_at_close == std::vector<std::uint64_t>{0});
     const auto& history = rig.player->history();
     REQUIRE(history.size() == 2);
-    CHECK(history[1].first_frame ==
-          (first.size() * iclforge::ac3::kSamplesPerFrame) + iclforge::hearth::Ac3Transcoder::kDelay);
+    CHECK(history[1].first_frame == (first.size() * iclforge::ac3::kSamplesPerFrame) +
+                                        iclforge::hearth::Ac3Transcoder::kDelay);
     CHECK(history[1].frames == 4 * iclforge::ac3::kSamplesPerFrame);
 }
 

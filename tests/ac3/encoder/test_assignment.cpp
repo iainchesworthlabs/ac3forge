@@ -169,7 +169,8 @@ TEST_CASE("route() rejects two rows aimed at the same location", "[assignment]")
 }
 
 TEST_CASE("route() rejects a location the target cannot express", "[assignment]") {
-    const auto target = iclforge::ac3::plan::channel_plan_for(iclforge::ac3::plan::LayoutId::kStereo);
+    const auto target =
+        iclforge::ac3::plan::channel_plan_for(iclforge::ac3::plan::LayoutId::kStereo);
     const std::vector<SourceShape> sources{{.channels = 1, .label = "a.wav"}};
     Assignment assignment;
     assignment.set(0, 0, to_location(Location::kLeftSurround));
@@ -215,7 +216,8 @@ TEST_CASE("objm rows contribute nothing to route(), same as obj", "[assignment]"
 }
 
 TEST_CASE("route() applies a row's trim as linear gain, not just unity", "[assignment]") {
-    const auto target = iclforge::ac3::plan::channel_plan_for(iclforge::ac3::plan::LayoutId::kStereo);
+    const auto target =
+        iclforge::ac3::plan::channel_plan_for(iclforge::ac3::plan::LayoutId::kStereo);
     const std::vector<SourceShape> sources{{.channels = 2, .label = "a.wav"}};
     Assignment assignment;
     assignment.set(0, 0, {.kind = DestinationKind::kLocation, .location = Location::kLeft,
@@ -317,7 +319,8 @@ TEST_CASE("derive_codec stays AC-3 until something actually needs E-AC-3", "[ass
     const iclforge::ac3::plan::Metadata plain_meta{};
 
     CHECK(iclforge::ac3::plan::derive_codec(narrow, no_tools, plain_meta, std::nullopt,
-                                  iclforge::ac3::SampleRate::k48000) == iclforge::ac3::plan::Codec::kAc3);
+                                            iclforge::ac3::SampleRate::k48000) ==
+          iclforge::ac3::plan::Codec::kAc3);
 
     SECTION("an immersive target promotes") {
         const auto wide = iclforge::ac3::plan::channel_plan_for(iclforge::ac3::plan::LayoutId::k71);
@@ -387,8 +390,10 @@ TEST_CASE("destination tokens round-trip through format/parse", "[assignment]") 
         }
     }
 
-    CHECK(iclforge::ac3::plan::format_destination({.kind = DestinationKind::kUnassigned}) == "none");
-    CHECK(iclforge::ac3::plan::format_destination({.kind = DestinationKind::kObjectMono}) == "objm");
+    CHECK(iclforge::ac3::plan::format_destination({.kind = DestinationKind::kUnassigned}) ==
+          "none");
+    CHECK(iclforge::ac3::plan::format_destination({.kind = DestinationKind::kObjectMono}) ==
+          "objm");
     CHECK_FALSE(iclforge::ac3::plan::parse_destination("not-a-real-token").has_value());
 }
 
@@ -504,17 +509,20 @@ TEST_CASE("parse_assignment rejects a channel mentioned twice", "[assignment]") 
 TEST_CASE("parse_assignment rejects an out-of-range source or channel", "[assignment]") {
     const std::vector<SourceShape> sources{{.channels = 1, .label = "a.wav"}};
     Assignment assignment;
-    CHECK_FALSE(iclforge::ac3::plan::parse_assignment("1.0:L", sources, assignment));   // no source 1
-    CHECK_FALSE(iclforge::ac3::plan::parse_assignment("0.1:L", sources, assignment));  // no channel 1
+    CHECK_FALSE(
+        iclforge::ac3::plan::parse_assignment("1.0:L", sources, assignment));  // no source 1
+    CHECK_FALSE(
+        iclforge::ac3::plan::parse_assignment("0.1:L", sources, assignment));  // no channel 1
 }
 
 TEST_CASE("parse_assignment rejects malformed text outright", "[assignment]") {
     const std::vector<SourceShape> sources{{.channels = 1, .label = "a.wav"}};
     Assignment assignment;
     CHECK_FALSE(iclforge::ac3::plan::parse_assignment("", sources, assignment));
-    CHECK_FALSE(iclforge::ac3::plan::parse_assignment("0.0", sources, assignment));         // no ':'
-    CHECK_FALSE(iclforge::ac3::plan::parse_assignment("0:L", sources, assignment));         // no '.'
-    CHECK_FALSE(iclforge::ac3::plan::parse_assignment("0.0:bogus", sources, assignment));   // bad dest
+    CHECK_FALSE(iclforge::ac3::plan::parse_assignment("0.0", sources, assignment));  // no ':'
+    CHECK_FALSE(iclforge::ac3::plan::parse_assignment("0:L", sources, assignment));  // no '.'
+    CHECK_FALSE(
+        iclforge::ac3::plan::parse_assignment("0.0:bogus", sources, assignment));  // bad dest
 }
 
 TEST_CASE("format_assignment round-trips through parse_assignment", "[assignment]") {

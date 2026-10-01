@@ -86,8 +86,9 @@ bool ac4_objects_take_rate(std::uint32_t sample_rate_hz) {
     return sample_rate_hz == 48000 || sample_rate_hz == 44100;
 }
 
-std::vector<Ac4ObjectSlot> ac4_object_slots(const iclforge::ac3::plan::Assignment& assignment,
-                                            std::span<const iclforge::ac3::plan::SourceShape> shapes) {
+std::vector<Ac4ObjectSlot> ac4_object_slots(
+    const iclforge::ac3::plan::Assignment& assignment,
+    std::span<const iclforge::ac3::plan::SourceShape> shapes) {
     const auto flat = [&](std::size_t source, std::size_t channel) {
         std::size_t base = 0;
         for (std::size_t i = 0; i < source && i < shapes.size(); ++i) {

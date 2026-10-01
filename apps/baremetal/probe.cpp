@@ -890,105 +890,104 @@ struct Eac3Fixture {
     bool render = false;
 };
 
-constexpr std::array<Eac3Fixture, 10> kEac3Fixtures{
-    {
-        {"eac3", iclforge_probe::kEac3Stream, iclforge_probe::kEac3Rms, 175674},
-        // §E3.5's alternate coupling mode. `tools=all` does not select it
-        // (plan::parse_tools maps "all" to cpl+spx+aht), so without this row
-        // ecpl_channel_spectrum - and the 512-point DFT
-        // src/dsp/src/fft.cpp is in the minimal source list for - are
-        // linked into every build of this profile and executed by none of them.
-        {"eac3_ecpl", iclforge_probe::kEac3EcplStream, iclforge_probe::kEac3EcplRms, 159141},
-        // An Atmos stream decoded for its BED. §6 object reconstruction allocates
-        // an oba::joc::ReconstructionState - 147,504 bytes in one block, plus a
-        // QmfState and its filterbanks - which is more than the largest free run
-        // this decode leaves on an ESP32-S3, so a full decode of this stream dies
-        // in operator new partway through. The bed does not: it is ordinary
-        // E-AC-3, and this row is what proves that on the target rather than in a
-        // paragraph. Levels are the bed's, which is what forge decode writes for
-        // an Atmos stream too, so the host reference needed no special case.
-        {"eac3_atmos_bed", iclforge_probe::kEac3AtmosBedStream, iclforge_probe::kEac3AtmosBedRms,
-         125383, true},
-        // The Atmos bitstream again, this time reconstructing its objects. Two
-        // rows off one stream: it is already linked in, so the second path costs
-        // nothing in image size, and what differs is a decoder setting.
-        //
-        // kMdctBand rather than the kQmf default, which is what makes it fit -
-        // kQmf allocates a QmfState and two filterbanks on top and peaks at
-        // 449,826 bytes. This is the configuration an embedded integrator would
-        // use, not the reference one.
-        //
-        // It runs AFTER the enhanced-coupling row on purpose. That ordering used
-        // to fail outright - ecpl leaves its thread_local spectrum scratch behind
-        // (23,552 bytes on this profile, 32,768 in double; it was 34,232 with the
-        // bin-angle vector that is a stack array now) on a target whose thread
-        // never exits, and object reconstruction then had nowhere to go. release_ecpl_scratch()
-        // below is what makes the order stop mattering, so this row sits where it would naturally
-        // rather than where it happens to pass.
-        {"eac3_atmos_objects", iclforge_probe::kEac3AtmosBedStream,
-         iclforge_probe::kEac3AtmosBedRms, 211851, false, iclforge::oba::joc::Domain::kMdctBand},
-        // 2/0, and Annex E's own rematrixing syntax - the E-AC-3 half of what the
-        // ac3_stereo row covers for AC-3. Also the first E-AC-3 fixture whose
-        // channel count is not six, so the layout-driven half of the level check is
-        // exercised rather than merely written.
-        {"eac3_stereo", iclforge_probe::kEac3StereoStream, iclforge_probe::kEac3StereoRms, 144278},
-        // 7.1.4: a 5.1 bed and two dependent substreams (k71Rear and kTopQuad),
-        // the widest programme the encoder makes and the first fixture with more
-        // channels than one substream can carry. The access unit's assembly -
-        // locations unioned across substreams, a dependent's surrounds replacing
-        // the bed's - runs here and nowhere else in this table, and twelve
-        // channels of output is what a part driving a 7.1.4 DAC over TDM pays
-        // for, in this probe's own PCM block as on the part.
-        {"eac3_714", iclforge_probe::kEac3714Stream, iclforge_probe::kEac3714Rms, 238094},
-        // The 5.1 stream folded to Lo/Ro in line mode - the E-AC-3 half of the
-        // ac3_fold row, through the access-unit form's own output path.
-        {"eac3_fold",
-         iclforge_probe::kEac3Stream,
-         iclforge_probe::kEac3FoldRms,
-         182030,
-         false,
-         iclforge::oba::joc::Domain::kQmf,
-         {.target = iclforge::ac3::DownmixTarget::kLoRo, .mode = iclforge::ac3::OperatingMode::kLine}},
-        // The 7.1.4 stream folded the same way: a stereo player's frame at the
-        // widest programme the encoder makes, and the output stage's layout form
-        // at its widest - twelve locations seated into §7.8's six before the fold
-        // runs. The stream carries no dynrng words and dialnorm -31, so line mode
-        // adds no per-sample work here and the row times the fold itself.
-        {"eac3_714_fold",
-         iclforge_probe::kEac3714Stream,
-         iclforge_probe::kEac3714FoldRms,
-         244502,
-         false,
-         iclforge::oba::joc::Domain::kQmf,
-         {.target = iclforge::ac3::DownmixTarget::kLoRo, .mode = iclforge::ac3::OperatingMode::kLine}},
-        // Line mode's own work, apart from any fold: a 5.1 stream encoded with
-        // dynrng words and dialnorm 24, decoded as coded in line mode - §7.7.1's
-        // gain on every channel's coefficients each block and §5.4.2.8's
-        // normalisation on every sample, the two things the fold rows' streams
-        // give line mode no reason to do.
-        {"eac3_line",
-         iclforge_probe::kEac3DrcStream,
-         iclforge_probe::kEac3LineRms,
-         175750,
-         false,
-         iclforge::oba::joc::Domain::kQmf,
-         {.mode = iclforge::ac3::OperatingMode::kLine}},
-        // Objects reconstructed (kMdctBand, as the objects row) and then PLACED
-        // onto 7.1.4 by their own positions - see render_eac3, and
-        // render_fixture.hpp for what the levels are worth. Its own stream: the
-        // same source as the Atmos rows with three objects raised to the ceiling
-        // and one half way (tools/generators/atmos_height_scene.txt), because the
-        // Atmos rows' objects all sit on the listener plane and a render of them
-        // would leave the four height targets silent and untested.
-        {"eac3_atmos_render",
-         iclforge_probe::kEac3AtmosHeightStream,
-         iclforge_probe::kEac3AtmosRenderRms,
-         212221,
-         false,
-         iclforge::oba::joc::Domain::kMdctBand,
-         {},
-         true},
-    }};
+constexpr std::array<Eac3Fixture, 10> kEac3Fixtures{{
+    {"eac3", iclforge_probe::kEac3Stream, iclforge_probe::kEac3Rms, 175674},
+    // §E3.5's alternate coupling mode. `tools=all` does not select it
+    // (plan::parse_tools maps "all" to cpl+spx+aht), so without this row
+    // ecpl_channel_spectrum - and the 512-point DFT
+    // src/dsp/src/fft.cpp is in the minimal source list for - are
+    // linked into every build of this profile and executed by none of them.
+    {"eac3_ecpl", iclforge_probe::kEac3EcplStream, iclforge_probe::kEac3EcplRms, 159141},
+    // An Atmos stream decoded for its BED. §6 object reconstruction allocates
+    // an oba::joc::ReconstructionState - 147,504 bytes in one block, plus a
+    // QmfState and its filterbanks - which is more than the largest free run
+    // this decode leaves on an ESP32-S3, so a full decode of this stream dies
+    // in operator new partway through. The bed does not: it is ordinary
+    // E-AC-3, and this row is what proves that on the target rather than in a
+    // paragraph. Levels are the bed's, which is what forge decode writes for
+    // an Atmos stream too, so the host reference needed no special case.
+    {"eac3_atmos_bed", iclforge_probe::kEac3AtmosBedStream, iclforge_probe::kEac3AtmosBedRms,
+     125383, true},
+    // The Atmos bitstream again, this time reconstructing its objects. Two
+    // rows off one stream: it is already linked in, so the second path costs
+    // nothing in image size, and what differs is a decoder setting.
+    //
+    // kMdctBand rather than the kQmf default, which is what makes it fit -
+    // kQmf allocates a QmfState and two filterbanks on top and peaks at
+    // 449,826 bytes. This is the configuration an embedded integrator would
+    // use, not the reference one.
+    //
+    // It runs AFTER the enhanced-coupling row on purpose. That ordering used
+    // to fail outright - ecpl leaves its thread_local spectrum scratch behind
+    // (23,552 bytes on this profile, 32,768 in double; it was 34,232 with the
+    // bin-angle vector that is a stack array now) on a target whose thread
+    // never exits, and object reconstruction then had nowhere to go. release_ecpl_scratch()
+    // below is what makes the order stop mattering, so this row sits where it would naturally
+    // rather than where it happens to pass.
+    {"eac3_atmos_objects", iclforge_probe::kEac3AtmosBedStream, iclforge_probe::kEac3AtmosBedRms,
+     211851, false, iclforge::oba::joc::Domain::kMdctBand},
+    // 2/0, and Annex E's own rematrixing syntax - the E-AC-3 half of what the
+    // ac3_stereo row covers for AC-3. Also the first E-AC-3 fixture whose
+    // channel count is not six, so the layout-driven half of the level check is
+    // exercised rather than merely written.
+    {"eac3_stereo", iclforge_probe::kEac3StereoStream, iclforge_probe::kEac3StereoRms, 144278},
+    // 7.1.4: a 5.1 bed and two dependent substreams (k71Rear and kTopQuad),
+    // the widest programme the encoder makes and the first fixture with more
+    // channels than one substream can carry. The access unit's assembly -
+    // locations unioned across substreams, a dependent's surrounds replacing
+    // the bed's - runs here and nowhere else in this table, and twelve
+    // channels of output is what a part driving a 7.1.4 DAC over TDM pays
+    // for, in this probe's own PCM block as on the part.
+    {"eac3_714", iclforge_probe::kEac3714Stream, iclforge_probe::kEac3714Rms, 238094},
+    // The 5.1 stream folded to Lo/Ro in line mode - the E-AC-3 half of the
+    // ac3_fold row, through the access-unit form's own output path.
+    {"eac3_fold",
+     iclforge_probe::kEac3Stream,
+     iclforge_probe::kEac3FoldRms,
+     182030,
+     false,
+     iclforge::oba::joc::Domain::kQmf,
+     {.target = iclforge::ac3::DownmixTarget::kLoRo, .mode = iclforge::ac3::OperatingMode::kLine}},
+    // The 7.1.4 stream folded the same way: a stereo player's frame at the
+    // widest programme the encoder makes, and the output stage's layout form
+    // at its widest - twelve locations seated into §7.8's six before the fold
+    // runs. The stream carries no dynrng words and dialnorm -31, so line mode
+    // adds no per-sample work here and the row times the fold itself.
+    {"eac3_714_fold",
+     iclforge_probe::kEac3714Stream,
+     iclforge_probe::kEac3714FoldRms,
+     244502,
+     false,
+     iclforge::oba::joc::Domain::kQmf,
+     {.target = iclforge::ac3::DownmixTarget::kLoRo, .mode = iclforge::ac3::OperatingMode::kLine}},
+    // Line mode's own work, apart from any fold: a 5.1 stream encoded with
+    // dynrng words and dialnorm 24, decoded as coded in line mode - §7.7.1's
+    // gain on every channel's coefficients each block and §5.4.2.8's
+    // normalisation on every sample, the two things the fold rows' streams
+    // give line mode no reason to do.
+    {"eac3_line",
+     iclforge_probe::kEac3DrcStream,
+     iclforge_probe::kEac3LineRms,
+     175750,
+     false,
+     iclforge::oba::joc::Domain::kQmf,
+     {.mode = iclforge::ac3::OperatingMode::kLine}},
+    // Objects reconstructed (kMdctBand, as the objects row) and then PLACED
+    // onto 7.1.4 by their own positions - see render_eac3, and
+    // render_fixture.hpp for what the levels are worth. Its own stream: the
+    // same source as the Atmos rows with three objects raised to the ceiling
+    // and one half way (tools/generators/atmos_height_scene.txt), because the
+    // Atmos rows' objects all sit on the listener plane and a render of them
+    // would leave the four height targets silent and untested.
+    {"eac3_atmos_render",
+     iclforge_probe::kEac3AtmosHeightStream,
+     iclforge_probe::kEac3AtmosRenderRms,
+     212221,
+     false,
+     iclforge::oba::joc::Domain::kMdctBand,
+     {},
+     true},
+}};
 
 // What the per-fixture static_asserts above used to say, said once. Regenerate
 // fixture.hpp with a layout wider than the PCM block and the build stops here,

@@ -341,8 +341,8 @@ TEST_CASE("AC-3: bsi values wider than their field are refused, not truncated", 
     SECTION("a reserved surround level would not be the level applied") {
         iclforge::ac3::EncoderConfig config;
         iclforge::ac3::meta::AlternateBsi alternate;
-        alternate.mix =
-            iclforge::ac3::meta::MixMetadata{.ltrtsurmixlev = iclforge::ac3::meta::MixLevel::kUnity};
+        alternate.mix = iclforge::ac3::meta::MixMetadata{.ltrtsurmixlev =
+                                                             iclforge::ac3::meta::MixLevel::kUnity};
         config.alternate_bsi = alternate;
         iclforge::ac3::FrameEncoder encoder{config};
         const auto frame = encoder.encode_frame(spans);
@@ -352,8 +352,8 @@ TEST_CASE("AC-3: bsi values wider than their field are refused, not truncated", 
     SECTION("a reserved dmixmod would state no preference a receiver can act on") {
         iclforge::ac3::EncoderConfig config;
         iclforge::ac3::meta::AlternateBsi alternate;
-        alternate.mix =
-            iclforge::ac3::meta::MixMetadata{.dmixmod = iclforge::ac3::meta::DownmixMode::kReserved};
+        alternate.mix = iclforge::ac3::meta::MixMetadata{
+            .dmixmod = iclforge::ac3::meta::DownmixMode::kReserved};
         config.alternate_bsi = alternate;
         iclforge::ac3::FrameEncoder encoder{config};
         const auto frame = encoder.encode_frame(spans);
@@ -735,7 +735,8 @@ TEST_CASE("E-AC-3: blkmixcfginfo carries one flag per block the syncframe holds"
         mix.blkmixcfginfo = std::array<std::optional<int>, iclforge::ac3::kBlocksPerFrame>{
             3, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt};
         config.mixing = mix;
-        config.info = iclforge::ac3::meta::BsiInfo{.bsmod = iclforge::ac3::meta::BitstreamMode::kCommentary};
+        config.info =
+            iclforge::ac3::meta::BsiInfo{.bsmod = iclforge::ac3::meta::BitstreamMode::kCommentary};
 
         iclforge::ac3::eac3::FrameEncoder encoder{config};
         const auto samples = static_cast<std::size_t>(encoder.samples_per_frame());
@@ -873,7 +874,8 @@ TEST_CASE("E-AC-3: a dependent substream stops after the mixmdate levels", "[bsi
     mix.ltrtsurmixlev = iclforge::ac3::meta::MixLevel::kMinus4_5dB;
     mix.lorosurmixlev = iclforge::ac3::meta::MixLevel::kMinus1_5dB;
     mix.pgmscl = 30;
-    mix.blkmixcfginfo = std::array<std::optional<int>, iclforge::ac3::kBlocksPerFrame>{7, 7, 7, 7, 7, 7};
+    mix.blkmixcfginfo =
+        std::array<std::optional<int>, iclforge::ac3::kBlocksPerFrame>{7, 7, 7, 7, 7, 7};
     config.mixing = mix;
 
     const auto decoded = round_trip_eac3(config);
@@ -1015,8 +1017,8 @@ TEST_CASE("E-AC-3: mixmdate's reserved dmixmod is kept as sent and never written
     SECTION("the encoder refuses to write it") {
         iclforge::ac3::eac3::FrameConfig config;
         config.acmod = iclforge::ac3::Acmod::k3_2;
-        config.mixing =
-            iclforge::ac3::meta::MixMetadata{.dmixmod = iclforge::ac3::meta::DownmixMode::kReserved};
+        config.mixing = iclforge::ac3::meta::MixMetadata{
+            .dmixmod = iclforge::ac3::meta::DownmixMode::kReserved};
         iclforge::ac3::eac3::FrameEncoder encoder{config};
         const auto pcm = tone(5);
         const auto frame = encoder.encode_frame(views(pcm));
@@ -1056,16 +1058,19 @@ TEST_CASE("plan: mix_metadata takes explicit levels over the widened ones", "[bs
     options.cmixlev = iclforge::ac3::meta::CentreMixLevel::kMinus6dB;
     options.surmixlev = iclforge::ac3::meta::SurroundMixLevel::kMinus3dB;
     // Unset, so the derivation stands.
-    CHECK(iclforge::ac3::plan::mix_metadata(options).lorocmixlev == iclforge::ac3::meta::MixLevel::kMinus6dB);
+    CHECK(iclforge::ac3::plan::mix_metadata(options).lorocmixlev ==
+          iclforge::ac3::meta::MixLevel::kMinus6dB);
     CHECK(iclforge::ac3::plan::mix_metadata(options).lorosurmixlev ==
           iclforge::ac3::meta::MixLevel::kMinus3dB);
-    CHECK(iclforge::ac3::plan::mix_metadata(options).ltrtcmixlev == iclforge::ac3::meta::MixLevel::kMinus3dB);
+    CHECK(iclforge::ac3::plan::mix_metadata(options).ltrtcmixlev ==
+          iclforge::ac3::meta::MixLevel::kMinus3dB);
 
     options.lorocmixlev = iclforge::ac3::meta::MixLevel::kPlus1_5dB;
     options.ltrtcmixlev = iclforge::ac3::meta::MixLevel::kUnity;
     CHECK(iclforge::ac3::plan::mix_metadata(options).lorocmixlev ==
           iclforge::ac3::meta::MixLevel::kPlus1_5dB);
-    CHECK(iclforge::ac3::plan::mix_metadata(options).ltrtcmixlev == iclforge::ac3::meta::MixLevel::kUnity);
+    CHECK(iclforge::ac3::plan::mix_metadata(options).ltrtcmixlev ==
+          iclforge::ac3::meta::MixLevel::kUnity);
     // The widened surround level is untouched by the centre override.
     CHECK(iclforge::ac3::plan::mix_metadata(options).lorosurmixlev ==
           iclforge::ac3::meta::MixLevel::kMinus3dB);
@@ -1104,7 +1109,8 @@ TEST_CASE("meta: the bsi token vocabularies parse and describe", "[bsi]") {
 
     // Code 7 means two different services and acmod is what tells them apart.
     CHECK(iclforge::ac3::meta::describe(iclforge::ac3::meta::BitstreamMode::kVoiceOverOrKaraoke,
-                                   iclforge::ac3::Acmod::k1_0) == "associated service: voice over (VO)");
+                                        iclforge::ac3::Acmod::k1_0) ==
+          "associated service: voice over (VO)");
     CHECK(iclforge::ac3::meta::describe(iclforge::ac3::meta::BitstreamMode::kVoiceOverOrKaraoke,
                                    iclforge::ac3::Acmod::k3_2) == "main audio service: karaoke");
 
@@ -1132,7 +1138,8 @@ TEST_CASE("meta: the bsi token vocabularies parse and describe", "[bsi]") {
 
 TEST_CASE("meta: every dmixmod code has a name, and only three are writable", "[bsi]") {
     // Table D2.2 (TS 102 366 Table D.1.1), which both codecs share.
-    CHECK(iclforge::ac3::meta::describe(iclforge::ac3::meta::DownmixMode::kNotIndicated) == "not indicated");
+    CHECK(iclforge::ac3::meta::describe(iclforge::ac3::meta::DownmixMode::kNotIndicated) ==
+          "not indicated");
     CHECK(iclforge::ac3::meta::describe(iclforge::ac3::meta::DownmixMode::kLtRt) == "Lt/Rt");
     CHECK(iclforge::ac3::meta::describe(iclforge::ac3::meta::DownmixMode::kLoRo) == "Lo/Ro");
     CHECK(iclforge::ac3::meta::describe(iclforge::ac3::meta::DownmixMode::kReserved) == "reserved");
@@ -1141,11 +1148,13 @@ TEST_CASE("meta: every dmixmod code has a name, and only three are writable", "[
     CHECK(iclforge::ac3::meta::valid_downmix_mode(iclforge::ac3::meta::DownmixMode::kNotIndicated));
     CHECK(iclforge::ac3::meta::valid_downmix_mode(iclforge::ac3::meta::DownmixMode::kLtRt));
     CHECK(iclforge::ac3::meta::valid_downmix_mode(iclforge::ac3::meta::DownmixMode::kLoRo));
-    CHECK_FALSE(iclforge::ac3::meta::valid_downmix_mode(iclforge::ac3::meta::DownmixMode::kReserved));
+    CHECK_FALSE(
+        iclforge::ac3::meta::valid_downmix_mode(iclforge::ac3::meta::DownmixMode::kReserved));
 
     // Annex D's writer takes the same view as mixmdate's.
     iclforge::ac3::meta::AlternateBsi alternate;
-    alternate.mix = iclforge::ac3::meta::MixMetadata{.dmixmod = iclforge::ac3::meta::DownmixMode::kReserved};
+    alternate.mix =
+        iclforge::ac3::meta::MixMetadata{.dmixmod = iclforge::ac3::meta::DownmixMode::kReserved};
     CHECK_FALSE(iclforge::ac3::meta::valid_alternate_bsi(alternate));
     alternate.mix->dmixmod = iclforge::ac3::meta::DownmixMode::kNotIndicated;
     CHECK(iclforge::ac3::meta::valid_alternate_bsi(alternate));

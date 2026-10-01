@@ -221,7 +221,8 @@ std::vector<Bytes> encode_real_eac3_frames() {
     for (int f = 0; f < kFrames; ++f) {
         for (std::size_t ch = 0; ch < 6; ++ch) {
             for (int n = 0; n < iclforge::ac3::kSamplesPerFrame; ++n) {
-                const double t = static_cast<double>(f * iclforge::ac3::kSamplesPerFrame + n) / 48000.0;
+                const double t =
+                    static_cast<double>(f * iclforge::ac3::kSamplesPerFrame + n) / 48000.0;
                 pcm[ch][static_cast<std::size_t>(n)] =
                     static_cast<float>(0.3 * std::sin(2.0 * std::numbers::pi * kTones[ch] * t));
             }

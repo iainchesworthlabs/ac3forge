@@ -32,8 +32,8 @@ constexpr int kVisuallyImpaired = 0b010;
 
 // AC-4's downmix for the fold the layout gets: the same target, or the
 // stream's preferred method for a stereo fold the listener has left to it.
-[[nodiscard]] iclforge::ac4::DownmixTarget ac4_downmix(const std::optional<ac3::DownmixTarget>& fold,
-                                             bool preferred) {
+[[nodiscard]] iclforge::ac4::DownmixTarget ac4_downmix(
+    const std::optional<ac3::DownmixTarget>& fold, bool preferred) {
     if (!fold) {
         return iclforge::ac4::DownmixTarget::kAsCoded;
     }
@@ -248,7 +248,9 @@ std::string describe(const DecoderSettings& settings) {
     parts.push_back(settings.programme ? fmt::format("programme {}", *settings.programme)
                                        : std::string{"the first programme"});
     switch (settings.objects) {
-        case ac3::render::ObjectsPolicy::kAuto: parts.emplace_back("objects for height layouts"); break;
+        case ac3::render::ObjectsPolicy::kAuto:
+            parts.emplace_back("objects for height layouts");
+            break;
         case ac3::render::ObjectsPolicy::kNever: parts.emplace_back("objects never"); break;
         case ac3::render::ObjectsPolicy::kAlways: parts.emplace_back("objects always"); break;
     }

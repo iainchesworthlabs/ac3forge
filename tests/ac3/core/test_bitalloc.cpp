@@ -36,8 +36,8 @@ TEST_CASE("bit allocation matches the independent Python reference bit-exactly",
                      .deltoffst = c.deltoffst,
                      .deltlen = c.deltlen,
                      .deltba = c.deltba}};
-        iclforge::ac3::compute_bit_allocation(exps, static_cast<iclforge::ac3::SampleRate>(c.fscod), codes,
-                                    c.csnroffst, c.fsnroffst, bap, region);
+        iclforge::ac3::compute_bit_allocation(exps, static_cast<iclforge::ac3::SampleRate>(c.fscod),
+                                              codes, c.csnroffst, c.fsnroffst, bap, region);
         // Only the allocated region is meaningful; bins below a coupling
         // channel's start are never touched by either implementation.
         for (int bin = c.start; bin < c.endmant; ++bin) {
@@ -132,8 +132,8 @@ TEST_CASE("compute_bit_allocation applies delta at the coupling channel's own "
     const iclforge::ac3::BitAllocRegion base_region{
         .start = kStart, .coupling = true, .cplfleak = 3, .cplsleak = 3};
     std::vector<std::uint8_t> bap_without(kEnd);
-    iclforge::ac3::compute_bit_allocation(exps, iclforge::ac3::SampleRate::k48000, codes, 22, 9, bap_without,
-                                base_region);
+    iclforge::ac3::compute_bit_allocation(exps, iclforge::ac3::SampleRate::k48000, codes, 22, 9,
+                                          bap_without, base_region);
 
     iclforge::ac3::BitAllocRegion delta_region = base_region;
     delta_region.delta = {.deltnseg = 1,
@@ -141,8 +141,8 @@ TEST_CASE("compute_bit_allocation applies delta at the coupling channel's own "
                           .deltlen = {3},
                           .deltba = {7}};  // +24 dB, at bndstrt's own first 3 bands
     std::vector<std::uint8_t> bap_with(kEnd);
-    iclforge::ac3::compute_bit_allocation(exps, iclforge::ac3::SampleRate::k48000, codes, 22, 9, bap_with,
-                                delta_region);
+    iclforge::ac3::compute_bit_allocation(exps, iclforge::ac3::SampleRate::k48000, codes, 22, 9,
+                                          bap_with, delta_region);
 
     CHECK(bap_with != bap_without);
 }
@@ -157,9 +157,9 @@ TEST_CASE("monotonicity: more snr offset never allocates fewer bits", "[bitalloc
     const iclforge::ac3::BitAllocCodes codes{};
     long long previous = -1;
     for (int composite = 0; composite <= 1023; composite += 51) {
-        iclforge::ac3::compute_bit_allocation(exps, iclforge::ac3::SampleRate::k48000, codes, composite >> 4,
-                                    composite & 15, bap,
-                                    {.snr_all_zero = composite == 0});
+        iclforge::ac3::compute_bit_allocation(exps, iclforge::ac3::SampleRate::k48000, codes,
+                                              composite >> 4, composite & 15, bap,
+                                              {.snr_all_zero = composite == 0});
         long long total = 0;
         for (const auto b : bap) {
             total += b;
@@ -189,7 +189,8 @@ TEST_CASE("compute_bit_allocation refuses a region outside its own contract", "[
     SECTION("empty: the kMaskTab[end - 1] case") {
         const std::vector<std::uint8_t> exps;
         std::vector<std::uint8_t> bap;
-        iclforge::ac3::compute_bit_allocation(exps, iclforge::ac3::SampleRate::k48000, codes, 22, 9, bap, {});
+        iclforge::ac3::compute_bit_allocation(exps, iclforge::ac3::SampleRate::k48000, codes, 22, 9,
+                                              bap, {});
         CHECK(bap.empty());
     }
 
@@ -198,15 +199,16 @@ TEST_CASE("compute_bit_allocation refuses a region outside its own contract", "[
         // caught being written.
         const std::vector<std::uint8_t> exps(254, std::uint8_t{10});
         std::vector<std::uint8_t> bap(exps.size(), std::uint8_t{0xFF});
-        iclforge::ac3::compute_bit_allocation(exps, iclforge::ac3::SampleRate::k48000, codes, 22, 9, bap, {});
+        iclforge::ac3::compute_bit_allocation(exps, iclforge::ac3::SampleRate::k48000, codes, 22, 9,
+                                              bap, {});
         CHECK(std::ranges::all_of(bap, [](std::uint8_t b) { return b == 0; }));
     }
 
     SECTION("a start at or past the end") {
         const std::vector<std::uint8_t> exps(64, std::uint8_t{10});
         std::vector<std::uint8_t> bap(exps.size(), std::uint8_t{0xFF});
-        iclforge::ac3::compute_bit_allocation(exps, iclforge::ac3::SampleRate::k48000, codes, 22, 9, bap,
-                                    {.start = 64});
+        iclforge::ac3::compute_bit_allocation(exps, iclforge::ac3::SampleRate::k48000, codes, 22, 9,
+                                              bap, {.start = 64});
         CHECK(std::ranges::all_of(bap, [](std::uint8_t b) { return b == 0; }));
     }
 }
@@ -244,7 +246,8 @@ TEST_CASE("choose_delta_segments' float form is silent when content matches its 
     constexpr int kEnd = 30;
     const std::vector<std::uint8_t> exps(kEnd, kExp);
     const std::vector<float> coeffs(kEnd, std::ldexp(1.0f, -1 - kExp));
-    CHECK(iclforge::ac3::choose_delta_segments(std::span<const float>{coeffs}, exps, 0).deltnseg == 0);
+    CHECK(iclforge::ac3::choose_delta_segments(std::span<const float>{coeffs}, exps, 0).deltnseg ==
+          0);
 }
 
 // The two-halves form of the allocation (compute_masking_curve then
@@ -287,8 +290,8 @@ TEST_CASE("the split allocation reproduces compute_bit_allocation bap for bap", 
                     static_cast<std::uint8_t>(rng() % 8);
             }
         }
-        const auto curve =
-            iclforge::ac3::compute_masking_curve(exps, iclforge::ac3::SampleRate::k48000, codes, region);
+        const auto curve = iclforge::ac3::compute_masking_curve(
+            exps, iclforge::ac3::SampleRate::k48000, codes, region);
         REQUIRE(curve.valid);
         for (int probe = 0; probe < 6; ++probe) {
             const int composite = probe == 0 ? 0 : composite_dist(rng);
@@ -297,8 +300,8 @@ TEST_CASE("the split allocation reproduces compute_bit_allocation bap for bap", 
             std::vector<std::uint8_t> split(static_cast<std::size_t>(end));
             iclforge::ac3::compute_bit_allocation(exps, iclforge::ac3::SampleRate::k48000, codes,
                                              composite >> 4, composite & 15, whole, region);
-            iclforge::ac3::allocate_from_curve(exps, curve, codes, composite >> 4, composite & 15, split,
-                                     region);
+            iclforge::ac3::allocate_from_curve(exps, curve, codes, composite >> 4, composite & 15,
+                                               split, region);
             CHECK(whole == split);
             ++compared;
         }
@@ -306,5 +309,7 @@ TEST_CASE("the split allocation reproduces compute_bit_allocation bap for bap", 
     CHECK(compared == 1800);
     // An unusable region is unusable in both halves.
     const std::vector<std::uint8_t> none;
-    CHECK_FALSE(iclforge::ac3::compute_masking_curve(none, iclforge::ac3::SampleRate::k48000, {}, {}).valid);
+    CHECK_FALSE(
+        iclforge::ac3::compute_masking_curve(none, iclforge::ac3::SampleRate::k48000, {}, {})
+            .valid);
 }

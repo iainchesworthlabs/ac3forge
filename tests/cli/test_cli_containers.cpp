@@ -93,7 +93,8 @@ void append(std::vector<std::byte>& out, std::span<const std::byte> bytes) {
 // looks at StreamKind::kAc3CoreEac3Extension, and nothing before this file
 // built a stream that kind to hand it.
 std::vector<std::byte> legacy_core_stream() {
-    iclforge::ac3::FrameEncoder core{{.bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true}};
+    iclforge::ac3::FrameEncoder core{
+        {.bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true}};
     std::vector<std::vector<float>> pcm(
         6, std::vector<float>(static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame), 0.0F));
     std::vector<std::span<const float>> views;

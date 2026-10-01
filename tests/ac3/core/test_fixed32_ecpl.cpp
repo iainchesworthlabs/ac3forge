@@ -107,8 +107,8 @@ TEST_CASE("the tier's ecpl amplitudes and angles are the double ones", "[fixed32
     // conversion.
     const int begin = 0;
     const int end = iclforge::ac3::eac3::kEcplSubBands;
-    const auto layout =
-        iclforge::ac3::eac3::ecpl_group_bands(begin, end, iclforge::ac3::eac3::kDefaultEcplBandStructure);
+    const auto layout = iclforge::ac3::eac3::ecpl_group_bands(
+        begin, end, iclforge::ac3::eac3::kDefaultEcplBandStructure);
     REQUIRE(layout.count > 1);
     const auto bands = static_cast<std::size_t>(layout.count);
     std::vector<int> amp_codes(bands);
@@ -129,11 +129,12 @@ TEST_CASE("the tier's ecpl amplitudes and angles are the double ones", "[fixed32
             CAPTURE(first, transient);
             std::vector<double> amp(bins);
             std::vector<Fixed32> amp_fixed(bins);
-            iclforge::ac3::eac3::ecpl_amplitudes(amp_codes, chaos_codes, transient, first, begin, end,
-                                       iclforge::ac3::eac3::kDefaultEcplBandStructure, amp);
-            iclforge::ac3::eac3::ecpl_amplitudes_fixed(amp_codes, chaos_codes, transient, first, begin,
-                                             end, iclforge::ac3::eac3::kDefaultEcplBandStructure,
-                                             amp_fixed);
+            iclforge::ac3::eac3::ecpl_amplitudes(
+                amp_codes, chaos_codes, transient, first, begin, end,
+                iclforge::ac3::eac3::kDefaultEcplBandStructure, amp);
+            iclforge::ac3::eac3::ecpl_amplitudes_fixed(
+                amp_codes, chaos_codes, transient, first, begin, end,
+                iclforge::ac3::eac3::kDefaultEcplBandStructure, amp_fixed);
             for (std::size_t i = 0; i < bins; ++i) {
                 CAPTURE(i);
                 // One table read and at most one product and sum.
@@ -198,7 +199,8 @@ TEST_CASE("ecpl_channel_spectrum_fixed matches the double spectrum on real conte
     }
     std::array<double, 256> real_out{};
     std::array<double, 256> imag_out{};
-    iclforge::ac3::eac3::ecpl_channel_spectrum(prev, curr, next, real_out, imag_out, /*fast=*/false);
+    iclforge::ac3::eac3::ecpl_channel_spectrum(prev, curr, next, real_out, imag_out,
+                                               /*fast=*/false);
     std::array<Fixed32, 256> real_fixed{};
     std::array<Fixed32, 256> imag_fixed{};
     int out_norm = 0;

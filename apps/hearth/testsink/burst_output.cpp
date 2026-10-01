@@ -38,7 +38,8 @@ constexpr std::uint64_t kSamplesPerBurst = 1536;
 // and a dependent's chanmap where it carries one, unioned in Table E2.5 order, as the decoder
 // assembles it (§E3.8.2). Needed before the decode, since the block form hands the samples over
 // during the call.
-[[nodiscard]] std::optional<ac3::eac3::chanmap::Layout> peek_layout(std::span<const std::byte> unit) {
+[[nodiscard]] std::optional<ac3::eac3::chanmap::Layout> peek_layout(
+    std::span<const std::byte> unit) {
     std::uint16_t map = 0;
     std::size_t offset = 0;
     while (offset < unit.size()) {
@@ -84,7 +85,8 @@ constexpr std::uint64_t kSamplesPerBurst = 1536;
     return units;
 }
 
-[[nodiscard]] bool same_layout(const ac3::eac3::chanmap::Layout& a, const ac3::eac3::chanmap::Layout& b) {
+[[nodiscard]] bool same_layout(const ac3::eac3::chanmap::Layout& a,
+                               const ac3::eac3::chanmap::Layout& b) {
     if (a.count != b.count) {
         return false;
     }
@@ -190,11 +192,13 @@ ac3::eac3::chanmap::Layout ac4_bed(std::span<const iclforge::ac4::Speaker> speak
     return bed;
 }
 
-BurstOutput::BurstOutput(std::filesystem::path directory, std::string prefix, const render::OutputLayout& layout)
+BurstOutput::BurstOutput(std::filesystem::path directory, std::string prefix,
+                         const render::OutputLayout& layout)
     : directory_(std::move(directory)),
       prefix_(std::move(prefix)),
       layout_(layout),
-      serving_(ac3::render::serve(layout, ac3::DownmixTarget::kLoRo, ac3::render::ObjectsPolicy::kAuto)),
+      serving_(
+          ac3::render::serve(layout, ac3::DownmixTarget::kLoRo, ac3::render::ObjectsPolicy::kAuto)),
       config_(configured(serving_)),
       renderer_(layout) {}
 

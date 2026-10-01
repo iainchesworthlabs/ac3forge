@@ -514,8 +514,8 @@ void imdct512_windowed_impl(std::span<const Scalar, 256> coeffs, std::span<Scala
                 const auto a = iclforge::internal::arch::f32x4::set(
                     coeffs[kHalfN - 2 * k - 1], coeffs[kHalfN - 2 * k - 3],
                     coeffs[kHalfN - 2 * k - 5], coeffs[kHalfN - 2 * k - 7]);
-                const auto b = iclforge::internal::arch::f32x4::set(coeffs[2 * k], coeffs[2 * k + 2],
-                                                          coeffs[2 * k + 4], coeffs[2 * k + 6]);
+                const auto b = iclforge::internal::arch::f32x4::set(
+                    coeffs[2 * k], coeffs[2 * k + 2], coeffs[2 * k + 4], coeffs[2 * k + 6]);
                 const auto c = iclforge::internal::arch::f32x4::load(&tw.cos1[k]);
                 const auto sn = iclforge::internal::arch::f32x4::load(&tw.sin1[k]);
                 const auto zr = a * c - b * sn;
@@ -541,7 +541,8 @@ void imdct512_windowed_impl(std::span<const Scalar, 256> coeffs, std::span<Scala
             for (std::size_t k = 0; k < static_cast<std::size_t>(kQuarter); k += 2) {
                 const auto a = iclforge::internal::arch::f64x2::set(coeffs[kHalfN - 2 * k - 1],
                                                           coeffs[kHalfN - 2 * k - 3]);
-                const auto b = iclforge::internal::arch::f64x2::set(coeffs[2 * k], coeffs[2 * k + 2]);
+                const auto b =
+                    iclforge::internal::arch::f64x2::set(coeffs[2 * k], coeffs[2 * k + 2]);
                 const auto c = iclforge::internal::arch::f64x2::load(&tw.cos1[k]);
                 const auto sn = iclforge::internal::arch::f64x2::load(&tw.sin1[k]);
                 const auto zr = a * c - b * sn;
@@ -554,7 +555,8 @@ void imdct512_windowed_impl(std::span<const Scalar, 256> coeffs, std::span<Scala
                 z_im[d1] = zi.lane1();
             }
         }
-        iclforge::internal::fft_forward_bitrev<static_cast<std::size_t>(kQuarter), Scalar>(fft, z_re, z_im);
+        iclforge::internal::fft_forward_bitrev<static_cast<std::size_t>(kQuarter), Scalar>(
+            fft, z_re, z_im);
         // Unit stride throughout, so this negation goes wide with nothing
         // to gather or scatter.
         if constexpr (!kWide) {
@@ -762,8 +764,10 @@ void imdct256_pair_windowed_impl(std::span<const Scalar, 256> coeffs, std::span<
             z2_re[d] = a2 * c - b2 * s;
             z2_im[d] = -(b2 * c + a2 * s);
         }
-        iclforge::internal::fft_forward_bitrev<static_cast<std::size_t>(kEighth), Scalar>(fft, z1_re, z1_im);
-        iclforge::internal::fft_forward_bitrev<static_cast<std::size_t>(kEighth), Scalar>(fft, z2_re, z2_im);
+        iclforge::internal::fft_forward_bitrev<static_cast<std::size_t>(kEighth), Scalar>(
+            fft, z1_re, z1_im);
+        iclforge::internal::fft_forward_bitrev<static_cast<std::size_t>(kEighth), Scalar>(
+            fft, z2_re, z2_im);
         for (int n = 0; n < kEighth; ++n) {
             t1_re[static_cast<std::size_t>(n)] = z1_re[static_cast<std::size_t>(n)];
             t1_im[static_cast<std::size_t>(n)] = -z1_im[static_cast<std::size_t>(n)];

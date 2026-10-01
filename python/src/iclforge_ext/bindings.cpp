@@ -1,7 +1,7 @@
 // pybind11 bindings for iclforge (Python on PyPI) - wraps iclforge::ac3::FrameEncoder,
-// iclforge::ac3::FrameDecoder, iclforge::ac3::Eac3Decoder and iclforge::ac3::oba::AtmosEncoder directly
-// (pybind11-direct, per the roadmap's own dependency note - no intermediate C API). Every C++ class
-// kept here is exactly the one declared in
+// iclforge::ac3::FrameDecoder, iclforge::ac3::Eac3Decoder and iclforge::ac3::oba::AtmosEncoder
+// directly (pybind11-direct, per the roadmap's own dependency note - no intermediate C API). Every
+// C++ class kept here is exactly the one declared in
 // src/ac3/include/iclforge/ac3/{encoder/encoder,decoder/decoder,oba/atmos}.hpp; this file adds no
 // codec behaviour of its own; error handling exists only because Python has no std::expected-shaped
 // calling convention.
@@ -73,8 +73,8 @@ using iclforge::python::detail::to_bytes_list;
 
 // decode_frame_into/decode_access_unit_into's own `out` sizing contract (Python bindings
 // completeness) - see iclforge::ac3::FrameDecoder::decode_frame_into and
-// iclforge::ac3::Eac3Decoder::decode_access_unit_into's doc comments ("six covers every AC-3 layout" /
-// "16 covers §E3.8.2's cap"). Exposed to Python as
+// iclforge::ac3::Eac3Decoder::decode_access_unit_into's doc comments ("six covers every AC-3
+// layout" / "16 covers §E3.8.2's cap"). Exposed to Python as
 // ac3.MAX_AC3_CHANNELS/ac3.eac3.MAX_RENDER_CHANNELS below so a caller doesn't have to hardcode
 // them.
 constexpr std::size_t kMaxAc3Channels = 6;
@@ -157,13 +157,12 @@ ChannelViews extract_channel_views(const py::object& channels, std::size_t expec
     return out;
 }
 
-
 // --- scan() plumbing ----------------------------------------------------------
 //
-// iclforge::ac3::io::ScannedStream/ScannedProgramme's own `access_units` are std::span<const std::byte>
-// pointing into the CALLER's buffer (documented on ScannedStream itself) - here, that buffer is
-// `to_bytes(stream)`'s local copy inside the scan() lambda below, which does not outlive that
-// call. Rather than tie a returned Python object's lifetime to a buffer it does not own (the
+// iclforge::ac3::io::ScannedStream/ScannedProgramme's own `access_units` are std::span<const
+// std::byte> pointing into the CALLER's buffer (documented on ScannedStream itself) - here, that
+// buffer is `to_bytes(stream)`'s local copy inside the scan() lambda below, which does not outlive
+// that call. Rather than tie a returned Python object's lifetime to a buffer it does not own (the
 // pattern this file's decode-output views use, where the buffer genuinely IS the returned
 // object's own memory), every access unit is copied into an ordinary self-contained py::bytes
 // right here, once, while the source buffer is still alive - same reasoning split_frames/
@@ -186,8 +185,8 @@ struct ScanProgrammeInfo {
 // why. access_unit_timing()/stream_duration_samples() and friends (bound as free functions
 // below) only ever read `access_unit_samples`/`sample_rate` off a ScannedStream (confirmed
 // against src/ac3/src/io/elementary.cpp), so they reconstruct a throwaway
-// iclforge::ac3::io::ScannedStream from those two fields alone rather than needing this struct to keep
-// the real one, spans and all, alive.
+// iclforge::ac3::io::ScannedStream from those two fields alone rather than needing this struct to
+// keep the real one, spans and all, alive.
 struct ScanResult {
     iclforge::ac3::io::StreamKind kind = iclforge::ac3::io::StreamKind::kAc3;
     iclforge::ac3::SampleRate sample_rate = iclforge::ac3::SampleRate::k48000;
@@ -294,8 +293,8 @@ py::list channel_views(const std::vector<std::vector<float>>& channels, py::hand
 // out: either a single 2-D (n_channels, n_samples) writable float32 array, or a sequence of at
 // least min_channels 1-D writable float32 arrays, each at least min_len samples long - the
 // caller-buffer contract
-// iclforge::ac3::FrameDecoder::decode_frame_into/Eac3Decoder::decode_access_unit_into document ("six
-// covers every AC-3 layout" / "16 covers Annex E's cap", both exposed as
+// iclforge::ac3::FrameDecoder::decode_frame_into/Eac3Decoder::decode_access_unit_into document
+// ("six covers every AC-3 layout" / "16 covers Annex E's cap", both exposed as
 // ac3.MAX_AC3_CHANNELS/ac3.eac3.MAX_RENDER_CHANNELS below) - the real channel count for THIS
 // frame is only known after decoding it, so a caller sizes for the worst case up front.
 //
@@ -377,7 +376,8 @@ MutableChannelViews extract_out_views(const py::object& out, std::size_t min_cha
     return result;
 }
 
-std::vector<std::uint8_t> to_vec(const std::array<std::uint8_t, iclforge::ac3::kBlocksPerFrame>& a) {
+std::vector<std::uint8_t> to_vec(
+    const std::array<std::uint8_t, iclforge::ac3::kBlocksPerFrame>& a) {
     return {a.begin(), a.end()};
 }
 
@@ -554,10 +554,10 @@ PYBIND11_MODULE(_iclforge, m) {
         .value("kDependent", iclforge::ac3::eac3::StreamType::kDependent)
         .value("kConvertible", iclforge::ac3::eac3::StreamType::kConvertible);
 
-    // iclforge::ac3::io::StreamKind - Python bindings completeness's scan(). A different question from StreamType above
-    // (which frames belong to which E-AC-3 substream role); this is "is the stream AC-3, E-AC-3,
-    // or an AC-3 core carrying E-AC-3 dependent extensions" - see iclforge::ac3::io::StreamKind's own
-    // header comment for kAc3CoreEac3Extension.
+    // iclforge::ac3::io::StreamKind - Python bindings completeness's scan(). A different question
+    // from StreamType above (which frames belong to which E-AC-3 substream role); this is "is the
+    // stream AC-3, E-AC-3, or an AC-3 core carrying E-AC-3 dependent extensions" - see
+    // iclforge::ac3::io::StreamKind's own header comment for kAc3CoreEac3Extension.
     py::enum_<iclforge::ac3::io::StreamKind>(m, "StreamKind")
         .value("kAc3", iclforge::ac3::io::StreamKind::kAc3)
         .value("kEac3", iclforge::ac3::io::StreamKind::kEac3)
@@ -598,20 +598,25 @@ PYBIND11_MODULE(_iclforge, m) {
     // &iclforge::ac3::describe alone is ambiguous, so each bound overload is cast to its own
     // function-pointer type. DiagnosticEvent's overload is not surfaced to Python at
     // all (see docs/library/python-api.md's "What isn't exposed").
-    m.def("describe", static_cast<std::string_view (*)(iclforge::ac3::DecodeError)>(&iclforge::ac3::describe),
+    m.def("describe",
+          static_cast<std::string_view (*)(iclforge::ac3::DecodeError)>(&iclforge::ac3::describe),
           py::arg("error"), "Text for a DecodeError value");
-    m.def("describe", static_cast<std::string_view (*)(iclforge::ac3::FrameError)>(&iclforge::ac3::describe),
+    m.def("describe",
+          static_cast<std::string_view (*)(iclforge::ac3::FrameError)>(&iclforge::ac3::describe),
           py::arg("error"), "Text for a FrameError value");
     m.def(
         "describe",
         [](iclforge::ac3::io::ScanError e) { return std::string(iclforge::ac3::io::describe(e)); },
         py::arg("error"), "Text for a ScanError value");
     m.def(
-        "profile_for", [](iclforge::ac3::meta::ProfileId id) { return iclforge::ac3::meta::profile(id); },
+        "profile_for",
+        [](iclforge::ac3::meta::ProfileId id) { return iclforge::ac3::meta::profile(id); },
         py::arg("id"), "The ac3.Profile for one of the conventional ac3.ProfileId presets");
     m.def(
         "profile_name",
-        [](iclforge::ac3::meta::ProfileId id) { return std::string(iclforge::ac3::meta::profile_name(id)); },
+        [](iclforge::ac3::meta::ProfileId id) {
+            return std::string(iclforge::ac3::meta::profile_name(id));
+        },
         py::arg("id"));
 
     m.def(
@@ -800,11 +805,15 @@ PYBIND11_MODULE(_iclforge, m) {
         py::arg("stream"), py::arg("index"), "Access unit `index`'s own timing, or None past the end.");
     m.def(
         "stream_duration_samples",
-        [](const ScanResult& s) { return iclforge::ac3::io::stream_duration_samples(timing_view(s)); },
+        [](const ScanResult& s) {
+            return iclforge::ac3::io::stream_duration_samples(timing_view(s));
+        },
         py::arg("stream"));
     m.def(
         "stream_duration_seconds",
-        [](const ScanResult& s) { return iclforge::ac3::io::stream_duration_seconds(timing_view(s)); },
+        [](const ScanResult& s) {
+            return iclforge::ac3::io::stream_duration_seconds(timing_view(s));
+        },
         py::arg("stream"));
     m.def(
         "access_unit_at_sample",
@@ -856,7 +865,8 @@ PYBIND11_MODULE(_iclforge, m) {
                    ", total=" + std::to_string(b.total_samples()) + ")";
         });
 
-    py::class_<iclforge::ac3::meta::Profile>(m, "Profile", "A/52 §7.7 DRC compression characteristic")
+    py::class_<iclforge::ac3::meta::Profile>(m, "Profile",
+                                             "A/52 §7.7 DRC compression characteristic")
         .def(py::init([](py::kwargs kwargs) {
             return KwargBinder<iclforge::ac3::meta::Profile>(std::move(kwargs))
                 .field("null_low_db", &iclforge::ac3::meta::Profile::null_low_db)
@@ -881,15 +891,18 @@ PYBIND11_MODULE(_iclforge, m) {
         .def_readwrite("release_ms", &iclforge::ac3::meta::Profile::release_ms);
 
     py::class_<iclforge::ac3::meta::HeavyConfig>(m, "HeavyConfig",
-                                            "A/52 §7.7.2 heavy compression (RF mode)")
+                                                 "A/52 §7.7.2 heavy compression (RF mode)")
         .def(py::init([](py::kwargs kwargs) {
             return KwargBinder<iclforge::ac3::meta::HeavyConfig>(std::move(kwargs))
-                .field("dialogue_target_dbfs", &iclforge::ac3::meta::HeavyConfig::dialogue_target_dbfs)
+                .field("dialogue_target_dbfs",
+                       &iclforge::ac3::meta::HeavyConfig::dialogue_target_dbfs)
                 .field("peak_ceiling_dbfs", &iclforge::ac3::meta::HeavyConfig::peak_ceiling_dbfs)
-                .field("release_db_per_second", &iclforge::ac3::meta::HeavyConfig::release_db_per_second)
+                .field("release_db_per_second",
+                       &iclforge::ac3::meta::HeavyConfig::release_db_per_second)
                 .finish();
         }))
-        .def_readwrite("dialogue_target_dbfs", &iclforge::ac3::meta::HeavyConfig::dialogue_target_dbfs)
+        .def_readwrite("dialogue_target_dbfs",
+                       &iclforge::ac3::meta::HeavyConfig::dialogue_target_dbfs)
         .def_readwrite("peak_ceiling_dbfs", &iclforge::ac3::meta::HeavyConfig::peak_ceiling_dbfs)
         .def_readwrite("release_db_per_second",
                        &iclforge::ac3::meta::HeavyConfig::release_db_per_second);
@@ -1013,11 +1026,11 @@ PYBIND11_MODULE(_iclforge, m) {
         .def_property_readonly("latency", &iclforge::ac3::FrameEncoder::latency)
         .def_property_readonly("latency_samples", &iclforge::ac3::FrameEncoder::latency_samples);
 
-    // --- research trace export (iclforge::ac3::verify, research trace export) ---------------------
-    // The encoder/decoder mirror trace (ac3/verify/mirror.hpp, .../eac3_mirror.hpp),
-    // added for the in-repo self-check, exported here in a form a caller doing
-    // codec research can put in a DataFrame: per-frame bap, exponent, SNR-offset
-    // and masking-curve values. FrameTrace/Eac3AccessUnitTrace are opaque handles
+    // --- research trace export (iclforge::ac3::verify, research trace export)
+    // --------------------- The encoder/decoder mirror trace (ac3/verify/mirror.hpp,
+    // .../eac3_mirror.hpp), added for the in-repo self-check, exported here in a form a caller
+    // doing codec research can put in a DataFrame: per-frame bap, exponent, SNR-offset and
+    // masking-curve values. FrameTrace/Eac3AccessUnitTrace are opaque handles
     // - construct one, pass it to DecoderConfig(trace=...)/(eac3_trace=...), decode,
     // then read it back out with trace_to_csv/trace_to_json_lines below. See
     // ac3/verify/trace_export.hpp for the row schema (frame, substream, block,
@@ -1106,7 +1119,8 @@ PYBIND11_MODULE(_iclforge, m) {
                 config.trace = trace_obj.cast<iclforge::ac3::verify::FrameTrace*>();
             }
             if (!eac3_trace_obj.is_none()) {
-                config.eac3_trace = eac3_trace_obj.cast<iclforge::ac3::verify::Eac3AccessUnitTrace*>();
+                config.eac3_trace =
+                    eac3_trace_obj.cast<iclforge::ac3::verify::Eac3AccessUnitTrace*>();
             }
             return config;
         }))
@@ -1147,23 +1161,25 @@ PYBIND11_MODULE(_iclforge, m) {
         .def_readonly("chanmap", &iclforge::ac3::DecodedSubstream::chanmap)
         .def_readonly("last_dependent", &iclforge::ac3::DecodedSubstream::last_dependent)
         .def_readonly("object_metadata", &iclforge::ac3::DecodedSubstream::object_metadata)
-        .def_property_readonly("dynrng",
-                               [](const iclforge::ac3::DecodedSubstream& s) { return to_vec(s.dynrng); })
+        .def_property_readonly(
+            "dynrng", [](const iclforge::ac3::DecodedSubstream& s) { return to_vec(s.dynrng); })
         .def_property_readonly(
             "dynrng2", [](const iclforge::ac3::DecodedSubstream& s) { return to_vec(s.dynrng2); })
         .def_property_readonly(
-            "blksw", [](const iclforge::ac3::DecodedSubstream& s) { return blksw_to_list(s.blksw); })
-        .def_property_readonly(
-            "channels",
-            [](py::object self) {
-                return channel_views(self.cast<const iclforge::ac3::DecodedSubstream&>().channels, self);
-            })
-        .def_property_readonly("object_audio",
+            "blksw",
+            [](const iclforge::ac3::DecodedSubstream& s) { return blksw_to_list(s.blksw); })
+        .def_property_readonly("channels",
                                [](py::object self) {
                                    return channel_views(
-                                       self.cast<const iclforge::ac3::DecodedSubstream&>().object_audio,
+                                       self.cast<const iclforge::ac3::DecodedSubstream&>().channels,
                                        self);
                                })
+        .def_property_readonly(
+            "object_audio",
+            [](py::object self) {
+                return channel_views(
+                    self.cast<const iclforge::ac3::DecodedSubstream&>().object_audio, self);
+            })
         .def_property_readonly("channel_labels", [](const iclforge::ac3::DecodedSubstream& s) {
             return chanmap_labels(s.location_map());
         });
@@ -1179,18 +1195,18 @@ PYBIND11_MODULE(_iclforge, m) {
         .def_readonly("substream_count", &iclforge::ac3::DecodedAccessUnit::substream_count)
         .def_property_readonly(
             "dynrng", [](const iclforge::ac3::DecodedAccessUnit& u) { return to_vec(u.dynrng); })
-        .def_property_readonly("object_audio",
-                               [](py::object self) {
-                                   return channel_views(
-                                       self.cast<const iclforge::ac3::DecodedAccessUnit&>().object_audio,
-                                       self);
-                               })
-        .def_property_readonly("channels",
-                               [](py::object self) {
-                                   return channel_views(
-                                       self.cast<const iclforge::ac3::DecodedAccessUnit&>().channels,
-                                       self);
-                               })
+        .def_property_readonly(
+            "object_audio",
+            [](py::object self) {
+                return channel_views(
+                    self.cast<const iclforge::ac3::DecodedAccessUnit&>().object_audio, self);
+            })
+        .def_property_readonly(
+            "channels",
+            [](py::object self) {
+                return channel_views(self.cast<const iclforge::ac3::DecodedAccessUnit&>().channels,
+                                     self);
+            })
         .def_property_readonly("channel_labels", [](const iclforge::ac3::DecodedAccessUnit& u) {
             // Dual mono has no Table E2.5 layout at all (DecodedAccessUnit::layout's own
             // comment) - fall back to the plain AC-3 acmod labels, same as
@@ -1228,8 +1244,9 @@ PYBIND11_MODULE(_iclforge, m) {
             "decode_frame_into",
             [](iclforge::ac3::FrameDecoder& self, const py::buffer& frame, const py::object& out) {
                 const auto bytes = to_bytes(frame);
-                auto views = extract_out_views(
-                    out, kMaxAc3Channels, static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame));
+                auto views =
+                    extract_out_views(out, kMaxAc3Channels,
+                                      static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame));
                 iclforge::ac3::DecodedFrame result;
                 {
                     py::gil_scoped_release release;
@@ -1249,7 +1266,9 @@ PYBIND11_MODULE(_iclforge, m) {
             "returns.")
         .def_property_readonly(
             "latency_samples",
-            [](const iclforge::ac3::FrameDecoder&) { return iclforge::ac3::FrameDecoder::latency_samples(); },
+            [](const iclforge::ac3::FrameDecoder&) {
+                return iclforge::ac3::FrameDecoder::latency_samples();
+            },
             "The delay this decoder adds on top of the encoder's budget: always 0 for AC-3.");
 
     py::class_<iclforge::ac3::Eac3Decoder>(m, "Eac3Decoder")
@@ -1338,7 +1357,8 @@ PYBIND11_MODULE(_iclforge, m) {
         // caller that wants the held-back PCM calls flush() itself, which is why exit's
         // drain is deliberately not returned anywhere.
         .def(
-            "__enter__", [](iclforge::ac3::Eac3Decoder& self) -> iclforge::ac3::Eac3Decoder& { return self; },
+            "__enter__",
+            [](iclforge::ac3::Eac3Decoder& self) -> iclforge::ac3::Eac3Decoder& { return self; },
             py::return_value_policy::reference_internal)
         .def(
             "__exit__",
@@ -1361,7 +1381,8 @@ PYBIND11_MODULE(_iclforge, m) {
                 .field("dialnorm", &iclforge::ac3::oba::AtmosConfig::dialnorm)
                 .field("num_bands_idx", &iclforge::ac3::oba::AtmosConfig::num_bands_idx)
                 .field("fine_quant", &iclforge::ac3::oba::AtmosConfig::fine_quant)
-                .field("emit_object_metadata", &iclforge::ac3::oba::AtmosConfig::emit_object_metadata)
+                .field("emit_object_metadata",
+                       &iclforge::ac3::oba::AtmosConfig::emit_object_metadata)
                 .field("fast_mdct", &iclforge::ac3::oba::AtmosConfig::fast_mdct)
                 .finish();
         }))
@@ -1370,7 +1391,8 @@ PYBIND11_MODULE(_iclforge, m) {
         .def_readwrite("dialnorm", &iclforge::ac3::oba::AtmosConfig::dialnorm)
         .def_readwrite("num_bands_idx", &iclforge::ac3::oba::AtmosConfig::num_bands_idx)
         .def_readwrite("fine_quant", &iclforge::ac3::oba::AtmosConfig::fine_quant)
-        .def_readwrite("emit_object_metadata", &iclforge::ac3::oba::AtmosConfig::emit_object_metadata)
+        .def_readwrite("emit_object_metadata",
+                       &iclforge::ac3::oba::AtmosConfig::emit_object_metadata)
         .def_readwrite("fast_mdct", &iclforge::ac3::oba::AtmosConfig::fast_mdct);
 
     py::class_<iclforge::ac3::oba::AtmosEncoder>(m, "AtmosEncoder")
@@ -1410,18 +1432,19 @@ PYBIND11_MODULE(_iclforge, m) {
             "The OBJECT path's budget. Its transform term is TRANSFORM_DELAY_SAMPLES plus the "
             "§7.1 QMF filterbank's own delay (576 samples): JOC reconstruction pulls objects "
             "back out of the decoded bed in a 64-band complex QMF domain, not the MDCT's.")
-        .def_property_readonly("latency_samples", &iclforge::ac3::oba::AtmosEncoder::latency_samples)
+        .def_property_readonly("latency_samples",
+                               &iclforge::ac3::oba::AtmosEncoder::latency_samples)
         .def_property_readonly(
             "bed_latency", &iclforge::ac3::oba::AtmosEncoder::bed_latency,
             "The 5.1 bed's budget: what a legacy decoder that ignores the container hears.");
 
     // --- E-AC-3 encoder (iclforge::ac3::eac3::FrameEncoder / AccessUnitEncoder), Python bindings
     // completeness ------------ A real submodule rather than flat top-level names like Eac3Decoder:
-    // iclforge::ac3::FrameEncoder and iclforge::ac3::eac3::FrameEncoder share a name across C++ namespaces
-    // (legacy item AP2), so ac3.FrameEncoder (AC-3) vs ac3.eac3.FrameEncoder (E-AC-3) is what keeps
-    // that collision out of the binding surface. pybind11-direct on
-    // iclforge::ac3::eac3::FrameEncoder/AccessUnitEncoder, same policy as every other class here (see
-    // this file's own header comment) - not layered on the C API.
+    // iclforge::ac3::FrameEncoder and iclforge::ac3::eac3::FrameEncoder share a name across C++
+    // namespaces (legacy item AP2), so ac3.FrameEncoder (AC-3) vs ac3.eac3.FrameEncoder (E-AC-3) is
+    // what keeps that collision out of the binding surface. pybind11-direct on
+    // iclforge::ac3::eac3::FrameEncoder/AccessUnitEncoder, same policy as every other class here
+    // (see this file's own header comment) - not layered on the C API.
     py::module_ eac3 = m.def_submodule(
         "eac3",
         "iclforge::ac3::eac3::FrameEncoder/AccessUnitEncoder - E-AC-3 encoding, including wide "
@@ -1454,7 +1477,8 @@ PYBIND11_MODULE(_iclforge, m) {
     // binding layer.
     py::class_<iclforge::ac3::eac3::FrameConfig>(
         eac3, "FrameConfig",
-        "One substream's config (iclforge::ac3::eac3::FrameConfig) - sample rate (including the fscod2 "
+        "One substream's config (iclforge::ac3::eac3::FrameConfig) - sample rate (including the "
+        "fscod2 "
         "reduced rates), bitrate, acmod/lfe, the Annex E tools, and substream identity.")
         .def(py::init([](py::kwargs kwargs) {
             return KwargBinder<iclforge::ac3::eac3::FrameConfig>(std::move(kwargs))
@@ -1487,7 +1511,8 @@ PYBIND11_MODULE(_iclforge, m) {
                 .field("transient_prenoise", &iclforge::ac3::eac3::FrameConfig::transient_prenoise)
                 .field("fast_mdct", &iclforge::ac3::eac3::FrameConfig::fast_mdct)
                 .field("dither", &iclforge::ac3::eac3::FrameConfig::dither)
-                .field("oba_complexity_index", &iclforge::ac3::eac3::FrameConfig::oba_complexity_index)
+                .field("oba_complexity_index",
+                       &iclforge::ac3::eac3::FrameConfig::oba_complexity_index)
                 .finish();
         }))
         .def_readwrite("sample_rate", &iclforge::ac3::eac3::FrameConfig::sample_rate)
@@ -1519,9 +1544,11 @@ PYBIND11_MODULE(_iclforge, m) {
         .def_readwrite("transient_prenoise", &iclforge::ac3::eac3::FrameConfig::transient_prenoise)
         .def_readwrite("fast_mdct", &iclforge::ac3::eac3::FrameConfig::fast_mdct)
         .def_readwrite("dither", &iclforge::ac3::eac3::FrameConfig::dither)
-        .def_readwrite("oba_complexity_index", &iclforge::ac3::eac3::FrameConfig::oba_complexity_index);
+        .def_readwrite("oba_complexity_index",
+                       &iclforge::ac3::eac3::FrameConfig::oba_complexity_index);
 
-    py::class_<iclforge::ac3::eac3::FrameMetadata>(eac3, "FrameMetadata", "The §7.7 words for one frame")
+    py::class_<iclforge::ac3::eac3::FrameMetadata>(eac3, "FrameMetadata",
+                                                   "The §7.7 words for one frame")
         .def(py::init([](py::kwargs kwargs) {
             return KwargBinder<iclforge::ac3::eac3::FrameMetadata>(std::move(kwargs))
                 .field("dynrng", &iclforge::ac3::eac3::FrameMetadata::dynrng)
@@ -1574,7 +1601,8 @@ PYBIND11_MODULE(_iclforge, m) {
         .def_property_readonly("samples_per_frame",
                                &iclforge::ac3::eac3::FrameEncoder::samples_per_frame)
         .def_property_readonly("latency", &iclforge::ac3::eac3::FrameEncoder::latency)
-        .def_property_readonly("latency_samples", &iclforge::ac3::eac3::FrameEncoder::latency_samples);
+        .def_property_readonly("latency_samples",
+                               &iclforge::ac3::eac3::FrameEncoder::latency_samples);
 
     // dependents/additional are std::vector<FrameConfig>/std::vector<ProgrammeConfig> on the C++
     // side; pybind11/stl.h converts a Python list of eac3.FrameConfig directly. `additional`
@@ -1600,7 +1628,8 @@ PYBIND11_MODULE(_iclforge, m) {
                                })
         .def_readonly("substream_bytes", &iclforge::ac3::eac3::AccessUnit::substream_bytes,
                       "Byte length of each substream (independent first); sums to len(bytes).")
-        .def_property_readonly("substream_count", &iclforge::ac3::eac3::AccessUnit::substream_count);
+        .def_property_readonly("substream_count",
+                               &iclforge::ac3::eac3::AccessUnit::substream_count);
 
     py::class_<iclforge::ac3::eac3::AccessUnitEncoder>(
         eac3, "AccessUnitEncoder",
@@ -1636,7 +1665,8 @@ PYBIND11_MODULE(_iclforge, m) {
             "order its chanmap names them - self.channel_count spans total, "
             "ac3.SAMPLES_PER_FRAME samples each. aux: a pre-built EMDF container.")
         .def_property_readonly("config", &iclforge::ac3::eac3::AccessUnitEncoder::config)
-        .def_property_readonly("channel_count", &iclforge::ac3::eac3::AccessUnitEncoder::channel_count)
+        .def_property_readonly("channel_count",
+                               &iclforge::ac3::eac3::AccessUnitEncoder::channel_count)
         .def_property_readonly("latency", &iclforge::ac3::eac3::AccessUnitEncoder::latency)
         .def_property_readonly("latency_samples",
                                &iclforge::ac3::eac3::AccessUnitEncoder::latency_samples);
@@ -1662,8 +1692,8 @@ PYBIND11_MODULE(_iclforge, m) {
         "BS.1770-4 loudness over a programme, fed incrementally. Every gated measurement is "
         "None until enough audio has been pushed for it to mean anything - silence has no "
         "meaningful loudness, and inventing one would put a wrong dialnorm on the stream.")
-        .def(py::init<iclforge::ac3::SampleRate, iclforge::ac3::Acmod, bool>(), py::arg("sample_rate"),
-             py::arg("acmod"), py::arg("lfe"),
+        .def(py::init<iclforge::ac3::SampleRate, iclforge::ac3::Acmod, bool>(),
+             py::arg("sample_rate"), py::arg("acmod"), py::arg("lfe"),
              "Annex 1's basic algorithm keyed on acmod/lfe; push() expects the coded order "
              "(Table 5.8), LFE last - the encoder's own input convention.")
         .def(
@@ -1677,11 +1707,16 @@ PYBIND11_MODULE(_iclforge, m) {
             "Planar float32 audio, channel_count spans of any (equal) length - a 2-D "
             "(n_channels, n_samples) array or a sequence of 1-D arrays, same shapes the "
             "encoders take.")
-        .def_property_readonly("integrated_lkfs", &iclforge::ac3::meta::LoudnessMeter::integrated_lkfs)
-        .def_property_readonly("momentary_lkfs", &iclforge::ac3::meta::LoudnessMeter::momentary_lkfs)
-        .def_property_readonly("short_term_lkfs", &iclforge::ac3::meta::LoudnessMeter::short_term_lkfs)
-        .def_property_readonly("loudness_range", &iclforge::ac3::meta::LoudnessMeter::loudness_range)
-        .def_property_readonly("true_peak_dbtp", &iclforge::ac3::meta::LoudnessMeter::true_peak_dbtp)
+        .def_property_readonly("integrated_lkfs",
+                               &iclforge::ac3::meta::LoudnessMeter::integrated_lkfs)
+        .def_property_readonly("momentary_lkfs",
+                               &iclforge::ac3::meta::LoudnessMeter::momentary_lkfs)
+        .def_property_readonly("short_term_lkfs",
+                               &iclforge::ac3::meta::LoudnessMeter::short_term_lkfs)
+        .def_property_readonly("loudness_range",
+                               &iclforge::ac3::meta::LoudnessMeter::loudness_range)
+        .def_property_readonly("true_peak_dbtp",
+                               &iclforge::ac3::meta::LoudnessMeter::true_peak_dbtp)
         .def_property_readonly("channel_count", &iclforge::ac3::meta::LoudnessMeter::channel_count);
 
     py::enum_<iclforge::ac3::meta::QcPresetId>(meta, "QcPresetId")
@@ -1708,7 +1743,8 @@ PYBIND11_MODULE(_iclforge, m) {
     py::class_<iclforge::ac3::meta::QcVerdict>(meta, "QcVerdict")
         .def_readonly("loudness_delta_lu", &iclforge::ac3::meta::QcVerdict::loudness_delta_lu)
         .def_readonly("loudness_pass", &iclforge::ac3::meta::QcVerdict::loudness_pass)
-        .def_readonly("true_peak_margin_dbtp", &iclforge::ac3::meta::QcVerdict::true_peak_margin_dbtp)
+        .def_readonly("true_peak_margin_dbtp",
+                      &iclforge::ac3::meta::QcVerdict::true_peak_margin_dbtp)
         .def_readonly("true_peak_pass", &iclforge::ac3::meta::QcVerdict::true_peak_pass)
         .def_property_readonly("passed", &iclforge::ac3::meta::QcVerdict::pass);
 

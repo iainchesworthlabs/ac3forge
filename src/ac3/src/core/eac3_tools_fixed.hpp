@@ -56,7 +56,8 @@ inline const SpxAttenuation& spx_attenuation_fixed() {
 // (eac3_tools.cpp records how they were established) are stated once.
 // Every entry is at most sqrt(2).
 struct AhtBasis {
-    std::array<std::array<iclforge::internal::Fixed32, kBlocksPerFrameSize>, kBlocksPerFrameSize> row{};
+    std::array<std::array<iclforge::internal::Fixed32, kBlocksPerFrameSize>, kBlocksPerFrameSize>
+        row{};
 
     AhtBasis() {
         for (std::size_t j = 0; j < kBlocksPerFrameSize; ++j) {
@@ -117,18 +118,19 @@ inline void spx_apply_notch(std::span<iclforge::internal::Fixed32> synth, int st
 // every mantissa the AHT dequantisers produce is below 8/7 for any bits at
 // all (a vector entry over 2^15, a GAQ code over its level count), so the
 // products skip the saturation test (product_unsaturated): the same values.
-inline void aht_inverse(std::span<const iclforge::internal::Fixed32, kBlocksPerFrameSize> coefficients,
-                        std::span<iclforge::internal::Fixed32, kBlocksPerFrameSize> out) {
+inline void aht_inverse(
+    std::span<const iclforge::internal::Fixed32, kBlocksPerFrameSize> coefficients,
+    std::span<iclforge::internal::Fixed32, kBlocksPerFrameSize> out) {
     const auto& basis = fixed_detail::aht_basis();
     for (std::size_t m = 0; m < kBlocksPerFrameSize; ++m) {
         iclforge::internal::Fixed32 sum{};
         for (std::size_t j = 0; j < kBlocksPerFrameSize; ++j) {
-            sum += iclforge::internal::Fixed32::product_unsaturated(coefficients[j], basis.row[j][m]);
+            sum +=
+                iclforge::internal::Fixed32::product_unsaturated(coefficients[j], basis.row[j][m]);
         }
         out[m] = sum;
     }
 }
-
 
 // §3.5.5.4's sine and cosine of pi times an angle, in the tier. The angle is
 // a fraction of pi on (-1, 1] as §3.5.5.3 transmits and wraps it, so this is
@@ -187,11 +189,12 @@ inline void sincos_pi(iclforge::internal::Fixed32 a, iclforge::internal::Fixed32
 // The spectrum takes each neighbouring block's own exponent and reports the
 // one its 256 output bins share; the reconstruction takes the difference
 // between that and the receiving channel's, and applies it per bin.
-void ecpl_channel_spectrum_fixed(std::span<const iclforge::internal::Fixed32, 256> prev_mant, int prev_norm,
-                                 std::span<const iclforge::internal::Fixed32, 256> curr_mant, int curr_norm,
-                                 std::span<const iclforge::internal::Fixed32, 256> next_mant, int next_norm,
-                                 std::span<iclforge::internal::Fixed32, 256> real_out,
-                                 std::span<iclforge::internal::Fixed32, 256> imag_out, int& out_norm);
+void ecpl_channel_spectrum_fixed(
+    std::span<const iclforge::internal::Fixed32, 256> prev_mant, int prev_norm,
+    std::span<const iclforge::internal::Fixed32, 256> curr_mant, int curr_norm,
+    std::span<const iclforge::internal::Fixed32, 256> next_mant, int next_norm,
+    std::span<iclforge::internal::Fixed32, 256> real_out,
+    std::span<iclforge::internal::Fixed32, 256> imag_out, int& out_norm);
 
 void ecpl_amplitudes_fixed(std::span<const int> ecplamp, std::span<const int> ecplchaos,
                            bool ecpltrans, bool is_first_channel, int begin_subbnd,
@@ -206,8 +209,8 @@ void ecpl_angles_fixed(int channel, std::span<const int> ecplangle, std::span<co
 void ecpl_channel_coefficients_fixed(std::span<const iclforge::internal::Fixed32, 256> real_in,
                                      std::span<const iclforge::internal::Fixed32, 256> imag_in,
                                      std::span<const iclforge::internal::Fixed32> amp_bin,
-                                     std::span<const iclforge::internal::Fixed32> angle_bin, int begin_mant,
-                                     int end_mant, int out_shift,
+                                     std::span<const iclforge::internal::Fixed32> angle_bin,
+                                     int begin_mant, int end_mant, int out_shift,
                                      std::span<iclforge::internal::Fixed32, 256> mant_out);
 
 }  // namespace iclforge::ac3::eac3

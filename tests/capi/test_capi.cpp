@@ -791,7 +791,8 @@ TEST_CASE("E-AC-3 access units with a dependent substream cross the C API intact
     CHECK(iclforge_decoded_substream_id(dependent) == 0);
     CHECK(iclforge_decoded_substream_acmod(dependent) == ICLFORGE_ACMOD_2_0);
     CHECK(iclforge_decoded_substream_has_chanmap(dependent) == 1);
-    CHECK(iclforge_decoded_substream_chanmap(dependent) == iclforge::ac3::eac3::chanmap::k512Height);
+    CHECK(iclforge_decoded_substream_chanmap(dependent) ==
+          iclforge::ac3::eac3::chanmap::k512Height);
     CHECK(iclforge_decoded_substream_location_map(dependent) ==
           iclforge::ac3::eac3::chanmap::k512Height);
     CHECK(iclforge_decoded_substream_last_dependent(dependent) == 1);
@@ -2346,7 +2347,8 @@ TEST_CASE(
     // programme - a broadcast "second service" (§5.4.2.2), not a dependent
     // widening one bed. Concatenated frame by frame, the same wire shape
     // iclforge_split_access_units already delimits into four access units.
-    iclforge::ac3::eac3::FrameEncoder programme0{{.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k2_0}};
+    iclforge::ac3::eac3::FrameEncoder programme0{
+        {.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k2_0}};
     iclforge::ac3::eac3::FrameEncoder programme1{
         {.bitrate_kbps = 96, .acmod = iclforge::ac3::Acmod::k1_0, .substreamid = 1}};
 
@@ -2808,7 +2810,8 @@ TEST_CASE("iclforge_qc_preset/name/parse mirror iclforge::ac3::meta::qc's table"
 }
 
 TEST_CASE(
-    "iclforge_evaluate_qc_gate passes/fails the same way iclforge::ac3::meta::evaluate_qc_gate does",
+    "iclforge_evaluate_qc_gate passes/fails the same way iclforge::ac3::meta::evaluate_qc_gate "
+    "does",
     "[capi][qc]") {
     const auto preset = iclforge_qc_preset(ICLFORGE_QC_PRESET_NETFLIX);  // -27 +/-2 LU, -2 dBTP ceiling
 

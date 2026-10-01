@@ -344,8 +344,8 @@ TEST_CASE("the exponent scale and the mantissa tables read exactly through Fixed
                                    : 1 << iclforge::ac3::kBapBits[static_cast<std::size_t>(bap)];
         for (int code = 0; code < codes; ++code) {
             const double wide = iclforge::ac3::dequantize_mantissa_as<double>(static_cast<std::uint32_t>(code), bap);
-            const double fixed = static_cast<double>(
-                iclforge::ac3::dequantize_mantissa_as<Fixed32>(static_cast<std::uint32_t>(code), bap));
+            const double fixed = static_cast<double>(iclforge::ac3::dequantize_mantissa_as<Fixed32>(
+                static_cast<std::uint32_t>(code), bap));
             CHECK(std::abs(fixed - wide) <= kUlp);
         }
     }

@@ -168,8 +168,8 @@ TEST_CASE("accumulate_block bands the same error the decoder reconstructs",
     // this produces (including the zero-bit bins at the top) is the mix the
     // measurement will actually meet.
     std::vector<std::uint8_t> bap(kEnd);
-    iclforge::ac3::compute_bit_allocation(exps, iclforge::ac3::SampleRate::k48000, iclforge::ac3::BitAllocCodes{},
-                                     15, 0, bap);
+    iclforge::ac3::compute_bit_allocation(exps, iclforge::ac3::SampleRate::k48000,
+                                          iclforge::ac3::BitAllocCodes{}, 15, 0, bap);
 
     for (const int start : {0, 37, 85, 121}) {
         iclforge::ac3::quality::BandNoise measured;
@@ -258,7 +258,8 @@ TEST_CASE("measured error stays within half a step inside the quantizer span",
     std::uniform_real_distribution<double> dist(-1.0, 1.0);
     for (int bap = 1; bap <= 15; ++bap) {
         const bool symmetric = bap <= 5;
-        const int levels = iclforge::ac3::kSymmetricLevels[static_cast<std::size_t>(std::min(bap, 5))];
+        const int levels =
+            iclforge::ac3::kSymmetricLevels[static_cast<std::size_t>(std::min(bap, 5))];
         const double step =
             symmetric ? 2.0 / levels
                       : 1.0 / (1 << (iclforge::ac3::kBapBits[static_cast<std::size_t>(bap)] - 1));
@@ -266,7 +267,8 @@ TEST_CASE("measured error stays within half a step inside the quantizer span",
         for (int trial = 0; trial < 3000; ++trial) {
             const double value = dist(rng);
             const auto fixed = iclforge::ac3::to_fixed25(value);
-            const double error = std::abs(iclforge::ac3::quality::reconstruction_error(fixed, 0, bap));
+            const double error =
+                std::abs(iclforge::ac3::quality::reconstruction_error(fixed, 0, bap));
             CAPTURE(bap, value, step, span, error);
             if (std::abs(value) <= span) {
                 CHECK(error <= step / 2 + 1e-9);

@@ -165,7 +165,8 @@ TEST_CASE("WavPcm16StreamWriter's closed file is byte-identical to write_wav_pcm
     }
 
     const auto one_shot = scratch_dir() / "pcm16_one_shot.wav";
-    REQUIRE(iclforge::ac3::io::write_wav_pcm16_raw(one_shot.string(), payload, 192000, 2).has_value());
+    REQUIRE(
+        iclforge::ac3::io::write_wav_pcm16_raw(one_shot.string(), payload, 192000, 2).has_value());
 
     const auto streamed = scratch_dir() / "pcm16_streamed.wav";
     iclforge::ac3::io::WavPcm16StreamWriter writer;

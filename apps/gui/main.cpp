@@ -594,7 +594,8 @@ int main(int argc, char* argv[]) {
     // context property is enough - AboutDialog.qml reads it directly,
     // no C++ round trip needed for something that never changes at runtime.
     engine.rootContext()->setContextProperty(
-        QStringLiteral("appVersionDetails"), QString::fromStdString(iclforge::ac3::version_details()));
+        QStringLiteral("appVersionDetails"),
+        QString::fromStdString(iclforge::ac3::version_details()));
 
     // Installs translators and sets the initial layout direction before any
     // QML is loaded (loadFromModule() below), so the first frame already

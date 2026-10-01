@@ -12,9 +12,10 @@ iclforge::ac3::analysis::MeterBallistics ballistics_to_cpp(const iclforge_level_
     if (ballistics == nullptr) {
         return iclforge::ac3::analysis::MeterBallistics{};
     }
-    return iclforge::ac3::analysis::MeterBallistics{.rms_integration_ms = ballistics->rms_integration_ms,
-                                          .peak_decay_db_per_s = ballistics->peak_decay_db_per_s,
-                                          .peak_hold_ms = ballistics->peak_hold_ms};
+    return iclforge::ac3::analysis::MeterBallistics{
+        .rms_integration_ms = ballistics->rms_integration_ms,
+        .peak_decay_db_per_s = ballistics->peak_decay_db_per_s,
+        .peak_hold_ms = ballistics->peak_hold_ms};
 }
 }  // namespace
 
@@ -44,8 +45,8 @@ iclforge_status_t iclforge_level_meter_create(iclforge_acmod_t acmod, int lfe,
             owned->impl = std::make_unique<iclforge::ac3::analysis::LevelMeter>(
                 to_cpp(acmod), lfe != 0, sample_rate, channels, cpp_ballistics);
         } else {
-            owned->impl = std::make_unique<iclforge::ac3::analysis::LevelMeter>(to_cpp(acmod), lfe != 0,
-                                                                       sample_rate, cpp_ballistics);
+            owned->impl = std::make_unique<iclforge::ac3::analysis::LevelMeter>(
+                to_cpp(acmod), lfe != 0, sample_rate, cpp_ballistics);
         }
         *out_meter = owned.release();
         return ICLFORGE_OK;

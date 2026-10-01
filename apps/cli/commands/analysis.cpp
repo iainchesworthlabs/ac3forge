@@ -436,8 +436,8 @@ std::optional<QcResult> measure_qc_eac3_rendered(std::span<const std::byte> stre
     }
     // Heap-allocated for the same PREfast C6262 reason measure_qc_eac3_bed
     // gives above.
-    auto decoder =
-        std::make_unique<iclforge::ac3::Eac3Decoder>(iclforge::ac3::DecoderConfig{.programme = programme});
+    auto decoder = std::make_unique<iclforge::ac3::Eac3Decoder>(
+        iclforge::ac3::DecoderConfig{.programme = programme});
     QcResult result;
     result.codec_label = "E-AC-3";
     result.unit_label = "access unit(s)";
@@ -535,7 +535,8 @@ std::optional<QcResult> measure_qc_eac3_rendered(std::span<const std::byte> stre
 // "a raised object folds onto the ring... at full level"), so mono/stereo/1+1
 // are not offered here at all - see iclforge::ac3::plan::LayoutId for the full set
 // objects= validates against before this is reached.
-std::optional<iclforge::ac3::eac3::chanmap::Layout> object_render_target(iclforge::ac3::plan::LayoutId id) {
+std::optional<iclforge::ac3::eac3::chanmap::Layout> object_render_target(
+    iclforge::ac3::plan::LayoutId id) {
     using iclforge::ac3::eac3::chanmap::acmod_map;
     using iclforge::ac3::eac3::chanmap::expand;
     using iclforge::ac3::eac3::chanmap::k512Height;
@@ -781,8 +782,9 @@ struct Ac4Meter {
 };
 
 Ac4Meter ac4_loudness_meter(const iclforge::ac4::DecodedFrame& pcm, bool rendered) {
-    const iclforge::ac3::SampleRate rate =
-        pcm.sample_rate_hz == 44100 ? iclforge::ac3::SampleRate::k44100 : iclforge::ac3::SampleRate::k48000;
+    const iclforge::ac3::SampleRate rate = pcm.sample_rate_hz == 44100
+                                               ? iclforge::ac3::SampleRate::k44100
+                                               : iclforge::ac3::SampleRate::k48000;
     const std::span<const iclforge::ac4::Speaker> speakers{pcm.speakers};
     if (rendered) {
         std::vector<std::size_t> order = ac4_order(
@@ -1400,7 +1402,8 @@ int run_levels(std::string_view in_path, const Options& meta) {
         for (const auto& frame : *frames) {
             const auto decoded = decoder.decode_frame(frame);
             if (!decoded) {
-                fmt::println(stderr, "error: {}: {}", in_path, iclforge::ac3::describe(decoded.error()));
+                fmt::println(stderr, "error: {}: {}", in_path,
+                             iclforge::ac3::describe(decoded.error()));
                 return kExitInput;            }
             if (!meter) {
                 meter.emplace(decoded->acmod, decoded->lfe,
@@ -1523,7 +1526,8 @@ int run_loudness(std::string_view in_path, const Options& meta) {
         }
         fmt::println("  dialogue level {:.2f} LKFS -> dialnorm {}", *measured->integrated_lkfs,
                      iclforge::ac3::meta::dialnorm_from_lkfs(*measured->integrated_lkfs));
-        if (const auto carried = iclforge::ac3::io::read_frame_metadata(bytes); carried.has_value()) {
+        if (const auto carried = iclforge::ac3::io::read_frame_metadata(bytes);
+            carried.has_value()) {
             fmt::println("  the stream's dialnorm {}", carried->dialnorm);
         }
         return kExitOk;

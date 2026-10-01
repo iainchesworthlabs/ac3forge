@@ -48,10 +48,11 @@ std::vector<std::span<const float>> views_of(const std::vector<std::vector<float
 int encode_stereo() {
     // Heap-allocated: FrameEncoder carries several KB of MDCT scratch/history
     // state (PREfast's C6262).
-    auto encoder = std::make_unique<iclforge::ac3::eac3::FrameEncoder>(iclforge::ac3::eac3::FrameConfig{
-        .bitrate_kbps = 192,
-        .acmod = iclforge::ac3::Acmod::k2_0,
-    });
+    auto encoder =
+        std::make_unique<iclforge::ac3::eac3::FrameEncoder>(iclforge::ac3::eac3::FrameConfig{
+            .bitrate_kbps = 192,
+            .acmod = iclforge::ac3::Acmod::k2_0,
+        });
 
     std::vector<std::vector<float>> pcm(2, std::vector<float>(iclforge::ac3::kSamplesPerFrame));
     const auto views = views_of(pcm);

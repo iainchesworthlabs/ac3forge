@@ -53,10 +53,12 @@ std::string_view describe_frame_error(iclforge::ac3::FrameError error) {
         case iclforge::ac3::FrameError::kInvalidDialnorm: return "dialnorm is out of range (1..31)";
         case iclforge::ac3::FrameError::kInvalidSubstream: return "invalid substream configuration";
         case iclforge::ac3::FrameError::kInvalidChannelMap: return "channel map does not match the coding mode";
-        case iclforge::ac3::FrameError::kTooManyChannels: return "too many rendered channel locations";
+        case iclforge::ac3::FrameError::kTooManyChannels:
+            return "too many rendered channel locations";
         case iclforge::ac3::FrameError::kInvalidMixLevel: return "invalid mixing-metadata level";
         case iclforge::ac3::FrameError::kInvalidBsi: return "invalid bit stream information field";
-        case iclforge::ac3::FrameError::kInvalidObjectAudio: return "invalid object-audio configuration";
+        case iclforge::ac3::FrameError::kInvalidObjectAudio:
+            return "invalid object-audio configuration";
     }
     return "unknown encode error";
 }
@@ -297,7 +299,8 @@ class WasmEncoder {
                 return emscripten::val::null();
             }
             routing_ = std::move(*routing);
-            rendered_channels_ = static_cast<int>(iclforge::ac3::plan::rendered_channel_count(resolved));
+            rendered_channels_ =
+                static_cast<int>(iclforge::ac3::plan::rendered_channel_count(resolved));
             coded_storage_.assign(static_cast<std::size_t>(routing_->coded_channels),
                                   std::vector<float>(static_cast<std::size_t>(samplesPerFrame())));
         }

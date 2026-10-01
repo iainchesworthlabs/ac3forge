@@ -102,7 +102,8 @@ TEST_CASE("media info json: AC-3 time codes and Annex D's alternate bitstream in
     CHECK(xbsi1["pan"]["degrees"].as_double() == Catch::Approx(20 * meta::kPanMeanDegreesPerStep).margin(0.05));
     CHECK(xbsi1["pan"]["paninfo"].as_int() == 3);
     CHECK(xbsi1["pan2"].is_null());
-    REQUIRE(xbsi1["blkmixcfginfo"].size() == static_cast<std::size_t>(iclforge::ac3::kBlocksPerFrame));
+    REQUIRE(xbsi1["blkmixcfginfo"].size() ==
+            static_cast<std::size_t>(iclforge::ac3::kBlocksPerFrame));
     CHECK(xbsi1["blkmixcfginfo"].at(0)["code"].as_int() == 7);
     CHECK(xbsi1["blkmixcfginfo"].at(1).is_null());
     CHECK(xbsi1["mixdef"]["label"].equals("none"));

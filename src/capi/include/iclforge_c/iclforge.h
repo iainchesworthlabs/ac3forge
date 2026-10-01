@@ -51,7 +51,8 @@ typedef enum iclforge_status {
 
     ICLFORGE_ERROR_INVALID_ARGUMENT = 1,
     ICLFORGE_ERROR_OUT_OF_MEMORY = 2,
-    ICLFORGE_ERROR_INTERNAL = 3, /* an exception crossed the C boundary; see docs/library/c-api.md */
+    ICLFORGE_ERROR_INTERNAL =
+        3, /* an exception crossed the C boundary; see docs/library/c-api.md */
     /* A call this library was not built to answer - a codec this build left
      * out (ICLFORGE_BUILD_AC4 off), not a bad argument or a bad stream. Every
      * fallible entry point of that codec's section returns it, including
@@ -70,7 +71,8 @@ typedef enum iclforge_status {
     ICLFORGE_ERROR_ENCODE_INVALID_OBJECT_AUDIO = 16,
     ICLFORGE_ERROR_ENCODE_INVALID_BSI = 17,
 
-    /* iclforge::ac3::DecodeError — FrameDecoder::decode_frame(), Eac3Decoder::decode_substream()/decode_access_unit() */
+    /* iclforge::ac3::DecodeError — FrameDecoder::decode_frame(),
+       Eac3Decoder::decode_substream()/decode_access_unit() */
     ICLFORGE_ERROR_DECODE_TRUNCATED = 30,
     ICLFORGE_ERROR_DECODE_BAD_SYNC_WORD = 31,
     ICLFORGE_ERROR_DECODE_BAD_CRC = 32,
@@ -79,8 +81,8 @@ typedef enum iclforge_status {
     ICLFORGE_ERROR_DECODE_INVALID_STREAM = 35,
 
     /* iclforge::ac3::io::ScanError — iclforge_scan() only; split_frames()/split_access_units()/
-     * stream_bsid() stay on iclforge::ac3::DecodeError above, since iclforge::ac3::io::scan() is the
-     * only entry point in this header built on iclforge::ac3::io's own error type. */
+     * stream_bsid() stay on iclforge::ac3::DecodeError above, since iclforge::ac3::io::scan() is
+     * the only entry point in this header built on iclforge::ac3::io's own error type. */
     ICLFORGE_ERROR_SCAN_EMPTY = 50,
     ICLFORGE_ERROR_SCAN_LOST_SYNC = 51,
     ICLFORGE_ERROR_SCAN_UNSUPPORTED_BSID = 52,
@@ -1136,7 +1138,8 @@ typedef struct iclforge_atmos_config {
     iclforge_sample_rate_t sample_rate;
     uint32_t bitrate_kbps; /* default 448 */
     int dialnorm;
-    int num_bands_idx; /* index into iclforge::ac3::oba::joc::kNumBands (Table 50), 0..7; default 4 */
+    int num_bands_idx; /* index into iclforge::ac3::oba::joc::kNumBands (Table 50), 0..7; default 4
+                        */
     int fine_quant;
     int emit_object_metadata; /* default 1 — see AtmosConfig's own comment on turning this off */
     int fast_mdct;

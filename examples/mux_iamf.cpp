@@ -2,9 +2,10 @@
 // list is Opus, AAC-LC, FLAC and LPCM only), so the route to that ecosystem is decode -> rewrap,
 // not a new encoder output. This encodes a synthetic 7.1.4 E-AC-3 stream (an independent 3/2+LFE
 // bed plus two dependent substreams, exactly examples/encode_eac3.cpp's own encode_714()), decodes
-// each access unit back with iclforge::ac3::Eac3Decoder, permutes the result from Table E2.5's bit order
-// into iclforge::iamf::'s own L,C,R,Lss,Rss,Lrs,Rrs,Ltf,Rtf,Ltb,Rtb,LFE order (IAMF v1.1.0 §3.6.2,
-// loudspeaker_layout = 7), and writes it out as an IAMF ISOBMFF file with iclforge::iamf::mux().
+// each access unit back with iclforge::ac3::Eac3Decoder, permutes the result from Table E2.5's bit
+// order into iclforge::iamf::'s own L,C,R,Lss,Rss,Lrs,Rrs,Ltf,Rtf,Ltb,Rtb,LFE order (IAMF v1.1.0
+// §3.6.2, loudspeaker_layout = 7), and writes it out as an IAMF ISOBMFF file with
+// iclforge::iamf::mux().
 //
 // iclforge::iamf itself is codec-blind (see iamf/iamf.hpp) - the permutation below is what a caller
 // bridging a real decode into it looks like, kept here rather than inside the module for the same
@@ -98,8 +99,8 @@ int main() {
                                     2800.0, 3200.0};
 
     iclforge::ac3::Eac3Decoder decoder;
-    iclforge::iamf::AudioTrack track{.samples_per_frame =
-                                         static_cast<std::uint32_t>(iclforge::ac3::kSamplesPerFrame)};
+    iclforge::iamf::AudioTrack track{
+        .samples_per_frame = static_cast<std::uint32_t>(iclforge::ac3::kSamplesPerFrame)};
     std::vector<iclforge::iamf::Frame> frames;
 
     constexpr int kFrameCount = 8;  // several frames of real content, not silence - see

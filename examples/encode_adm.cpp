@@ -4,8 +4,8 @@
 // iclforge::admbridge, src/admbridge). This is a minimal, standalone illustration of the same
 // pipeline forge's 'atmos-adm' command drives for real: iclforge::adm::parse_bw64() reads the
 // container + ADM XML graph, iclforge::admbridge::build() maps it onto
-// iclforge::ac3::oba::AtmosEncoder's flat object-list input shape (one bed speaker feed pinned in place,
-// one dynamic object panned by its own authored motion), and a plain per-frame loop calls
+// iclforge::ac3::oba::AtmosEncoder's flat object-list input shape (one bed speaker feed pinned in
+// place, one dynamic object panned by its own authored motion), and a plain per-frame loop calls
 // iclforge::oba::evaluate_placements() plus AtmosEncoder::encode_frame() the same way every other
 // Atmos example in this directory does. The CLI command and this example deliberately share nothing
 // but that library API - see docs/library/adm-bridge.md's own note on why no separate "driving

@@ -797,8 +797,8 @@ TEST_CASE("decode downmix=auto folds the way the stream's own dmixmod asks", "[c
         REQUIRE(frames.has_value());
         for (const auto frame : *frames) {
             const auto at = static_cast<std::size_t>(frame.data() - merged.data());
-            REQUIRE(
-                iclforge::ac3::io::restamp_crc(std::span{merged}.subspan(at, frame.size())).has_value());
+            REQUIRE(iclforge::ac3::io::restamp_crc(std::span{merged}.subspan(at, frame.size()))
+                        .has_value());
         }
         std::ofstream file{out, std::ios::binary};
         file.write(reinterpret_cast<const char*>(merged.data()),
@@ -828,8 +828,8 @@ TEST_CASE("decode downmix=auto folds the way the stream's own dmixmod asks", "[c
         // stream preferring Lt/Rt has no preference downmix=auto can act on.
         const auto stereo_wav = dir / "auto_stereo_in.wav";
         const auto stereo_channels = make_tone_channels(2, 4800, 48000);
-        REQUIRE(
-            iclforge::ac3::io::write_wav_f32(stereo_wav.string(), stereo_channels, 48000).has_value());
+        REQUIRE(iclforge::ac3::io::write_wav_f32(stereo_wav.string(), stereo_channels, 48000)
+                    .has_value());
         const auto stream = dir / "auto_narrow.ac3";
         fs::remove(stream);
         REQUIRE(run_cli("encode \"" + stereo_wav.string() + "\" \"" + stream.string() +
@@ -2631,7 +2631,8 @@ TEST_CASE("silence writes the documented default duration/bitrate and decodes to
     // against the same frame_size_bytes() the encoder itself uses, not a
     // transcribed byte count.
     const std::uint64_t expect_count = (5ull * 48000 + 1535) / 1536;
-    const auto frame_bytes = iclforge::ac3::frame_size_bytes(iclforge::ac3::SampleRate::k48000, 192);
+    const auto frame_bytes =
+        iclforge::ac3::frame_size_bytes(iclforge::ac3::SampleRate::k48000, 192);
     REQUIRE(frame_bytes.has_value());
     REQUIRE(fs::exists(out_path));
     CHECK(fs::file_size(out_path) == expect_count * *frame_bytes);
@@ -2661,7 +2662,8 @@ TEST_CASE("silence threads its seconds and bitrate arguments to the right parame
     REQUIRE(run_cli("silence \"" + out_path.string() + "\" 2 384", log) == 0);
 
     const std::uint64_t expect_count = (2ull * 48000 + 1535) / 1536;
-    const auto frame_bytes = iclforge::ac3::frame_size_bytes(iclforge::ac3::SampleRate::k48000, 384);
+    const auto frame_bytes =
+        iclforge::ac3::frame_size_bytes(iclforge::ac3::SampleRate::k48000, 384);
     REQUIRE(frame_bytes.has_value());
     REQUIRE(fs::exists(out_path));
     CHECK(fs::file_size(out_path) == expect_count * *frame_bytes);
@@ -2770,8 +2772,8 @@ TEST_CASE("eac3-sine rejects a rate frmsiz cannot express", "[cli][eac3-sine][fr
            "message, since its own check runs after construction against the plan's "
            "whole bitrate rather than each substream's own share of it") {
         const auto wav_path = dir / "sine_frmsiz_encode_compare_in.wav";
-        const auto channels =
-            make_tone_channels(2, 3 * static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame), 48000);
+        const auto channels = make_tone_channels(
+            2, 3 * static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame), 48000);
         REQUIRE(iclforge::ac3::io::write_wav_f32(wav_path.string(), channels, 48000).has_value());
 
         const auto out_path = dir / "sine_frmsiz_encode_compare.ec3";
@@ -3083,7 +3085,8 @@ TEST_CASE("decode plays a legacy core's held-back last unit without swapping the
     // (Eac3Decoder::decode_access_unit's own doc comment on the per-identity
     // cache), so flush() releases both together - the exact shape the bug
     // needed.
-    iclforge::ac3::FrameEncoder core{{.bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true}};
+    iclforge::ac3::FrameEncoder core{
+        {.bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true}};
     iclforge::ac3::eac3::FrameEncoder rear{{.bitrate_kbps = 320,
                                   .acmod = iclforge::ac3::Acmod::k2_2,
                                   .strmtyp = iclforge::ac3::eac3::StreamType::kDependent,
@@ -3437,8 +3440,8 @@ TEST_CASE("quiet also silences the report lines only some streams earn", "[cli][
     SECTION("AC-3: Annex D, both xbsi words and the informational fields") {
         // The token set the bit stream information test above encodes with.
         const auto wav_path = dir / "quiet_annexd_in.wav";
-        REQUIRE(iclforge::ac3::io::write_wav_f32(wav_path.string(), make_tone_channels(6, 48000, 48000),
-                                       48000)
+        REQUIRE(iclforge::ac3::io::write_wav_f32(wav_path.string(),
+                                                 make_tone_channels(6, 48000, 48000), 48000)
                     .has_value());
         const auto stream = dir / "quiet_annexd.ac3";
         REQUIRE(run_cli("encode \"" + wav_path.string() + "\" \"" + stream.string() +
@@ -3453,8 +3456,8 @@ TEST_CASE("quiet also silences the report lines only some streams earn", "[cli][
         // pgmscl alone, so the mixing summary is the only line in the report
         // that a plain stream would not also print.
         const auto wav_path = dir / "quiet_mixmeta_in.wav";
-        REQUIRE(iclforge::ac3::io::write_wav_f32(wav_path.string(), make_tone_channels(6, 48000, 48000),
-                                       48000)
+        REQUIRE(iclforge::ac3::io::write_wav_f32(wav_path.string(),
+                                                 make_tone_channels(6, 48000, 48000), 48000)
                     .has_value());
         const auto stream = dir / "quiet_mixmeta.ec3";
         REQUIRE(run_cli("eac3-encode \"" + wav_path.string() + "\" \"" + stream.string() +
@@ -3488,11 +3491,11 @@ TEST_CASE("quiet also silences the report lines only some streams earn", "[cli][
         // mkv test builds with.
         const auto primary = dir / "quiet_programme0.wav";
         const auto second = dir / "quiet_programme1.wav";
-        REQUIRE(iclforge::ac3::io::write_wav_f32(primary.string(), make_tone_channels(6, 48000, 48000),
-                                       48000)
+        REQUIRE(iclforge::ac3::io::write_wav_f32(primary.string(),
+                                                 make_tone_channels(6, 48000, 48000), 48000)
                     .has_value());
-        REQUIRE(iclforge::ac3::io::write_wav_f32(second.string(), make_tone_channels(1, 48000, 48000),
-                                       48000)
+        REQUIRE(iclforge::ac3::io::write_wav_f32(second.string(),
+                                                 make_tone_channels(1, 48000, 48000), 48000)
                     .has_value());
         const auto stream = dir / "quiet_programmes.ec3";
         REQUIRE(run_cli("eac3-encode \"" + primary.string() + "\" \"" + stream.string() +
@@ -4460,8 +4463,9 @@ TEST_CASE("a channel count no standard layout covers is refused, not silently fo
     // 7 channels: legal audio, but plan::layout_for_source's own gap between
     // 6 (5.1) and 8 (7.1) - no A/52 or Annex E acmod maps that many.
     const auto odd = dir / "layout_gap_7ch.wav";
-    REQUIRE(iclforge::ac3::io::write_wav_f32(odd.string(), make_tone_channels(7, 2000, 48000), 48000)
-                .has_value());
+    REQUIRE(
+        iclforge::ac3::io::write_wav_f32(odd.string(), make_tone_channels(7, 2000, 48000), 48000)
+            .has_value());
 
     SECTION("eac3-encode, single file, no layout token") {
         const auto out_path = dir / "layout_gap_eac3.ec3";
@@ -4479,11 +4483,12 @@ TEST_CASE("a channel count no standard layout covers is refused, not silently fo
 
     SECTION("eac3-encode, src= combines two files into the same gap") {
         const auto second = dir / "layout_gap_second.wav";
-        REQUIRE(
-            iclforge::ac3::io::write_wav_f32(second.string(), make_tone_channels(1, 2000, 48000), 48000)
-                .has_value());
+        REQUIRE(iclforge::ac3::io::write_wav_f32(second.string(),
+                                                 make_tone_channels(1, 2000, 48000), 48000)
+                    .has_value());
         const auto six = dir / "layout_gap_6ch.wav";
-        REQUIRE(iclforge::ac3::io::write_wav_f32(six.string(), make_tone_channels(6, 2000, 48000), 48000)
+        REQUIRE(iclforge::ac3::io::write_wav_f32(six.string(), make_tone_channels(6, 2000, 48000),
+                                                 48000)
                     .has_value());
         const auto out_path = dir / "layout_gap_eac3_multi.ec3";
         const auto log = dir / "layout_gap_eac3_multi.log";
@@ -4504,11 +4509,12 @@ TEST_CASE("a channel count no standard layout covers is refused, not silently fo
 
     SECTION("encode (AC-3), src= combines two files into the same gap") {
         const auto second = dir / "layout_gap_second_ac3.wav";
-        REQUIRE(
-            iclforge::ac3::io::write_wav_f32(second.string(), make_tone_channels(1, 2000, 48000), 48000)
-                .has_value());
+        REQUIRE(iclforge::ac3::io::write_wav_f32(second.string(),
+                                                 make_tone_channels(1, 2000, 48000), 48000)
+                    .has_value());
         const auto six = dir / "layout_gap_6ch_ac3.wav";
-        REQUIRE(iclforge::ac3::io::write_wav_f32(six.string(), make_tone_channels(6, 2000, 48000), 48000)
+        REQUIRE(iclforge::ac3::io::write_wav_f32(six.string(), make_tone_channels(6, 2000, 48000),
+                                                 48000)
                     .has_value());
         const auto out_path = dir / "layout_gap_ac3_multi.ac3";
         const auto log = dir / "layout_gap_ac3_multi.log";
@@ -4581,7 +4587,8 @@ TEST_CASE("multi-source AC-3 encode infers a layout from the combined channel co
 TEST_CASE("programme2= reports why its own source could not be used", "[cli][encode][programme2]") {
     const auto dir = scratch_dir();
     const auto primary = dir / "programme2_primary.wav";
-    REQUIRE(iclforge::ac3::io::write_wav_f32(primary.string(), make_tone_channels(2, 4000, 48000), 48000)
+    REQUIRE(iclforge::ac3::io::write_wav_f32(primary.string(), make_tone_channels(2, 4000, 48000),
+                                             48000)
                 .has_value());
 
     SECTION("a programme2= path that does not exist") {
@@ -4609,9 +4616,9 @@ TEST_CASE("programme2= reports why its own source could not be used", "[cli][enc
         const auto log = dir / "programme2_gap.log";
         fs::remove(out_path);
         const auto second = dir / "programme2_gap_7ch.wav";
-        REQUIRE(
-            iclforge::ac3::io::write_wav_f32(second.string(), make_tone_channels(7, 2000, 48000), 48000)
-                .has_value());
+        REQUIRE(iclforge::ac3::io::write_wav_f32(second.string(),
+                                                 make_tone_channels(7, 2000, 48000), 48000)
+                    .has_value());
         const auto rc = run_cli("eac3-encode \"" + primary.string() + "\" \"" +
                                     out_path.string() + "\" 192 none stereo programme2=\"" +
                                     second.string() + "\"",
@@ -4632,7 +4639,8 @@ TEST_CASE("programmeN= generalizes past two, each with its own metadata",
     const auto p2 = dir / "programmeN_p2.wav";
     const auto p3 = dir / "programmeN_p3.wav";
     const auto p4 = dir / "programmeN_p4.wav";
-    REQUIRE(iclforge::ac3::io::write_wav_f32(primary.string(), make_tone_channels(6, 4800, 48000), 48000)
+    REQUIRE(iclforge::ac3::io::write_wav_f32(primary.string(), make_tone_channels(6, 4800, 48000),
+                                             48000)
                 .has_value());
     REQUIRE(iclforge::ac3::io::write_wav_f32(p2.string(), make_tone_channels(1, 4800, 48000), 48000)
                 .has_value());
@@ -4720,7 +4728,8 @@ TEST_CASE("a later programmeN= without an earlier one is refused, not silently r
     const auto dir = scratch_dir();
     const auto primary = dir / "programme_gap_primary.wav";
     const auto p4 = dir / "programme_gap_p4.wav";
-    REQUIRE(iclforge::ac3::io::write_wav_f32(primary.string(), make_tone_channels(6, 4000, 48000), 48000)
+    REQUIRE(iclforge::ac3::io::write_wav_f32(primary.string(), make_tone_channels(6, 4000, 48000),
+                                             48000)
                 .has_value());
     REQUIRE(iclforge::ac3::io::write_wav_f32(p4.string(), make_tone_channels(1, 4000, 48000), 48000)
                 .has_value());
@@ -4747,7 +4756,8 @@ TEST_CASE("a 1+1-only field on an extra programme is refused, not silently inert
     const auto dir = scratch_dir();
     const auto primary = dir / "programme_dead_primary.wav";
     const auto p2 = dir / "programme_dead_p2.wav";
-    REQUIRE(iclforge::ac3::io::write_wav_f32(primary.string(), make_tone_channels(6, 4000, 48000), 48000)
+    REQUIRE(iclforge::ac3::io::write_wav_f32(primary.string(), make_tone_channels(6, 4000, 48000),
+                                             48000)
                 .has_value());
     REQUIRE(iclforge::ac3::io::write_wav_f32(p2.string(), make_tone_channels(1, 4000, 48000), 48000)
                 .has_value());

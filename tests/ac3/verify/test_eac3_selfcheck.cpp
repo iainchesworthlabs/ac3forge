@@ -114,15 +114,14 @@ std::string trace_is_populated(const iclforge::ac3::verify::Eac3MirrorEncoder& e
 // target layout's coded channels, exactly as the CLI does.
 std::string mirror_encode(const iclforge::ac3::plan::Plan& plan,
                           const std::vector<std::vector<float>>& source, std::size_t frames) {
-    const auto routing =
-        iclforge::ac3::plan::route(iclforge::ac3::plan::resolve(plan), source.size(), plan.meta.cmixlev,
-                         plan.meta.surmixlev);
+    const auto routing = iclforge::ac3::plan::route(
+        iclforge::ac3::plan::resolve(plan), source.size(), plan.meta.cmixlev, plan.meta.surmixlev);
     REQUIRE(routing.has_value());
     const auto coded = static_cast<std::size_t>(routing->coded_channels);
 
     iclforge::ac3::verify::Eac3MirrorEncoder encoder{iclforge::ac3::plan::eac3_config(plan)};
-    std::vector<std::vector<float>> block(coded,
-                                          std::vector<float>(iclforge::ac3::kSamplesPerFrame, 0.0f));
+    std::vector<std::vector<float>> block(
+        coded, std::vector<float>(iclforge::ac3::kSamplesPerFrame, 0.0f));
     std::vector<std::span<const float>> in(source.size());
     std::vector<std::span<float>> out(coded);
     std::vector<std::span<const float>> views(coded);
@@ -341,12 +340,13 @@ TEST_CASE("verify::compare names every E-AC-3 field a hand-planted divergence si
     };
     const std::vector<Case> cases = {
         // audfrm: reported before, and instead of, any block.
-        {"strmtyp", [](Trace&, Trace& d) { d.strmtyp = iclforge::ac3::eac3::StreamType::kDependent; },
+        {"strmtyp",
+         [](Trace&, Trace& d) { d.strmtyp = iclforge::ac3::eac3::StreamType::kDependent; },
          Eac3Field::kStreamType, -1, -1, false, -1},
-        {"substreamid", [](Trace&, Trace& d) { d.substreamid = 3; }, Eac3Field::kSubstreamId,
-         -1, -1, false, -1},
-        {"numblkscod", [](Trace&, Trace& d) { d.blocks_coded = 3; }, Eac3Field::kBlockCount,
-         -1, -1, false, -1},
+        {"substreamid", [](Trace&, Trace& d) { d.substreamid = 3; }, Eac3Field::kSubstreamId, -1,
+         -1, false, -1},
+        {"numblkscod", [](Trace&, Trace& d) { d.blocks_coded = 3; }, Eac3Field::kBlockCount, -1, -1,
+         false, -1},
         {"transproce", [](Trace&, Trace& d) { d.transproce = true; },
          Eac3Field::kTransientProcInUse, -1, -1, false, -1},
         {"chintransproc",
@@ -374,18 +374,18 @@ TEST_CASE("verify::compare names every E-AC-3 field a hand-planted divergence si
         // Block-level geometry.
         {"block reached", [](Trace&, Trace& d) { d.blocks[0].entered = false; },
          Eac3Field::kBlockReached, 0, -1, false, -1},
-        {"deltbaie", [](Trace&, Trace& d) { d.blocks[1].deltbaie = true; }, Eac3Field::kDeltbaie,
-         1, -1, false, -1},
-        {"cplinu", [](Trace&, Trace& d) { d.blocks[2].cplinu = false; },
-         Eac3Field::kCouplingInUse, 2, -1, false, -1},
+        {"deltbaie", [](Trace&, Trace& d) { d.blocks[1].deltbaie = true; }, Eac3Field::kDeltbaie, 1,
+         -1, false, -1},
+        {"cplinu", [](Trace&, Trace& d) { d.blocks[2].cplinu = false; }, Eac3Field::kCouplingInUse,
+         2, -1, false, -1},
         {"ecplinu", [](Trace&, Trace& d) { d.blocks[2].ecplinu = true; },
          Eac3Field::kEnhancedCouplingInUse, 2, -1, false, -1},
         {"cplstrtmant", [](Trace&, Trace& d) { d.blocks[3].cplstrtmant = 37; },
          Eac3Field::kCouplingStart, 3, -1, false, -1},
         {"cplendmant", [](Trace&, Trace& d) { d.blocks[3].cplendmant = 229; },
          Eac3Field::kCouplingEnd, 3, -1, false, -1},
-        {"spxinu", [](Trace&, Trace& d) { d.blocks[4].spxinu = true; }, Eac3Field::kSpxInUse, 4,
-         -1, false, -1},
+        {"spxinu", [](Trace&, Trace& d) { d.blocks[4].spxinu = true; }, Eac3Field::kSpxInUse, 4, -1,
+         false, -1},
         {"spx start",
          [](Trace& e, Trace& d) {
              e.blocks[4].spxinu = d.blocks[4].spxinu = true;
@@ -583,7 +583,8 @@ TEST_CASE("an access-unit trace reuses its substream slots without leaking the l
         CHECK(block.streams.empty());
         CHECK(block.channels.empty());
     }
-    CHECK(iclforge::ac3::verify::compare(trace, iclforge::ac3::verify::Eac3AccessUnitTrace{}, 0).size() == 1);
+    CHECK(iclforge::ac3::verify::compare(trace, iclforge::ac3::verify::Eac3AccessUnitTrace{}, 0)
+              .size() == 1);
 
     // An independent substream starts the unit over; a dependent appends.
     auto& bed = trace.begin_substream(true);
@@ -620,8 +621,8 @@ TEST_CASE("E-AC-3 encoder and decoder agree across the Annex E tool matrix",
                                     "cpl:4+spx:5", "cpl+ecpl", "tpn", "cpl+ecpl+tpn", "all",
                                     "auto", "auto+spx:5", "all+noatten", "all+nofastmdct"}) {
         CAPTURE(tools);
-        const auto failure =
-            mirror_encode(eac3_plan(iclforge::ac3::plan::LayoutId::k51, 192, tools), channels, kFrames);
+        const auto failure = mirror_encode(
+            eac3_plan(iclforge::ac3::plan::LayoutId::k51, 192, tools), channels, kFrames);
         INFO(failure);
         CHECK(failure.empty());
     }
@@ -658,8 +659,8 @@ TEST_CASE("E-AC-3 encoder and decoder agree on the coupling channel's own delta"
         const float hold = channel.back();
         channel.resize(kPaddedFrames * iclforge::ac3::kSamplesPerFrame, hold);
     }
-    const auto failure = mirror_encode(eac3_plan(iclforge::ac3::plan::LayoutId::k51, 192, "cpl+ecpl"),
-                                       channels, kPaddedFrames);
+    const auto failure = mirror_encode(
+        eac3_plan(iclforge::ac3::plan::LayoutId::k51, 192, "cpl+ecpl"), channels, kPaddedFrames);
     INFO(failure);
     CHECK(failure.empty());
 }
@@ -671,10 +672,11 @@ TEST_CASE("E-AC-3 encoder and decoder agree at every layout", "[verify][golden]"
     // are checked against each other and nothing else. Both dependents'
     // traces are compared here, which is what makes that self-check mean
     // something.
-    for (const auto layout : {iclforge::ac3::plan::LayoutId::kMono, iclforge::ac3::plan::LayoutId::kStereo,
-                              iclforge::ac3::plan::LayoutId::k51, iclforge::ac3::plan::LayoutId::k71,
-                              iclforge::ac3::plan::LayoutId::k512, iclforge::ac3::plan::LayoutId::k514,
-                              iclforge::ac3::plan::LayoutId::k714}) {
+    for (const auto layout :
+         {iclforge::ac3::plan::LayoutId::kMono, iclforge::ac3::plan::LayoutId::kStereo,
+          iclforge::ac3::plan::LayoutId::k51, iclforge::ac3::plan::LayoutId::k71,
+          iclforge::ac3::plan::LayoutId::k512, iclforge::ac3::plan::LayoutId::k514,
+          iclforge::ac3::plan::LayoutId::k714}) {
         CAPTURE(iclforge::ac3::plan::layout(layout).name);
         for (const std::string tools : {"none", "all"}) {
             CAPTURE(tools);

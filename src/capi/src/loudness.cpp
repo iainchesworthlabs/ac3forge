@@ -36,7 +36,8 @@ iclforge_status_t iclforge_loudness_meter_create_for_chanmap(iclforge_sample_rat
     }
     return guard([&sample_rate, &layout, &out_meter] {
         auto owned = std::make_unique<iclforge_loudness_meter>();
-        owned->impl = std::make_unique<iclforge::ac3::meta::LoudnessMeter>(to_cpp(sample_rate), layout);
+        owned->impl =
+            std::make_unique<iclforge::ac3::meta::LoudnessMeter>(to_cpp(sample_rate), layout);
         *out_meter = owned.release();
         return ICLFORGE_OK;
     });
@@ -135,6 +136,8 @@ double iclforge_loudness_meter_true_peak_dbtp(const iclforge_loudness_meter_t* m
     return value.has_value() ? *value : 0.0;
 }
 
-int iclforge_dialnorm_from_lkfs(double lkfs) { return iclforge::ac3::meta::dialnorm_from_lkfs(lkfs); }
+int iclforge_dialnorm_from_lkfs(double lkfs) {
+    return iclforge::ac3::meta::dialnorm_from_lkfs(lkfs);
+}
 
 }  // extern "C"

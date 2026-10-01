@@ -228,9 +228,9 @@ std::vector<float> tone(double hz, std::uint32_t rate, std::size_t offset, doubl
 // sample for sample. §7.3.4's dither generator runs on across frames, so a
 // decoder that starts late draws different values for the same bins; the
 // difference is some 95 dB down, but it is not zero.
-std::vector<std::byte> eac3_stream(int frames,
-                                   iclforge::ac3::SampleRate rate = iclforge::ac3::SampleRate::k48000,
-                                   bool dither = true, double level = 0.3, int dialnorm = 31) {
+std::vector<std::byte> eac3_stream(
+    int frames, iclforge::ac3::SampleRate rate = iclforge::ac3::SampleRate::k48000,
+    bool dither = true, double level = 0.3, int dialnorm = 31) {
     iclforge::ac3::eac3::FrameConfig config;
     config.sample_rate = rate;
     config.bitrate_kbps = 384;
@@ -242,8 +242,9 @@ std::vector<std::byte> eac3_stream(int frames,
     const auto channels = static_cast<std::size_t>(encoder.channel_count());
     std::vector<std::byte> out;
     for (int f = 0; f < frames; ++f) {
-        const auto samples = tone(440.0, iclforge::ac3::sample_rate_hz(rate),
-                                  static_cast<std::size_t>(f) * iclforge::ac3::kSamplesPerFrame, level);
+        const auto samples =
+            tone(440.0, iclforge::ac3::sample_rate_hz(rate),
+                 static_cast<std::size_t>(f) * iclforge::ac3::kSamplesPerFrame, level);
         const std::vector<std::span<const float>> views(channels, samples);
         const auto frame = encoder.encode_frame(views);
         REQUIRE(frame.has_value());
@@ -252,8 +253,8 @@ std::vector<std::byte> eac3_stream(int frames,
     return out;
 }
 
-std::vector<std::byte> ac3_stream(int frames,
-                                  iclforge::ac3::SampleRate rate = iclforge::ac3::SampleRate::k48000) {
+std::vector<std::byte> ac3_stream(
+    int frames, iclforge::ac3::SampleRate rate = iclforge::ac3::SampleRate::k48000) {
     iclforge::ac3::EncoderConfig config;
     config.sample_rate = rate;
     config.bitrate_kbps = 384;
@@ -1009,7 +1010,8 @@ TEST_CASE("player: a settings change reaches the playing item at a unit, losing 
           "nothing",
           "[hearth][player]") {
     Library library;
-    library.files["long.ec3"] = eac3_stream(30, iclforge::ac3::SampleRate::k48000, /*dither=*/false);
+    library.files["long.ec3"] =
+        eac3_stream(30, iclforge::ac3::SampleRate::k48000, /*dither=*/false);
     const std::size_t total = 30 * 1536;
     const DecoderSettings before;
     DecoderSettings after;

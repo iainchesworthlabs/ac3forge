@@ -245,7 +245,8 @@ class SampleQueue {
         for (std::size_t ch = 0; ch < channels_.size(); ++ch) {
             const auto& queue = channels_[ch];
             float hold = 0.0f;
-            for (std::size_t i = 0; i < static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame); ++i) {
+            for (std::size_t i = 0; i < static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame);
+                 ++i) {
                 if (i < count) {
                     hold = queue[consumed_ + i];
                     into[ch][i] = hold;
@@ -944,7 +945,8 @@ int transcode_from_ac4(std::string_view in_path, std::string_view out_path, std:
         return encoder.coded_channels() == 0 ? kExitUsage : kExitOutput;
     }
     const auto coded_plan = plan::resolve(p);
-    iclforge::ac3::analysis::LevelMeter meter{coded_plan.bed_acmod, coded_plan.bed_lfe, source_rate};
+    iclforge::ac3::analysis::LevelMeter meter{coded_plan.bed_acmod, coded_plan.bed_lfe,
+                                              source_rate};
     RenderQueue queue(*routing, source_channels, encoder.coded_channels());
     bool encode_failed = false;
     const RenderedFrame on_frame = [&meter, &encoder, &encode_failed](
@@ -1031,12 +1033,13 @@ std::optional<DecodeRenderStats> decode_and_render(std::string_view in_path,
     // plain AC-3 syncframes and was never meant to skip over the trailing
     // dependent bytes loaded.scan.access_units bundles in with it here. Route
     // it down the same path as plain E-AC-3, matching run_decode's own
-    // dispatch (iclforge::ac3::stream_bsid(...) > 8 || iclforge::ac3::has_eac3_extension_substreams(...),
-    // apps/cli/commands/decode.cpp) and apps/common/stream_playback.hpp's
-    // reads_as_access_units - both of which test the stream's content rather
-    // than trust a two-way read of this enum.
-    const bool eac3_source = loaded.scan.kind == iclforge::ac3::io::StreamKind::kEac3 ||
-                             loaded.scan.kind == iclforge::ac3::io::StreamKind::kAc3CoreEac3Extension;
+    // dispatch (iclforge::ac3::stream_bsid(...) > 8 ||
+    // iclforge::ac3::has_eac3_extension_substreams(...), apps/cli/commands/decode.cpp) and
+    // apps/common/stream_playback.hpp's reads_as_access_units - both of which test the stream's
+    // content rather than trust a two-way read of this enum.
+    const bool eac3_source =
+        loaded.scan.kind == iclforge::ac3::io::StreamKind::kEac3 ||
+        loaded.scan.kind == iclforge::ac3::io::StreamKind::kAc3CoreEac3Extension;
     const auto source_channels = static_cast<std::size_t>(loaded.scan.channels);
 
     RenderQueue queue(routing, source_channels, coded_channels);
@@ -1080,7 +1083,8 @@ std::optional<DecodeRenderStats> decode_and_render(std::string_view in_path,
         for (const auto& unit : loaded.scan.access_units) {
             const auto decoded = decoder->decode_access_unit(unit);
             if (!decoded.has_value()) {
-                fmt::println(stderr, "error: {}: {}", in_path, iclforge::ac3::describe(decoded.error()));
+                fmt::println(stderr, "error: {}: {}", in_path,
+                             iclforge::ac3::describe(decoded.error()));
                 on_abort();
                 return std::nullopt;
             }
@@ -1155,7 +1159,8 @@ std::optional<DecodeRenderStats> decode_and_render(std::string_view in_path,
         for (const auto& frame : loaded.scan.access_units) {
             const auto decoded = decoder.decode_frame(frame);
             if (!decoded.has_value()) {
-                fmt::println(stderr, "error: {}: {}", in_path, iclforge::ac3::describe(decoded.error()));
+                fmt::println(stderr, "error: {}: {}", in_path,
+                             iclforge::ac3::describe(decoded.error()));
                 on_abort();
                 return std::nullopt;
             }
@@ -1213,7 +1218,8 @@ int run_transcode(std::string_view in_path, std::string_view out_path, std::uint
     }
     const auto source_meta = iclforge::ac3::io::read_frame_metadata(loaded->bytes);
     if (!source_meta.has_value()) {
-        fmt::println(stderr, "error: {}: {}", in_path, iclforge::ac3::io::describe(source_meta.error()));
+        fmt::println(stderr, "error: {}: {}", in_path,
+                     iclforge::ac3::io::describe(source_meta.error()));
         return kExitInput;
     }
     if (to_ac4 && loaded->scan.acmod == iclforge::ac3::Acmod::kDualMono) {
@@ -1394,7 +1400,8 @@ int run_transcode(std::string_view in_path, std::string_view out_path, std::uint
         return encoder.coded_channels() == 0 ? kExitUsage : kExitOutput;
     }
     const auto coded_channels = encoder.coded_channels();
-    iclforge::ac3::analysis::LevelMeter meter{coded_plan.bed_acmod, coded_plan.bed_lfe, source_rate};
+    iclforge::ac3::analysis::LevelMeter meter{coded_plan.bed_acmod, coded_plan.bed_lfe,
+                                              source_rate};
 
     // Latched so a failure can be put in its exit class afterwards:
     // decode_and_render only says THAT it stopped, and it stops both when
@@ -1458,8 +1465,9 @@ int run_transcode(std::string_view in_path, std::string_view out_path, std::uint
     }
     status_println(status, "  dialnorm {}{}", p.meta.dialnorm, dialnorm_note);
     if (compr_passthrough.has_value()) {
-        status_println(status, "  compr    {:+.2f} dB carried across verbatim",
-                       iclforge::ac3::meta::to_db(iclforge::ac3::meta::compr_gain(*compr_passthrough)));
+        status_println(
+            status, "  compr    {:+.2f} dB carried across verbatim",
+            iclforge::ac3::meta::to_db(iclforge::ac3::meta::compr_gain(*compr_passthrough)));
     } else if (p.meta.heavy.has_value()) {
         status_println(status, "  compr    re-derived (heavy given on the command line)");
     } else {
@@ -1530,7 +1538,8 @@ int run_metadata(std::string_view in_path, std::string_view out_path, const Opti
 
     const auto summary = iclforge::ac3::io::edit_stream_metadata(loaded->bytes, edit);
     if (!summary.has_value()) {
-        fmt::println(stderr, "error: {}: {}", in_path, iclforge::ac3::io::describe(summary.error()));
+        fmt::println(stderr, "error: {}: {}", in_path,
+                     iclforge::ac3::io::describe(summary.error()));
         return kExitUsage;
     }
     // Re-scanned rather than reusing the pre-edit spans: edit_stream_metadata
@@ -1553,9 +1562,10 @@ int run_metadata(std::string_view in_path, std::string_view out_path, const Opti
     if (after.has_value()) {
         status_println(status, "  dialnorm {} -> {}", before->dialnorm, after->dialnorm);
         if (before->compr.has_value() && after->compr.has_value()) {
-            status_println(status, "  compr    {:+.2f} -> {:+.2f} dB",
-                           iclforge::ac3::meta::to_db(iclforge::ac3::meta::compr_gain(*before->compr)),
-                           iclforge::ac3::meta::to_db(iclforge::ac3::meta::compr_gain(*after->compr)));
+            status_println(
+                status, "  compr    {:+.2f} -> {:+.2f} dB",
+                iclforge::ac3::meta::to_db(iclforge::ac3::meta::compr_gain(*before->compr)),
+                iclforge::ac3::meta::to_db(iclforge::ac3::meta::compr_gain(*after->compr)));
         }
         if (before->bsmod.has_value() && after->bsmod.has_value()) {
             status_println(status, "  bsmod    {} -> {}", *before->bsmod, *after->bsmod);
@@ -1604,7 +1614,8 @@ int run_normalize(std::string_view in_path, std::string_view out_path, const Opt
 
     const auto summary = iclforge::ac3::io::edit_stream_metadata(loaded->bytes, edit);
     if (!summary.has_value()) {
-        fmt::println(stderr, "error: {}: {}", in_path, iclforge::ac3::io::describe(summary.error()));
+        fmt::println(stderr, "error: {}: {}", in_path,
+                     iclforge::ac3::io::describe(summary.error()));
         return kExitUsage;
     }
     const auto rescanned = iclforge::ac3::io::scan(loaded->bytes);

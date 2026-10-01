@@ -85,7 +85,8 @@ TEST_CASE("coupling exponent set round-trips through the normative decode", "[co
             raw[static_cast<std::size_t>(i)] =
                 static_cast<std::uint8_t>(3 + (i * 7) % 20);
         }
-        const auto encoded = iclforge::ac3::encode_coupling_exponents(raw, iclforge::ac3::ExpStrategy::kD15);
+        const auto encoded =
+            iclforge::ac3::encode_coupling_exponents(raw, iclforge::ac3::ExpStrategy::kD15);
         CAPTURE(nsubbands, count, encoded.cplabsexp, encoded.groups.size());
         REQUIRE(encoded.cplabsexp <= 12);  // absexp is even and at most 24
         REQUIRE(static_cast<int>(encoded.groups.size()) == count / 3);

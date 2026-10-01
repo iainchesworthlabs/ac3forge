@@ -188,8 +188,8 @@ void write_container(JsonSink& json, const apps::ContainerFacts& facts) {
             json.member("fscod", static_cast<std::int64_t>(box.fscod));
             json.member("bsid", static_cast<std::int64_t>(box.bsid));
             json.member("bsmod", static_cast<std::int64_t>(box.bsmod));
-            json.member("bsmod_label",
-                        apps::probe_json::bsmod_label(box.bsmod, static_cast<ac3::Acmod>(box.acmod)));
+            json.member("bsmod_label", apps::probe_json::bsmod_label(
+                                           box.bsmod, static_cast<ac3::Acmod>(box.acmod)));
             json.member("acmod", static_cast<std::int64_t>(box.acmod));
             json.member("lfeon", box.lfeon);
             json.member("bit_rate_code", static_cast<std::int64_t>(box.bit_rate_code));
@@ -435,8 +435,9 @@ void write_mix(JsonSink& json, const ac3::meta::MixMetadata& mix) {
                                                ? "dynrng"
                                                : "compr");
         json.member("drcsrc", static_cast<std::int64_t>(premix.drcsrc));
-        json.member("drcsrc_label",
-                    premix.drcsrc == ac3::meta::DrcSource::kExternal ? "external" : "this_substream");
+        json.member("drcsrc_label", premix.drcsrc == ac3::meta::DrcSource::kExternal
+                                        ? "external"
+                                        : "this_substream");
         json.member("premixcmpscl", static_cast<std::int64_t>(premix.premixcmpscl));
         json.end_object();
     };
@@ -548,7 +549,8 @@ void write_mix(JsonSink& json, const ac3::meta::MixMetadata& mix) {
         }
         json.begin_object();
         json.member("panmean", static_cast<std::int64_t>(pan->panmean));
-        json.member("degrees", static_cast<double>(pan->panmean) * ac3::meta::kPanMeanDegreesPerStep, 1);
+        json.member("degrees",
+                    static_cast<double>(pan->panmean) * ac3::meta::kPanMeanDegreesPerStep, 1);
         json.member("paninfo", static_cast<std::int64_t>(pan->paninfo));
         json.end_object();
     };

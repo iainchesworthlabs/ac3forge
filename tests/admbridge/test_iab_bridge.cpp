@@ -27,8 +27,8 @@
 // approach test_adm_bridge.cpp already uses for its own non-flagship cases. The one flagship test
 // at the bottom goes through a REAL byte-level IABitstream fixture and
 // iclforge::iab::parse_iabitstream() end to end, then through a real
-// iclforge::ac3::oba::AtmosEncoder/iclforge::ac3::Eac3Decoder round trip, per this project's own standard for
-// codec-adjacent behaviour.
+// iclforge::ac3::oba::AtmosEncoder/iclforge::ac3::Eac3Decoder round trip, per this project's own
+// standard for codec-adjacent behaviour.
 
 namespace {
 

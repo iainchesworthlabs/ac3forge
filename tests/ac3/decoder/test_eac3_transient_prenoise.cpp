@@ -144,7 +144,8 @@ TEST_CASE("DEE's transient pre-noise streams decode, corrected where Dolby's dec
     REQUIRE(decoded.pcm.size() == 2);
     // Every frame comes back, the last one by flush() - the final correction's
     // transient lies past the last syncframe.
-    constexpr std::size_t kSamples = 156 * static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame);
+    constexpr std::size_t kSamples =
+        156 * static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame);
     REQUIRE(decoded.pcm[0].size() == kSamples);
     REQUIRE(decoded.pcm[1].size() == kSamples);
 
@@ -155,7 +156,8 @@ TEST_CASE("DEE's transient pre-noise streams decode, corrected where Dolby's dec
     // here, Dolby's own much the same); measured 2.27 and 2.03 dB, floors 1 dB.
     for (std::size_t ch = 0; ch < 2; ++ch) {
         CAPTURE(ch);
-        const auto count = kSamples - static_cast<std::size_t>(iclforge::ac3::kTransformDelaySamples);
+        const auto count =
+            kSamples - static_cast<std::size_t>(iclforge::ac3::kTransformDelaySamples);
         std::vector<double> reference(count);
         for (std::size_t n = 0; n < count; ++n) {
             reference[n] = static_cast<double>(source->channels[ch][n]);
@@ -195,7 +197,8 @@ TEST_CASE("a correction reaching back into a held frame is applied to it before 
     // frame 5, so the encoder signals it at transprocloc 0 and its correction
     // cross-fades the last block of frame 4's output - which the decoder has
     // decoded and is still holding - towards the tone 512 samples earlier.
-    iclforge::ac3::eac3::FrameConfig config{.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k1_0};
+    iclforge::ac3::eac3::FrameConfig config{.bitrate_kbps = 192,
+                                            .acmod = iclforge::ac3::Acmod::k1_0};
     config.transient_prenoise = true;
     iclforge::ac3::eac3::FrameEncoder encoder{config};
     constexpr int kFrames = 8;
@@ -260,7 +263,8 @@ TEST_CASE("a correction reaching back into a held frame is applied to it before 
     // are the tone there, which the decode reproduces far closer than the
     // cross-fade moves it, so the output must be the cross-fade of the tone
     // with itself 512 samples back - and not the tone.
-    const int transient = 5 * iclforge::ac3::kSamplesPerFrame + iclforge::ac3::kTransientPrenoiseOrigin;
+    const int transient =
+        5 * iclforge::ac3::kSamplesPerFrame + iclforge::ac3::kTransientPrenoiseOrigin;
     const int start = transient - 2 * iclforge::ac3::kSamplesPerBlock;
     const auto tone_out = [&](int n) {
         return sine(kToneHz, kToneLevel, n - iclforge::ac3::kTransformDelaySamples);
@@ -269,7 +273,8 @@ TEST_CASE("a correction reaching back into a held frame is applied to it before 
     std::vector<double> untouched;
     for (int s = 64; s < iclforge::ac3::kTransientPrenoiseTC1 - 16; ++s) {
         const double fade_in =
-            0.5 * (1.0 - std::cos(std::numbers::pi * s / (iclforge::ac3::kTransientPrenoiseTC1 - 1)));
+            0.5 *
+            (1.0 - std::cos(std::numbers::pi * s / (iclforge::ac3::kTransientPrenoiseTC1 - 1)));
         const int n = start + s;
         blended.push_back(tone_out(n) * (1.0 - fade_in) + tone_out(n - 512) * fade_in);
         untouched.push_back(tone_out(n));
@@ -331,7 +336,8 @@ TEST_CASE("a concealed frame queues behind the frames transient pre-noise proces
           "[eac3][decoder][transient_prenoise]") {
     // With the hold-back engaged a decoded frame comes back a call late, so a
     // concealed frame returned straight away would overtake it.
-    iclforge::ac3::eac3::FrameConfig config{.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k1_0};
+    iclforge::ac3::eac3::FrameConfig config{.bitrate_kbps = 192,
+                                            .acmod = iclforge::ac3::Acmod::k1_0};
     config.transient_prenoise = true;
     iclforge::ac3::eac3::FrameEncoder encoder{config};
     constexpr int kFrames = 8;

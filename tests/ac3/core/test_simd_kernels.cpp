@@ -632,7 +632,8 @@ TEST_CASE("AVX2 imdct512_pre_twiddle agrees with the scalar form bit-for-bit", "
     }
 
     std::vector<double> avx2_re(kTestP), avx2_im(kTestP);
-    iclforge::ac3::internal::avx2::imdct512_pre_twiddle(coeffs, cos1, sin1, bitrev, avx2_re, avx2_im);
+    iclforge::ac3::internal::avx2::imdct512_pre_twiddle(coeffs, cos1, sin1, bitrev, avx2_re,
+                                                        avx2_im);
 
     CHECK(all_bits_equal(avx2_re, scalar_re));
     CHECK(all_bits_equal(avx2_im, scalar_im));
@@ -735,8 +736,8 @@ TEST_CASE("AVX2 mdct512_forward_batch4 agrees with four scalar calls bit-for-bit
     }
 
     std::array<std::array<double, 256>, 4> batch_c{};
-    iclforge::ac3::mdct512_forward_batch4(windowed[0], windowed[1], windowed[2], windowed[3], batch_c[0],
-                                batch_c[1], batch_c[2], batch_c[3]);
+    iclforge::ac3::mdct512_forward_batch4(windowed[0], windowed[1], windowed[2], windowed[3],
+                                          batch_c[0], batch_c[1], batch_c[2], batch_c[3]);
 
     std::size_t mismatches = 0;
     for (std::size_t i = 0; i < 4; ++i) {

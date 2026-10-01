@@ -161,10 +161,11 @@ void write_stream(JsonSink& json, const ac3::io::ProbeReport& report) {
     json.member("lfeon", report.lfe);
     json.member("layout_label", ac3::analysis::layout_name(report.acmod, report.lfe));
     json.member("numblkscod", static_cast<std::int64_t>(report.numblkscod));
-    json.member("blocks_per_syncframe",
-                static_cast<std::int64_t>(report.kind == ac3::io::StreamKind::kAc3
-                                              ? ac3::kBlocksPerFrame
-                                              : ac3::eac3::blocks_per_syncframe(report.numblkscod)));
+    json.member(
+        "blocks_per_syncframe",
+        static_cast<std::int64_t>(report.kind == ac3::io::StreamKind::kAc3
+                                      ? ac3::kBlocksPerFrame
+                                      : ac3::eac3::blocks_per_syncframe(report.numblkscod)));
     json.member("coded_channels", static_cast<std::int64_t>(report.coded_channels));
     json.member("rendered_channels", static_cast<std::int64_t>(report.rendered_channels));
     json.key("layout");

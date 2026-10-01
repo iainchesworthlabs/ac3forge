@@ -18,7 +18,8 @@ constexpr std::uint64_t kShortTermSeconds = 3;
 // The loudness meter's rate code. A rate the stream codes and the table does
 // not name falls back to 48 kHz, whose K-weighting is the reference design.
 [[nodiscard]] ac3::SampleRate rate_code(std::uint32_t rate) {
-    for (const ac3::SampleRate code : {ac3::SampleRate::k48000, ac3::SampleRate::k44100, ac3::SampleRate::k32000}) {
+    for (const ac3::SampleRate code :
+         {ac3::SampleRate::k48000, ac3::SampleRate::k44100, ac3::SampleRate::k32000}) {
         if (sample_rate_hz(code) == rate) {
             return code;
         }
@@ -35,7 +36,8 @@ PlayMeters::PlayMeters(const render::OutputLayout& layout, std::uint32_t sample_
       slots_(layout.slots()),
       // The acmod only names the first channel; nothing here reads a name or
       // a direction from the meter, since the output's slots have their own.
-      levels_(ac3::Acmod::k1_0, false, sample_rate, static_cast<int>(std::max<std::size_t>(slots_, 1))) {
+      levels_(ac3::Acmod::k1_0, false, sample_rate,
+              static_cast<int>(std::max<std::size_t>(slots_, 1))) {
     for (std::size_t slot = 0; slot < slots_; ++slot) {
         const auto& location = layout.slot(slot).location;
         if (location && loudness_layout_.count < ac3::eac3::chanmap::kMaxChannels) {

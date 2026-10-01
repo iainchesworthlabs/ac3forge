@@ -88,7 +88,8 @@ TEST_CASE("the SPL calibration matches the transform's actual scaling", "[qualit
     for (const double c : coefficients) {
         energy += c * c;
     }
-    CHECK_THAT(energy, Catch::Matchers::WithinRel(iclforge::ac3::quality::kFullScaleBlockEnergy, 1e-6));
+    CHECK_THAT(energy,
+               Catch::Matchers::WithinRel(iclforge::ac3::quality::kFullScaleBlockEnergy, 1e-6));
 }
 
 // The behaviour the whole model rests on: a held tone must read as tonal and
@@ -262,7 +263,8 @@ TEST_CASE("the absolute threshold floors quiet bands and can be switched off",
 
     iclforge::ac3::quality::PerceptualConfig without;
     without.absolute_threshold = false;
-    iclforge::ac3::quality::PerceptualModel unfloored(iclforge::ac3::SampleRate::k48000, 1, without);
+    iclforge::ac3::quality::PerceptualModel unfloored(iclforge::ac3::SampleRate::k48000, 1,
+                                                      without);
     const auto no_floor = settle(unfloored, blocks, 253);
 
     const auto band = static_cast<std::size_t>(band_of_hz(60.0));

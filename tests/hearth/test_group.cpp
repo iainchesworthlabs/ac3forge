@@ -456,7 +456,8 @@ void play_joc_programme(const fs::path& scratch, const std::string& layout_text,
     for (std::size_t i = 0; i < played.size(); ++i) {
         REQUIRE(played[i].wav.open(only_file(directories[i] / "out", "bursts-", ".wav").string()).has_value());
         REQUIRE(static_cast<std::size_t>(played[i].wav.channels()) == layout->slots());
-        played[i].samples.assign(layout->slots(), std::vector<float>(iclforge::ac3::kSamplesPerBlock));
+        played[i].samples.assign(layout->slots(),
+                                 std::vector<float>(iclforge::ac3::kSamplesPerBlock));
         played[i].spans.assign(played[i].samples.begin(), played[i].samples.end());
     }
     std::uint64_t frames = 0;
@@ -567,7 +568,8 @@ TEST_CASE("group: two test sinks play one programme in step, in PCM and FLAC", "
 
     // Each WAV is the programme, sample for sample.
     for (const fs::path& directory : {scratch / "kitchen", scratch / "lounge"}) {
-        const auto wav = iclforge::ac3::io::read_wav((directory / "out" / "stream-1-1.wav").string());
+        const auto wav =
+            iclforge::ac3::io::read_wav((directory / "out" / "stream-1-1.wav").string());
         REQUIRE(wav.has_value());
         REQUIRE(wav->frame_count() == 96000);
         std::size_t different = 0;

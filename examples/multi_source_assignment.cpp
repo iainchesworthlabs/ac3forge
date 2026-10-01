@@ -39,7 +39,8 @@ int main() {
                           .location = Location::kCentre,
                           .trim_db = -6.0});
 
-    fmt::printf("assignment: %s\n", iclforge::ac3::plan::format_assignment(sources, assignment).c_str());
+    fmt::printf("assignment: %s\n",
+                iclforge::ac3::plan::format_assignment(sources, assignment).c_str());
 
     const auto target = iclforge::ac3::plan::channel_plan_for(iclforge::ac3::plan::LayoutId::k51);
     const auto routing = iclforge::ac3::plan::route(target, sources, assignment);
@@ -85,7 +86,8 @@ int main() {
         for (auto& channel : coded_pcm) {
             coded_views.emplace_back(channel);
         }
-        iclforge::ac3::plan::render(*routing, source_views, coded_views, iclforge::ac3::kSamplesPerFrame);
+        iclforge::ac3::plan::render(*routing, source_views, coded_views,
+                                    iclforge::ac3::kSamplesPerFrame);
 
         std::vector<std::span<const float>> encode_views;
         for (const auto& channel : coded_pcm) {

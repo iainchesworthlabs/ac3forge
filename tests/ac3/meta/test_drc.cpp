@@ -60,9 +60,9 @@ std::vector<std::span<const float>> frame_views(
     const std::vector<std::vector<float>>& audio, int frame) {
     std::vector<std::span<const float>> views;
     for (const auto& channel : audio) {
-        views.emplace_back(
-            std::span{channel}.subspan(static_cast<std::size_t>(frame) * iclforge::ac3::kSamplesPerFrame,
-                                       iclforge::ac3::kSamplesPerFrame));
+        views.emplace_back(std::span{channel}.subspan(
+            static_cast<std::size_t>(frame) * iclforge::ac3::kSamplesPerFrame,
+            iclforge::ac3::kSamplesPerFrame));
     }
     return views;
 }
@@ -117,7 +117,8 @@ TEST_CASE("every word round-trips through the quantiser", "[drc]") {
         CHECK(iclforge::ac3::meta::encode_dynrng(iclforge::ac3::meta::to_db(dynrng_gain(w))) == w);
         CHECK(iclforge::ac3::meta::encode_compr(iclforge::ac3::meta::to_db(compr_gain(w))) == w);
         // Rounding down must not move an exactly representable value.
-        CHECK(iclforge::ac3::meta::encode_compr_at_most(iclforge::ac3::meta::to_db(compr_gain(w))) == w);
+        CHECK(iclforge::ac3::meta::encode_compr_at_most(
+                  iclforge::ac3::meta::to_db(compr_gain(w))) == w);
     }
 }
 
@@ -167,7 +168,8 @@ TEST_CASE("the profile curve is continuous, monotone and unity at dialogue",
         // A signal at dialogue level keeps its gain (§7.7.1.1).
         CHECK(iclforge::ac3::meta::static_gain_db(p, p.null_low_db) == 0.0);
         CHECK(iclforge::ac3::meta::static_gain_db(p, p.null_high_db) == 0.0);
-        CHECK(iclforge::ac3::meta::static_gain_db(p, 0.5 * (p.null_low_db + p.null_high_db)) == 0.0);
+        CHECK(iclforge::ac3::meta::static_gain_db(p, 0.5 * (p.null_low_db + p.null_high_db)) ==
+              0.0);
 
         double previous = iclforge::ac3::meta::static_gain_db(p, -140.0);
         // The boost ceiling, reached well below the boost region.
@@ -249,7 +251,8 @@ TEST_CASE("the range controller tracks the curve and respects dialnorm", "[drc]"
     CHECK(settle(-29.0, 24) ==
           Catch::Approx(iclforge::ac3::meta::static_gain_db(p, -36.0)).margin(0.01));
     // Loud in, cut out.
-    CHECK(settle(-6.0, 31) == Catch::Approx(iclforge::ac3::meta::static_gain_db(p, -6.0)).margin(0.01));
+    CHECK(settle(-6.0, 31) ==
+          Catch::Approx(iclforge::ac3::meta::static_gain_db(p, -6.0)).margin(0.01));
 
     // Attack (gain going down) must be faster than release (gain going up), or
     // a transient escapes and every gap pumps.
@@ -339,7 +342,8 @@ TEST_CASE("the loudness meter hits the BS.1770 calibration point", "[loudness]")
     // BS.1770 / EBU Tech 3341: a 1 kHz sine at -20 dBFS in left and right reads
     // -20.0 LKFS. That single number pins the K-weighting gain, the -0.691
     // offset and the channel weights all at once.
-    iclforge::ac3::meta::LoudnessMeter meter{iclforge::ac3::SampleRate::k48000, iclforge::ac3::Acmod::k2_0, false};
+    iclforge::ac3::meta::LoudnessMeter meter{iclforge::ac3::SampleRate::k48000,
+                                             iclforge::ac3::Acmod::k2_0, false};
     std::vector<float> tone(48000 * 10);
     for (std::size_t n = 0; n < tone.size(); ++n) {
         tone[n] = static_cast<float>(
@@ -364,8 +368,8 @@ TEST_CASE("the loudness meter weights the surrounds and drops the LFE",
             0.1 * std::sin(2.0 * std::numbers::pi * 1000.0 * static_cast<double>(n) / 48000.0));
     }
     const auto measure = [&](std::span<const std::span<const float>> channels) {
-        iclforge::ac3::meta::LoudnessMeter meter{iclforge::ac3::SampleRate::k48000, iclforge::ac3::Acmod::k3_2,
-                                            true};
+        iclforge::ac3::meta::LoudnessMeter meter{iclforge::ac3::SampleRate::k48000,
+                                                 iclforge::ac3::Acmod::k3_2, true};
         meter.push(channels);
         return meter.integrated_lkfs();
     };
@@ -390,7 +394,8 @@ TEST_CASE("the loudness meter weights the surrounds and drops the LFE",
 
 TEST_CASE("silence has no loudness, and dialnorm clamps to its legal range",
           "[loudness]") {
-    iclforge::ac3::meta::LoudnessMeter meter{iclforge::ac3::SampleRate::k48000, iclforge::ac3::Acmod::k2_0, false};
+    iclforge::ac3::meta::LoudnessMeter meter{iclforge::ac3::SampleRate::k48000,
+                                             iclforge::ac3::Acmod::k2_0, false};
     const std::vector<float> silence(48000 * 2, 0.0f);
     const std::array<std::span<const float>, 2> channels = {silence, silence};
     meter.push(channels);
@@ -418,7 +423,8 @@ TEST_CASE("the mix-level tables are the spec's quarter-powers of two", "[mixing]
           Catch::Approx(0.595).margin(0.0005));
     CHECK(coefficient(iclforge::ac3::meta::CentreMixLevel::kMinus6dB) == 0.5);
     CHECK(coefficient(iclforge::ac3::meta::SurroundMixLevel::kSilent) == 0.0);
-    CHECK(coefficient(iclforge::ac3::meta::MixLevel::kPlus3dB) == Catch::Approx(1.414).margin(0.0005));
+    CHECK(coefficient(iclforge::ac3::meta::MixLevel::kPlus3dB) ==
+          Catch::Approx(1.414).margin(0.0005));
     CHECK(coefficient(iclforge::ac3::meta::MixLevel::kPlus1_5dB) ==
           Catch::Approx(1.189).margin(0.0005));
     CHECK(coefficient(iclforge::ac3::meta::MixLevel::kUnity) == 1.0);
@@ -428,21 +434,27 @@ TEST_CASE("the mix-level tables are the spec's quarter-powers of two", "[mixing]
     CHECK(iclforge::ac3::meta::lfe_mix_level_db(0) == 10.0);
     CHECK(iclforge::ac3::meta::lfe_mix_level_db(31) == -21.0);
     // Tables D2.4 / D2.6 reserve the three loudest surround codes.
-    CHECK_FALSE(iclforge::ac3::meta::valid_surround_mix_level(iclforge::ac3::meta::MixLevel::kPlus3dB));
-    CHECK_FALSE(iclforge::ac3::meta::valid_surround_mix_level(iclforge::ac3::meta::MixLevel::kUnity));
-    CHECK(iclforge::ac3::meta::valid_surround_mix_level(iclforge::ac3::meta::MixLevel::kMinus1_5dB));
+    CHECK_FALSE(
+        iclforge::ac3::meta::valid_surround_mix_level(iclforge::ac3::meta::MixLevel::kPlus3dB));
+    CHECK_FALSE(
+        iclforge::ac3::meta::valid_surround_mix_level(iclforge::ac3::meta::MixLevel::kUnity));
+    CHECK(
+        iclforge::ac3::meta::valid_surround_mix_level(iclforge::ac3::meta::MixLevel::kMinus1_5dB));
     CHECK(iclforge::ac3::meta::valid_surround_mix_level(iclforge::ac3::meta::MixLevel::kSilent));
 }
 
 // Test NAMES stay ASCII: catch_discover_tests passes them back on the command
 // line, where a section sign does not survive the round trip.
 TEST_CASE("downmix coefficients are normalised and route correctly", "[mixing]") {
-    const double clev = iclforge::ac3::meta::coefficient(iclforge::ac3::meta::CentreMixLevel::kMinus4_5dB);
-    const double slev = iclforge::ac3::meta::coefficient(iclforge::ac3::meta::SurroundMixLevel::kMinus6dB);
+    const double clev =
+        iclforge::ac3::meta::coefficient(iclforge::ac3::meta::CentreMixLevel::kMinus4_5dB);
+    const double slev =
+        iclforge::ac3::meta::coefficient(iclforge::ac3::meta::SurroundMixLevel::kMinus6dB);
 
-    for (const auto acmod : {iclforge::ac3::Acmod::k1_0, iclforge::ac3::Acmod::k2_0, iclforge::ac3::Acmod::k3_0,
-                             iclforge::ac3::Acmod::k2_1, iclforge::ac3::Acmod::k3_1, iclforge::ac3::Acmod::k2_2,
-                             iclforge::ac3::Acmod::k3_2}) {
+    for (const auto acmod :
+         {iclforge::ac3::Acmod::k1_0, iclforge::ac3::Acmod::k2_0, iclforge::ac3::Acmod::k3_0,
+          iclforge::ac3::Acmod::k2_1, iclforge::ac3::Acmod::k3_1, iclforge::ac3::Acmod::k2_2,
+          iclforge::ac3::Acmod::k3_2}) {
         const auto stereo = iclforge::ac3::meta::stereo_downmix(acmod, clev, slev);
         const auto mono = iclforge::ac3::meta::mono_downmix(acmod, clev, slev);
         // §7.8.1: no output's coefficients may sum above 1, or a full-scale
@@ -481,7 +493,8 @@ TEST_CASE("downmix coefficients are normalised and route correctly", "[mixing]")
     // scale that back up to unity, because it only ever attenuates to satisfy
     // a bound. -3 dB into each of two speakers is also the answer that
     // conserves acoustic power.
-    const auto mono_source = iclforge::ac3::meta::stereo_downmix(iclforge::ac3::Acmod::k1_0, clev, slev);
+    const auto mono_source =
+        iclforge::ac3::meta::stereo_downmix(iclforge::ac3::Acmod::k1_0, clev, slev);
     CHECK(mono_source.left[0] == Catch::Approx(iclforge::ac3::meta::level::kMinus3dB));
     CHECK(mono_source.right[0] == Catch::Approx(iclforge::ac3::meta::level::kMinus3dB));
 
@@ -615,9 +628,10 @@ TEST_CASE("AC-3 compr holds its ceiling through the decoder", "[drc][encoder][de
     // peak detector under-read.
     const auto audio = stepped_tone(8, 2, 0.95, 0.004, 2);
     constexpr double ceiling = -1.0;
-    iclforge::ac3::FrameEncoder encoder{{.bitrate_kbps = 448,
-                               .dialnorm = 24,
-                               .heavy = iclforge::ac3::meta::HeavyConfig{.peak_ceiling_dbfs = ceiling}}};
+    iclforge::ac3::FrameEncoder encoder{
+        {.bitrate_kbps = 448,
+         .dialnorm = 24,
+         .heavy = iclforge::ac3::meta::HeavyConfig{.peak_ceiling_dbfs = ceiling}}};
     std::vector<std::vector<std::byte>> frames;
     for (int frame = 0; frame < 8; ++frame) {
         auto encoded = encoder.encode_frame(frame_views(audio, frame));
@@ -699,7 +713,8 @@ TEST_CASE("AC-3 compr protects a compliant decoder's xbsi1 mono fold too",
         std::span<const float>{audio[4]}};
 
     constexpr auto kBsiCentre = iclforge::ac3::meta::CentreMixLevel::kMinus6dB;
-    constexpr auto kBsiSurround = iclforge::ac3::meta::SurroundMixLevel::kMinus6dB;  // encoder default
+    constexpr auto kBsiSurround =
+        iclforge::ac3::meta::SurroundMixLevel::kMinus6dB;  // encoder default
     constexpr auto kXbsi1Centre = iclforge::ac3::meta::MixLevel::kPlus3dB;
     // MixMetadata's own default - the test is about clev, so lorosurmixlev is
     // left untouched and is the only thing this and kBsiSurround do NOT share.
@@ -711,10 +726,12 @@ TEST_CASE("AC-3 compr protects a compliant decoder's xbsi1 mono fold too",
     // ceiling the rest of the test cannot check.
     const double bsi_input_peak = iclforge::ac3::meta::mono_downmix_peak_dbfs(
         std::span<const std::span<const float>>{input_views}, iclforge::ac3::Acmod::k3_2,
-        iclforge::ac3::meta::coefficient(kBsiCentre), iclforge::ac3::meta::coefficient(kBsiSurround));
+        iclforge::ac3::meta::coefficient(kBsiCentre),
+        iclforge::ac3::meta::coefficient(kBsiSurround));
     const double xbsi1_input_peak = iclforge::ac3::meta::mono_downmix_peak_dbfs(
         std::span<const std::span<const float>>{input_views}, iclforge::ac3::Acmod::k3_2,
-        iclforge::ac3::meta::coefficient(kXbsi1Centre), iclforge::ac3::meta::coefficient(kXbsi1Surround));
+        iclforge::ac3::meta::coefficient(kXbsi1Centre),
+        iclforge::ac3::meta::coefficient(kXbsi1Surround));
     REQUIRE(xbsi1_input_peak > bsi_input_peak + 2.0);
 
     iclforge::ac3::meta::AlternateBsi alternate;
@@ -722,12 +739,13 @@ TEST_CASE("AC-3 compr protects a compliant decoder's xbsi1 mono fold too",
     // Below both peaks, so heavy compression engages either way; the point of
     // this test is which peak it engages FOR.
     const double ceiling = bsi_input_peak - 3.0;
-    iclforge::ac3::FrameEncoder encoder{{.bitrate_kbps = 448,
-                               .dialnorm = 24,
-                               .acmod = iclforge::ac3::Acmod::k3_2,
-                               .heavy = iclforge::ac3::meta::HeavyConfig{.peak_ceiling_dbfs = ceiling},
-                               .cmixlev = kBsiCentre,
-                               .alternate_bsi = alternate}};
+    iclforge::ac3::FrameEncoder encoder{
+        {.bitrate_kbps = 448,
+         .dialnorm = 24,
+         .acmod = iclforge::ac3::Acmod::k3_2,
+         .heavy = iclforge::ac3::meta::HeavyConfig{.peak_ceiling_dbfs = ceiling},
+         .cmixlev = kBsiCentre,
+         .alternate_bsi = alternate}};
     std::vector<std::vector<std::byte>> frames;
     for (int frame = 0; frame < kFrames; ++frame) {
         auto encoded = encoder.encode_frame(frame_views(audio, frame));
@@ -753,7 +771,8 @@ TEST_CASE("AC-3 compr protects a compliant decoder's xbsi1 mono fold too",
             std::span<const float>{decoded->channels[4]}};
         const double xbsi1_fold_peak = iclforge::ac3::meta::mono_downmix_peak_dbfs(
             std::span<const std::span<const float>>{views}, iclforge::ac3::Acmod::k3_2,
-            iclforge::ac3::meta::coefficient(kXbsi1Centre), iclforge::ac3::meta::coefficient(kXbsi1Surround));
+            iclforge::ac3::meta::coefficient(kXbsi1Centre),
+            iclforge::ac3::meta::coefficient(kXbsi1Surround));
         CHECK(xbsi1_fold_peak <= ceiling + kCodingSlack);
     }
     CHECK(saw_word);
@@ -1009,7 +1028,8 @@ Eac3Probe probe_eac3(std::span<const std::byte> frame) {
     r.skip(1 + 1);  // bamode, frmfgaincode
     r.skip(1 + 1);  // dbaflde, skipflde
     r.skip(1);      // spxattene
-    const int nfchans = iclforge::ac3::fullbw_channel_count(static_cast<iclforge::ac3::Acmod>(acmod));
+    const int nfchans =
+        iclforge::ac3::fullbw_channel_count(static_cast<iclforge::ac3::Acmod>(acmod));
     bool cplinu0 = false;
     if (acmod > 0x1) {
         cplinu0 = r.read(1) != 0;                        // cplinu[0]
@@ -1146,11 +1166,12 @@ TEST_CASE("every substream of an E-AC-3 access unit carries the same dynrng",
     // independent substream once and hands the result down - including to a
     // dependent whose own channels are nowhere near that level.
     iclforge::ac3::eac3::AccessUnitConfig config;
-    config.independent = {.bitrate_kbps = 448,
-                          .acmod = iclforge::ac3::Acmod::k3_2,
-                          .lfe = true,
-                          .dialnorm = 24,
-                          .drc = iclforge::ac3::meta::profile(iclforge::ac3::meta::ProfileId::kFilmStandard)};
+    config.independent = {
+        .bitrate_kbps = 448,
+        .acmod = iclforge::ac3::Acmod::k3_2,
+        .lfe = true,
+        .dialnorm = 24,
+        .drc = iclforge::ac3::meta::profile(iclforge::ac3::meta::ProfileId::kFilmStandard)};
     config.dependents.push_back({.bitrate_kbps = 224,
                                  .acmod = iclforge::ac3::Acmod::k2_0,
                                  .chanmap = iclforge::ac3::eac3::chanmap::k512Height});
@@ -1317,7 +1338,8 @@ TEST_CASE("cut and boost are scaled apart, in both decoders", "[drc][decoder]") 
         const Levels line = levels_with({.drc_scale = 0.0,
                                          .drc_boost_scale = 0.0,
                                          .output = {.mode = iclforge::ac3::OperatingMode::kLine}});
-        const Levels line_plain = levels_with({.output = {.mode = iclforge::ac3::OperatingMode::kLine}});
+        const Levels line_plain =
+            levels_with({.output = {.mode = iclforge::ac3::OperatingMode::kLine}});
         CHECK(line.loud == line_plain.loud);
         CHECK(line.quiet == line_plain.quiet);
     };
@@ -1347,8 +1369,10 @@ TEST_CASE("cut and boost are scaled apart, in both decoders", "[drc][decoder]") 
     }
 
     SECTION("E-AC-3") {
-        iclforge::ac3::eac3::FrameEncoder encoder{
-            {.bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k2_0, .dialnorm = 24, .drc = profile}};
+        iclforge::ac3::eac3::FrameEncoder encoder{{.bitrate_kbps = 448,
+                                                   .acmod = iclforge::ac3::Acmod::k2_0,
+                                                   .dialnorm = 24,
+                                                   .drc = profile}};
         std::vector<std::vector<std::byte>> frames;
         for (int frame = 0; frame < 8; ++frame) {
             auto encoded = encoder.encode_frame(frame_views(audio, frame));
@@ -1409,7 +1433,8 @@ TEST_CASE("E-AC-3 heavy compression holds its ceiling through the decoder",
         REQUIRE(b->has_value());
         REQUIRE((*a)->compr.has_value());
         saw_word = true;
-        if (peak_db((*a)->channels[0]) + iclforge::ac3::meta::kRfModeGainDb > ceiling + kCodingSlack) {
+        if (peak_db((*a)->channels[0]) + iclforge::ac3::meta::kRfModeGainDb >
+            ceiling + kCodingSlack) {
             would_have_breached = true;
         }
         if (i >= 1) {  // skip the fade-in frame
@@ -1454,9 +1479,9 @@ struct GainFit {
     }
 };
 
-std::vector<std::vector<std::byte>> encode_ac3(const std::vector<std::vector<float>>& audio,
-                                               int frames,
-                                               std::optional<iclforge::ac3::meta::HeavyConfig> heavy) {
+std::vector<std::vector<std::byte>> encode_ac3(
+    const std::vector<std::vector<float>>& audio, int frames,
+    std::optional<iclforge::ac3::meta::HeavyConfig> heavy) {
     iclforge::ac3::FrameEncoder encoder{{.bitrate_kbps = 192, .dialnorm = 24, .heavy = heavy}};
     std::vector<std::vector<std::byte>> out;
     for (int frame = 0; frame < frames; ++frame) {
@@ -1476,7 +1501,8 @@ std::vector<std::byte> read_bytes(const std::string& path) {
     return out;
 }
 
-const iclforge::ac3::DecoderConfig kLineMode{.output = {.mode = iclforge::ac3::OperatingMode::kLine}};
+const iclforge::ac3::DecoderConfig kLineMode{
+    .output = {.mode = iclforge::ac3::OperatingMode::kLine}};
 const iclforge::ac3::DecoderConfig kRfMode{.output = {.mode = iclforge::ac3::OperatingMode::kRf}};
 
 }  // namespace
@@ -1515,7 +1541,8 @@ TEST_CASE("RF mode applies 11 dB with every compr word it applies, and nowhere e
         for (const auto& frame : heavy) {
             const auto metadata = iclforge::ac3::io::read_frame_metadata(frame);
             REQUIRE(metadata.has_value());
-            REQUIRE(metadata->compr == std::optional<std::uint8_t>{iclforge::ac3::meta::kComprUnity});
+            REQUIRE(metadata->compr ==
+                    std::optional<std::uint8_t>{iclforge::ac3::meta::kComprUnity});
         }
         CHECK(fit(heavy, kLineMode, kRfMode, 1, 7) == Catch::Approx(11.0).margin(1e-6));
     }
@@ -1705,6 +1732,7 @@ TEST_CASE("a Dolby-encoded stream's RF decode sits 11 dB and its word above line
     CHECK(line_over_plain.db() == Catch::Approx(-12.0).margin(1e-6));
     // RF mode: the word's -0.28 dB with 11 dB on top.
     const double rf_db = rf_over_line.db();
-    CHECK(rf_db == Catch::Approx(11.0 + iclforge::ac3::meta::to_db(compr_gain(kDeeWord))).margin(1e-6));
+    CHECK(rf_db ==
+          Catch::Approx(11.0 + iclforge::ac3::meta::to_db(compr_gain(kDeeWord))).margin(1e-6));
     CHECK(std::abs(rf_db - kReferencePlayerRfOverLineDb) < 0.3);
 }

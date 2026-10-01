@@ -507,11 +507,12 @@ DeltaSegments choose_delta_segments_over(std::span<const Scalar> coefficients,
     for (int bin = start; bin < end; ++bin) {
         const auto i = static_cast<std::size_t>(bin);
         const Scalar magnitude = std::abs(coefficients[i]);
-        real_psd[i] = magnitude > 0
-                          ? static_cast<int>(std::lround(
-                                static_cast<Scalar>(3200) +
-                                static_cast<Scalar>(128) * iclforge::internal::scalar_log2(magnitude)))
-                          : psd[i];  // silence: nothing to correct
+        real_psd[i] =
+            magnitude > 0
+                ? static_cast<int>(std::lround(static_cast<Scalar>(3200) +
+                                               static_cast<Scalar>(128) *
+                                                   iclforge::internal::scalar_log2(magnitude)))
+                : psd[i];  // silence: nothing to correct
     }
 
     const std::array<int, 50> bndpsd = band_psd(psd, start, end);

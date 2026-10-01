@@ -233,7 +233,8 @@ TEST_CASE("AC-3: a real decode's trace exports one row per bin/band/scalar",
 
 TEST_CASE("E-AC-3: attaching a trace does not change the decoded audio",
           "[eac3][decoder][verify][trace_export]") {
-    iclforge::ac3::eac3::FrameEncoder encoder{{.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k2_0}};
+    iclforge::ac3::eac3::FrameEncoder encoder{
+        {.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k2_0}};
     const auto nchans = static_cast<std::size_t>(encoder.channel_count());
     const std::array<double, 2> hz = {440.0, 660.0};
     std::vector<std::vector<std::byte>> frames;

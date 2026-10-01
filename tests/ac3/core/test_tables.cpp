@@ -39,7 +39,8 @@ TEST_CASE("clamp_to_legal_ac3_bitrate reduces to the nearest legal rung at or be
     CHECK(iclforge::ac3::clamp_to_legal_ac3_bitrate(10) == 32);
     // The result is always itself a legal rung.
     for (const auto requested : {0u, 10u, 33u, 100u, 300u, 500u, 600u, 700u, 10000u}) {
-        CHECK(iclforge::ac3::is_valid_bitrate(iclforge::ac3::clamp_to_legal_ac3_bitrate(requested)));
+        CHECK(
+            iclforge::ac3::is_valid_bitrate(iclforge::ac3::clamp_to_legal_ac3_bitrate(requested)));
     }
 }
 

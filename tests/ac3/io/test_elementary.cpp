@@ -323,7 +323,8 @@ TEST_CASE("access-unit timing is the absolute sample position, not a running sum
         CHECK(samples == 1536);
     }
     CHECK(iclforge::ac3::io::stream_duration_samples(*scanned) == 5 * 1536);
-    CHECK(iclforge::ac3::io::stream_duration_seconds(*scanned) == Catch::Approx(5 * 1536 / 48000.0));
+    CHECK(iclforge::ac3::io::stream_duration_seconds(*scanned) ==
+          Catch::Approx(5 * 1536 / 48000.0));
     CHECK(iclforge::ac3::io::uniform_access_unit_samples(*scanned) == 1536);
 
     const auto third = iclforge::ac3::io::access_unit_timing(*scanned, 2);
@@ -478,7 +479,8 @@ TEST_CASE("scan reports no Atmos marker for a bed51 stream", "[elementary]") {
 namespace {
 
 std::vector<std::byte> legacy_core_stream(int access_units) {
-    iclforge::ac3::FrameEncoder core{{.bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true}};
+    iclforge::ac3::FrameEncoder core{
+        {.bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true}};
     auto pcm = tone(6);
     std::vector<std::span<const float>> views;
     for (const auto& channel : pcm) {
@@ -540,7 +542,8 @@ TEST_CASE("scan refuses substream arrangements it does not model", "[elementary]
     // programme (§E3.8.4's mixture), not an extension of the first. Folding it
     // into the core's access unit would union its channels into a layout they
     // have nothing to do with, so it is refused instead.
-    iclforge::ac3::FrameEncoder core{{.bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true}};
+    iclforge::ac3::FrameEncoder core{
+        {.bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true}};
     auto pcm = tone(6);
     std::vector<std::span<const float>> views;
     for (const auto& channel : pcm) {

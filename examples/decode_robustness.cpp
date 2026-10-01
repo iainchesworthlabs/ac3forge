@@ -85,15 +85,15 @@ int main() {
     fmt::printf("%zu frame(s) delimited, corruption at byte %zu\n", frames->size(), corrupt_at);
 
     int diagnosed = 0;
-    iclforge::ac3::FrameDecoder decoder{{.diagnostics =
-                                   [](const iclforge::ac3::Diagnostic& diagnostic, void* context) {
-                                       const auto message = iclforge::ac3::describe(diagnostic.event);
-                                       fmt::printf("  diagnostic: %.*s\n",
-                                                   static_cast<int>(message.size()),
-                                                   message.data());
-                                       ++*static_cast<int*>(context);
-                                   },
-                               .diagnostics_context = &diagnosed}};
+    iclforge::ac3::FrameDecoder decoder{
+        {.diagnostics =
+             [](const iclforge::ac3::Diagnostic& diagnostic, void* context) {
+                 const auto message = iclforge::ac3::describe(diagnostic.event);
+                 fmt::printf("  diagnostic: %.*s\n", static_cast<int>(message.size()),
+                             message.data());
+                 ++*static_cast<int*>(context);
+             },
+         .diagnostics_context = &diagnosed}};
     int recovered = 0;
     int failed = 0;
     for (std::size_t i = 0; i < frames->size(); ++i) {

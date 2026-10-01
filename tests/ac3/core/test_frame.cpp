@@ -105,8 +105,8 @@ TEST_CASE("size, CRCs, and 5.5 constraints across the full config matrix", "[fra
                 // A/52 5.5 bullet 2: aux + errorcheck tail must fit in the
                 // final 3/8 of the syncframe (block 5 has no mantissa data).
                 const auto plan = iclforge::ac3::detail::plan_padding(
-                    static_cast<std::uint32_t>(frame->size()) * 8 - iclforge::ac3::detail::kContentBits -
-                    iclforge::ac3::detail::kTailBits);
+                    static_cast<std::uint32_t>(frame->size()) * 8 -
+                    iclforge::ac3::detail::kContentBits - iclforge::ac3::detail::kTailBits);
                 const std::uint32_t final38_bits = (words - words58) * 16;
                 CHECK(plan.aux_bits + iclforge::ac3::detail::kTailBits <= final38_bits);
 

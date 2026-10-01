@@ -171,7 +171,8 @@ template <typename Scalar>
             return 0;
         }
         const int synthesis_width = raw_width(peak) + kSpxBlendGuardBits + 5 - min_coordinate_exp;
-        return std::max(0, synthesis_width - (iclforge::internal::Fixed32::kFractionBits - kNormGuardBits));
+        return std::max(
+            0, synthesis_width - (iclforge::internal::Fixed32::kFractionBits - kNormGuardBits));
     } else {
         (void)coeffs;
         (void)copystart;

@@ -136,8 +136,8 @@ uint16_t iclforge_scanned_stream_channel_map(const iclforge_scanned_stream_t* st
 }
 
 namespace {
-const iclforge::ac3::io::SubstreamService* associated_substream(const iclforge_scanned_stream_t* stream,
-                                                        int index) {
+const iclforge::ac3::io::SubstreamService* associated_substream(
+    const iclforge_scanned_stream_t* stream, int index) {
     if (stream == nullptr || index < 0 ||
         static_cast<size_t>(index) >= stream->data.associated_substreams.size()) {
         return nullptr;
@@ -183,8 +183,8 @@ int iclforge_scanned_stream_associated_substream_mix_metadata(
 }
 
 namespace {
-const iclforge::ac3::io::ScannedProgramme* scanned_programme(const iclforge_scanned_stream_t* stream,
-                                                     size_t programme_index) {
+const iclforge::ac3::io::ScannedProgramme* scanned_programme(
+    const iclforge_scanned_stream_t* stream, size_t programme_index) {
     if (stream == nullptr || programme_index >= stream->data.programmes.size()) {
         return nullptr;
     }

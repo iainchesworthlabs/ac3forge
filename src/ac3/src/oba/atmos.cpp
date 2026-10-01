@@ -160,8 +160,9 @@ constexpr double kExtensionDownmixScale = 0.70710678118654752;  // -3 dB
 // plain 5.1 mix would carry, physically unattenuated - and only a channel
 // ADDED alongside them takes kExtensionDownmixScale's headroom cut.
 [[nodiscard]] constexpr bool is_base_ring_label(iclforge::oba::BedLabel label) {
-    return label == iclforge::oba::BedLabel::kL || label == iclforge::oba::BedLabel::kC || label == iclforge::oba::BedLabel::kR ||
-          label == iclforge::oba::BedLabel::kLs || label == iclforge::oba::BedLabel::kRs;
+    return label == iclforge::oba::BedLabel::kL || label == iclforge::oba::BedLabel::kC ||
+           label == iclforge::oba::BedLabel::kR || label == iclforge::oba::BedLabel::kLs ||
+           label == iclforge::oba::BedLabel::kRs;
 }
 
 }  // namespace
@@ -351,7 +352,8 @@ struct AtmosEncoder::Impl {
     Impl(const AtmosConfig& config, BedProgram bed)
         : config_(config),
           objects_(0),
-          essences_(joc_object_count(iclforge::oba::Program{.dynamic_only = false, .bed = bed.bed})),
+          essences_(
+              joc_object_count(iclforge::oba::Program{.dynamic_only = false, .bed = bed.bed})),
           program_{.dynamic_only = false, .bed = bed.bed, .dynamic_objects = 0},
           encoder_(eac3::AccessUnitConfig{
               .independent = {.sample_rate = config.sample_rate,
@@ -433,7 +435,8 @@ AtmosEncoder& AtmosEncoder::operator=(AtmosEncoder&&) noexcept = default;
 LatencyBudget AtmosEncoder::latency() const {
     LatencyBudget budget = bed_latency();
     if (impl_->config_.emit_object_metadata) {
-        budget.transform_samples += iclforge::oba::joc::reconstruction_delay(impl_->config_.joc_domain);
+        budget.transform_samples +=
+            iclforge::oba::joc::reconstruction_delay(impl_->config_.joc_domain);
     }
     return budget;
 }
