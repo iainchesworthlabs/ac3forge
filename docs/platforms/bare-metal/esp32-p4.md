@@ -605,9 +605,9 @@ line for each stage. The packer leaves the AC-4 sources out of the archive unles
 `--with-ac4`; with `--verify` it then builds a throwaway project against the archive for each of
 the manifest's parts that has a floating-point unit, with the decoder switched on and constructed.
 CI narrows that to the ESP32-P4 with `--verify-targets esp32p4`. A `float` build evaluates the
-converter's tables while it compiles `src/ac4core/src/dsp/resampler.cpp`, which takes the RISC-V
-and Xtensa GCC 15.2 of ESP-IDF 10 to 13 s more than the file did, and `src/ac4core/CMakeLists.txt`
-raises the compiler's limit on constant evaluation for that file (`-fconstexpr-ops-limit`).
+converter's tables while it compiles `src/ac4core/src/dsp/resampler.cpp`, which takes ESP-IDF's
+RISC-V GCC 15.2 13 s where it took 2, and `src/ac4core/CMakeLists.txt` raises the compiler's limit
+on constant evaluation for that file (`-fconstexpr-ops-limit`).
 
 ## QEMU
 

@@ -179,14 +179,17 @@ endif()
 # the long one, 47,094 coefficients each designed with a Kaiser window and a sinc,
 # planning/ac4.md, D14a5). A compiler's limit on what its constant evaluator may do
 # in one constant expression is set for small computations and this is not one: the
-# three tables take about 8 million steps in MSVC, 10.6 million in Clang and 78 million
-# operations in GCC 15 (32 million in GCC 16, which counts them differently), and the
-# defaults are 100,000 steps, 1,048,576 steps and 33,554,432 operations. Each compiler
-# has its own flag for it; the limits below are about three to eight times what the
-# tables need. The evaluation costs the translation unit 6 to 25 seconds, by compiler
-# (planning/ac4.md). The ESP-IDF component reaches this file through the root
-# CMakeLists.txt, so the same limits apply there. APPEND, since the block above sets
-# this file's compile options as well when it applies.
+# three tables take 6 to 10 million steps in MSVC, 10.6 million in Clang and 76 to 78
+# million operations in GCC 14 and 15 (32 million in GCC 16, which counts them
+# differently), and the defaults are 100,000 steps, 1,048,576 steps and 33,554,432
+# operations. Each compiler has its own flag for it, and the limits below are three to
+# eleven times what the tables need. The evaluation makes the file take 5 to 24 seconds
+# longer to compile, by compiler: GCC 16 6.1 s where it took 0.8, Clang 22 8.9 where 1.1,
+# clang-cl 8.4 where 0.8, GCC 14 10.3 where 1.2, ESP-IDF's RISC-V GCC 15 13.0 where 1.9
+# and MSVC 24.5 where 0.7 (planning/ac4.md, D14a5); a double build pays nothing. The
+# ESP-IDF component reaches this file through the root CMakeLists.txt, so the same
+# limits apply there. APPEND, since the block above sets this file's compile options
+# as well when it applies.
 if(_ac4core_scalar_dir STREQUAL "float")
     if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
         set(_ac4core_constexpr_limit "/constexpr:steps67108864")
