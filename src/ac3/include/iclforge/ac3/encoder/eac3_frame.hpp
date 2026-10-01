@@ -395,7 +395,7 @@ struct FrameConfig {
 
     // §7.2.2's transmitted bit allocation parameters (BitAllocCodes,
     // ac3/core/bitalloc.hpp), searched per frame from the reconstruction
-    // error a decoder will produce, instead of the fixed dbpbcod == 3 EQ3
+    // error a decoder will produce, instead of the fixed dbpbcod == 3 an earlier sweep
     // measured its way to on average (per-frame bit-allocation search; AC-3's own
     // EncoderConfig::search, encoder.cpp's step 9a, is the model this
     // mirrors). search=distortion minimises iclforge::ac3::quality::accumulate_block's
@@ -413,7 +413,7 @@ struct FrameConfig {
     // stateful reservoir both assume one committed codes value per frame -
     // and untangling that was scoped out too;  EQ13. Silently
     // inert under VBR, the same way delta bit allocation is silently inert
-    // on an AHT stream (EQ5) - a documented scope boundary, not a rejected
+    // on an AHT stream - a documented scope boundary, not a rejected
     // configuration.
     //
     // Two axes, since E-AC-3 fast-gain control's E-AC-3 half landed. dbpbcod varies
@@ -433,7 +433,7 @@ struct FrameConfig {
     // candidate set entirely.
     //
     // AHT streams are excluded from the measurement, on the same grounds
-    // EQ5 excludes them from delta bit allocation: the concentration AHT's
+    // delta bit allocation excludes them: the concentration AHT's
     // own DCT performs reads as quantization error in accumulate_block's
     // per-block model. Off by default, like every other decision knob here.
     quality::Criterion search = quality::Criterion::kNone;
@@ -536,8 +536,8 @@ using AuxPayload = std::span<const std::byte>;
 // pipeline sizing its buffers actually needs.
 [[nodiscard]] constexpr LatencyBudget eac3_latency(const FrameConfig& config) {
     // A short syncframe (numblkscod 0-2, §E2.3.1.4) carries 256, 512 or 768
-    // samples, not kSamplesPerFrame - which is the whole point of roadmap
-    // EQ11's low-latency mode, and what ac3/latency.hpp's own frame_samples
+    // samples, not kSamplesPerFrame - which is the whole point of the
+    // low-latency mode, and what ac3/latency.hpp's own frame_samples
     // note has always said this field means. Reading kSamplesPerFrame here
     // regardless made latency_samples() overstate a one-block frame by
     // 1280 samples, ~27 ms at 48 kHz, to exactly the live pipeline that

@@ -1061,7 +1061,7 @@ void apply_tools(const Tools& tools, eac3::FrameConfig& config) {
     // search=distortion/perceptual actually do here, and for how the two
     // axes it now moves are priced against each other.
     config.search = tools.search;
-    // EQ7: -1 leaves Table E1.4's implied 0x4 and writes no element, which
+    // fgaincod: -1 leaves Table E1.4's implied 0x4 and writes no element, which
     // is byte-for-byte the frame this encoder emitted before the field
     // existed; 0..7 pins the code and pays for the per-block fgaincode
     // element in all six blocks.

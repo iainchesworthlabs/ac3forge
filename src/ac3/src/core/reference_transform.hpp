@@ -21,7 +21,7 @@
 //
 // - against about 12 KiB for every table the FAST paths need. A set-top box
 // or DSP port paying 1.81 MiB of RAM for the arithmetic it is not running is
-// the whole of what PF7's table ROM budget is about.
+// the whole of what the minimum-footprint profile's table ROM budget is about.
 //
 // So the definitions live in ONE of two CMake-selected translation units -
 // src/core/transform/{reference,stub}/reference_transform.cpp - exactly as

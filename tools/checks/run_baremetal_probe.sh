@@ -179,8 +179,8 @@ declare -A PEAK_CEILING_AC4=(
 # probe's own peak heap on either. See docs/performance-trend.md's footprint
 # table for the measured values these leave headroom over.
 #
-# ICLFORGE_MAX_IMAGE_BYTES was re-based from 400,000 to 465,000 after PF7's own
-# feature branch (bare-metal probe harness/PF7, PR #351) picked up several mid-flight merges
+# ICLFORGE_MAX_IMAGE_BYTES was re-based from 400,000 to 465,000 after the profile's own
+# feature branch (PR #351) picked up several mid-flight merges
 # from `develop` - most significantly DC10's QMF-domain JOC reconstruction,
 # which the decode path now needs (src/dsp/src/qmf.cpp and
 # src/ac3/src/verify/eac3_mirror.cpp, both correctly added to
@@ -193,7 +193,7 @@ declare -A PEAK_CEILING_AC4=(
 # 10.2.1: image 320,940 of 465,000 (31% headroom) and peak heap 236,391 of
 # 300,000 (21%). Both fell after the float32 decode path and the thread_local
 # move; the heap figure had earlier moved up from 243,470
-# - and its headroom from 23% to 11% - when AP3's pimpl sweep put both decoders'
+# - and its headroom from 23% to 11% - when the pimpl sweep put both decoders'
 # state on the heap instead of in the caller's frame: a relocation out of
 # automatic storage rather than new consumption. The ceiling is deliberately
 # left where it is. This peak is deterministic for these fixed fixtures, so the
@@ -201,7 +201,7 @@ declare -A PEAK_CEILING_AC4=(
 # See docs/performance-trend.md's footprint table.
 : "${ICLFORGE_MAX_HEAP_BYTES:=300000}"
 # Allocations per frame in the steady state, whichever fixture is worst. The
-# requirement PF7 states is ZERO and this is not it - see docs/building.md's
+# requirement the profile states is ZERO and this is not it - see docs/building.md's
 # gap note. The ceiling exists so the distance from zero cannot quietly grow
 # while that gap is open. Measured on main at be71f454, 2026-09-09, all eight
 # fixtures, identical on this leg and on tools/checks/run_esp32s3_probe.sh's:
@@ -438,7 +438,7 @@ if [[ "$DIRECTION" == "encoder" ]]; then
     # AC-3 78, against the decoders' 1-31 - and the reason is in the API, not
     # the implementation: both encoders return std::vector<std::byte> from
     # encode_frame, with no encode_frame_into to match decode_frame_into. That
-    # is PF7's zero-heap gap seen from the encode side, and it is wider here.
+    # is the profile's zero-heap gap seen from the encode side, and it is wider here.
     # Holding this to the decoder's number would gate a difference nothing in
     # this profile can currently close.
     ICLFORGE_MAX_STEADY_ALLOCS_PER_FRAME=${ICLFORGE_MAX_STEADY_ALLOCS_PER_FRAME_ENCODE:-260}

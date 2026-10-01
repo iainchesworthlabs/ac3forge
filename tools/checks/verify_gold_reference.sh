@@ -512,7 +512,7 @@ fi
 # The LFE floor is 81 on every 5.1 fixture because that channel is a single
 # low-frequency band both decoders reproduce almost exactly - 82-88 dB
 # measured, and the ~6 dB of that range is the arm64/x86 arithmetic difference
-# VX11 explains, already inside min_observed. It was previously gated at 10-25
+# docs/building.md explains, already inside min_observed. It was previously gated at 10-25
 # dB, i.e. not gated at all.
 for entry in \
     "ext_ac3_51_448_dee:ac3-51-448/dee.ac3:ac3:448:22:56,62,57,81,21,21" \

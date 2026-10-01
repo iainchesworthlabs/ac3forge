@@ -1,7 +1,7 @@
 # ---------------------------------------------------------------------------
 # iclforge::audio - live capture, IEC 61937 passthrough delivery, shared-mode
-# monitor playback, and a live object-position source over OSC (roadmap
-# UX4). Almost all the OS-specific code in the project lives here rather than
+# monitor playback, and a live object-position source over OSC.
+# Almost all the OS-specific code in the project lives here rather than
 # in iclforge::ac3: WASAPI/ALSA/PipeWire/CoreAudio for the three capabilities
 # above, and (a second, independent platform axis - see the net/ block below)
 # Winsock/Berkeley sockets for the position source's UDP listener.

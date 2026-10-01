@@ -127,7 +127,7 @@ jobs:
           - name: ubuntu-latest
             runner: '["ubuntu-latest"]'
             cibw_archs: x86_64
-          # The two platforms AP6's record called out as documented-but-wheelless:
+          # The two platforms the bindings' record called out as documented-but-wheelless:
           # manylinux aarch64 (Raspberry Pi is a documented platform - a Pi 4B
           # runs the live-HDMI matrix in docs/platforms/raspberry-pi.md - and
           # GitHub's hosted arm runner builds native wheels without QEMU), and

@@ -10,7 +10,7 @@
 
 // iclforge::iab::parse_iabitstream(std::istream&) and iclforge::iab::parse_mxf_iab(std::istream&)
 // (src/iab/src/iab_reader.cpp, mxf_reader.cpp), plus iclforge::iab::parse_iaframe
-// on the same bytes - the IAB reader, IAB reader phases 1 and 2.
+// on the same bytes - the IAB reader, phases 1 and 2.
 //
 // The whole of ac3iab exists to read files this project did not write: an
 // elementary .iab IABitstream, or an IAB track file that a mastering tool

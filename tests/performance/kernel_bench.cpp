@@ -254,7 +254,7 @@ int main(int argc, char** argv) {
     // The same inverse down its radix-2 step 3 - what DecoderConfig::fast_imdct
     // (default on since 0.9.0) actually runs, and so the row that matters for
     // decode throughput; the direct row above is the reference form. Added
-    // with the PF5 vector kernels, which speed up this path and not the
+    // with the SIMD vector kernels, which speed up this path and not the
     // direct one: without it the whole decode side of that work is invisible
     // to the trend tables. (encoder/decode benchmarks wants more than this - E-AC-3 encode
     // series, decoder Tracy zones, real-audio timing inputs - and is

@@ -17,7 +17,7 @@
 // locals": encode input and the *_into decode forms hold live py::array/py::array_t handles
 // (ChannelViews/ MutableChannelViews below) across the release block, with std::span pointing
 // directly into their buffers - genuinely zero-copy when the caller already passed a contiguous
-// float32 array, where the pre-AP6 version always copied into an owned std::vector<float> first.
+// float32 array, where the earlier version always copied into an owned std::vector<float> first.
 // This is safe without the GIL because nothing in the release block touches the Python C API - no
 // refcounting, no attribute access, just reads/writes through the raw pointers captured before the
 // block started; the handles keep the underlying buffers alive (refcount > 0) regardless of GIL
@@ -108,7 +108,7 @@ struct ScanFailure : std::runtime_error {
 
 //
 // Builds spans directly over each array's own buffer instead of copying into an intermediate
-// std::vector<float> the way the pre-AP6 extract_channels() did - genuinely zero-copy when the
+// std::vector<float> the way the earlier extract_channels() did - genuinely zero-copy when the
 // caller already passed a contiguous float32 array or 2-D block; array::forcecast still copies
 // when dtype/layout force it, exactly as before, just once instead of twice. Owning py::array_t
 // handles (not the arrays' own data) so this stays valid across a gil_scoped_release block - see
@@ -1026,7 +1026,7 @@ PYBIND11_MODULE(_iclforge, m) {
         .def_property_readonly("latency", &iclforge::ac3::FrameEncoder::latency)
         .def_property_readonly("latency_samples", &iclforge::ac3::FrameEncoder::latency_samples);
 
-    // --- research trace export (iclforge::ac3::verify, research trace export)
+    // --- research trace export (iclforge::ac3::verify)
     // --------------------- The encoder/decoder mirror trace (ac3/verify/mirror.hpp,
     // .../eac3_mirror.hpp), added for the in-repo self-check, exported here in a form a caller
     // doing codec research can put in a DataFrame: per-frame bap, exponent, SNR-offset and
@@ -1441,7 +1441,7 @@ PYBIND11_MODULE(_iclforge, m) {
     // --- E-AC-3 encoder (iclforge::ac3::eac3::FrameEncoder / AccessUnitEncoder), Python bindings
     // completeness ------------ A real submodule rather than flat top-level names like Eac3Decoder:
     // iclforge::ac3::FrameEncoder and iclforge::ac3::eac3::FrameEncoder share a name across C++
-    // namespaces (legacy item AP2), so ac3.FrameEncoder (AC-3) vs ac3.eac3.FrameEncoder (E-AC-3) is
+    // namespaces, so ac3.FrameEncoder (AC-3) vs ac3.eac3.FrameEncoder (E-AC-3) is
     // what keeps that collision out of the binding surface. pybind11-direct on
     // iclforge::ac3::eac3::FrameEncoder/AccessUnitEncoder, same policy as every other class here
     // (see this file's own header comment) - not layered on the C API.
@@ -1472,7 +1472,7 @@ PYBIND11_MODULE(_iclforge, m) {
         .value("k714", iclforge::ac3::plan::LayoutId::k714, "7.1.4 (two dependents)");
 
     // Not mirrored on ac3.eac3.FrameConfig: the mixmdate/infomdat metadata groups and vbr/ABR
-    // (EQ12) - a real gap, not a stable design decision the way the C API's trim is documented to
+    // are a real gap, not a stable design decision the way the C API's trim is documented to
     // be; and the internal self-check `trace` hook, which is never exposed anywhere in this
     // binding layer.
     py::class_<iclforge::ac3::eac3::FrameConfig>(

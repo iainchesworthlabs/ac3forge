@@ -23,7 +23,7 @@ Modes:
                Five legs a rate: the default, the default pinned
                explicitly (a byte-identical zero-noise control), the curve,
                and search=distortion with fgaincod pinned and free - the
-               last pair separating what EQ7's second axis adds from what
+               last pair separating what the fast-gain second axis adds from what
                EQ13's one-axis search was already worth. Scored per time
                window, so every delta carries a paired standard error. `--with-51` adds the coupled
                5.1 legs on synthetic material; `--json-out PATH` writes the
@@ -162,7 +162,7 @@ def make_material_transient():
     decays short enough that a frame's loudest block sits 20-30 dB above its
     quietest. That gap is the whole cost of one exponent set per frame - every
     quiet block quantized against a scale chosen by the loud one - so it is
-    what an exponent-run plan has to be measured on (legacy item EQ1).
+    what an exponent-run plan has to be measured on (content-driven bit allocation).
 
     Stereo, same 2 s-per-segment shape and same seed discipline as the two
     generators above.
@@ -698,7 +698,7 @@ def race_eac3(original, source, seconds, rates=(96, 128, 192)):
         print()
 
 
-# --- EQ7: does the fast-gain curve survive E-AC-3's side-info bill? ------------
+# --- Does the fast-gain curve survive E-AC-3's side-info bill? ------------
 #
 # AC-3 has followed a measured fgaincod curve since 0.7.0 because it costs
 # nothing there: §7.2.2.4's fast gain rides the snroffst element AC-3 already
@@ -729,11 +729,11 @@ def race_eac3(original, source, seconds, rates=(96, 128, 192)):
 #               element it had to open to get there, which is the question.
 #   search-1ax- search=distortion with fgaincod pinned at the default, which
 #               takes it out of the candidate set: exactly the one-axis
-#               dbpbcod-only search EQ13 shipped, and the thing legacy item EQ8
+#               dbpbcod-only search EQ13 shipped, and the thing an earlier sweep
 #               recorded as not moving the stereo/192 cell.
 #   search-2ax- search=distortion left to move both axes, refitting each
 #               candidate against its own side-info cost. The per-frame
-#               answer, and (search-2ax - search-1ax) is what EQ7 added to
+#               answer, and (search-2ax - search-1ax) is what the fast-gain axis added to
 #               EQ13 rather than what EQ13 was already worth.
 #
 # Every metric is reported per WINDOW, not once per file (see
@@ -1195,7 +1195,7 @@ CI_EAC3_THRESHOLDS = {
     # 6. The leg was calibrated, and passing, on material that omitted one of
     # the four cases it was built out of - and the one whose whole point is a
     # level swing inside a single frame, which is precisely what an exponent
-    # run plan has to cope with (legacy item EQ1).
+    # run plan has to cope with.
     #
     # The corrected window scores seconds 1-7, so half of (d) now counts.
     # SNR rises by a uniform +0.35 dB across every variant (more material,
@@ -1235,7 +1235,7 @@ CI_EAC3_THRESHOLDS = {
 
 # Transient material (make_material_transient): onsets closer together than a
 # frame, hard gates, decays that leave a frame's loudest block 20-30 dB above
-# its quietest. It exists to hold the exponent-run plan (legacy item EQ1) against a
+# its quietest. It exists to hold the exponent-run plan against a
 # regression: one exponent set per frame quantizes every quiet block against a
 # scale chosen by the loud one, and this is the material where that costs the
 # most. Absolute scores here are far below the stationary stereo row's and are
@@ -1287,7 +1287,7 @@ def gate(name, ok, detail):
     return ok
 
 
-# legacy item EQ13's search=, exercised THROUGH THE CLI.
+# search= (EQ13), exercised THROUGH THE CLI.
 #
 # The gap this closes is not that the search is untested - tests/ac3/quality's
 # test_search.cpp and test_eac3_search.cpp cover it well, including that it

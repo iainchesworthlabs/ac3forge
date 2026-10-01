@@ -114,7 +114,7 @@ fn main() {
 
     let bindings = bindgen::Builder::default()
         .header(header.to_str().unwrap())
-        // AP4 proved this exact header compiles clean as strict C11
+        // The ABI gate proved this exact header compiles clean as strict C11
         // (C_STANDARD 11, C_EXTENSIONS OFF, -Wpedantic) on every desktop leg - bindgen parses
         // the same dialect the project itself guarantees, not an unpinned default.
         .clang_arg("-std=c11")

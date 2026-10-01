@@ -402,7 +402,7 @@ std::optional<QcResult> measure_qc_eac3_bed(std::span<const std::byte> stream, i
     return result;
 }
 
-// layout=rendered's E-AC-3 counterpart (legacy item IO10): measures the whole
+// layout=rendered's E-AC-3 counterpart: measures the whole
 // assembled program - the independent substream's bed with every dependent's
 // height, wide and rear channels laid over it, in Table E2.5 location order -
 // through BS.1770-5 Annex 3's extended algorithm, which weights each channel
@@ -557,7 +557,7 @@ std::optional<iclforge::ac3::eac3::chanmap::Layout> object_render_target(
     }
 }
 
-// objects=<layout> (legacy item IO12): BS.1770-5 Annex 4, which prescribes no
+// objects=<layout>: BS.1770-5 Annex 4, which prescribes no
 // weighting table of its own - it says to render object-based (or combined
 // channel- and object-based) audio to a real loudspeaker configuration first,
 // meter THAT through Annexes 1/3 (measure_qc_eac3_rendered above is exactly
