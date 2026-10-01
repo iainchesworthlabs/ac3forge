@@ -22,7 +22,10 @@ int huff_decode(BitReader& reader, const Codebook& codebook, std::string_view el
             return index;
         }
     }
-    const int max_bits = std::min<int>(codebook.max_bits, static_cast<int>(reader.remaining_bits()));
+    // At most 32 bits: peek_raw gives a 32-bit window, and the shift below must stay under 32. The
+    // tables' longest codeword is shorter, so the bound only states what the window can hold.
+    const int max_bits = std::min(
+        {static_cast<int>(codebook.max_bits), 32, static_cast<int>(reader.remaining_bits())});
     const std::uint32_t window = reader.peek_raw(max_bits);
     for (int length = 1; length <= max_bits; ++length) {
         const std::uint16_t first = codebook.length_start[static_cast<std::size_t>(length)];
