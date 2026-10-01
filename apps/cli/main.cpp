@@ -367,7 +367,7 @@ constexpr std::array<Command, 44> kCommands{{
      "syntax-trace=<file> writes what the decoder reads. "
      "objects_dir: export each object's own PCM as its own object_NN.wav there - JOC-reconstructed "
      "for E-AC-3 Atmos, D10's decoded objects for AC-4. adm_out (needs -DICLFORGE_BUILD_ADM=ON): "
-     "write a Dolby Atmos Master ADM Profile BW64 there (legacy item IM2 for E-AC-3; for AC-4, "
+     "write a Dolby Atmos Master ADM Profile BW64 there (for E-AC-3 its objects; for AC-4, "
      "every bed and dynamic object with its own decoded Annex F properties) - bed/LFE channels "
      "pinned to their speaker, dynamic objects positioned by their own timeline",
      topic::kStdio | topic::kDecode | topic::kAc4Decode | topic::kObjects,

@@ -117,7 +117,7 @@ std::vector<std::byte> reserved_dmixmod_frame(Encode encode) {
 
 }  // namespace
 
-// --- DC3: Annex D and the informational fields ------------------------------
+// --- Annex D and the informational fields ------------------------------
 
 TEST_CASE("AC-3: a config that says nothing about bsi still writes bsid 8", "[bsi]") {
     iclforge::ac3::EncoderConfig config;
@@ -436,7 +436,7 @@ TEST_CASE("AC-3: a decoded Annex D frame resolves to its own xbsi1 levels", "[bs
     CHECK(bsi.preferred == iclforge::ac3::meta::DownmixMode::kNotIndicated);
 }
 
-// --- DC4: mixmdate depth and infomdat ---------------------------------------
+// --- mixmdate depth and infomdat ---------------------------------------
 
 TEST_CASE("E-AC-3: programme scale factors round trip", "[bsi]") {
     iclforge::ac3::eac3::FrameConfig config;

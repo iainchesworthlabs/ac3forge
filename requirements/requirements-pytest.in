@@ -1,6 +1,6 @@
 # pytest, its coverage plugin, numpy, and mypy (whose stubtest gates the
-# hand-written .pyi against the compiled module, roadmap AP6) for wheels.yml's
-# python test job (roadmap VX15). Separate from requirements-coverage.txt on purpose: that lock
+# hand-written .pyi against the compiled module) for wheels.yml's
+# python test job. Separate from requirements-coverage.txt on purpose: that lock
 # is gcovr for ci.yml's C++ coverage job, and the two jobs run on different
 # workflows with nothing in common but the word "coverage".
 #

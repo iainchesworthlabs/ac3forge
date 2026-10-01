@@ -24,7 +24,7 @@ int run_mkv(std::string_view in_path, std::string_view out_path);
 // off the bitstream.
 int run_mp4(std::string_view in_path, std::string_view out_path);
 
-// fMP4/CMAF segmenting plus HLS/DASH signaling (fMP4/CMAF segmenting) - writes a DIRECTORY of files
+// fMP4/CMAF segmenting plus HLS/DASH signaling - writes a DIRECTORY of files
 // (an init segment, one media segment per fragment, an HLS media+master playlist pair, and a
 // DASH MPD) rather than one file, so a packager or CDN origin can be pointed at out_dir directly.
 // meta.hls_fallback_51 additionally writes the object-stripped 5.1 companion rendition into a

@@ -21,7 +21,7 @@
 #     constraint the port actually ran into - it failed with
 #     `out_of_memory bytes=86016` until the decode path moved to float32 - so
 #     the headroom between the two is what is worth holding.
-#   - Allocation churn, the same PF7 gap the ARM leg gates.
+#   - Allocation churn, the same gap the ARM leg gates.
 #
 # NOT speed. QEMU is not a cycle-accurate emulator and reports a CPU clock that
 # disagrees with its own boot log; the probe's us_per_frame lines are printed

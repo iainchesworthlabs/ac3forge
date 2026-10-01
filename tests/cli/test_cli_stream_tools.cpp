@@ -28,7 +28,7 @@
 #include "iclforge/ac3/io/wav.hpp"
 #include "iclforge/ac3/meta/drc.hpp"
 
-// The DC9 stream tools, driven the same way tests/cli/test_cli.cpp drives
+// The stream tools, driven the same way tests/cli/test_cli.cpp drives
 // every other command: the real built forge.exe as a subprocess, inspecting
 // what it actually wrote.
 //

@@ -28,9 +28,9 @@
 #include "iclforge/ac3/io/wav.hpp"
 #include "iclforge/ac4/ac4.hpp"
 
-// apps/cli/commands/containers.cpp measured 0.0% line coverage when roadmap
-// VX15 first pointed the apps/cli coverage gate at apps/ (re-measured at
-// 30.4% after container readers (mkv/mp4/ts)'s container-reader/probe work landed and
+// apps/cli/commands/containers.cpp measured 0.0% line coverage when the
+// apps/cli coverage gate was first pointed at apps/ (re-measured at
+// 30.4% after the container-reader/probe work landed and
 // incidentally exercised some of it - see CLI container command tests). mkv/mp4/ts were
 // already reached as fixture-building helpers inside test_cli.cpp's demux
 // round-trip test, but never asserted on their OWN output; three real

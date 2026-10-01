@@ -5,8 +5,8 @@
 
 #include "iclforge/ac3/meta/qc.hpp"
 
-// iclforge::ac3::meta::qc.hpp's own surface: the named delivery-gate presets (roadmap
-// C2, refreshed by IO11) and the pure gate-evaluation math forge qc and
+// iclforge::ac3::meta::qc.hpp's own surface: the named delivery-gate presets
+// and the pure gate-evaluation math forge qc and
 // examples/qc_report.cpp both call. The presets' numeric values are copied
 // here as CHECKs against the primary sources cited in qc.hpp's own
 // qc_preset() comment (EBU R 128 s2 + EBU R 128, ATSC A/85:2026-07 Section 6
@@ -72,7 +72,7 @@ TEST_CASE("qc preset numbers match their cited primary sources", "[qc]") {
         CHECK(qc_preset_name(QcPresetId::kAppleMusicAtmos) == "apple-music-atmos");
     }
     SECTION("every preset names the document it was read out of") {
-        // A verdict against an unnamed edition is not auditable, and IO11's
+        // A verdict against an unnamed edition is not auditable, and the preset refresh's
         // whole point was that the edition had gone stale. Every row must
         // carry its source, and every band row must carry a real tolerance
         // (a ceiling row deliberately does not).

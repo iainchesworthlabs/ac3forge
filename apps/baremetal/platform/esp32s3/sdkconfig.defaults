@@ -42,7 +42,7 @@ CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
 #      without hardware, and a leg that only runs on hardware is a leg CI
 #      cannot have.
 #   2. The profile's peak heap is 243,470 bytes and its .bss around 77 KB
-#      against roughly 400 KB of usable internal SRAM. That is tight, and PF7
+#      against roughly 400 KB of usable internal SRAM. That is tight, and the profile
 #      records "no heap traffic in the decode loop" as an OPEN gap (45
 #      allocations per frame for AC-3, 87 for E-AC-3 - see docs/building.md).
 #      Turning PSRAM on would hide that rather than fix it. Leaving it off

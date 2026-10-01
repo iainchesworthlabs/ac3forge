@@ -36,7 +36,7 @@
 //   - a static timeline: ObjectScene::evaluate_into(t, out) once per frame,
 //     which is what every batch encode above does today;
 //   - a live stream: SceneCursor, which is that same timeline with per-object
-//     overrides an external source pushes in as they arrive. UX4's OSC/MIDI/
+//     overrides an external source pushes in as they arrive. The OSC/MIDI/
 //     controller source is meant to land on that seam without the scene type
 //     itself changing shape.
 

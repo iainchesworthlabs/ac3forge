@@ -2200,7 +2200,7 @@ void emit_frame(BitWriter& w, const FrameConfig& config, std::uint32_t words,
         // It is per-channel and per-block, not once a frame: a channel that
         // restates its strategy mid-frame restates its bandwidth with it.
         // payload.chbwcod, not config.chbwcod: the latter is -1 under content-
-        // adaptive bandwidth (EQ7) and this is the resolved value chosen once
+        // adaptive bandwidth and this is the resolved value chosen once
         // for the whole frame in encode_frame, below.
         if (!cpl.in_use && !spx.in_use) {
             for (int ch = 0; ch < nfchans; ++ch) {
@@ -3536,7 +3536,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // and the frame spread its ~512 bits per channel per block across all
     // 253 mantissas. Narrowing to where the content actually is buys that
     // back - measured on real programme material, E-AC-3 stereo at
-    // 192 kbit/s with the AHT-only tool set `auto` chose before EQ9's
+    // 192 kbit/s with the AHT-only tool set `auto` chose before the
     // content-based selection landed:
     //
     //             chbwcod 60      chbwcod 30
@@ -3797,7 +3797,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             // quantized per-band values this loop just produced, and
             // keeping whichever reconstructs closer to the real coupled
             // channels - the same "measure the real decode, don't assume"
-            // rule EQ5's delta decision uses. The fit itself is unchanged
+            // rule the delta decision uses. The fit itself is unchanged
             // either way: a band's angle is what best explains that band's
             // own bins under DIRECT application, and interpolating those
             // same fitted values is either a net win or it isn't, purely as
@@ -4213,7 +4213,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         const auto& plan = payload.chans[static_cast<std::size_t>(cpl_stream)];
         const int exp = plan.runs[0].decoded[static_cast<std::size_t>(cpl.strtmant)];
         const int psd = 3072 - (exp << 7);
-        // payload.codes, not kAllocCodes: EQ7 lets fgaincod move off the
+        // payload.codes, not kAllocCodes: the fast-gain search lets fgaincod move off the
         // default, and a seed derived from a gain the frame is not going to
         // use describes an allocation that will not happen. Transmitted
         // either way, so this is a quality choice rather than a desync - but
@@ -4812,7 +4812,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         // With the blocks argument, not the six-block default: a short
         // syncframe carries proportionally fewer words at the same bit rate
         // (frame_words' own contract, and what validate() already checks).
-        // This call sizing every frame at six blocks regardless was EQ11's
+        // This call sizing every frame at six blocks regardless was the short-syncframe work's
         // one latent defect - a numblkscod 0/1/2 stream measured 6x/3x/2x
         // its nominal rate, because each shortened frame still carried the
         // full-length frame's bytes.
@@ -5125,7 +5125,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         // measured as safe.
         //
         // EQ13's own entry recorded that a one-axis E-AC-3 search had little
-        // left to find - EQ3 had already swept dbpbcod and found 3 winning
+        // left to find - an earlier sweep had already covered dbpbcod and found 3 winning
         // every cell, so {2, 3} alone is close to a settled question.
         // fgaincod is what moves alongside it, taking AC-3's own measured
         // curve as the candidate.

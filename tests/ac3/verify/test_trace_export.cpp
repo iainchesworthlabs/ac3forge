@@ -18,7 +18,7 @@
 #include "iclforge/ac3/verify/mirror.hpp"
 #include "iclforge/ac3/verify/trace_export.hpp"
 
-// research trace export: research trace export. Two things are checked, separately:
+// research trace export. Two things are checked, separately:
 //
 //  - The serializer (append_trace_csv/append_trace_json_lines) reads a
 //    FrameTrace/Eac3AccessUnitTrace correctly. Hand-built traces with known

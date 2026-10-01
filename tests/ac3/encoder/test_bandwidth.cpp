@@ -18,7 +18,7 @@
 #include "iclforge/ac3/encoder/eac3_frame.hpp"
 #include "iclforge/ac3/encoder/encoder.hpp"
 
-// Coded bandwidth, EQ7/EQ8. The unit half pins the decision function against
+// Coded bandwidth. The unit half pins the decision function against
 // A/52's own tables; the encoder half proves both encoders act on it, and
 // that the answer reaches the bitstream rather than only the encoder's model.
 
@@ -191,7 +191,7 @@ TEST_CASE("choose_chbwcod holds the rate ceiling and rate-limits narrowing") {
     const auto full = loud_everywhere(0);
     const auto quiet = loud_everywhere(iclforge::ac3::kMaxExponent);
 
-    // The ceiling is the pre-EQ7 AC-3 curve, unchanged.
+    // The ceiling is the earlier AC-3 curve, unchanged.
     CHECK(rate_ceiling_chbwcod(192, 5) == 25);   // 38 kbit/s per channel
     CHECK(rate_ceiling_chbwcod(448, 5) == 59);   // 89
     CHECK(rate_ceiling_chbwcod(640, 5) == 60);   // 128, clamped
@@ -284,7 +284,7 @@ TEST_CASE("AC-3 keeps the rate ceiling whatever the content") {
 
 TEST_CASE("E-AC-3 narrows the coded bandwidth where it used to send 60") {
     // Coupling and spectral extension off explicitly, not just left to
-    // `auto`: EQ9 made both content-aware, and a signal with nothing above
+    // `auto`: both are content-aware, and a signal with nothing above
     // 8 kHz is exactly the "top end nearly empty" case that can turn
     // spectral extension on well below its old fixed 56 kbit/s-per-channel
     // ceiling - which would decide the coded bandwidth itself and leave

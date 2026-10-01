@@ -55,8 +55,8 @@ std::optional<StreamLoudness> measure_ac4_loudness(std::span<const std::byte> st
 // the §E2.3.1.2 substreamid of the independent substream whose programme to
 // measure, the first the stream carries where it is unset - which for a
 // single-programme stream is the only one there is - and ignored for AC-3,
-// which has no substream layer; and objects=<name> (legacy item IO12,
-// Options::qc_objects_layout), which re-renders dynamic objects by their own
+// which has no substream layer; and objects=<name>
+// (Options::qc_objects_layout), which re-renders dynamic objects by their own
 // position onto that layout and meters them through BS.1770-5 Annex 4,
 // independently of layout=. An AC-4 stream's presentation is the one decode's
 // options choose (ac4_coded_config()), and programme= and objects= are refused

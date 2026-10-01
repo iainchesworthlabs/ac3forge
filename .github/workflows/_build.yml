@@ -1777,14 +1777,14 @@ jobs:
           path: apps/wasm/tests/test-results/device-ui-coverage
           if-no-files-found: warn
 
-  # The Rust bindings (rust/, Rust bindings): a Cargo workspace living in-tree but deliberately
+  # The Rust bindings (rust/): a Cargo workspace living in-tree but deliberately
   # never add_subdirectory()'d from the root CMakeLists.txt - see rust/README.md's "why this
   # lives in-tree" section. Its own job for the same reason build-wasm/build-footprint are: none
   # of the desktop workflows' steps apply (no ctest suite, no cpack package, no gold-reference
   # gate) - rust/iclforge-sys/build.rs drives its own trimmed CMake configure of just
   # iclforge::c_shared rather than reusing a desktop preset.
   #
-  # All three desktop OSes, one job each (Rust bindings's completeness pass): the
+  # All three desktop OSes, one job each (the Rust bindings' completeness pass): the
   # dynamic-linking approach was proven on Linux first and then validated on Windows locally -
   # where the FIRST MSVC build immediately found a real portability bug (bindgen types C enums
   # i32 on MSVC and u32 elsewhere; Error::Other's payload had baked the Linux answer in) -
@@ -1940,7 +1940,7 @@ jobs:
             ${{ env.ICLFORGE_DRIVER_CERT }}
           if-no-files-found: error
 
-  # The minimum-footprint decoder profile (minimum-footprint decoder profile, docs/building.md) built
+  # The minimum-footprint decoder profile (docs/building.md) built
   # for arm-none-eabi and run on QEMU's mps2-an385 - a Cortex-M3 with no
   # operating system, no filesystem and no hardware floating point. Its own job
   # outside the split platform workflows for the same reason build-wasm is:

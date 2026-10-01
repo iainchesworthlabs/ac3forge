@@ -1,4 +1,4 @@
-# The non-C++ linters for ci.yml's script-lint job (roadmap VX14): ruff over
+# The non-C++ linters for ci.yml's script-lint job: ruff over
 # every Python file in the tree, shellcheck over the shell scripts, actionlint
 # over the workflows.
 #

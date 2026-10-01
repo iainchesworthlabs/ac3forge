@@ -124,7 +124,7 @@ if(ICLFORGE_BUILD_CAPI)
     add_executable(capi_encode_eac3 capi_encode_eac3.c)
     target_link_libraries(capi_encode_eac3 PRIVATE iclforge::c iclforge::warnings)
 
-    # AP4: pin the dialect rather than riding whatever the compiler defaults to
+    # Pin the dialect rather than riding whatever the compiler defaults to
     # (gnu17 on GCC/Clang, an unspecified MSVC default) - this is the project's
     # one standing proof that iclforge_c/iclforge.h is valid strict C11 (with
     # -Wpedantic from iclforge::warnings above) on every desktop leg, not merely

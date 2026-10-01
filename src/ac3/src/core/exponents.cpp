@@ -56,7 +56,7 @@ std::int32_t clamp_fixed25(double scaled) {
 // structure. See docs/performance-trend.md.
 //
 // This is a distinct entry point from exponents.hpp's fused 3-arg
-// to_fixed25_block (coeffs+fixed+exponents, PF2): that one exists for the
+// to_fixed25_block (coeffs+fixed+exponents): that one exists for the
 // encoders' hot per-bin loop, where both halves are inline so the compiler
 // keeps a bin's fixed-point value in a register between them and never
 // spills it to fuse with a second, SIMD-only stage. This one exists for
