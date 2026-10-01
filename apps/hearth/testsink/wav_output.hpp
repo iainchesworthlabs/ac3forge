@@ -53,7 +53,7 @@ class WavOutput {
     std::string prefix_;
     std::optional<sendspin::messages::AudioFormat> format_;
     std::unique_ptr<sendspin::codec::Decoder> decoder_;
-    io::WavStreamWriter writer_;
+    ac3::io::WavStreamWriter writer_;
     std::ofstream log_;
     std::filesystem::path file_;
     std::vector<float> samples_;

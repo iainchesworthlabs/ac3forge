@@ -166,7 +166,7 @@ struct FastMdctTables {
     // The P-point FFT's own tables (digit-reversal permutation + stage
     // twiddles) - the shared kernel's, so dft512 runs the identical
     // machinery at P = 512; see fft_kernel.hpp.
-    internal::FftTables<kP, Scalar> fft{};
+    iclforge::internal::FftTables<kP, Scalar> fft{};
     FastMdctTables() {
         for (std::size_t m = 0; m < kP; ++m) {
             const double ang = -kPi * static_cast<double>(m) / static_cast<double>(kM);
@@ -236,14 +236,14 @@ void dct4_scaled(const FastMdctTables<NLen, Scalar>& t, std::span<const Scalar> 
     std::array<Scalar, P> z_re{};
     std::array<Scalar, P> z_im{};
     if constexpr (kWide) {
-    if (internal::cpu::has_avx2()) {
+    if (iclforge::internal::cpu::has_avx2()) {
         internal::avx2::dct4_pre_twiddle(u, t.pre_re, t.pre_im, t.fft.bitrev, z_re, z_im);
     } else {
         for (std::size_t m = 0; m < P; m += 2) {
-            const auto a = internal::arch::f64x2::set(u[2 * m], u[2 * m + 2]);
-            const auto b = internal::arch::f64x2::set(u[M - 1 - 2 * m], u[M - 3 - 2 * m]);
-            const auto pre_re = internal::arch::f64x2::load(&t.pre_re[m]);
-            const auto pre_im = internal::arch::f64x2::load(&t.pre_im[m]);
+            const auto a = iclforge::internal::arch::f64x2::set(u[2 * m], u[2 * m + 2]);
+            const auto b = iclforge::internal::arch::f64x2::set(u[M - 1 - 2 * m], u[M - 3 - 2 * m]);
+            const auto pre_re = iclforge::internal::arch::f64x2::load(&t.pre_re[m]);
+            const auto pre_im = iclforge::internal::arch::f64x2::load(&t.pre_im[m]);
             const auto zr = a * pre_re - b * pre_im;
             const auto zi = a * pre_im + b * pre_re;
             const std::size_t d0 = t.fft.bitrev[m];
@@ -263,19 +263,19 @@ void dct4_scaled(const FastMdctTables<NLen, Scalar>& t, std::span<const Scalar> 
             z_im[d] = a * t.pre_im[m] + b * t.pre_re[m];
         }
     }
-    internal::fft_forward_bitrev<P, Scalar>(t.fft, z_re, z_im);
+    iclforge::internal::fft_forward_bitrev<P, Scalar>(t.fft, z_re, z_im);
 
     if constexpr (kWide) {
-    if (internal::cpu::has_avx2()) {
+    if (iclforge::internal::cpu::has_avx2()) {
         internal::avx2::dct4_post_twiddle(z_re, z_im, t.post_re, t.post_im, scale, out);
         return;
     }
-    const auto scale_v = internal::arch::f64x2::broadcast(scale);
+    const auto scale_v = iclforge::internal::arch::f64x2::broadcast(scale);
     for (std::size_t k = 0; k < P; k += 2) {
-        const auto zr = internal::arch::f64x2::load(&z_re[k]);
-        const auto zi = internal::arch::f64x2::load(&z_im[k]);
-        const auto post_re = internal::arch::f64x2::load(&t.post_re[k]);
-        const auto post_im = internal::arch::f64x2::load(&t.post_im[k]);
+        const auto zr = iclforge::internal::arch::f64x2::load(&z_re[k]);
+        const auto zi = iclforge::internal::arch::f64x2::load(&z_im[k]);
+        const auto post_re = iclforge::internal::arch::f64x2::load(&t.post_re[k]);
+        const auto post_im = iclforge::internal::arch::f64x2::load(&t.post_im[k]);
         const auto even = scale_v * (zr * post_re - zi * post_im);
         const auto odd = scale_v * (-(zr * post_im + zi * post_re));
         out[2 * k] = even.lane0();
@@ -325,15 +325,15 @@ void mdct_forward_fast_core(std::span<const Scalar> windowed, std::span<Scalar> 
 // measurement found the clearest real win for. kN is 512, so neither width
 // leaves a tail.
 void apply_analysis_window(std::span<const double, 512> x, std::span<double, 512> windowed) {
-    if (internal::cpu::has_avx2()) {
+    if (iclforge::internal::cpu::has_avx2()) {
         internal::avx2::apply_analysis_window(x, windowed);
         return;
     }
     const double* const in = x.data();
     double* const out = windowed.data();
     for (std::size_t n = 0; n < static_cast<std::size_t>(kN); n += 2) {
-        (internal::arch::f64x2::load(in + n) *
-         internal::arch::f64x2::load(&kAnalysisWindow[n]))
+        (iclforge::internal::arch::f64x2::load(in + n) *
+         iclforge::internal::arch::f64x2::load(&kAnalysisWindow[n]))
             .store(out + n);
     }
 }
@@ -511,13 +511,13 @@ void imdct512_windowed_impl(std::span<const Scalar, 256> coeffs, std::span<Scala
             // tail either.
             constexpr std::size_t kHalfN = static_cast<std::size_t>(kN) / 2;
             for (std::size_t k = 0; k < static_cast<std::size_t>(kQuarter); k += 4) {
-                const auto a = internal::arch::f32x4::set(
+                const auto a = iclforge::internal::arch::f32x4::set(
                     coeffs[kHalfN - 2 * k - 1], coeffs[kHalfN - 2 * k - 3],
                     coeffs[kHalfN - 2 * k - 5], coeffs[kHalfN - 2 * k - 7]);
-                const auto b = internal::arch::f32x4::set(coeffs[2 * k], coeffs[2 * k + 2],
+                const auto b = iclforge::internal::arch::f32x4::set(coeffs[2 * k], coeffs[2 * k + 2],
                                                           coeffs[2 * k + 4], coeffs[2 * k + 6]);
-                const auto c = internal::arch::f32x4::load(&tw.cos1[k]);
-                const auto sn = internal::arch::f32x4::load(&tw.sin1[k]);
+                const auto c = iclforge::internal::arch::f32x4::load(&tw.cos1[k]);
+                const auto sn = iclforge::internal::arch::f32x4::load(&tw.sin1[k]);
                 const auto zr = a * c - b * sn;
                 const auto zi = -(b * c + a * sn);
                 const std::size_t d0 = fft.bitrev[k];
@@ -533,17 +533,17 @@ void imdct512_windowed_impl(std::span<const Scalar, 256> coeffs, std::span<Scala
                 z_re[d3] = zr.lane3();
                 z_im[d3] = zi.lane3();
             }
-        } else if (internal::cpu::has_avx2()) {
+        } else if (iclforge::internal::cpu::has_avx2()) {
             internal::avx2::imdct512_pre_twiddle(coeffs, tw.cos1, tw.sin1, fft.bitrev, z_re,
                                                  z_im);
         } else {
             constexpr std::size_t kHalfN = static_cast<std::size_t>(kN) / 2;
             for (std::size_t k = 0; k < static_cast<std::size_t>(kQuarter); k += 2) {
-                const auto a = internal::arch::f64x2::set(coeffs[kHalfN - 2 * k - 1],
+                const auto a = iclforge::internal::arch::f64x2::set(coeffs[kHalfN - 2 * k - 1],
                                                           coeffs[kHalfN - 2 * k - 3]);
-                const auto b = internal::arch::f64x2::set(coeffs[2 * k], coeffs[2 * k + 2]);
-                const auto c = internal::arch::f64x2::load(&tw.cos1[k]);
-                const auto sn = internal::arch::f64x2::load(&tw.sin1[k]);
+                const auto b = iclforge::internal::arch::f64x2::set(coeffs[2 * k], coeffs[2 * k + 2]);
+                const auto c = iclforge::internal::arch::f64x2::load(&tw.cos1[k]);
+                const auto sn = iclforge::internal::arch::f64x2::load(&tw.sin1[k]);
                 const auto zr = a * c - b * sn;
                 const auto zi = -(b * c + a * sn);
                 const std::size_t d0 = fft.bitrev[k];
@@ -554,20 +554,20 @@ void imdct512_windowed_impl(std::span<const Scalar, 256> coeffs, std::span<Scala
                 z_im[d1] = zi.lane1();
             }
         }
-        internal::fft_forward_bitrev<static_cast<std::size_t>(kQuarter), Scalar>(fft, z_re, z_im);
+        iclforge::internal::fft_forward_bitrev<static_cast<std::size_t>(kQuarter), Scalar>(fft, z_re, z_im);
         // Unit stride throughout, so this negation goes wide with nothing
         // to gather or scatter.
         if constexpr (!kWide) {
             for (std::size_t n = 0; n < static_cast<std::size_t>(kQuarter); n += 4) {
-                internal::arch::f32x4::load(&z_re[n]).store(&t_re[n]);
-                (-internal::arch::f32x4::load(&z_im[n])).store(&t_im[n]);
+                iclforge::internal::arch::f32x4::load(&z_re[n]).store(&t_re[n]);
+                (-iclforge::internal::arch::f32x4::load(&z_im[n])).store(&t_im[n]);
             }
-        } else if (internal::cpu::has_avx2()) {
+        } else if (iclforge::internal::cpu::has_avx2()) {
             internal::avx2::imdct512_negate_copy(z_re, z_im, t_re, t_im);
         } else {
             for (std::size_t n = 0; n < static_cast<std::size_t>(kQuarter); n += 2) {
-                internal::arch::f64x2::load(&z_re[n]).store(&t_re[n]);
-                (-internal::arch::f64x2::load(&z_im[n])).store(&t_im[n]);
+                iclforge::internal::arch::f64x2::load(&z_re[n]).store(&t_re[n]);
+                (-iclforge::internal::arch::f64x2::load(&z_im[n])).store(&t_im[n]);
             }
         }
     } else if constexpr (kWide) {
@@ -596,21 +596,21 @@ void imdct512_windowed_impl(std::span<const Scalar, 256> coeffs, std::span<Scala
     std::array<Scalar, kQuarter> y_im{};
     if constexpr (!kWide) {
         for (std::size_t n = 0; n < static_cast<std::size_t>(kQuarter); n += 4) {
-            const auto c = internal::arch::f32x4::load(&tw.cos1[n]);
-            const auto sn = internal::arch::f32x4::load(&tw.sin1[n]);
-            const auto tr = internal::arch::f32x4::load(&t_re[n]);
-            const auto ti = internal::arch::f32x4::load(&t_im[n]);
+            const auto c = iclforge::internal::arch::f32x4::load(&tw.cos1[n]);
+            const auto sn = iclforge::internal::arch::f32x4::load(&tw.sin1[n]);
+            const auto tr = iclforge::internal::arch::f32x4::load(&t_re[n]);
+            const auto ti = iclforge::internal::arch::f32x4::load(&t_im[n]);
             (tr * c - ti * sn).store(&y_re[n]);
             (ti * c + tr * sn).store(&y_im[n]);
         }
-    } else if (internal::cpu::has_avx2()) {
+    } else if (iclforge::internal::cpu::has_avx2()) {
         internal::avx2::imdct512_post_twiddle(tw.cos1, tw.sin1, t_re, t_im, y_re, y_im);
     } else {
         for (std::size_t n = 0; n < static_cast<std::size_t>(kQuarter); n += 2) {
-            const auto c = internal::arch::f64x2::load(&tw.cos1[n]);
-            const auto sn = internal::arch::f64x2::load(&tw.sin1[n]);
-            const auto tr = internal::arch::f64x2::load(&t_re[n]);
-            const auto ti = internal::arch::f64x2::load(&t_im[n]);
+            const auto c = iclforge::internal::arch::f64x2::load(&tw.cos1[n]);
+            const auto sn = iclforge::internal::arch::f64x2::load(&tw.sin1[n]);
+            const auto tr = iclforge::internal::arch::f64x2::load(&t_re[n]);
+            const auto ti = iclforge::internal::arch::f64x2::load(&t_im[n]);
             (tr * c - ti * sn).store(&y_re[n]);
             (ti * c + tr * sn).store(&y_im[n]);
         }
@@ -672,7 +672,7 @@ void imdct512_windowed_batch4(std::span<const double, 256> coeffs0,
                               std::span<const double, 256> coeffs3, std::span<double, 512> x0,
                               std::span<double, 512> x1, std::span<double, 512> x2,
                               std::span<double, 512> x3) {
-    if (internal::cpu::has_avx2()) {
+    if (iclforge::internal::cpu::has_avx2()) {
         const auto& tw = twiddles();
         const auto& fft = fast_mdct_tables<512>().fft;
         internal::avx2::imdct512_windowed_batch4(coeffs0, coeffs1, coeffs2, coeffs3, tw.cos1,
@@ -689,7 +689,7 @@ void mdct512_forward_batch4(std::span<const double, 512> w0, std::span<const dou
                             std::span<const double, 512> w2, std::span<const double, 512> w3,
                             std::span<double, 256> c0, std::span<double, 256> c1,
                             std::span<double, 256> c2, std::span<double, 256> c3) {
-    if (internal::cpu::has_avx2()) {
+    if (iclforge::internal::cpu::has_avx2()) {
         // Same table-resolution job imdct512_windowed_batch4 does above:
         // FastMdctTables<512> lives in this file's anonymous namespace, so
         // the AVX2 body cannot look it up and takes its four twiddle
@@ -762,8 +762,8 @@ void imdct256_pair_windowed_impl(std::span<const Scalar, 256> coeffs, std::span<
             z2_re[d] = a2 * c - b2 * s;
             z2_im[d] = -(b2 * c + a2 * s);
         }
-        internal::fft_forward_bitrev<static_cast<std::size_t>(kEighth), Scalar>(fft, z1_re, z1_im);
-        internal::fft_forward_bitrev<static_cast<std::size_t>(kEighth), Scalar>(fft, z2_re, z2_im);
+        iclforge::internal::fft_forward_bitrev<static_cast<std::size_t>(kEighth), Scalar>(fft, z1_re, z1_im);
+        iclforge::internal::fft_forward_bitrev<static_cast<std::size_t>(kEighth), Scalar>(fft, z2_re, z2_im);
         for (int n = 0; n < kEighth; ++n) {
             t1_re[static_cast<std::size_t>(n)] = z1_re[static_cast<std::size_t>(n)];
             t1_im[static_cast<std::size_t>(n)] = -z1_im[static_cast<std::size_t>(n)];
@@ -801,28 +801,28 @@ void imdct256_pair_windowed_impl(std::span<const Scalar, 256> coeffs, std::span<
     std::array<Scalar, kEighth> y2_im{};
     if constexpr (!kWide) {
         for (std::size_t n = 0; n < static_cast<std::size_t>(kEighth); n += 4) {
-            const auto c = internal::arch::f32x4::load(&tw.cos2[n]);
-            const auto sn = internal::arch::f32x4::load(&tw.sin2[n]);
-            const auto t1r = internal::arch::f32x4::load(&t1_re[n]);
-            const auto t1i = internal::arch::f32x4::load(&t1_im[n]);
-            const auto t2r = internal::arch::f32x4::load(&t2_re[n]);
-            const auto t2i = internal::arch::f32x4::load(&t2_im[n]);
+            const auto c = iclforge::internal::arch::f32x4::load(&tw.cos2[n]);
+            const auto sn = iclforge::internal::arch::f32x4::load(&tw.sin2[n]);
+            const auto t1r = iclforge::internal::arch::f32x4::load(&t1_re[n]);
+            const auto t1i = iclforge::internal::arch::f32x4::load(&t1_im[n]);
+            const auto t2r = iclforge::internal::arch::f32x4::load(&t2_re[n]);
+            const auto t2i = iclforge::internal::arch::f32x4::load(&t2_im[n]);
             (t1r * c - t1i * sn).store(&y1_re[n]);
             (t1i * c + t1r * sn).store(&y1_im[n]);
             (t2r * c - t2i * sn).store(&y2_re[n]);
             (t2i * c + t2r * sn).store(&y2_im[n]);
         }
-    } else if (internal::cpu::has_avx2()) {
+    } else if (iclforge::internal::cpu::has_avx2()) {
         internal::avx2::imdct256_post_twiddle(tw.cos2, tw.sin2, t1_re, t1_im, t2_re, t2_im, y1_re,
                                               y1_im, y2_re, y2_im);
     } else {
         for (std::size_t n = 0; n < static_cast<std::size_t>(kEighth); n += 2) {
-            const auto c = internal::arch::f64x2::load(&tw.cos2[n]);
-            const auto sn = internal::arch::f64x2::load(&tw.sin2[n]);
-            const auto t1r = internal::arch::f64x2::load(&t1_re[n]);
-            const auto t1i = internal::arch::f64x2::load(&t1_im[n]);
-            const auto t2r = internal::arch::f64x2::load(&t2_re[n]);
-            const auto t2i = internal::arch::f64x2::load(&t2_im[n]);
+            const auto c = iclforge::internal::arch::f64x2::load(&tw.cos2[n]);
+            const auto sn = iclforge::internal::arch::f64x2::load(&tw.sin2[n]);
+            const auto t1r = iclforge::internal::arch::f64x2::load(&t1_re[n]);
+            const auto t1i = iclforge::internal::arch::f64x2::load(&t1_im[n]);
+            const auto t2r = iclforge::internal::arch::f64x2::load(&t2_re[n]);
+            const auto t2i = iclforge::internal::arch::f64x2::load(&t2_im[n]);
             (t1r * c - t1i * sn).store(&y1_re[n]);
             (t1i * c + t1r * sn).store(&y1_im[n]);
             (t2r * c - t2i * sn).store(&y2_re[n]);

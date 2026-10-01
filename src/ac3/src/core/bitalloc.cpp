@@ -77,11 +77,11 @@ int calc_lowcomp(int a, int b0, int b1, int bin) {
 void exponents_to_psd(std::span<const std::uint8_t> exps, int start, int end,
                       std::span<std::int32_t> psd) {
     const auto stop = static_cast<std::size_t>(end);
-    const auto base = internal::arch::i32x4::broadcast(3072);
+    const auto base = iclforge::internal::arch::i32x4::broadcast(3072);
     std::size_t bin = static_cast<std::size_t>(start);
     for (; bin + 4 <= stop; bin += 4) {
-        const auto raw = internal::arch::i32x4::load_u8_widen(exps.data() + bin);
-        (base - internal::arch::shift_left<7>(raw)).store(psd.data() + bin);
+        const auto raw = iclforge::internal::arch::i32x4::load_u8_widen(exps.data() + bin);
+        (base - iclforge::internal::arch::shift_left<7>(raw)).store(psd.data() + bin);
     }
     // end is a mantissa count (37, 61, ... 253), never a multiple of four.
     for (; bin < stop; ++bin) {
@@ -510,7 +510,7 @@ DeltaSegments choose_delta_segments_over(std::span<const Scalar> coefficients,
         real_psd[i] = magnitude > 0
                           ? static_cast<int>(std::lround(
                                 static_cast<Scalar>(3200) +
-                                static_cast<Scalar>(128) * internal::scalar_log2(magnitude)))
+                                static_cast<Scalar>(128) * iclforge::internal::scalar_log2(magnitude)))
                           : psd[i];  // silence: nothing to correct
     }
 

@@ -55,7 +55,7 @@ namespace iclforge::hearth::testsink {
 // channel map's location of the same place. Ls and Rs stay the surround pair, which a 7.X mode
 // keeps at the sides; Lb and Rb, Lw and Rw, and Tfl and Tfr are the rear, wide and front height
 // pairs (ETSI TS 103 190-1 clause D.1; A/52 Table E2.5).
-[[nodiscard]] eac3::chanmap::Layout ac4_bed(std::span<const iclforge::ac4::Speaker> speakers);
+[[nodiscard]] ac3::eac3::chanmap::Layout ac4_bed(std::span<const iclforge::ac4::Speaker> speakers);
 
 class BurstOutput {
    public:
@@ -87,7 +87,7 @@ class BurstOutput {
    private:
     void reset_decoding();
     void decode_unit(std::span<const std::byte> unit);
-    void place(const PcmBlock& block);
+    void place(const ac3::PcmBlock& block);
     void write_ac4(const sendspin::BurstChunk& chunk, std::int64_t local_time);
     void render_ac4(const iclforge::ac4::DecodedFrame& frame);
     // Writes the first `n` samples of every slot of block_.
@@ -96,25 +96,25 @@ class BurstOutput {
     std::filesystem::path directory_;
     std::string prefix_;
     render::OutputLayout layout_;
-    render::Serving serving_;
-    DecoderConfig config_;
+    ac3::render::Serving serving_;
+    ac3::DecoderConfig config_;
     render::LayoutRenderer renderer_;
     std::optional<sendspin::player::StreamStart> stream_;
-    std::optional<FrameDecoder> ac3_decoder_;
-    std::optional<Eac3Decoder> eac3_decoder_;
+    std::optional<ac3::FrameDecoder> ac3_decoder_;
+    std::optional<ac3::Eac3Decoder> eac3_decoder_;
     std::optional<iclforge::ac4::Decoder> ac4_decoder_;
     // One span per decoded AC-4 channel, a block's worth of it at a time.
     std::vector<std::span<const float>> ac4_block_;
     std::optional<int> programme_;
     // The bed each unit given to the decoder is placed by, oldest first: a unit's first block takes
     // the oldest, whichever call delivers it.
-    std::deque<eac3::chanmap::Layout> beds_;
-    std::optional<eac3::chanmap::Layout> renderer_bed_;
+    std::deque<ac3::eac3::chanmap::Layout> beds_;
+    std::optional<ac3::eac3::chanmap::Layout> renderer_bed_;
     std::optional<sendspin::player::DecoderReport> decoder_;
 
-    std::array<std::array<float, kSamplesPerBlock>, render::OutputLayout::kMaxSlots> block_{};
+    std::array<std::array<float, ac3::kSamplesPerBlock>, render::OutputLayout::kMaxSlots> block_{};
     std::vector<float> interleaved_;
-    io::WavStreamWriter writer_;
+    ac3::io::WavStreamWriter writer_;
     std::ofstream log_;
     std::filesystem::path file_;
     std::uint64_t bursts_ = 0;

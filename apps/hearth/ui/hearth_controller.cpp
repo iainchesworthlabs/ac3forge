@@ -160,7 +160,7 @@ constexpr int kPollMs = 60;
             codec_box[QStringLiteral("bsid")] = box.bsid;
             codec_box[QStringLiteral("bsmod")] = box.bsmod;
             codec_box[QStringLiteral("bsmodLabel")] =
-                to_qstring(apps::probe_json::bsmod_label(box.bsmod, static_cast<Acmod>(box.acmod)));
+                to_qstring(apps::probe_json::bsmod_label(box.bsmod, static_cast<ac3::Acmod>(box.acmod)));
             codec_box[QStringLiteral("lfeon")] = box.lfeon;
             codec_box[QStringLiteral("dataRateKbps")] = box.data_rate_kbps;
             codec_box[QStringLiteral("independentSubstreams")] = box.independent_substreams;
@@ -187,7 +187,7 @@ constexpr int kPollMs = 60;
         QVariantMap row;
         row[QStringLiteral("substreamId")] = programme.substreamid;
         row[QStringLiteral("layoutLabel")] =
-            to_qstring(analysis::layout_name(programme.acmod, programme.lfe));
+            to_qstring(ac3::analysis::layout_name(programme.acmod, programme.lfe));
         row[QStringLiteral("channels")] = programme.channels;
         row[QStringLiteral("bsid")] = programme.bsid;
         row[QStringLiteral("bsmodLabel")] =
@@ -224,18 +224,18 @@ constexpr int kPollMs = 60;
 [[nodiscard]] QVariantMap media_bitstream_to_map(const iclforge::hearth::MediaBitstream& bits) {
     QVariantMap map;
     if (bits.info) {
-        const meta::BsiInfo& info = *bits.info;
+        const ac3::meta::BsiInfo& info = *bits.info;
         map[QStringLiteral("bsmodLabel")] =
             to_qstring(apps::probe_json::bsmod_label(static_cast<int>(info.bsmod), bits.acmod));
-        map[QStringLiteral("dsurmodLabel")] = to_qstring(meta::describe(info.dsurmod));
+        map[QStringLiteral("dsurmodLabel")] = to_qstring(ac3::meta::describe(info.dsurmod));
         map[QStringLiteral("copyright")] = info.copyrightb;
         map[QStringLiteral("original")] = info.origbs;
         if (info.audprod) {
-            map[QStringLiteral("mixLevelDbSpl")] = meta::mix_level_db_spl(info.audprod->mixlevel);
-            map[QStringLiteral("roomTypeLabel")] = to_qstring(meta::describe(info.audprod->roomtyp));
+            map[QStringLiteral("mixLevelDbSpl")] = ac3::meta::mix_level_db_spl(info.audprod->mixlevel);
+            map[QStringLiteral("roomTypeLabel")] = to_qstring(ac3::meta::describe(info.audprod->roomtyp));
         }
     }
-    const MixLevels& levels = bits.levels;
+    const ac3::MixLevels& levels = bits.levels;
     QVariantMap mix;
     // centreDb/surroundDb (Lo/Ro) are read by DecoderEac3.qml's own "This
     // stream" card too, unlabelled there as well - kept as-is rather than
@@ -248,12 +248,12 @@ constexpr int kPollMs = 60;
     if (levels.lfe_mix_level_db) {
         mix[QStringLiteral("lfeDb")] = *levels.lfe_mix_level_db;
     }
-    mix[QStringLiteral("preferredDownmixLabel")] = to_qstring(meta::describe(levels.preferred));
+    mix[QStringLiteral("preferredDownmixLabel")] = to_qstring(ac3::meta::describe(levels.preferred));
     map[QStringLiteral("mixLevels")] = mix;
     return map;
 }
 
-[[nodiscard]] QVariantMap media_probe_to_map(const io::ProbeReport& report) {
+[[nodiscard]] QVariantMap media_probe_to_map(const ac3::io::ProbeReport& report) {
     QVariantMap map;
     map[QStringLiteral("measuredBitrateKbps")] = report.bitrate_kbps;
     if (report.nominal_bitrate_kbps) {
@@ -286,14 +286,14 @@ constexpr int kPollMs = 60;
     // full per-frame history) has no way to catch that, and neither does
     // this.
     if (report.compr.seen) {
-        const double at_min = 20.0 * std::log10(meta::compr_gain(static_cast<std::uint8_t>(report.compr.min)));
-        const double at_max = 20.0 * std::log10(meta::compr_gain(static_cast<std::uint8_t>(report.compr.max)));
+        const double at_min = 20.0 * std::log10(ac3::meta::compr_gain(static_cast<std::uint8_t>(report.compr.min)));
+        const double at_max = 20.0 * std::log10(ac3::meta::compr_gain(static_cast<std::uint8_t>(report.compr.max)));
         map[QStringLiteral("comprMinDb")] = std::min(at_min, at_max);
         map[QStringLiteral("comprMaxDb")] = std::max(at_min, at_max);
     }
     if (report.dynrng.seen) {
-        const double at_min = 20.0 * std::log10(meta::dynrng_gain(static_cast<std::uint8_t>(report.dynrng.min)));
-        const double at_max = 20.0 * std::log10(meta::dynrng_gain(static_cast<std::uint8_t>(report.dynrng.max)));
+        const double at_min = 20.0 * std::log10(ac3::meta::dynrng_gain(static_cast<std::uint8_t>(report.dynrng.min)));
+        const double at_max = 20.0 * std::log10(ac3::meta::dynrng_gain(static_cast<std::uint8_t>(report.dynrng.max)));
         map[QStringLiteral("dynrngMinDb")] = std::min(at_min, at_max);
         map[QStringLiteral("dynrngMaxDb")] = std::max(at_min, at_max);
     }

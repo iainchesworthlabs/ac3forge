@@ -419,7 +419,7 @@ private:
         std::int64_t frame = 0;
         // The samples it decodes to: a burst period of AC-3 or E-AC-3, or an
         // AC-4 frame's own length.
-        std::int64_t frames = kSamplesPerFrame;
+        std::int64_t frames = ac3::kSamplesPerFrame;
     };
 
     // Why an item could not be started: the item itself, which is then

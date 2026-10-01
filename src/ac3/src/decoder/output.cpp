@@ -437,9 +437,9 @@ void fold_block(const FoldPlan& plan, const OutputConfig& config,
 // one place once the frame is done.
 void scan_peak(Scalar& peak, const float* left, const float* right, std::size_t count) {
     for (std::size_t i = 0; i < count; ++i) {
-        peak = std::max(peak, internal::scalar_abs(static_cast<Scalar>(left[i])));
+        peak = std::max(peak, iclforge::internal::scalar_abs(static_cast<Scalar>(left[i])));
         if (right != nullptr) {
-            peak = std::max(peak, internal::scalar_abs(static_cast<Scalar>(right[i])));
+            peak = std::max(peak, iclforge::internal::scalar_abs(static_cast<Scalar>(right[i])));
         }
     }
 }
@@ -488,7 +488,7 @@ void limit_frame(const OutputConfig& config, double& protection_gain, Scalar sca
     [[maybe_unused]] Scalar walked = ramp_start;
     for (std::size_t i = 0; i < length; ++i) {
         Scalar gain{};
-        if constexpr (std::is_same_v<Scalar, internal::Fixed32>) {
+        if constexpr (std::is_same_v<Scalar, iclforge::internal::Fixed32>) {
             gain = walked;
             walked += step;
         } else {

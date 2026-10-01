@@ -15,11 +15,11 @@ namespace iclforge::hearth {
 
 namespace {
 
-[[nodiscard]] std::optional<SampleRate> ac3_rate(std::uint32_t hz) {
+[[nodiscard]] std::optional<ac3::SampleRate> ac3_rate(std::uint32_t hz) {
     switch (hz) {
-        case 48000: return SampleRate::k48000;
-        case 44100: return SampleRate::k44100;
-        case 32000: return SampleRate::k32000;
+        case 48000: return ac3::SampleRate::k48000;
+        case 44100: return ac3::SampleRate::k44100;
+        case 32000: return ac3::SampleRate::k32000;
         default: return std::nullopt;
     }
 }
@@ -34,15 +34,15 @@ template <typename Code, std::size_t N>
     return best->first;
 }
 
-constexpr std::array<std::pair<meta::CentreMixLevel, double>, 3> kCentre{{
-    {meta::CentreMixLevel::kMinus3dB, meta::level::kMinus3dB},
-    {meta::CentreMixLevel::kMinus4_5dB, meta::level::kMinus4_5dB},
-    {meta::CentreMixLevel::kMinus6dB, meta::level::kMinus6dB},
+constexpr std::array<std::pair<ac3::meta::CentreMixLevel, double>, 3> kCentre{{
+    {ac3::meta::CentreMixLevel::kMinus3dB, ac3::meta::level::kMinus3dB},
+    {ac3::meta::CentreMixLevel::kMinus4_5dB, ac3::meta::level::kMinus4_5dB},
+    {ac3::meta::CentreMixLevel::kMinus6dB, ac3::meta::level::kMinus6dB},
 }};
-constexpr std::array<std::pair<meta::SurroundMixLevel, double>, 3> kSurround{{
-    {meta::SurroundMixLevel::kMinus3dB, meta::level::kMinus3dB},
-    {meta::SurroundMixLevel::kMinus6dB, meta::level::kMinus6dB},
-    {meta::SurroundMixLevel::kSilent, meta::level::kSilent},
+constexpr std::array<std::pair<ac3::meta::SurroundMixLevel, double>, 3> kSurround{{
+    {ac3::meta::SurroundMixLevel::kMinus3dB, ac3::meta::level::kMinus3dB},
+    {ac3::meta::SurroundMixLevel::kMinus6dB, ac3::meta::level::kMinus6dB},
+    {ac3::meta::SurroundMixLevel::kSilent, ac3::meta::level::kSilent},
 }};
 
 // §5.4.2.8 reserves 0, which a decoder reads as 31.
@@ -58,7 +58,7 @@ bool Ac3Transcoder::carries(std::uint32_t sample_rate) {
 
 Ac3Transcoder::FoldLevels Ac3Transcoder::fold_levels(std::span<const std::byte> unit) {
     FoldLevels out;
-    const auto header = io::read_frame_metadata(unit);
+    const auto header = ac3::io::read_frame_metadata(unit);
     if (!header) {
         return out;
     }
@@ -70,14 +70,14 @@ Ac3Transcoder::FoldLevels Ac3Transcoder::fold_levels(std::span<const std::byte> 
     }
     if (header->mix) {
         // The fold the stream prefers decides which pair describes it.
-        const bool ltrt = header->mix->dmixmod == meta::DownmixMode::kLtRt;
+        const bool ltrt = header->mix->dmixmod == ac3::meta::DownmixMode::kLtRt;
         const auto centre = ltrt ? header->mix->ltrtcmixlev : header->mix->lorocmixlev;
         const auto surround = ltrt ? header->mix->ltrtsurmixlev : header->mix->lorosurmixlev;
         if (centre) {
-            out.centre = nearest(meta::coefficient(*centre), kCentre);
+            out.centre = nearest(ac3::meta::coefficient(*centre), kCentre);
         }
         if (surround) {
-            out.surround = nearest(meta::coefficient(*surround), kSurround);
+            out.surround = nearest(ac3::meta::coefficient(*surround), kSurround);
         }
     }
     return out;
@@ -115,7 +115,7 @@ void Ac3Transcoder::describe_source(const UnitReport& report, std::uint64_t fram
                                     std::size_t record, DualMonoChoice dual_mono) {
     // Dual mono heard as its second channel is levelled and compressed as
     // that channel is.
-    const bool second = report.acmod == Acmod::kDualMono && dual_mono == DualMonoChoice::kSecond;
+    const bool second = report.acmod == ac3::Acmod::kDualMono && dual_mono == DualMonoChoice::kSecond;
     Said said{.from = taken_ - std::min(frames, taken_),
               .record = record,
               .dialnorm = valid_dialnorm(second && report.dialnorm2 ? *report.dialnorm2
@@ -125,7 +125,7 @@ void Ac3Transcoder::describe_source(const UnitReport& report, std::uint64_t fram
     // Table 5.5's code 7 is a voice-over below 2/0 and karaoke from 2/0 up;
     // this writes 3/2. A unit that sends no service keeps its item's last.
     if (report.bsmod &&
-        (*report.bsmod != 7 || static_cast<int>(report.acmod) >= static_cast<int>(Acmod::k2_0))) {
+        (*report.bsmod != 7 || static_cast<int>(report.acmod) >= static_cast<int>(ac3::Acmod::k2_0))) {
         said.bsmod = report.bsmod;
     } else if (!said_.empty() && said_.back().record == record) {
         said.bsmod = said_.back().bsmod;
@@ -138,9 +138,9 @@ std::expected<void, std::string> Ac3Transcoder::make_encoder() {
     if (!rate) {
         return std::unexpected(fmt::format("AC-3 has no {} Hz.", sample_rate_));
     }
-    plan::Plan p;
-    p.codec = plan::Codec::kAc3;
-    p.layout = plan::LayoutId::k51;
+    ac3::plan::Plan p;
+    p.codec = ac3::plan::Codec::kAc3;
+    p.layout = ac3::plan::LayoutId::k51;
     p.sample_rate = *rate;
     p.bitrate_kbps = kBitrateKbps;
     // compre in every frame, so a word can be written into each; the
@@ -148,13 +148,13 @@ std::expected<void, std::string> Ac3Transcoder::make_encoder() {
     p.meta.heavy.emplace();
     p.meta.cmixlev = fold_.centre;
     p.meta.surmixlev = fold_.surround;
-    if (const auto bad = plan::validate(p)) {
+    if (const auto bad = ac3::plan::validate(p)) {
         return std::unexpected(
-            fmt::format("The AC-3 encoder cannot be set up: {}.", plan::describe(*bad)));
+            fmt::format("The AC-3 encoder cannot be set up: {}.", ac3::plan::describe(*bad)));
     }
     // Several kilobytes of transform state: kept off the stack.
-    encoder_ = std::make_unique<FrameEncoder>(plan::ac3_config(p));
-    heavy_.emplace(meta::HeavyConfig{}, *rate);
+    encoder_ = std::make_unique<ac3::FrameEncoder>(ac3::plan::ac3_config(p));
+    heavy_.emplace(ac3::meta::HeavyConfig{}, *rate);
     return {};
 }
 
@@ -162,8 +162,8 @@ std::uint8_t Ac3Transcoder::compr_for(std::uint64_t start, int dialnorm,
                                       std::span<const std::span<const float>> channels) {
     // What the frame's gain governs: its own samples, and the last block of
     // the frame before, which a decoder crossfades into it.
-    const std::uint64_t reach_from = start - std::min<std::uint64_t>(start, kSamplesPerBlock);
-    const std::uint64_t reach_to = start + std::uint64_t{kSamplesPerFrame};
+    const std::uint64_t reach_from = start - std::min<std::uint64_t>(start, ac3::kSamplesPerBlock);
+    const std::uint64_t reach_to = start + std::uint64_t{ac3::kSamplesPerFrame};
     std::optional<std::uint8_t> said;
     bool unsaid = said_.empty();
     for (std::size_t i = 0; i < said_.size(); ++i) {
@@ -173,21 +173,21 @@ std::uint8_t Ac3Transcoder::compr_for(std::uint64_t start, int dialnorm,
         }
         if (!said_[i].compr) {
             unsaid = true;
-        } else if (!said || meta::compr_gain(*said_[i].compr) < meta::compr_gain(*said)) {
+        } else if (!said || ac3::meta::compr_gain(*said_[i].compr) < ac3::meta::compr_gain(*said)) {
             said = said_[i].compr;
         }
     }
     // The frame's own word keeps the compressor's state running whether or
     // not it is used.
-    const double peak = meta::mono_downmix_peak_dbfs(
-        std::span<const std::array<float, kSamplesPerBlock>>(history_),
-        channels.first(kChannels - 1), Acmod::k3_2, meta::coefficient(fold_.centre),
-        meta::coefficient(fold_.surround));
+    const double peak = ac3::meta::mono_downmix_peak_dbfs(
+        std::span<const std::array<float, ac3::kSamplesPerBlock>>(history_),
+        channels.first(kChannels - 1), ac3::Acmod::k3_2, ac3::meta::coefficient(fold_.centre),
+        ac3::meta::coefficient(fold_.surround));
     const std::uint8_t own = heavy_->next(peak, dialnorm);
     if (!said) {
         return own;
     }
-    if (unsaid && meta::compr_gain(own) < meta::compr_gain(*said)) {
+    if (unsaid && ac3::meta::compr_gain(own) < ac3::meta::compr_gain(*said)) {
         return own;
     }
     return *said;
@@ -204,7 +204,7 @@ std::expected<void, std::string> Ac3Transcoder::encode_frame(std::size_t count,
     for (std::size_t channel = 0; channel < kChannels; ++channel) {
         const std::span<const float> given =
             std::span<const float>(queue_[channel]).subspan(head_, count);
-        std::array<float, kSamplesPerFrame>& frame = frame_[channel];
+        std::array<float, ac3::kSamplesPerFrame>& frame = frame_[channel];
         std::ranges::copy(given, frame.begin());
         std::fill(std::next(frame.begin(), static_cast<std::ptrdiff_t>(count)), frame.end(),
                   given.empty() ? hold_[channel] : given.back());
@@ -214,7 +214,7 @@ std::expected<void, std::string> Ac3Transcoder::encode_frame(std::size_t count,
     // Who fills the middle of what the frame decodes to, which runs the
     // encoder's delay behind its samples.
     const std::uint64_t start = consumed_;
-    const std::uint64_t middle = start + std::uint64_t{kSamplesPerFrame / 2} - kDelay;
+    const std::uint64_t middle = start + std::uint64_t{ac3::kSamplesPerFrame / 2} - kDelay;
     const auto after = std::ranges::upper_bound(said_, middle, {}, &Said::from);
     const Said said = after == said_.begin() ? (said_.empty() ? Said{} : said_.front())
                                              : *std::prev(after);
@@ -225,16 +225,16 @@ std::expected<void, std::string> Ac3Transcoder::encode_frame(std::size_t count,
         return std::unexpected(fmt::format("The AC-3 encoder refused a frame: {}.",
                                            iclforge::ac3::describe(encoded.error())));
     }
-    const auto edited = io::edit_frame_metadata(
+    const auto edited = ac3::io::edit_frame_metadata(
         *encoded,
-        io::MetadataEdit{.dialnorm = said.dialnorm, .compr = compr, .bsmod = said.bsmod});
+        ac3::io::MetadataEdit{.dialnorm = said.dialnorm, .compr = compr, .bsmod = said.bsmod});
     if (!edited) {
         return std::unexpected(
             fmt::format("The source's metadata could not be written into a frame: {}.",
-                        io::describe(edited.error())));
+                        ac3::io::describe(edited.error())));
     }
     for (std::size_t channel = 0; channel + 1 < kChannels; ++channel) {
-        std::ranges::copy(std::span<const float>(frame_[channel]).last(kSamplesPerBlock),
+        std::ranges::copy(std::span<const float>(frame_[channel]).last(ac3::kSamplesPerBlock),
                           history_[channel].begin());
     }
 
@@ -253,11 +253,11 @@ std::expected<void, std::string> Ac3Transcoder::encode_frame(std::size_t count,
     }
     head_ += count;
     consumed_ += count;
-    encoded_ += kSamplesPerFrame;
+    encoded_ += ac3::kSamplesPerFrame;
     // What the next frame's gain reaches back to, and nothing before it, is
     // still wanted - and the newest report always, for what follows.
     const std::uint64_t next_reach =
-        consumed_ - std::min<std::uint64_t>(consumed_, kSamplesPerBlock);
+        consumed_ - std::min<std::uint64_t>(consumed_, ac3::kSamplesPerBlock);
     while (said_.size() > 1 && said_[1].from <= next_reach) {
         said_.erase(said_.begin());
     }
@@ -276,8 +276,8 @@ void Ac3Transcoder::compact() {
 }
 
 std::expected<void, std::string> Ac3Transcoder::encode_ready(const FrameFn& out) {
-    while (buffered() >= kSamplesPerFrame) {
-        if (auto done = encode_frame(kSamplesPerFrame, out); !done) {
+    while (buffered() >= ac3::kSamplesPerFrame) {
+        if (auto done = encode_frame(ac3::kSamplesPerFrame, out); !done) {
             return done;
         }
     }
@@ -291,7 +291,7 @@ std::expected<void, std::string> Ac3Transcoder::finish(const FrameFn& out) {
     // it.
     while (taken_ != 0 && encoded_ < taken_ + kDelay) {
         const auto count = static_cast<std::size_t>(
-            std::min<std::uint64_t>(buffered(), kSamplesPerFrame));
+            std::min<std::uint64_t>(buffered(), ac3::kSamplesPerFrame));
         result = encode_frame(count, out);
         if (!result) {
             break;

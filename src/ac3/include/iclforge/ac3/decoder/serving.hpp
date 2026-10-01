@@ -39,7 +39,7 @@ struct Serving {
 
 // `stereo_fold` is the fold a two-speaker layout gets, kLoRo or kLtRt; a
 // one-speaker layout folds to mono whatever it says.
-[[nodiscard]] inline Serving serve(const OutputLayout& layout, iclforge::ac3::DownmixTarget stereo_fold,
+[[nodiscard]] inline Serving serve(const iclforge::render::OutputLayout& layout, iclforge::ac3::DownmixTarget stereo_fold,
                                    ObjectsPolicy objects) {
     Serving out;
     out.fold = layout.fold(stereo_fold);

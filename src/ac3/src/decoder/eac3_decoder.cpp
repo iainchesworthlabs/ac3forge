@@ -1258,22 +1258,22 @@ struct BandEnergy {
     Scalar accum{0};
     void add(Scalar value) { accum += value * value; }
     [[nodiscard]] Scalar rms(int size) const {
-        return internal::scalar_sqrt(accum / static_cast<Scalar>(size));
+        return iclforge::internal::scalar_sqrt(accum / static_cast<Scalar>(size));
     }
 };
 
 template <>
-struct BandEnergy<internal::Fixed32> {
+struct BandEnergy<iclforge::internal::Fixed32> {
     std::uint64_t sum = 0;
-    void add(internal::Fixed32 value) {
+    void add(iclforge::internal::Fixed32 value) {
         const auto raw = static_cast<std::int64_t>(value.raw);
         sum += static_cast<std::uint64_t>(raw * raw);
     }
-    [[nodiscard]] internal::Fixed32 rms(int size) const {
+    [[nodiscard]] iclforge::internal::Fixed32 rms(int size) const {
         // raw^2 is the value times 2^48; the root of the mean is the RMS
         // times 2^24, a raw value again.
-        return internal::Fixed32::from_raw(static_cast<std::int32_t>(
-            internal::isqrt64(sum / static_cast<std::uint64_t>(size))));
+        return iclforge::internal::Fixed32::from_raw(static_cast<std::int32_t>(
+            iclforge::internal::isqrt64(sum / static_cast<std::uint64_t>(size))));
     }
 };
 
@@ -1309,7 +1309,7 @@ void ecpl_reconstruct_block(const Tail& tail, const std::array<Scalar, 256>& pre
                             std::vector<Scalar>& angle_scratch, bool fast,
                             std::vector<std::array<Scalar, 256>>& coeffs) {
     const auto ubins = static_cast<std::size_t>(tail.cplendmant - tail.cplstrtmant);
-    if constexpr (std::is_same_v<Scalar, internal::Fixed32>) {
+    if constexpr (std::is_same_v<Scalar, iclforge::internal::Fixed32>) {
         (void)fast;
         // The tier's own stages (eac3_tools_fixed.hpp). The spectrum spans
         // three blocks stored under three exponents and reports the one its
@@ -2916,7 +2916,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                             impl_->config_.syntax->add_emdf_payload(payload.id);
                         }
                         if (payload.id == emdf::kPayloadIdOamd) {
-                            out.object_metadata = oba::parse_payload(payload.bytes);
+                            out.object_metadata = iclforge::oba::parse_payload(payload.bytes);
                         } else if (payload.id == emdf::kPayloadIdJoc && joc_bytes.empty()) {
                             joc_bytes.assign(payload.bytes.begin(), payload.bytes.end());
                         } else if (payload.id != emdf::kPayloadIdOamd &&
@@ -3355,7 +3355,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                     const int shift = aht_norm - exps[us][ubin];
                     for (std::size_t j = 0; j < kBlocksPerFrame; ++j) {
                         auto& value = tails[j].coeffs[us][ubin];
-                        value = internal::scalar_ldexp(value, shift);
+                        value = iclforge::internal::scalar_ldexp(value, shift);
                     }
                 }
             }
@@ -3503,7 +3503,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                                       exponent_scale<Scalar>(cpl_exps[ubin] - shared_norm)
                                 : shared[ubin];
                         if constexpr (internal::kNormalisedStore<Scalar>) {
-                            target[ubin] = internal::scalar_ldexp(coeff * coordinate * sign, shift);
+                            target[ubin] = iclforge::internal::scalar_ldexp(coeff * coordinate * sign, shift);
                         } else {
                             target[ubin] = coeff * coordinate * Scalar{8} * sign;
                         }
@@ -3737,8 +3737,8 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                     const int low = tail.spx_bands.start[ubnd];
                     const Scalar nratio =
                         eac3::spx_noise_ratio_as<Scalar>(low, size, tail.spx_endmant, blend);
-                    const Scalar nscale = band_rms[ubnd] * internal::scalar_sqrt(nratio);
-                    const Scalar sscale = internal::scalar_sqrt(Scalar{1} - nratio);
+                    const Scalar nscale = band_rms[ubnd] * iclforge::internal::scalar_sqrt(nratio);
+                    const Scalar sscale = iclforge::internal::scalar_sqrt(Scalar{1} - nratio);
                     if constexpr (internal::kNormalisedStore<Scalar>) {
                         // The coordinate's mantissa, then its power of two and
                         // §E3.6.4.3's thirty-two as one shift (block_norm.hpp).
@@ -3753,11 +3753,11 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                         for (int i = 0; i < size; ++i) {
                             const auto at = static_cast<std::size_t>(low + i);
                             const Scalar blended =
-                                internal::scalar_product_unsaturated(tc[at], sscale) +
-                                internal::scalar_product_unsaturated(spx_noise.next_as<Scalar>(),
+                                iclforge::internal::scalar_product_unsaturated(tc[at], sscale) +
+                                iclforge::internal::scalar_product_unsaturated(spx_noise.next_as<Scalar>(),
                                                                      nscale);
-                            tc[at] = internal::scalar_ldexp(
-                                internal::scalar_product_unsaturated(blended, mantissa), shift);
+                            tc[at] = iclforge::internal::scalar_ldexp(
+                                iclforge::internal::scalar_product_unsaturated(blended, mantissa), shift);
                         }
                     } else {
                         const Scalar coordinate =
@@ -3942,7 +3942,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
         if (out.object_metadata && !joc_bytes.empty() &&
             !impl_->config_.skip_object_reconstruction) {
             const auto params = oba::joc::parse_payload(joc_bytes);
-            const auto indices = oba::joc_object_indices(out.object_metadata->program);
+            const auto indices = iclforge::oba::joc_object_indices(out.object_metadata->program);
             // §6.3.2.2 Table 47: a downmix wider than the five channels this
             // substream carries needs a dependent substream's extra pair -
             // Lb/Rb (kDmxConfig7X) or Tfl/Tfr (kDmxConfig5XPlus2 and
@@ -4590,7 +4590,7 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
         constexpr auto kMaxObjectViews = static_cast<std::size_t>(oba::joc::kMaxObjects);
         std::array<std::span<const float>, kMaxObjectViews> object_views{};
         const std::size_t objects = std::min(out.object_audio.size(), kMaxObjectViews);
-        const oba::DecodedProgram* const metadata =
+        const iclforge::oba::DecodedProgram* const metadata =
             out.object_metadata.has_value() ? &*out.object_metadata : nullptr;
         // Its own zone, so the time a caller's sink spends in here reads as
         // the caller's rather than as the access unit's.
@@ -4698,7 +4698,7 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
             }
             const auto params = oba::joc::parse_payload(sub.joc_pending_bytes);
             const auto indices = out.object_metadata.has_value()
-                                      ? oba::joc_object_indices(out.object_metadata->program)
+                                      ? iclforge::oba::joc_object_indices(out.object_metadata->program)
                                       : std::vector<int>{};
             if (!params || !out.object_metadata.has_value() ||
                 params->objects != static_cast<int>(indices.size())) {
@@ -4743,7 +4743,7 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
             // this is new wiring onto an existing generic path, not new DSP.
             out.object_audio =
                 oba::joc::reconstruct(bed, *params, *joc_slot, impl_->config_.fast_mdct,
-                                      impl_->config_.fast_imdct, oba::joc::Domain::kMdctBand);
+                                      impl_->config_.fast_imdct, iclforge::oba::joc::Domain::kMdctBand);
             out.object_indices = indices;
             break;
         }

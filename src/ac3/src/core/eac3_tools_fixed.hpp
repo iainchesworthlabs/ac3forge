@@ -32,13 +32,13 @@ namespace fixed_detail {
 // Table E3.14's attenuation, from `spx_attenuation` itself: 32 codes x 3
 // stored taps, each below one, so the format holds them with room.
 struct SpxAttenuation {
-    std::array<std::array<internal::Fixed32, 3>, kSpxAttenCodes> cell{};
+    std::array<std::array<iclforge::internal::Fixed32, 3>, kSpxAttenCodes> cell{};
 
     SpxAttenuation() {
         for (int code = 0; code < kSpxAttenCodes; ++code) {
             for (int tap = 0; tap < 3; ++tap) {
                 cell[static_cast<std::size_t>(code)][static_cast<std::size_t>(tap)] =
-                    internal::Fixed32{spx_attenuation(code, tap)};
+                    iclforge::internal::Fixed32{spx_attenuation(code, tap)};
             }
         }
     }
@@ -56,7 +56,7 @@ inline const SpxAttenuation& spx_attenuation_fixed() {
 // (eac3_tools.cpp records how they were established) are stated once.
 // Every entry is at most sqrt(2).
 struct AhtBasis {
-    std::array<std::array<internal::Fixed32, kBlocksPerFrameSize>, kBlocksPerFrameSize> row{};
+    std::array<std::array<iclforge::internal::Fixed32, kBlocksPerFrameSize>, kBlocksPerFrameSize> row{};
 
     AhtBasis() {
         for (std::size_t j = 0; j < kBlocksPerFrameSize; ++j) {
@@ -65,7 +65,7 @@ struct AhtBasis {
             unit[j] = 1.0;
             aht_inverse(unit, out);
             for (std::size_t m = 0; m < kBlocksPerFrameSize; ++m) {
-                row[j][m] = internal::Fixed32{out[m]};
+                row[j][m] = iclforge::internal::Fixed32{out[m]};
             }
         }
     }
@@ -80,7 +80,7 @@ inline const AhtBasis& aht_basis() {
 
 // §E3.6.4.2.3's band-border notch, the same taps at the same seams as the
 // floating forms: one product per tap, one rounding.
-inline void spx_apply_notch(std::span<internal::Fixed32> synth, int startmant,
+inline void spx_apply_notch(std::span<iclforge::internal::Fixed32> synth, int startmant,
                             const BandLayout& bands, std::span<const bool> wrapflag,
                             int spxattencod) {
     if (spxattencod < 0) {
@@ -117,13 +117,13 @@ inline void spx_apply_notch(std::span<internal::Fixed32> synth, int startmant,
 // every mantissa the AHT dequantisers produce is below 8/7 for any bits at
 // all (a vector entry over 2^15, a GAQ code over its level count), so the
 // products skip the saturation test (product_unsaturated): the same values.
-inline void aht_inverse(std::span<const internal::Fixed32, kBlocksPerFrameSize> coefficients,
-                        std::span<internal::Fixed32, kBlocksPerFrameSize> out) {
+inline void aht_inverse(std::span<const iclforge::internal::Fixed32, kBlocksPerFrameSize> coefficients,
+                        std::span<iclforge::internal::Fixed32, kBlocksPerFrameSize> out) {
     const auto& basis = fixed_detail::aht_basis();
     for (std::size_t m = 0; m < kBlocksPerFrameSize; ++m) {
-        internal::Fixed32 sum{};
+        iclforge::internal::Fixed32 sum{};
         for (std::size_t j = 0; j < kBlocksPerFrameSize; ++j) {
-            sum += internal::Fixed32::product_unsaturated(coefficients[j], basis.row[j][m]);
+            sum += iclforge::internal::Fixed32::product_unsaturated(coefficients[j], basis.row[j][m]);
         }
         out[m] = sum;
     }
@@ -138,9 +138,9 @@ inline void aht_inverse(std::span<const internal::Fixed32, kBlocksPerFrameSize> 
 // errors of these degrees are 1.7e-9 and 2.4e-8, both below the format's own
 // resolution; what the result carries is the five roundings of the series,
 // some tens of raw units, against angles transmitted at pi/32.
-inline void sincos_pi(internal::Fixed32 a, internal::Fixed32& sine,
-                      internal::Fixed32& cosine) {
-    using internal::Fixed32;
+inline void sincos_pi(iclforge::internal::Fixed32 a, iclforge::internal::Fixed32& sine,
+                      iclforge::internal::Fixed32& cosine) {
+    using iclforge::internal::Fixed32;
     // q = the nearest quarter turn, as a count of half-units of the angle.
     const Fixed32 twice = a.scaled_by_pow2(1);
     const Fixed32 half = Fixed32::from_raw(Fixed32::kOne / 2);
@@ -187,27 +187,27 @@ inline void sincos_pi(internal::Fixed32 a, internal::Fixed32& sine,
 // The spectrum takes each neighbouring block's own exponent and reports the
 // one its 256 output bins share; the reconstruction takes the difference
 // between that and the receiving channel's, and applies it per bin.
-void ecpl_channel_spectrum_fixed(std::span<const internal::Fixed32, 256> prev_mant, int prev_norm,
-                                 std::span<const internal::Fixed32, 256> curr_mant, int curr_norm,
-                                 std::span<const internal::Fixed32, 256> next_mant, int next_norm,
-                                 std::span<internal::Fixed32, 256> real_out,
-                                 std::span<internal::Fixed32, 256> imag_out, int& out_norm);
+void ecpl_channel_spectrum_fixed(std::span<const iclforge::internal::Fixed32, 256> prev_mant, int prev_norm,
+                                 std::span<const iclforge::internal::Fixed32, 256> curr_mant, int curr_norm,
+                                 std::span<const iclforge::internal::Fixed32, 256> next_mant, int next_norm,
+                                 std::span<iclforge::internal::Fixed32, 256> real_out,
+                                 std::span<iclforge::internal::Fixed32, 256> imag_out, int& out_norm);
 
 void ecpl_amplitudes_fixed(std::span<const int> ecplamp, std::span<const int> ecplchaos,
                            bool ecpltrans, bool is_first_channel, int begin_subbnd,
                            int end_subbnd, std::span<const bool> structure,
-                           std::span<internal::Fixed32> amp_out);
+                           std::span<iclforge::internal::Fixed32> amp_out);
 
 void ecpl_angles_fixed(int channel, std::span<const int> ecplangle, std::span<const int> ecplchaos,
                        bool ecpltrans, bool is_first_channel, int begin_subbnd, int end_subbnd,
                        std::span<const bool> structure, EcplNoise& noise,
-                       std::span<internal::Fixed32> angle_out, bool interpolate = false);
+                       std::span<iclforge::internal::Fixed32> angle_out, bool interpolate = false);
 
-void ecpl_channel_coefficients_fixed(std::span<const internal::Fixed32, 256> real_in,
-                                     std::span<const internal::Fixed32, 256> imag_in,
-                                     std::span<const internal::Fixed32> amp_bin,
-                                     std::span<const internal::Fixed32> angle_bin, int begin_mant,
+void ecpl_channel_coefficients_fixed(std::span<const iclforge::internal::Fixed32, 256> real_in,
+                                     std::span<const iclforge::internal::Fixed32, 256> imag_in,
+                                     std::span<const iclforge::internal::Fixed32> amp_bin,
+                                     std::span<const iclforge::internal::Fixed32> angle_bin, int begin_mant,
                                      int end_mant, int out_shift,
-                                     std::span<internal::Fixed32, 256> mant_out);
+                                     std::span<iclforge::internal::Fixed32, 256> mant_out);
 
 }  // namespace iclforge::ac3::eac3

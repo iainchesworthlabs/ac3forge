@@ -64,11 +64,11 @@ std::int32_t clamp_fixed25(double scaled) {
 // mentions - that want the conversion alone.
 void to_fixed25_block(std::span<const double> coefficients, std::span<std::int32_t> fixed) {
     assert(coefficients.size() == fixed.size());
-    const auto scale = internal::arch::f64x2::broadcast(16777216.0);  // 2^24
+    const auto scale = iclforge::internal::arch::f64x2::broadcast(16777216.0);  // 2^24
     std::size_t i = 0;
     for (; i + 2 <= coefficients.size(); i += 2) {
-        const auto scaled = internal::arch::round_ties_away(
-            internal::arch::f64x2::load(coefficients.data() + i) * scale);
+        const auto scaled = iclforge::internal::arch::round_ties_away(
+            iclforge::internal::arch::f64x2::load(coefficients.data() + i) * scale);
         fixed[i] = clamp_fixed25(scaled.lane0());
         fixed[i + 1] = clamp_fixed25(scaled.lane1());
     }

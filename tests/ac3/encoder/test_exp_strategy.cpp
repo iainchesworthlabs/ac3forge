@@ -334,7 +334,8 @@ namespace {
 // call, selected by free_strategy.
 iclforge::ac3::internal::ExponentRunPlan reference_plan(const iclforge::ac3::internal::ExponentRunInput& in) {
     using namespace iclforge;
-    using namespace iclforge::internal;
+    using namespace iclforge::ac3;
+    using namespace iclforge::ac3::internal;
     const auto bins = static_cast<std::size_t>(in.bins);
     const int blocks = in.blocks;
     std::array<ExpStrategy, 3> candidates{ExpStrategy::kD15, ExpStrategy::kD25,

@@ -233,7 +233,7 @@ struct DecoderConfig {
     // objects, because the MDCT path's inverse is deliberately pinned to
     // §7.9.4's direct form while the filterbank has only the one
     // evaluation.
-    oba::joc::Domain joc_domain = oba::joc::Domain::kQmf;
+    iclforge::oba::joc::Domain joc_domain = iclforge::oba::joc::Domain::kQmf;
     // --- self-check (ac3/verify/mirror.hpp) --------------------------------
     // The decoder's half of EncoderConfig::trace: when set, decode_frame()
     // records the same per-block, per-stream state it derived from the wire,
@@ -577,7 +577,7 @@ struct DecodedSubstream {
     // what it refuses). Which block actually carries the container is not
     // fixed (emdf::build_container's own comment), so every block's skip
     // field is a candidate; the first one that parses wins.
-    std::optional<oba::DecodedProgram> object_metadata = std::nullopt;
+    std::optional<iclforge::oba::DecodedProgram> object_metadata = std::nullopt;
     // JOC's (§6) reconstructed per-object audio, one waveform per JOC output
     // - empty when object_metadata is unset, when no JOC payload rode
     // alongside the OAMD one, or when the downmix JOC asks for is wider than
@@ -691,7 +691,7 @@ struct DecodedAccessUnit {
     // so there the objects arrive in a dependent. Not unioned the way
     // `layout` is below: one EMDF container describes the whole programme, so
     // the question is which substream carries it, not how to merge several.
-    std::optional<oba::DecodedProgram> object_metadata = std::nullopt;
+    std::optional<iclforge::oba::DecodedProgram> object_metadata = std::nullopt;
     std::vector<std::vector<float>> object_audio;
     std::vector<int> object_indices;
     // §E2.3.1.2's substreamid of the independent substream this programme was

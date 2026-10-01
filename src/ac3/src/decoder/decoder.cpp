@@ -1636,7 +1636,7 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
                                     : shared[ubin];
                             if constexpr (internal::kNormalisedStore<Scalar>) {
                                 target[ubin] =
-                                    internal::scalar_ldexp(coeff * coordinate * sign, shift);
+                                    iclforge::internal::scalar_ldexp(coeff * coordinate * sign, shift);
                             } else {
                                 target[ubin] = coeff * coordinate * Scalar{8} * sign;
                             }

@@ -83,45 +83,45 @@ struct ImdctValue {
     }
     // Times a twiddle or a window entry: Fixed32's product rounded half up,
     // without the saturation test (fixed32.hpp's product_unsaturated).
-    friend constexpr ImdctValue operator*(ImdctValue a, Fixed32 w) {
-        return {Fixed32::product_unsaturated(Fixed32::from_raw(a.raw), w).raw};
+    friend constexpr ImdctValue operator*(ImdctValue a, iclforge::internal::Fixed32 w) {
+        return {iclforge::internal::Fixed32::product_unsaturated(iclforge::internal::Fixed32::from_raw(a.raw), w).raw};
     }
 };
 
-[[nodiscard]] constexpr ImdctValue imdct_value(Fixed32 v) {
+[[nodiscard]] constexpr ImdctValue imdct_value(iclforge::internal::Fixed32 v) {
     return {v.raw};
 }
 
 struct FixedImdctTables {
     static constexpr std::size_t kN = 512;
     // §7.9.4.1 step 2: xcos1[k] = -cos(2pi(8k+1)/8N), xsin1[k] = -sin(...).
-    std::array<Fixed32, kN / 4> cos1{};
-    std::array<Fixed32, kN / 4> sin1{};
+    std::array<iclforge::internal::Fixed32, kN / 4> cos1{};
+    std::array<iclforge::internal::Fixed32, kN / 4> sin1{};
     // §7.9.4.2 step 2: xcos2[k] = -cos(2pi(8k+1)/4N), xsin2[k] = -sin(...).
-    std::array<Fixed32, kN / 8> cos2{};
-    std::array<Fixed32, kN / 8> sin2{};
+    std::array<iclforge::internal::Fixed32, kN / 8> cos2{};
+    std::array<iclforge::internal::Fixed32, kN / 8> sin2{};
     // The shared kernel's own tables at the two sizes the pair needs.
-    FftTables<kN / 4, Fixed32> fft128{};
-    FftTables<kN / 8, Fixed32> fft64{};
+    iclforge::internal::FftTables<kN / 4, iclforge::internal::Fixed32> fft128{};
+    iclforge::internal::FftTables<kN / 8, iclforge::internal::Fixed32> fft64{};
     // §7.9.4.1 step 5's window, the double table rounded once.
-    std::array<Fixed32, kN> window{};
+    std::array<iclforge::internal::Fixed32, kN> window{};
 
     FixedImdctTables() {
         constexpr double kPi = std::numbers::pi;
         for (std::size_t k = 0; k < kN / 4; ++k) {
             const double angle = 2.0 * kPi * (8.0 * static_cast<double>(k) + 1.0) /
                                  (8.0 * static_cast<double>(kN));
-            cos1[k] = Fixed32{-std::cos(angle)};
-            sin1[k] = Fixed32{-std::sin(angle)};
+            cos1[k] = iclforge::internal::Fixed32{-std::cos(angle)};
+            sin1[k] = iclforge::internal::Fixed32{-std::sin(angle)};
         }
         for (std::size_t k = 0; k < kN / 8; ++k) {
             const double angle = 2.0 * kPi * (8.0 * static_cast<double>(k) + 1.0) /
                                  (4.0 * static_cast<double>(kN));
-            cos2[k] = Fixed32{-std::cos(angle)};
-            sin2[k] = Fixed32{-std::sin(angle)};
+            cos2[k] = iclforge::internal::Fixed32{-std::cos(angle)};
+            sin2[k] = iclforge::internal::Fixed32{-std::sin(angle)};
         }
         for (std::size_t i = 0; i < kN; ++i) {
-            window[i] = Fixed32{kAnalysisWindow[i]};
+            window[i] = iclforge::internal::Fixed32{kAnalysisWindow[i]};
         }
     }
 };
@@ -133,12 +133,12 @@ inline const FixedImdctTables& fixed_imdct_tables() {
 
 // The largest coefficient magnitude the pair accepts, in raw units: one half.
 // See the header comment for where the bound comes from.
-inline constexpr std::int32_t kFixedImdctInputLimit = Fixed32::kOne / 2;
+inline constexpr std::int32_t kFixedImdctInputLimit = iclforge::internal::Fixed32::kOne / 2;
 
 // §7.9.4.1: the 512-sample transform, windowed. Every |coeffs[k]| must be
 // below one half (kFixedImdctInputLimit); see above.
-inline void imdct512_windowed_fixed(std::span<const Fixed32, 256> coeffs,
-                                    std::span<Fixed32, 512> x) {
+inline void imdct512_windowed_fixed(std::span<const iclforge::internal::Fixed32, 256> coeffs,
+                                    std::span<iclforge::internal::Fixed32, 512> x) {
     const auto& t = fixed_imdct_tables();
     constexpr std::size_t kQuarter = FixedImdctTables::kN / 4;  // 128
     constexpr std::size_t kEighth = FixedImdctTables::kN / 8;   // 64
@@ -153,13 +153,13 @@ inline void imdct512_windowed_fixed(std::span<const Fixed32, 256> coeffs,
     for (std::size_t k = 0; k < kQuarter; ++k) {
         const ImdctValue a = imdct_value(coeffs[kHalfN - (2 * k) - 1]);
         const ImdctValue b = imdct_value(coeffs[2 * k]);
-        const Fixed32 c = t.cos1[k];
-        const Fixed32 s = t.sin1[k];
+        const iclforge::internal::Fixed32 c = t.cos1[k];
+        const iclforge::internal::Fixed32 s = t.sin1[k];
         const std::size_t d = t.fft128.bitrev[k];
         z_re[d] = (a * c) - (b * s);
         z_im[d] = -((b * c) + (a * s));
     }
-    fft_forward_bitrev<kQuarter, ImdctValue, Fixed32>(t.fft128, z_re, z_im);
+    fft_forward_bitrev<kQuarter, ImdctValue, iclforge::internal::Fixed32>(t.fft128, z_re, z_im);
 
     // Step 4: the conjugation back and the post-twiddle in one pass:
     // y[n] = conj(Z[n]) (xcos1[n] + j xsin1[n]).
@@ -168,8 +168,8 @@ inline void imdct512_windowed_fixed(std::span<const Fixed32, 256> coeffs,
     for (std::size_t n = 0; n < kQuarter; ++n) {
         const ImdctValue tr = z_re[n];
         const ImdctValue ti = -z_im[n];
-        const Fixed32 c = t.cos1[n];
-        const Fixed32 s = t.sin1[n];
+        const iclforge::internal::Fixed32 c = t.cos1[n];
+        const iclforge::internal::Fixed32 s = t.sin1[n];
         y_re[n] = (tr * c) - (ti * s);
         y_im[n] = (ti * c) + (tr * s);
     }
@@ -177,7 +177,7 @@ inline void imdct512_windowed_fixed(std::span<const Fixed32, 256> coeffs,
     // Step 5: windowing and de-interleaving, the same field-for-field
     // transcription as the double form's.
     const auto& w = t.window;
-    const auto out = [&x](std::size_t i, ImdctValue v) { x[i] = Fixed32::from_raw(v.raw); };
+    const auto out = [&x](std::size_t i, ImdctValue v) { x[i] = iclforge::internal::Fixed32::from_raw(v.raw); };
     for (std::size_t n = 0; n < kEighth; ++n) {
         out(2 * n, -y_im[kEighth + n] * w[2 * n]);
         out((2 * n) + 1, y_re[kEighth - n - 1] * w[(2 * n) + 1]);
@@ -193,8 +193,8 @@ inline void imdct512_windowed_fixed(std::span<const Fixed32, 256> coeffs,
 // §7.9.4.2: the two 256-sample transforms of a block-switched channel,
 // windowed into the same 512 samples. The same precondition; the 64-point
 // FFTs grow by six bits, so the margin is wider.
-inline void imdct256_pair_windowed_fixed(std::span<const Fixed32, 256> coeffs,
-                                         std::span<Fixed32, 512> x) {
+inline void imdct256_pair_windowed_fixed(std::span<const iclforge::internal::Fixed32, 256> coeffs,
+                                         std::span<iclforge::internal::Fixed32, 512> x) {
     const auto& t = fixed_imdct_tables();
     constexpr std::size_t kQuarter = FixedImdctTables::kN / 4;  // 128
     constexpr std::size_t kEighth = FixedImdctTables::kN / 8;   // 64
@@ -207,8 +207,8 @@ inline void imdct256_pair_windowed_fixed(std::span<const Fixed32, 256> coeffs,
     std::array<ImdctValue, kEighth> z2_re{};
     std::array<ImdctValue, kEighth> z2_im{};
     for (std::size_t k = 0; k < kEighth; ++k) {
-        const Fixed32 c = t.cos2[k];
-        const Fixed32 s = t.sin2[k];
+        const iclforge::internal::Fixed32 c = t.cos2[k];
+        const iclforge::internal::Fixed32 s = t.sin2[k];
         // x1[i] = coeffs[2i], x2[i] = coeffs[2i+1]; the gathers below read
         // x1[N/4-2k-1], x1[2k] and the same of x2 straight out of coeffs.
         const ImdctValue a1 = imdct_value(coeffs[2 * (kQuarter - (2 * k) - 1)]);
@@ -221,8 +221,8 @@ inline void imdct256_pair_windowed_fixed(std::span<const Fixed32, 256> coeffs,
         z2_re[d] = (a2 * c) - (b2 * s);
         z2_im[d] = -((b2 * c) + (a2 * s));
     }
-    fft_forward_bitrev<kEighth, ImdctValue, Fixed32>(t.fft64, z1_re, z1_im);
-    fft_forward_bitrev<kEighth, ImdctValue, Fixed32>(t.fft64, z2_re, z2_im);
+    fft_forward_bitrev<kEighth, ImdctValue, iclforge::internal::Fixed32>(t.fft64, z1_re, z1_im);
+    fft_forward_bitrev<kEighth, ImdctValue, iclforge::internal::Fixed32>(t.fft64, z2_re, z2_im);
 
     // Step 4, both sets.
     std::array<ImdctValue, kEighth> y1_re{};
@@ -230,8 +230,8 @@ inline void imdct256_pair_windowed_fixed(std::span<const Fixed32, 256> coeffs,
     std::array<ImdctValue, kEighth> y2_re{};
     std::array<ImdctValue, kEighth> y2_im{};
     for (std::size_t n = 0; n < kEighth; ++n) {
-        const Fixed32 c = t.cos2[n];
-        const Fixed32 s = t.sin2[n];
+        const iclforge::internal::Fixed32 c = t.cos2[n];
+        const iclforge::internal::Fixed32 s = t.sin2[n];
         const ImdctValue t1r = z1_re[n];
         const ImdctValue t1i = -z1_im[n];
         const ImdctValue t2r = z2_re[n];
@@ -244,7 +244,7 @@ inline void imdct256_pair_windowed_fixed(std::span<const Fixed32, 256> coeffs,
 
     // Step 5, N = 512 throughout as the spec's own note has it.
     const auto& w = t.window;
-    const auto out = [&x](std::size_t i, ImdctValue v) { x[i] = Fixed32::from_raw(v.raw); };
+    const auto out = [&x](std::size_t i, ImdctValue v) { x[i] = iclforge::internal::Fixed32::from_raw(v.raw); };
     for (std::size_t n = 0; n < kEighth; ++n) {
         out(2 * n, -y1_im[n] * w[2 * n]);
         out((2 * n) + 1, y1_re[kEighth - n - 1] * w[(2 * n) + 1]);

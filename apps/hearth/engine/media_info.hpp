@@ -98,7 +98,7 @@ enum class MediaCodec : std::uint8_t {
 // AC-3 stream has one.
 struct MediaProgramme {
     int substreamid = 0;
-    Acmod acmod = Acmod::k2_0;
+    ac3::Acmod acmod = ac3::Acmod::k2_0;
     bool lfe = false;
     int channels = 0;
     int bsid = 0;
@@ -113,19 +113,19 @@ struct MediaProgramme {
 // carry stays unset.
 struct MediaBitstream {
     // The unit's acmod, which names bsmod 7.
-    Acmod acmod = Acmod::k2_0;
+    ac3::Acmod acmod = ac3::Acmod::k2_0;
     // AC-3's bsi, or E-AC-3's informational metadata when it sends it.
-    std::optional<meta::BsiInfo> info = std::nullopt;
+    std::optional<ac3::meta::BsiInfo> info = std::nullopt;
     // Annex D's alternate syntax: AC-3 bsid 6, or a legacy core's.
-    std::optional<meta::AlternateBsi> alternate_bsi = std::nullopt;
+    std::optional<ac3::meta::AlternateBsi> alternate_bsi = std::nullopt;
     // §5.4.2.4-5, which only AC-3 codes.
-    std::optional<meta::CentreMixLevel> cmixlev = std::nullopt;
-    std::optional<meta::SurroundMixLevel> surmixlev = std::nullopt;
+    std::optional<ac3::meta::CentreMixLevel> cmixlev = std::nullopt;
+    std::optional<ac3::meta::SurroundMixLevel> surmixlev = std::nullopt;
     // Annex E's mixing metadata, from the independent substream.
-    std::optional<meta::MixMetadata> mixing = std::nullopt;
+    std::optional<ac3::meta::MixMetadata> mixing = std::nullopt;
     // The fold levels the output stage takes from all of the above, with the
     // defaults for what the stream leaves out.
-    MixLevels levels{};
+    ac3::MixLevels levels{};
 };
 
 struct MediaInfo {
@@ -146,9 +146,9 @@ struct MediaInfo {
     // AC-3 and E-AC-3.
     std::vector<MediaProgramme> programmes{};
     // Associated services, substream ids 1-3; `present` says which exist.
-    std::array<io::SubstreamService, 3> associated_services{};
+    std::array<ac3::io::SubstreamService, 3> associated_services{};
     std::optional<std::uint16_t> channel_map = std::nullopt;
-    std::optional<io::ProbeReport> probe = std::nullopt;
+    std::optional<ac3::io::ProbeReport> probe = std::nullopt;
     std::optional<MediaBitstream> bitstream = std::nullopt;
     // The first OAMD payload's full per-object detail (position, gain, snap,
     // active) - probe->program (above) is that SAME payload's bed/object-count

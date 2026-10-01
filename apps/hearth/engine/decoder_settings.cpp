@@ -32,34 +32,34 @@ constexpr int kVisuallyImpaired = 0b010;
 
 // AC-4's downmix for the fold the layout gets: the same target, or the
 // stream's preferred method for a stereo fold the listener has left to it.
-[[nodiscard]] iclforge::ac4::DownmixTarget ac4_downmix(const std::optional<DownmixTarget>& fold,
+[[nodiscard]] iclforge::ac4::DownmixTarget ac4_downmix(const std::optional<ac3::DownmixTarget>& fold,
                                              bool preferred) {
     if (!fold) {
         return iclforge::ac4::DownmixTarget::kAsCoded;
     }
     switch (*fold) {
-        case DownmixTarget::kMono:
+        case ac3::DownmixTarget::kMono:
             return iclforge::ac4::DownmixTarget::kMono;
-        case DownmixTarget::kLtRt:
+        case ac3::DownmixTarget::kLtRt:
             return preferred ? iclforge::ac4::DownmixTarget::kStereo
                              : iclforge::ac4::DownmixTarget::kLtRt;
-        case DownmixTarget::kLoRo:
+        case ac3::DownmixTarget::kLoRo:
             return preferred ? iclforge::ac4::DownmixTarget::kStereo
                              : iclforge::ac4::DownmixTarget::kLoRo;
-        case DownmixTarget::kAsCoded:
+        case ac3::DownmixTarget::kAsCoded:
             break;
     }
     return iclforge::ac4::DownmixTarget::kAsCoded;
 }
 
 // The same policies under AC-4's names.
-[[nodiscard]] iclforge::ac4::ConcealmentPolicy ac4_concealment(ConcealmentPolicy policy) {
+[[nodiscard]] iclforge::ac4::ConcealmentPolicy ac4_concealment(ac3::ConcealmentPolicy policy) {
     switch (policy) {
-        case ConcealmentPolicy::kNone:
+        case ac3::ConcealmentPolicy::kNone:
             return iclforge::ac4::ConcealmentPolicy::kNone;
-        case ConcealmentPolicy::kRepeatFade:
+        case ac3::ConcealmentPolicy::kRepeatFade:
             return iclforge::ac4::ConcealmentPolicy::kRepeatFade;
-        case ConcealmentPolicy::kMute:
+        case ac3::ConcealmentPolicy::kMute:
             return iclforge::ac4::ConcealmentPolicy::kMute;
     }
     return iclforge::ac4::ConcealmentPolicy::kNone;
@@ -67,7 +67,7 @@ constexpr int kVisuallyImpaired = 0b010;
 
 // AC-4's configuration, for the fold `serving` asks of the decoder.
 [[nodiscard]] iclforge::ac4::DecoderConfig ac4_setup(const DecoderSettings& settings,
-                                           const render::Serving& serving) {
+                                           const ac3::render::Serving& serving) {
     const Ac4Settings& ac4 = settings.ac4;
     iclforge::ac4::DecoderConfig config;
     const bool headphones = ac4.drc == iclforge::ac4::DrcMode::kPortableHeadphones;
@@ -165,12 +165,12 @@ DecoderSetup decoder_setup(const DecoderSettings& settings, const render::Output
     DecoderSetup setup;
     // render::serve takes the two stereo folds only; mono is the one-speaker
     // layout's, and "as coded" is not a fold.
-    const DownmixTarget stereo = settings.stereo_fold == DownmixTarget::kLtRt
-                                     ? DownmixTarget::kLtRt
-                                     : DownmixTarget::kLoRo;
-    setup.serving = render::serve(layout, stereo, settings.objects);
+    const ac3::DownmixTarget stereo = settings.stereo_fold == ac3::DownmixTarget::kLtRt
+                                     ? ac3::DownmixTarget::kLtRt
+                                     : ac3::DownmixTarget::kLoRo;
+    setup.serving = ac3::render::serve(layout, stereo, settings.objects);
 
-    DecoderConfig& config = setup.config;
+    ac3::DecoderConfig& config = setup.config;
     // The custom switches go in whatever the mode: the decoders ignore them
     // under kLine and kRf (internal::resolve_operating_mode), so a settings
     // page can keep them while another mode is chosen.
@@ -193,7 +193,7 @@ DecoderSetup decoder_setup(const DecoderSettings& settings, const render::Output
     // programme would skip the whole of an item still playing the old one
     // when the setting changes under it.
     config.concealment = settings.concealment;
-    render::configure_decoder(setup.serving, config);
+    ac3::render::configure_decoder(setup.serving, config);
     setup.ac4 = ac4_setup(settings, setup.serving);
     return setup;
 }
@@ -201,18 +201,18 @@ DecoderSetup decoder_setup(const DecoderSettings& settings, const render::Output
 std::string describe(const DecoderSettings& settings) {
     std::vector<std::string> parts;
     switch (settings.mode) {
-        case OperatingMode::kLine: parts.emplace_back("line mode"); break;
-        case OperatingMode::kRf:
+        case ac3::OperatingMode::kLine: parts.emplace_back("line mode"); break;
+        case ac3::OperatingMode::kRf:
             parts.push_back(fmt::format("RF mode (ceiling {:.1f} dBFS)", settings.rf_ceiling_db));
             break;
-        case OperatingMode::kCustom:
+        case ac3::OperatingMode::kCustom:
             parts.push_back(fmt::format("custom mode (cut {:.2f}, boost {:.2f}, compr {}, dialogue {})",
                                         settings.drc_cut, settings.drc_boost,
                                         settings.heavy_compression ? "on" : "off",
                                         settings.normalise_dialogue ? "normalised" : "as coded"));
             break;
     }
-    parts.push_back(settings.stereo_fold == DownmixTarget::kLtRt
+    parts.push_back(settings.stereo_fold == ac3::DownmixTarget::kLtRt
                         ? fmt::format("stereo fold Lt/Rt (phase shift {})",
                                       settings.ltrt_phase_shift ? "on" : "off")
                         : std::string{"stereo fold Lo/Ro"});
@@ -220,7 +220,7 @@ std::string describe(const DecoderSettings& settings) {
                        : *settings.mix_lfe ? "LFE in folds"
                                            : "no LFE in folds");
 
-    const MixLevelOverride& levels = settings.mix_levels;
+    const ac3::MixLevelOverride& levels = settings.mix_levels;
     std::vector<std::string> set;
     if (levels.loro_clev) {
         set.push_back(fmt::format("Lo/Ro centre {:.3f}", *levels.loro_clev));
@@ -248,9 +248,9 @@ std::string describe(const DecoderSettings& settings) {
     parts.push_back(settings.programme ? fmt::format("programme {}", *settings.programme)
                                        : std::string{"the first programme"});
     switch (settings.objects) {
-        case render::ObjectsPolicy::kAuto: parts.emplace_back("objects for height layouts"); break;
-        case render::ObjectsPolicy::kNever: parts.emplace_back("objects never"); break;
-        case render::ObjectsPolicy::kAlways: parts.emplace_back("objects always"); break;
+        case ac3::render::ObjectsPolicy::kAuto: parts.emplace_back("objects for height layouts"); break;
+        case ac3::render::ObjectsPolicy::kNever: parts.emplace_back("objects never"); break;
+        case ac3::render::ObjectsPolicy::kAlways: parts.emplace_back("objects always"); break;
     }
     switch (settings.joc_domain) {
         case oba::joc::Domain::kQmf: parts.emplace_back("objects reconstructed in the QMF domain"); break;
@@ -259,9 +259,9 @@ std::string describe(const DecoderSettings& settings) {
             break;
     }
     switch (settings.concealment) {
-        case ConcealmentPolicy::kNone: parts.emplace_back("no concealment"); break;
-        case ConcealmentPolicy::kRepeatFade: parts.emplace_back("concealment: repeat and fade"); break;
-        case ConcealmentPolicy::kMute: parts.emplace_back("concealment: mute"); break;
+        case ac3::ConcealmentPolicy::kNone: parts.emplace_back("no concealment"); break;
+        case ac3::ConcealmentPolicy::kRepeatFade: parts.emplace_back("concealment: repeat and fade"); break;
+        case ac3::ConcealmentPolicy::kMute: parts.emplace_back("concealment: mute"); break;
     }
     parts.emplace_back(settings.fast_inverse_transform ? "fast inverse transform"
                                                         : "reference inverse transform");
@@ -271,13 +271,13 @@ std::string describe(const DecoderSettings& settings) {
 
 DecoderSettings transcode_settings(const DecoderSettings& listener) {
     DecoderSettings neutral;
-    neutral.mode = OperatingMode::kCustom;
+    neutral.mode = ac3::OperatingMode::kCustom;
     neutral.rf_ceiling_db = 0.0;
     neutral.drc_cut = 0.0;
     neutral.drc_boost = 0.0;
     neutral.heavy_compression = false;
     neutral.normalise_dialogue = false;
-    neutral.objects = render::ObjectsPolicy::kNever;
+    neutral.objects = ac3::render::ObjectsPolicy::kNever;
     neutral.dual_mono = listener.dual_mono;
     neutral.concealment = listener.concealment;
     neutral.programme = listener.programme;

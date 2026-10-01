@@ -32,7 +32,7 @@ namespace iclforge::ac3::internal {
 template <typename Scalar>
 void inverse_transform_into(const std::array<Scalar, 256>& coeffs, std::array<Scalar, 512>& x,
                             bool short_block, bool fast) {
-    if constexpr (std::is_same_v<Scalar, Fixed32>) {
+    if constexpr (std::is_same_v<Scalar, iclforge::internal::Fixed32>) {
         // The fixed-point tier's own pair (mdct_fixed.hpp), integer end to
         // end: the coefficients arrive under their block exponent
         // (block_norm.hpp), which is what keeps them inside the pair's

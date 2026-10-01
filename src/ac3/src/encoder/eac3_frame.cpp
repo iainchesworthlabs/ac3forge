@@ -1018,7 +1018,7 @@ struct ExtensionContent {
                 total += power;
                 if (bin >= startmant) {
                     region += power;
-                    log_sum += internal::scalar_log(power + static_cast<Scalar>(1e-30));
+                    log_sum += iclforge::internal::scalar_log(power + static_cast<Scalar>(1e-30));
                     ++count;
                 }
             }
@@ -1029,7 +1029,7 @@ struct ExtensionContent {
         return out;
     }
     out.energy_share = static_cast<double>(region / total);
-    const Scalar geometric = internal::scalar_exp(log_sum / static_cast<Scalar>(count));
+    const Scalar geometric = iclforge::internal::scalar_exp(log_sum / static_cast<Scalar>(count));
     const Scalar arithmetic = region / static_cast<Scalar>(count);
     out.flatness = arithmetic > 0
                        ? std::clamp(static_cast<double>(geometric / arithmetic), 0.0, 1.0)
@@ -1251,14 +1251,14 @@ inline constexpr double kCouplingEmptyRegionShare = 1.0e-4;
     int count = 0;
     for (const Scalar value : region) {
         const Scalar power = value * value + static_cast<Scalar>(1e-30);
-        log_sum += internal::scalar_log(power);
+        log_sum += iclforge::internal::scalar_log(power);
         sum += power;
         ++count;
     }
     if (count == 0 || !(sum > 0)) {
         return 31;  // nothing up here to blend; copying costs nothing either
     }
-    const Scalar flatness = internal::scalar_exp(log_sum / static_cast<Scalar>(count)) /
+    const Scalar flatness = iclforge::internal::scalar_exp(log_sum / static_cast<Scalar>(count)) /
                             (sum / static_cast<Scalar>(count));
     return std::clamp(
         static_cast<int>(std::lround((Scalar{1} - flatness) * static_cast<Scalar>(32))), 0, 31);

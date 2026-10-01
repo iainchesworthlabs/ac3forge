@@ -597,22 +597,22 @@ struct EcplTables<float> {
 // same double ones (planning/arithmetic-tiers.md). Every entry is at most one
 // in magnitude, so the format holds them with the whole of its fraction.
 template <>
-struct EcplTables<internal::Fixed32> {
-    std::array<internal::Fixed32, 512> window{};
-    std::array<internal::Fixed32, 512> cos3{};
-    std::array<internal::Fixed32, 512> sin3{};
-    std::array<internal::Fixed32, 256> y{};
+struct EcplTables<iclforge::internal::Fixed32> {
+    std::array<iclforge::internal::Fixed32, 512> window{};
+    std::array<iclforge::internal::Fixed32, 512> cos3{};
+    std::array<iclforge::internal::Fixed32, 512> sin3{};
+    std::array<iclforge::internal::Fixed32, 256> y{};
 
     EcplTables() {
         const auto& xcos3 = xcos3_table();
         for (std::size_t i = 0; i < 512; ++i) {
-            window[i] = internal::Fixed32{kAnalysisWindow[i]};
-            cos3[i] = internal::Fixed32{xcos3.cos[i]};
-            sin3[i] = internal::Fixed32{xcos3.sin[i]};
+            window[i] = iclforge::internal::Fixed32{kAnalysisWindow[i]};
+            cos3[i] = iclforge::internal::Fixed32{xcos3.cos[i]};
+            sin3[i] = iclforge::internal::Fixed32{xcos3.sin[i]};
         }
         const auto& y_table = ecpl_y().value;
         for (std::size_t m = 0; m < 256; ++m) {
-            y[m] = internal::Fixed32{y_table[m]};
+            y[m] = iclforge::internal::Fixed32{y_table[m]};
         }
     }
 };
@@ -839,7 +839,7 @@ void ecpl_channel_spectrum_impl(std::span<const Scalar, 256> prev_mant,
 
 namespace {
 
-using internal::Fixed32;
+using iclforge::internal::Fixed32;
 
 // One past the highest set bit of a magnitude, as block_norm.hpp's raw_width
 // is for a stored value.
@@ -874,7 +874,7 @@ using internal::Fixed32;
                                std::span<const Fixed32, 512> imag_in,
                                std::span<Fixed32, 512> real_out,
                                std::span<Fixed32, 512> imag_out) {
-    static const internal::FftTables<512, Fixed32> tables;
+    static const iclforge::internal::FftTables<512, Fixed32> tables;
     for (std::size_t n = 0; n < 512; ++n) {
         real_out[tables.bitrev[n]] = real_in[n];
         imag_out[tables.bitrev[n]] = imag_in[n];
@@ -898,15 +898,15 @@ using internal::Fixed32;
         return excess;
     };
     int applied = 0;
-    internal::fft_radix4_stage<512, 4, Fixed32, Fixed32>(tables, real_out, imag_out);
+    iclforge::internal::fft_radix4_stage<512, 4, Fixed32, Fixed32>(tables, real_out, imag_out);
     applied += shed();
-    internal::fft_radix4_stage<512, 16, Fixed32, Fixed32>(tables, real_out, imag_out);
+    iclforge::internal::fft_radix4_stage<512, 16, Fixed32, Fixed32>(tables, real_out, imag_out);
     applied += shed();
-    internal::fft_radix4_stage<512, 64, Fixed32, Fixed32>(tables, real_out, imag_out);
+    iclforge::internal::fft_radix4_stage<512, 64, Fixed32, Fixed32>(tables, real_out, imag_out);
     applied += shed();
-    internal::fft_radix4_stage<512, 256, Fixed32, Fixed32>(tables, real_out, imag_out);
+    iclforge::internal::fft_radix4_stage<512, 256, Fixed32, Fixed32>(tables, real_out, imag_out);
     applied += shed();
-    internal::fft_radix2_final_stage<512, Fixed32, Fixed32>(tables, real_out, imag_out);
+    iclforge::internal::fft_radix2_final_stage<512, Fixed32, Fixed32>(tables, real_out, imag_out);
     // The last stage needs no ceiling of its own - nothing follows it - but
     // what it did to the magnitude still belongs in the exponent.
     applied += shed();
@@ -1025,8 +1025,8 @@ void release_ecpl_scratch() {
     if (ecpl_scratch_ever_built<float>()) {
         ecpl_spectrum_scratch_slot<float>().reset();
     }
-    if (ecpl_scratch_ever_built<internal::Fixed32>()) {
-        ecpl_spectrum_scratch_slot<internal::Fixed32>().reset();
+    if (ecpl_scratch_ever_built<iclforge::internal::Fixed32>()) {
+        ecpl_spectrum_scratch_slot<iclforge::internal::Fixed32>().reset();
     }
 }
 

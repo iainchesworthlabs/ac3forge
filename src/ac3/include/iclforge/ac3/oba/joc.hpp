@@ -494,6 +494,6 @@ struct ReconstructionState {
 [[nodiscard]] ICLFORGE_AC3_EXPORT std::vector<std::vector<float>> reconstruct(
     std::span<const std::span<const float>> bed, const FrameParameters& params,
     ReconstructionState& state, bool fast_mdct = false, bool fast_imdct = false,
-    Domain domain = Domain::kQmf);
+    iclforge::oba::joc::Domain domain = iclforge::oba::joc::Domain::kQmf);
 
 }  // namespace iclforge::ac3::oba::joc

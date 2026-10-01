@@ -234,7 +234,7 @@ private:
     [[nodiscard]] std::size_t first_decoded(std::size_t unit) const;
 
     std::vector<std::byte> bytes_;
-    io::ScannedStream scanned_{};
+    ac3::io::ScannedStream scanned_{};
     // The programme's access units, and the stream sample each starts at -
     // one more entry than there are units, the last being the stream's end.
     std::vector<std::span<const std::byte>> units_;

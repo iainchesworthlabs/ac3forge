@@ -84,8 +84,8 @@ struct Ac4Reading {
 // Passthrough's question about the stream, which is a different question
 // from what the bytes are: an AC-3 core carrying E-AC-3 dependents only
 // reaches a sink whole as E-AC-3.
-[[nodiscard]] audio::BitstreamFormat format_of(io::StreamKind kind) {
-    return kind == io::StreamKind::kAc3 ? audio::BitstreamFormat::kAc3
+[[nodiscard]] audio::BitstreamFormat format_of(ac3::io::StreamKind kind) {
+    return kind == ac3::io::StreamKind::kAc3 ? audio::BitstreamFormat::kAc3
                                         : audio::BitstreamFormat::kEac3;
 }
 
@@ -93,13 +93,13 @@ struct Ac4Reading {
 // numblkscod (§E2.3.1.4): 1, 2, 3 or 6 blocks. What scan() records for the
 // first programme only, read here for another.
 [[nodiscard]] std::uint32_t unit_samples(std::span<const std::byte> unit) {
-    const auto header = io::read_frame_header(unit);
-    if (!header || header->kind != io::StreamKind::kEac3) {
-        return static_cast<std::uint32_t>(kSamplesPerFrame);
+    const auto header = ac3::io::read_frame_header(unit);
+    if (!header || header->kind != ac3::io::StreamKind::kEac3) {
+        return static_cast<std::uint32_t>(ac3::kSamplesPerFrame);
     }
     constexpr std::array<std::uint32_t, 4> kBlocks{1, 2, 3, 6};
     const auto code = static_cast<std::size_t>(std::clamp(header->numblkscod, 0, 3));
-    return kBlocks[code] * static_cast<std::uint32_t>(kSamplesPerBlock);
+    return kBlocks[code] * static_cast<std::uint32_t>(ac3::kSamplesPerBlock);
 }
 
 }  // namespace
@@ -149,7 +149,7 @@ std::expected<Session, std::string> Session::open(
                                 note.empty() ? "" : " ", units->unread);
         }
     } else {
-        auto scanned = io::scan(session.bytes_);
+        auto scanned = ac3::io::scan(session.bytes_);
         if (!scanned) {
             return std::unexpected(fmt::format(
                 "\"{}\" is not an AC-3, E-AC-3 or AC-4 stream this player can read.", path));
@@ -162,10 +162,10 @@ std::expected<Session, std::string> Session::open(
         // The programme's units, and how long each is: scan() has already
         // read the first programme's lengths; another's are read from its
         // units.
-        const io::ScannedProgramme* chosen = nullptr;
+        const ac3::io::ScannedProgramme* chosen = nullptr;
         if (programme) {
             const auto found = std::ranges::find(session.scanned_.programmes, *programme,
-                                                 &io::ScannedProgramme::substreamid);
+                                                 &ac3::io::ScannedProgramme::substreamid);
             if (found != session.scanned_.programmes.end()) {
                 chosen = &*found;
             } else {
