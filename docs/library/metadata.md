@@ -110,7 +110,7 @@ auto encoder = std::make_unique<iclforge::FrameEncoder>(iclforge::EncoderConfig{
 });
 ```
 
-Full program: [`examples/metadata.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/metadata.cpp).
+Full program: [`examples/metadata.cpp`](https://github.com/iainchesworthlabs/iclforge/blob/main/examples/metadata.cpp).
 
 Note `meta::Profile` is the curve and `meta::ProfileId` the name of one; `meta::profile(id)`
 converts. The five ids are `kFilmStandard`, `kFilmLight`, `kMusicStandard`, `kMusicLight` and
@@ -292,7 +292,7 @@ version and date, so a report can name the edition it judged against.
 `evaluate_qc_gate()` is the pure comparison:
 `QcVerdict::loudness_delta_lu`/`true_peak_margin_dbtp` report signed distance from the target/
 ceiling, and `pass()` is both halves together. `forge qc` is this same API driven end to end over
-a real, already-encoded file — see [`examples/qc_report.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/qc_report.cpp)
+a real, already-encoded file — see [`examples/qc_report.cpp`](https://github.com/iainchesworthlabs/iclforge/blob/main/examples/qc_report.cpp)
 for the library-only version: encode with a dialnorm that does not match the real level, decode,
 measure, and see the mismatch and the gate verdicts it produces.
 

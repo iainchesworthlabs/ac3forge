@@ -3,12 +3,12 @@
 `Formula/iclforge.rb` packages `forge` — the CLI only, built from the release source
 tarball. `Casks/iclforge.rb` packages `forge-gui` — the GUI, as the prebuilt `.app` bundle from a
 release's DragNDrop `.dmg`. Both live here first and are copied into the personal tap
-[`iainchesworthlabs/homebrew-ac3forge`](https://github.com/iainchesworthlabs/homebrew-ac3forge),
+[`iainchesworthlabs/homebrew-iclforge`](https://github.com/iainchesworthlabs/homebrew-iclforge),
 which is public and carries both at `v0.10.0-beta.1`. Neither is submitted to `homebrew-core`.
 
 ```bash
-brew install iainchesworthlabs/ac3forge/iclforge          # forge, built from source
-brew install --cask iainchesworthlabs/ac3forge/iclforge     # forge-gui.app, prebuilt
+brew install iainchesworthlabs/iclforge/iclforge          # forge, built from source
+brew install --cask iainchesworthlabs/iclforge/iclforge     # forge-gui.app, prebuilt
 ```
 
 The formula and the cask are named `iclforge` from the first release made after the rename of
@@ -29,8 +29,8 @@ machine; the tap's pull requests #1 to #3 are the bumps to `v0.8.0-beta.2`, `v0.
 technically correct: notability (real, sustained usage — GitHub stars/forks/watchers, not
 just "it exists"), a track record of maintenance, and a formula that needs no unusual
 patching to build cleanly with Homebrew's own toolchain on every supported macOS version.
-ICL Forge does not clear that bar yet. A personal tap (`iainchesworthlabs/ac3forge`, i.e. a
-`homebrew-ac3forge` repo) has none of those requirements — anyone can `brew tap` it and
+ICL Forge does not clear that bar yet. A personal tap (`iainchesworthlabs/iclforge`, i.e. a
+`homebrew-iclforge` repo) has none of those requirements — anyone can `brew tap` it and
 `brew install` from it immediately — and is the right home for the formula until a
 `homebrew-core` submission is worth making on its own merits. See [Homebrew's Acceptable
 Formulae criteria](https://docs.brew.sh/Acceptable-Formulae) for the full bar; that PR, if
@@ -57,7 +57,7 @@ Each release needs the same bump the sibling Formula gets (the Formula's `url` a
 cask's `version` and `sha256`). [`manifest-bump.yml`](../../.github/workflows/manifest-bump.yml)
 makes it after a release publishes: it opens a PR here with the bump and, when
 `HOMEBREW_TAP_TOKEN` is set, a PR on the live tap,
-[`iainchesworthlabs/homebrew-ac3forge`](https://github.com/iainchesworthlabs/homebrew-ac3forge),
+[`iainchesworthlabs/homebrew-iclforge`](https://github.com/iainchesworthlabs/homebrew-iclforge),
 for a person to merge after the local validation below. See
 [docs/releasing.md](../../docs/releasing.md#homebrew-formula-and-cask) for the flow.
 

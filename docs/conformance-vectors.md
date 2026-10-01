@@ -13,7 +13,7 @@ AC-4 vector (see [What it does not prove](#what-it-does-not-prove)).
 
 ## Getting it
 
-Attached to every [GitHub release](https://github.com/iainchesworthlabs/ac3forge/releases) as
+Attached to every [GitHub release](https://github.com/iainchesworthlabs/iclforge/releases) as
 `iclforge-conformance-vectors-<version>.tar.gz`, alongside the packages, the SPDX SBOM, the
 `SHA512SUMS` and the Sigstore provenance attestations — it is signed, checksummed and attested
 exactly like every other release asset (see [Releasing](releasing.md#what-gets-published)).

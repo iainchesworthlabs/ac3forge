@@ -6,7 +6,7 @@ This file is installed as {{LOCATION}}, and covers {{PROGRAMS}}.
 ICL Forge, and the iclforge library its applications are built from, are
 free software under the GNU General Public License, version 3 or later;
 the full text is LICENSE.txt beside this file. The source is at
-https://github.com/iainchesworthlabs/ac3forge
+https://github.com/iainchesworthlabs/iclforge
 
 What follows is what this build carries from others: each component, the
 terms it is used under, and the text of those terms where they ask to

@@ -5,7 +5,7 @@ alike: Windows MSVC in the merge queue, and both in the run after a merge to mai
 [CI for many agents](../ci-agentic.md)). This page covers what is specific to Windows; for the
 full preset reference, options list and troubleshooting, see [Building from source](../building.md).
 Crucible's kernel driver and driver VM live under
-[`apps/windows/README.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/apps/windows/README.md),
+[`apps/windows/README.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/apps/windows/README.md),
 separate from the application in `apps/crucible/`.
 
 ## Status

@@ -9,7 +9,7 @@ Nothing here is a promise of invulnerability. It is a statement of posture — w
 boundary sits, what is checked, what is only structurally bounded, and where the gaps are — so
 that an embedder can reason about the remaining risk instead of guessing at it.
 
-The reporting process is in [SECURITY.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/SECURITY.md);
+The reporting process is in [SECURITY.md](https://github.com/iainchesworthlabs/iclforge/blob/main/SECURITY.md);
 [Reporting an issue](#reporting-an-issue) below adds what an embedder specifically should send.
 
 ## Trust boundary
@@ -97,7 +97,7 @@ guarantee:
 
 What runs against it:
 
-- **Twenty-four libFuzzer harnesses** under [`fuzz/`](https://github.com/iainchesworthlabs/ac3forge/blob/main/fuzz/README.md),
+- **Twenty-four libFuzzer harnesses** under [`fuzz/`](https://github.com/iainchesworthlabs/iclforge/blob/main/fuzz/README.md),
   built with ASan + UBSan and `-fno-sanitize-recover=all`. Twenty-one are in `fuzz/run.sh`'s
   default list and drive the entry points in the table above for crashes and undefined
   behaviour — format sniffing (`fuzz_scan`), the three container demuxers (`fuzz_matroska_demux`,
@@ -414,7 +414,7 @@ accepts WebSocket connections on port 8928 and advertises `_sendspin._tcp`; Hear
 listens on 8927, advertises `_sendspin-server._tcp`, and dials the players it finds. Anyone on the
 network can open a connection to either, and anyone can send them mDNS packets. The protocol, and
 where Hearth departs from it, is in
-[`planning/hearth-sendspin-extension.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/hearth-sendspin-extension.md).
+[`planning/hearth-sendspin-extension.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/hearth-sendspin-extension.md).
 
 **A peer without a key reaches the handshake and little more.** After the handshake's text
 frames, every message is sealed with Noise `KKpsk2` under a PSK both ends hold: a pairing
@@ -475,7 +475,7 @@ key:
 A page on another site, opened by someone on the same network, can send the board requests that
 need no CORS preflight, such as `POST /play` with a text body. Forgetting one server that way
 needs its whole server_id, which such a page cannot read from `GET /pairing`.
-[`planning/esp32-device-ui.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-device-ui.md)
+[`planning/esp32-device-ui.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/esp32-device-ui.md)
 records that exposure and the decision to leave it. The page puts every string from `/status` into
 the document as text, never as markup.
 
@@ -535,9 +535,9 @@ why `fuzz_ac4_decode` needs no CRC-repairing mutator. A caller that wants AC-3's
 
 ## Reporting an issue
 
-Use [GitHub Security Advisories](https://github.com/iainchesworthlabs/ac3forge/security/advisories/new),
+Use [GitHub Security Advisories](https://github.com/iainchesworthlabs/iclforge/security/advisories/new),
 privately — the process and timelines are in
-[SECURITY.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/SECURITY.md).
+[SECURITY.md](https://github.com/iainchesworthlabs/iclforge/blob/main/SECURITY.md).
 
 If you found it while embedding this library, the two things that speed up a fix most are:
 
@@ -556,6 +556,6 @@ what you hit is already fixed.
 
 - [Validation](verification.md) — how output correctness is checked, and where the oracles run out
 - [Conformance vectors](conformance-vectors.md) — the published stream set, and what it does and does not prove
-- [`fuzz/README.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/fuzz/README.md) — the harnesses, the differential oracle and its agreement floor
+- [`fuzz/README.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/fuzz/README.md) — the harnesses, the differential oracle and its agreement floor
 - [Decoding](library/decoding.md) — the decode API this page describes the boundaries of
 - [C API](library/c-api.md) — the ownership and error conventions in full

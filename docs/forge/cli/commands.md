@@ -425,7 +425,7 @@ bare non-zero exit.
 
 See [ADM / BW64 reading](../../library/adm.md) and [ADM → Atmos bridging](../../library/adm-bridge.md)
 for the parser and the mapping layer this command drives, and
-[`examples/encode_adm.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/encode_adm.cpp)
+[`examples/encode_adm.cpp`](https://github.com/iainchesworthlabs/iclforge/blob/main/examples/encode_adm.cpp)
 for the same pipeline as a minimal, standalone, self-fixturing program.
 
 ### IAB ingest — Dolby Atmos cinema/IMF masters (opt-in)
@@ -475,7 +475,7 @@ opaque crash or a bare non-zero exit.
 See [IAB reading](../../library/iab.md) and
 [ADM → Atmos bridging](../../library/adm-bridge.md#bridging-iab) for the parser
 and the mapping layer this command drives, and
-[`examples/encode_iab.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/encode_iab.cpp)
+[`examples/encode_iab.cpp`](https://github.com/iainchesworthlabs/iclforge/blob/main/examples/encode_iab.cpp)
 for the same pipeline as a minimal, standalone, self-fixturing program.
 
 ### Object-layer strip

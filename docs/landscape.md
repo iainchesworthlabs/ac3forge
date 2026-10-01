@@ -50,7 +50,7 @@ a history to show here ([Validation: AC-4](verification.md#the-encoder)).
 
 <script>
 (function () {
-  const REPO = "iainchesworthlabs/ac3forge";
+  const REPO = "iainchesworthlabs/iclforge";
   const HISTORY_BRANCH = "quality-history";
   // Releases only ever happen on main, which since the 2026-08 move to
   // trunk-based development is the only branch there is - tagging IS the
@@ -240,35 +240,35 @@ no DEE panel, because DEE had no trustworthy score for them.
 
 <div class="landscape-spectrograms">
   <figure>
-    <img src="https://raw.githubusercontent.com/iainchesworthlabs/ac3forge/quality-history/spectrograms/ac3-51-448.png" alt="ac3-51-448 spectrogram: original vs ICL Forge vs FFmpeg vs DEE" loading="lazy">
+    <img src="https://raw.githubusercontent.com/iainchesworthlabs/iclforge/quality-history/spectrograms/ac3-51-448.png" alt="ac3-51-448 spectrogram: original vs ICL Forge vs FFmpeg vs DEE" loading="lazy">
     <figcaption>ac3-51-448 (AC-3, 5.1 @ 448 kbit/s) — synthetic fixture.</figcaption>
   </figure>
   <figure>
-    <img src="https://raw.githubusercontent.com/iainchesworthlabs/ac3forge/quality-history/spectrograms/eac3-stereo-192.png" alt="eac3-stereo-192 spectrogram: original vs ICL Forge vs FFmpeg vs DEE" loading="lazy">
+    <img src="https://raw.githubusercontent.com/iainchesworthlabs/iclforge/quality-history/spectrograms/eac3-stereo-192.png" alt="eac3-stereo-192 spectrogram: original vs ICL Forge vs FFmpeg vs DEE" loading="lazy">
     <figcaption>eac3-stereo-192 (E-AC-3, stereo @ 192 kbit/s) — synthetic fixture; 96 kbit/s per channel.</figcaption>
   </figure>
   <figure>
-    <img src="https://raw.githubusercontent.com/iainchesworthlabs/ac3forge/quality-history/spectrograms/eac3-51-256.png" alt="eac3-51-256 spectrogram: original vs ICL Forge vs FFmpeg vs DEE" loading="lazy">
+    <img src="https://raw.githubusercontent.com/iainchesworthlabs/iclforge/quality-history/spectrograms/eac3-51-256.png" alt="eac3-51-256 spectrogram: original vs ICL Forge vs FFmpeg vs DEE" loading="lazy">
     <figcaption>eac3-51-256 (E-AC-3, 5.1 @ 256 kbit/s) — synthetic fixture.</figcaption>
   </figure>
   <figure>
-    <img src="https://raw.githubusercontent.com/iainchesworthlabs/ac3forge/quality-history/spectrograms/eac3-stereo-96.png" alt="eac3-stereo-96 spectrogram: original vs ICL Forge vs FFmpeg vs DEE" loading="lazy">
+    <img src="https://raw.githubusercontent.com/iainchesworthlabs/iclforge/quality-history/spectrograms/eac3-stereo-96.png" alt="eac3-stereo-96 spectrogram: original vs ICL Forge vs FFmpeg vs DEE" loading="lazy">
     <figcaption>eac3-stereo-96 (E-AC-3, stereo @ 96 kbit/s) — synthetic fixture; 48 kbit/s per channel, where spectral extension runs in every block.</figcaption>
   </figure>
   <figure>
-    <img src="https://raw.githubusercontent.com/iainchesworthlabs/ac3forge/quality-history/spectrograms/eac3-stereo-64.png" alt="eac3-stereo-64 spectrogram: original vs ICL Forge vs FFmpeg vs DEE" loading="lazy">
+    <img src="https://raw.githubusercontent.com/iainchesworthlabs/iclforge/quality-history/spectrograms/eac3-stereo-64.png" alt="eac3-stereo-64 spectrogram: original vs ICL Forge vs FFmpeg vs DEE" loading="lazy">
     <figcaption>eac3-stereo-64 (E-AC-3, stereo @ 64 kbit/s) — synthetic fixture; 32 kbit/s per channel, where spectral extension runs in every block.</figcaption>
   </figure>
   <figure>
-    <img src="https://raw.githubusercontent.com/iainchesworthlabs/ac3forge/quality-history/spectrograms/ac3-music-stereo-192.png" alt="ac3-music-stereo-192 spectrogram: original vs ICL Forge vs FFmpeg vs DEE" loading="lazy">
+    <img src="https://raw.githubusercontent.com/iainchesworthlabs/iclforge/quality-history/spectrograms/ac3-music-stereo-192.png" alt="ac3-music-stereo-192 spectrogram: original vs ICL Forge vs FFmpeg vs DEE" loading="lazy">
     <figcaption>ac3-music-stereo-192 (AC-3, stereo @ 192 kbit/s) — 30 s of real orchestral music. Compare the top octave against the synthetic legs above: this one rolls off, they do not.</figcaption>
   </figure>
   <figure>
-    <img src="https://raw.githubusercontent.com/iainchesworthlabs/ac3forge/quality-history/spectrograms/eac3-music-stereo-96.png" alt="eac3-music-stereo-96 spectrogram: original vs ICL Forge vs FFmpeg vs DEE" loading="lazy">
+    <img src="https://raw.githubusercontent.com/iainchesworthlabs/iclforge/quality-history/spectrograms/eac3-music-stereo-96.png" alt="eac3-music-stereo-96 spectrogram: original vs ICL Forge vs FFmpeg vs DEE" loading="lazy">
     <figcaption>eac3-music-stereo-96 (E-AC-3, stereo @ 96 kbit/s) — 30 s of real music, 48 kbit/s per channel.</figcaption>
   </figure>
   <figure>
-    <img src="https://raw.githubusercontent.com/iainchesworthlabs/ac3forge/quality-history/spectrograms/eac3-speech-stereo-64.png" alt="eac3-speech-stereo-64 spectrogram: original vs ICL Forge vs FFmpeg vs DEE" loading="lazy">
+    <img src="https://raw.githubusercontent.com/iainchesworthlabs/iclforge/quality-history/spectrograms/eac3-speech-stereo-64.png" alt="eac3-speech-stereo-64 spectrogram: original vs ICL Forge vs FFmpeg vs DEE" loading="lazy">
     <figcaption>eac3-speech-stereo-64 (E-AC-3, stereo @ 64 kbit/s) — 30 s of real connected speech, 32 kbit/s per channel.</figcaption>
   </figure>
 </div>
@@ -335,7 +335,7 @@ encoder's bandwidth default was tuned against it. The three programme legs
 use 30 s CC0 recordings of real speech and music instead. The synthetic legs
 stay: their series are the history this page exists to show, and breaking
 that continuity to swap the material would throw it away. See
-[tools/generators/README.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/generators/README.md)
+[tools/generators/README.md](https://github.com/iainchesworthlabs/iclforge/blob/main/tools/generators/README.md)
 for the sources, licences and measured spectra.
 
 Three metrics are shown side by side, each with its own **vs FFmpeg** /
@@ -409,7 +409,7 @@ trained on panels — which is closer to "how it sounds" than a distance is, and
 still not a listener. This section is where a listening session's result goes.
 
 **No session has been run yet.** The apparatus is in the repository
-([`tools/listening/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/tools/listening));
+([`tools/listening/`](https://github.com/iainchesworthlabs/iclforge/tree/main/tools/listening));
 the listening is human time that has not been spent. The results table below
 is empty and says so rather than carrying placeholder numbers, and
 `README.md`'s and [Validation](verification.md)'s sentences saying that no
@@ -515,7 +515,7 @@ After building `forge`:
 ICLFORGE_CLI=build/config-linux-llvm/bin/forge python3 tools/listening/gen_listening_stimuli.py --out listening-session
 ```
 
-[`tools/listening/README.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/listening/README.md)
+[`tools/listening/README.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/tools/listening/README.md)
 is the operator's sequence, including what a session needs from a person.
 
 ## Where the data lives

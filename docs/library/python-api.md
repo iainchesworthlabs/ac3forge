@@ -24,7 +24,7 @@ A wheel built from a release that predates the AC-4 module has no `iclforge.ac4`
 PyPI has no source archive, so on those two `pip install ./python` from a checkout is the way in.
 
 The package's own readme — layout, build notes and examples not duplicated here — lives at
-[`python/README.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/python/README.md).
+[`python/README.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/python/README.md).
 
 `iclforge.__version__` reports the installed package's own PEP 440 version string, derived from
 the nearest `git describe` tag the same way `PROJECT_VERSION_FULL` is on the C++ side (see
@@ -45,7 +45,7 @@ for frame in range(31):
     stream += encoder.encode_frame(channels)
 ```
 
-Full program: [`examples/python/encode_decode_roundtrip.py`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/python/encode_decode_roundtrip.py).
+Full program: [`examples/python/encode_decode_roundtrip.py`](https://github.com/iainchesworthlabs/iclforge/blob/main/examples/python/encode_decode_roundtrip.py).
 
 `encode_frame` takes either a 2-D `(n_channels, n_samples)` array or a sequence of 1-D
 `float32`-convertible arrays (any array-like `numpy` accepts — a list also works), one per
@@ -205,7 +205,7 @@ for frame in range(FRAME_COUNT):
     csv_text += ac3.verify.trace_to_csv(trace, frame_index=frame)
 ```
 
-Full program: [`examples/python/trace_export.py`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/python/trace_export.py).
+Full program: [`examples/python/trace_export.py`](https://github.com/iainchesworthlabs/iclforge/blob/main/examples/python/trace_export.py).
 
 `kind` distinguishes the per-*bin* `exponent`/`bap` curves from the per-*band* `mask` curve and
 the per-stream `snr_offset` scalar — different index spaces, named rather than forced together.
@@ -259,7 +259,7 @@ doesn't name, or full control over each substream's own fields.
 `unit` is an `ac3.eac3.AccessUnit`: `.bytes` is the whole access unit, `.substream_bytes` is each
 substream's byte length (independent first, summing to `len(unit.bytes)`).
 
-Full program: [`examples/python/encode_eac3.py`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/python/encode_eac3.py).
+Full program: [`examples/python/encode_eac3.py`](https://github.com/iainchesworthlabs/iclforge/blob/main/examples/python/encode_eac3.py).
 
 ## E-AC-3 and Atmos objects
 
@@ -291,7 +291,7 @@ C++ `DecodedSubstream`/`DecodedAccessUnit` structs.
 
 Every fallible call translates the C++ side's `std::expected` error branch into a Python
 exception rather than a Result-like return — idiomatic for a Python API, even though the C++
-core itself never throws (see [CONTRIBUTING.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/CONTRIBUTING.md)'s
+core itself never throws (see [CONTRIBUTING.md](https://github.com/iainchesworthlabs/iclforge/blob/main/CONTRIBUTING.md)'s
 "no exceptions for stream-level failure" rule, which is a C++-core policy this binding layer
 does not need to import wholesale).
 

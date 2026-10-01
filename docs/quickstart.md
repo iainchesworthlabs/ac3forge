@@ -74,7 +74,7 @@ forge decode out.ac4 out.wav
 ## Call the library from C++
 
 Two headers and about a dozen lines to encode a frame. This is excerpted from
-[`examples/encode_ac3.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/encode_ac3.cpp),
+[`examples/encode_ac3.cpp`](https://github.com/iainchesworthlabs/iclforge/blob/main/examples/encode_ac3.cpp),
 with the error handling elided:
 
 ```cpp

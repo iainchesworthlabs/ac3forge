@@ -31,8 +31,8 @@
     </p>
   </description>
   <launchable type="desktop-id">crucible.desktop</launchable>
-  <url type="homepage">https://github.com/iainchesworthlabs/ac3forge</url>
-  <url type="help">https://iainchesworthlabs.github.io/ac3forge/crucible/</url>
+  <url type="homepage">https://github.com/iainchesworthlabs/iclforge</url>
+  <url type="help">https://iainchesworthlabs.github.io/iclforge/crucible/</url>
   <provides>
     <binary>crucible</binary>
     <binary>crucible-run</binary>

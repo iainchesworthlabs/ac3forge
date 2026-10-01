@@ -111,7 +111,7 @@ In rough order of strength:
    them ([The encoder](#the-encoder)). The searches run bounded, 120 seconds each, in FFmpeg
    Validate, which is a nightly job, and deeper, 900 seconds each, in the `Encoder Space Nightly`
    job of the Fuzz workflow. See
-   [fuzz/README.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/fuzz/README.md).
+   [fuzz/README.md](https://github.com/iainchesworthlabs/iclforge/blob/main/fuzz/README.md).
 
 6. **The encoder/decoder mirror self-check** (`iclforge::verify`, opt-in). Not an oracle: it compares
    this project against itself. What it compares is the *model* rather than the audio. An encoder
@@ -138,7 +138,7 @@ In rough order of strength:
    ([The encoder](#the-encoder)).
 
 Contributor-facing detail on which oracle to reach for and how — including the exact FFmpeg
-flags and the CI jobs that run them — is in [Oracles](https://github.com/iainchesworthlabs/ac3forge/blob/main/CONTRIBUTING.md#oracles).
+flags and the CI jobs that run them — is in [Oracles](https://github.com/iainchesworthlabs/iclforge/blob/main/CONTRIBUTING.md#oracles).
 
 ## Where each check runs
 
@@ -214,7 +214,7 @@ pseudo-random noise and FIR smoothing, and two are 30 s CC0 recordings of real s
 Both kinds are kept, and the distinction matters when reading any number on this page: the
 synthetic pair carries a flat noise plateau across its whole top octave that no real material
 has, and tuning the encoder's bandwidth against it once produced a measured 2.1 dB "win" that was
-an artefact of the fixture. See [tools/generators/README.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/generators/README.md)
+an artefact of the fixture. See [tools/generators/README.md](https://github.com/iainchesworthlabs/iclforge/blob/main/tools/generators/README.md)
 for the measured spectra, the licences, and which fixture is evidence about what.
 
 That is a one-off snapshot. [Quality trend](quality-trend.md) tracks a different measure, the
@@ -619,7 +619,7 @@ AC-4 is not in this table because FFmpeg has no AC-4 decoder: every AC-4 stream 
 audio, and FFmpeg's demuxers are the only outside reader of its framing ([AC-4](#ac-4)).
 
 Every "no" in that column is a cell where a generated stream has to be checked some other way,
-which is what [`tools/ci/fuzz_eac3_encoder_space.py`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/ci/fuzz_eac3_encoder_space.py)
+which is what [`tools/ci/fuzz_eac3_encoder_space.py`](https://github.com/iainchesworthlabs/iclforge/blob/main/tools/ci/fuzz_eac3_encoder_space.py)
  is built around: it classifies every case it draws by which of these rows it lands
 on, and checks the *framing* of the ones FFmpeg cannot decode — which needs no decode at all. Two
 things do it: a walk over the four fields that fix E-AC-3's framing (syncword, `strmtyp`,
@@ -788,8 +788,8 @@ rather than by re-measuring it.
 **`compr` in E-AC-3 has no external oracle.** FFmpeg's Annex E header parser reads `compre` and
 then skips the word, so `-heavy_compr` changes nothing on an E-AC-3 stream however good the
 metadata is. It is covered bit-by-bit instead
-([tests/ac3/meta/test_drc.cpp](https://github.com/iainchesworthlabs/ac3forge/blob/main/tests/ac3/meta/test_drc.cpp),
-[tools/references/eac3_parse.py](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/references/eac3_parse.py)).
+([tests/ac3/meta/test_drc.cpp](https://github.com/iainchesworthlabs/iclforge/blob/main/tests/ac3/meta/test_drc.cpp),
+[tools/references/eac3_parse.py](https://github.com/iainchesworthlabs/iclforge/blob/main/tools/references/eac3_parse.py)).
 
 ## Going the other way: published conformance vectors
 

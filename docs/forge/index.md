@@ -18,19 +18,19 @@ The CLI and GUI ship together where both are available.
 Choose an installation method:
 
 - **A prebuilt archive** — every
-  [release](https://github.com/iainchesworthlabs/ac3forge/releases) publishes a
+  [release](https://github.com/iainchesworthlabs/iclforge/releases) publishes a
   `.zip`/`.tar.gz`/`.dmg` per platform with `forge` (and `forge-gui` where the leg builds it)
   inside. Windows also carries an NSIS `iclforge-<version>-win64.exe` installer from
   `0.10.0-beta.1` on; `0.9.0-beta.1` and earlier ship the `.zip` only.
 - **Homebrew** (macOS/Linux) — the formula and cask are published to
-  [`iainchesworthlabs/homebrew-ac3forge`](https://github.com/iainchesworthlabs/homebrew-ac3forge).
-  `brew install iainchesworthlabs/ac3forge/iclforge` builds and installs `forge`;
-  `brew install --cask iainchesworthlabs/ac3forge/iclforge` installs the prebuilt `forge-gui.app`
+  [`iainchesworthlabs/homebrew-iclforge`](https://github.com/iainchesworthlabs/homebrew-iclforge).
+  `brew install iainchesworthlabs/iclforge/iclforge` builds and installs `forge`;
+  `brew install --cask iainchesworthlabs/iclforge/iclforge` installs the prebuilt `forge-gui.app`
   from the release `.dmg`. Both paths are validated manually. The cask has not been installed
   end to end on a Mac. See
   [Homebrew formula and cask](../releasing.md#homebrew-formula-and-cask).
 - **winget** (Windows) — the manifest is staged in-tree at
-  [`packaging/winget/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/packaging/winget).
+  [`packaging/winget/`](https://github.com/iainchesworthlabs/iclforge/tree/main/packaging/winget).
   It has not been submitted to `microsoft/winget-pkgs`, so
   `winget install iainchesworthlabs.iclforge` does not resolve. From a clone,
   `winget install --manifest packaging/winget/manifests/i/iainchesworthlabs/ac3forge/<version>`

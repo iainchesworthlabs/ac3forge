@@ -8,7 +8,7 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/GitVersionDerivation.cmake")
 project(iclforge
     VERSION ${DERIVED_VERSION_SEMVER}
     DESCRIPTION "Clean-room AC-3 (ATSC A/52), E-AC-3 and AC-4 encoder and decoder with a spatial object layer"
-    HOMEPAGE_URL "https://github.com/iainchesworthlabs/ac3forge"
+    HOMEPAGE_URL "https://github.com/iainchesworthlabs/iclforge"
     LANGUAGES CXX)
 
 # CMake's project() VERSION field can only hold M.M.P, so a tag's prerelease

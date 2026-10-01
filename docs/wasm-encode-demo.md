@@ -54,7 +54,7 @@ carry more than `iclforge::ac3`. Each statically links **{fmt}** (`cmake/Fmt.cma
 the committed `iclforge_encode.wasm` and `iclforge_decode.wasm` both carry
 `fmt::v12::format_error`'s mangled RTTI name), which is distributed under the MIT licence, whose
 text is in this repository at
-[`apps/crucible/notices/licences/MIT-fmt.txt`](https://github.com/iainchesworthlabs/ac3forge/blob/main/apps/crucible/notices/licences/MIT-fmt.txt).
+[`apps/crucible/notices/licences/MIT-fmt.txt`](https://github.com/iainchesworthlabs/iclforge/blob/main/apps/crucible/notices/licences/MIT-fmt.txt).
 Both also carry the Emscripten runtime and the C++ standard library that toolchain supplies, each
 under its own licence.
 
@@ -63,9 +63,9 @@ does not yet, so this section stands in for one.
 
 ## Source and how it's built
 
-Source: [`apps/wasm/encode/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/apps/wasm/encode)
+Source: [`apps/wasm/encode/`](https://github.com/iainchesworthlabs/iclforge/tree/main/apps/wasm/encode)
 (the page) and
-[`apps/wasm/encoder_bindings.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/apps/wasm/encoder_bindings.cpp)
+[`apps/wasm/encoder_bindings.cpp`](https://github.com/iainchesworthlabs/iclforge/blob/main/apps/wasm/encoder_bindings.cpp)
 (the Embind wrapper) — see [WebAssembly](platforms/wasm.md#encode-module) for the measured
 size/real-time numbers and what's reused vs. new. CI rebuilds this embed fresh from source on every
 deploy to `main`, alongside the [decode demo](wasm-demo.md); see

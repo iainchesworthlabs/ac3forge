@@ -1,7 +1,7 @@
 # iclforge-wasm-decoder
 
 A streaming AC-3/E-AC-3 (Dolby Digital/Digital Plus) decoder for the browser, compiled from
-[`iclforge::ac3`](https://github.com/iainchesworthlabs/ac3forge) to WebAssembly. The
+[`iclforge::ac3`](https://github.com/iainchesworthlabs/iclforge) to WebAssembly. The
 `iclforge-wasm-decoder/ac4` export decodes and encodes AC-4 ([AC-4](#ac-4)).
 Built because a browser cannot be relied on to decode EC-3:
 [Chrome reports a decoder error](https://github.com/videojs/http-streaming/issues/1297) when an EC-3
@@ -20,8 +20,8 @@ Four pieces for AC-3 and E-AC-3:
 
 This package embeds no compiled `.wasm`/`.js` binary of its own - every API here takes the
 `createIclForgeModule` factory (or a URL to it) as a parameter. Build it from
-[`apps/wasm/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/apps/wasm) in the main
-repository (see [docs/platforms/wasm.md](https://iainchesworthlabs.github.io/ac3forge/platforms/wasm/))
+[`apps/wasm/`](https://github.com/iainchesworthlabs/iclforge/tree/main/apps/wasm) in the main
+repository (see [docs/platforms/wasm.md](https://iainchesworthlabs.github.io/iclforge/platforms/wasm/))
 and host the resulting `iclforge_decode.js`/`.wasm` yourself - the same way most WASM packages let
 you control your own CORS/CDN story instead of assuming a bundler will do it for you.
 
@@ -31,7 +31,7 @@ The package is not on the npm registry. Build it from a checkout of the main rep
 install the directory:
 
 ```bash
-git clone https://github.com/iainchesworthlabs/ac3forge
+git clone https://github.com/iainchesworthlabs/iclforge
 cd iclforge/js
 npm ci          # TypeScript is the only dependency
 npm run build   # compiles src/ to dist/
@@ -238,10 +238,10 @@ image, so it is worth stating plainly.
 consume it from source (`js/`, see [Install](#install)). When publishing is enabled its version will track the
 main repository's own release
 tags exactly the way the `iclforge` PyPI package does (see
-[docs/releasing.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/releasing.md)) -
+[docs/releasing.md](https://github.com/iainchesworthlabs/iclforge/blob/main/docs/releasing.md)) -
 this package's `package.json` carries only a `0.0.0-dev` placeholder; `npm.yml`'s `publish` job
 stamps the release version immediately before publishing.
 
 ## License
 
-GPL-3.0-only, same as the rest of [ICL Forge](https://github.com/iainchesworthlabs/ac3forge).
+GPL-3.0-only, same as the rest of [ICL Forge](https://github.com/iainchesworthlabs/iclforge).

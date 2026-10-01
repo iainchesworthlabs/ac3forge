@@ -1425,7 +1425,7 @@ def boards_from(args: argparse.Namespace) -> list[Board]:
 
 # --- published images (planning/esp32-ota.md, O8) ---------------------------------------------
 
-REPOSITORY = "iainchesworthlabs/ac3forge"
+REPOSITORY = "iainchesworthlabs/iclforge"
 MANIFEST_NAME = "hearth-sink-manifest.json"
 FIRMWARE_ARTIFACT = "esp32-firmware"
 GITHUB_API = "https://api.github.com"

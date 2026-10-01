@@ -12,7 +12,7 @@
 #
 # Staged here (packaging/homebrew/Casks/iclforge.rb), the same way the Formula
 # was, for validation against a real release, and copied into the live
-# personal tap (iainchesworthlabs/homebrew-ac3forge) as Casks/iclforge.rb after
+# personal tap (iainchesworthlabs/homebrew-iclforge) as Casks/iclforge.rb after
 # each bump - see packaging/homebrew/README.md.
 #
 # v0.8.0-beta.2 was the first tagged release whose macos-llvm leg builds
@@ -51,10 +51,10 @@ cask "iclforge" do
   # its own.
   dmg_version = version.major_minor_patch
 
-  url "https://github.com/iainchesworthlabs/ac3forge/releases/download/v#{version}/iclforge-#{dmg_version}-Darwin.dmg"
+  url "https://github.com/iainchesworthlabs/iclforge/releases/download/v#{version}/iclforge-#{dmg_version}-Darwin.dmg"
   name "forge-gui"
   desc "GUI to encode, decode, play and check AC-3, E-AC-3 and AC-4 streams"
-  homepage "https://github.com/iainchesworthlabs/ac3forge"
+  homepage "https://github.com/iainchesworthlabs/iclforge"
 
   # No `depends_on arch:` restriction (DR8): the .dmg is a universal binary,
   # lipo-merged from a real arm64 build (macos-llvm, Apple Silicon) and a

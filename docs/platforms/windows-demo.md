@@ -991,7 +991,7 @@ never fires for a window that opens in 3D, so the first switch away unloaded it.
 
 The About box linked a repository that does not exist (the checkout's directory name, not
 the remote's), and said nothing about the toolkit or the type. It now links
-github.com/iainchesworthlabs/ac3forge and attributes Qt 6 (LGPL v3), {fmt} (MIT), Tracy in
+github.com/iainchesworthlabs/iclforge and attributes Qt 6 (LGPL v3), {fmt} (MIT), Tracy in
 profiling builds (BSD 3-clause), and the faces: the window now bundles the GUI app's Archivo
 and Noto Sans Arabic and Hebrew, each SIL OFL 1.1 with the licence texts beside the files,
 where before it fell back to whatever the machine had. The version block is what the library

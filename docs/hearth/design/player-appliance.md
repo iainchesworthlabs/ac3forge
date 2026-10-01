@@ -2,7 +2,7 @@
 
 This page points to the plan rather than reproducing it. Design proposals live in the
 repository's `planning/` directory and are deliberately not republished onto this site — see
-[`planning/README.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/README.md)
+[`planning/README.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/README.md)
 for why: a proposal read alongside reference documentation is too easily read as a shipped
 feature.
 
@@ -51,7 +51,7 @@ Detail: [Hearth overview](../index.md).
   bitstream, or to a group of network sinks. CI runs the engine tests and plays to an emulated S3
   from the test server.
 - **AC-4 in `hearth`** (phases I2 and I5 of
-  [`planning/ac4.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/ac4.md)).
+  [`planning/ac4.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/ac4.md)).
   The engine plays channel-based, immersive and object AC-4 through the decoder's public API,
   decoded for every local output, with the Decoder page's AC-4 controls and the Media page's AC-4
   information. A network group's members on the extension role that list AC-4 are sent the stream
@@ -59,19 +59,19 @@ Detail: [Hearth overview](../index.md).
 - **`src/sendspin`.** Shared by the desktop tools and the board.
 - **ESP32-C6.** Decode probe timed on a board. `hearth_sink`'s Sendspin player runs on this board,
   stereo only: a ten-minute group run with an ESP32-S3 had no underruns on either board. Setup:
-  [README, "On the ESP32-C6"](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/iclforge/examples/hearth_sink/README.md#on-the-esp32-c6).
+  [README, "On the ESP32-C6"](https://github.com/iainchesworthlabs/iclforge/blob/main/esp-idf/iclforge/examples/hearth_sink/README.md#on-the-esp32-c6).
   CI builds the Sendspin player for this part, for the 4 MB and the 16 MB flash layouts, and does
   not run it: ESP-IDF's RISC-V QEMU emulates the ESP32-C3 and no other part.
 
 ## The full record
 
-[`planning/hearth-reference-player.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/hearth-reference-player.md)
+[`planning/hearth-reference-player.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/hearth-reference-player.md)
 has the complete plan: the application's features mapped to the library, the architecture, the
 Sendspin extension role, the sinks' memory and output limits per chip, the phases of its four
 parts with their exit criteria, what cannot be verified, and the twenty decisions with their
 reasoning.
 
-[`planning/player-appliance.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/player-appliance.md)
+[`planning/player-appliance.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/player-appliance.md)
 keeps the 2026-09-07 appliance plan as a record, including the sink-following gaps in
 `forge play` that the desktop player's passthrough mode closes.
 

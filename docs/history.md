@@ -4,7 +4,7 @@ How the codec was built, in the order it was built. This is a record of what was
 and what evidence closed each step, kept out of the README because a landing page is not a
 development log. Nothing here supersedes the current [capability and limitation
 tables](library/capabilities.md), which
-[CONTRIBUTING.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/CONTRIBUTING.md#documentation)
+[CONTRIBUTING.md](https://github.com/iainchesworthlabs/iclforge/blob/main/CONTRIBUTING.md#documentation)
 names, with [Validation](verification.md), as the authority on what the project can and cannot
 do. Where this file disagrees with those pages, they are current and this file is stale.
 
@@ -327,7 +327,7 @@ than a separate system — `ac3::plan::channel_plan_for(id)` is a one-line looku
 - libFuzzer harnesses (`fuzz/`) over every untrusted-input entry point — `scan`, both decoders,
   WAV reading, and later AC-4, the containers and the Sendspin messages — Clang-only and off by
   default (`AC3FORGE_BUILD_FUZZERS`); see
-  [`fuzz/README.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/fuzz/README.md). Runs on every push (`fuzz-regress`, seed/regression
+  [`fuzz/README.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/fuzz/README.md). Runs on every push (`fuzz-regress`, seed/regression
   replay only) and nightly (`fuzz-nightly`, bounded mutation).
 - Dual mono (`acmod` 0, "1+1"): two independent single-channel programmes sharing one
   syncframe rather than a channel layout, on both encoders and both decoders, with their own
@@ -480,7 +480,7 @@ clang-21 and MSVC builds, plus clang-tidy, before landing.
 
 ## AC-4
 
-AC-4 (ETSI TS 103 190) was built in the phases [`planning/ac4.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/ac4.md)
+AC-4 (ETSI TS 103 190) was built in the phases [`planning/ac4.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/ac4.md)
 sets out, from the standard's two parts alone. The inspector came first (`src/ac4`): sync frames,
 the table of contents, presentations and substream framing, checked against Annex G's CRC-16 over
 every sync frame of the committed Dolby Encoding Engine (DEE) streams, MediaInfo's reading of them,

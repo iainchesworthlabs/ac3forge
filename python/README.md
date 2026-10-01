@@ -1,6 +1,6 @@
 # ICL Forge
 
-Python bindings for [ICL Forge](https://github.com/iainchesworthlabs/ac3forge), a clean-room
+Python bindings for [ICL Forge](https://github.com/iainchesworthlabs/iclforge), a clean-room
 AC-3/E-AC-3 (Dolby Digital/Digital Plus) and AC-4 encoder and decoder written in C++23, including
 the Atmos-in-DD+ object layer (OAMD + JOC). The AC-4 (ETSI TS 103 190) decoder and encoder, objects
 included, are in the `iclforge.ac4` submodule.
@@ -27,8 +27,8 @@ predate it, and `pip install ./python` from a checkout builds it. PyPI carries 0
 Windows x64, Linux x86_64 and macOS on Apple Silicon; on Linux aarch64 and macOS Intel, where no
 release has carried a wheel, install from a checkout.
 
-See [docs/library/python-api.md](https://iainchesworthlabs.github.io/ac3forge/library/python-api/)
+See [docs/library/python-api.md](https://iainchesworthlabs.github.io/iclforge/library/python-api/)
 for the full surface (E-AC-3, Atmos object and AC-4 encode/decode included) and
-[the main project README](https://github.com/iainchesworthlabs/ac3forge) for what the codec
+[the main project README](https://github.com/iainchesworthlabs/iclforge) for what the codec
 itself covers. Licensed GPL-3.0-or-later, same as the rest of the project — see
-[LICENSE](https://github.com/iainchesworthlabs/ac3forge/blob/main/LICENSE).
+[LICENSE](https://github.com/iainchesworthlabs/iclforge/blob/main/LICENSE).

@@ -22,7 +22,7 @@ lets it be built against something that already works.
 external_components:
   - source:
       type: git
-      url: https://github.com/iainchesworthlabs/ac3forge
+      url: https://github.com/iainchesworthlabs/iclforge
       ref: main
       path: esphome/components
     components: [iclforge]

@@ -17,13 +17,13 @@
     "audioworklet",
     "hls.js"
   ],
-  "homepage": "https://iainchesworthlabs.github.io/ac3forge/platforms/wasm/",
+  "homepage": "https://iainchesworthlabs.github.io/iclforge/platforms/wasm/",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/iainchesworthlabs/ac3forge.git",
+    "url": "git+https://github.com/iainchesworthlabs/iclforge.git",
     "directory": "js"
   },
-  "bugs": "https://github.com/iainchesworthlabs/ac3forge/issues",
+  "bugs": "https://github.com/iainchesworthlabs/iclforge/issues",
   "author": "iclforge contributors",
   "files": [
     "dist"

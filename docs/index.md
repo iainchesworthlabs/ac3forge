@@ -22,7 +22,7 @@ The [Quick start](quickstart.md) covers installation, source builds, and the ESP
 
 !!! note "Status"
     Releases are 0.x betas and the API is not stable. The
-    [changelog](https://github.com/iainchesworthlabs/ac3forge/blob/main/CHANGELOG.md) records
+    [changelog](https://github.com/iainchesworthlabs/iclforge/blob/main/CHANGELOG.md) records
     shipped changes. Platform pages distinguish CI, emulation, and real-hardware results.
 
 ## Performance and quality

@@ -102,7 +102,7 @@ both cases: the bare `iclforge::signing` alias in-tree, and explicit `iclforge::
 `iclforge::signing_shared` from an installed package.
 
 **vcpkg.** A port lives in this repo at
-[`packaging/vcpkg-port/iclforge/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/packaging/vcpkg-port/iclforge) and is pending
+[`packaging/vcpkg-port/iclforge/`](https://github.com/iainchesworthlabs/iclforge/tree/main/packaging/vcpkg-port/iclforge) and is pending
 submission to the curated `microsoft/vcpkg` registry (see
 [docs/releasing.md](../releasing.md#vcpkg-port)) — until that lands, point vcpkg at it directly
 with `--overlay-ports`/`VCPKG_OVERLAY_PORTS` (works from any clone of this repo, no waiting on
@@ -138,7 +138,7 @@ feature — out of scope for this port, even though upstream installs and export
 with a plain `vcpkg install iclforge` — no `--overlay-ports` needed.
 
 **Conan.** A recipe lives in this repo at
-[`packaging/conan/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/packaging/conan)
+[`packaging/conan/`](https://github.com/iainchesworthlabs/iclforge/tree/main/packaging/conan)
 and is pending submission to ConanCenter (see
 [docs/releasing.md](../releasing.md#conan-recipe)) — until that lands, `conan create
 packaging/conan --version <tag>` from a clone of this repo builds it straight into your local
@@ -205,7 +205,7 @@ below directly — `iclforge::audio` exists to serve this project's own CLI/GUI,
 third party is expected to link.
 
 Nearly every code block in this section is an excerpt from a program in
-[`examples/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/examples) — see
+[`examples/`](https://github.com/iainchesworthlabs/iclforge/tree/main/examples) — see
 [Example programs](examples.md) for the full list. What the build compiles and `ctest` runs is
 the programs, not the excerpts: an example cannot stop working silently, but an excerpt is
 re-synced by hand and can drift. Each page's "Full program" link is the canonical form.
@@ -270,7 +270,7 @@ libraries do the same with `iclforge::ac4::Error`, `iclforge::ac4::DecodeError` 
 
 **The `ac3::` namespace tree is codec-aware; `matroska::`/`mp4::`/`mpegts::`/`ac3adm::`/`ac3iab::`
 are codec-blind.** This is the namespace-level face of the header-prefix rule
-[CONTRIBUTING.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/CONTRIBUTING.md#repository-layout)
+[CONTRIBUTING.md](https://github.com/iainchesworthlabs/iclforge/blob/main/CONTRIBUTING.md#repository-layout)
 states for directories: everything nested under `ac3::` depends on or extends `iclforge::ac3`'s own
 model, down to `iclforge::oba`, `iclforge::io`, `iclforge::meta`, `iclforge::verify`, `iclforge::iec61937`,
 `iclforge::admbridge`, `iclforge::audio` and `iclforge::signing` — none of those are AC-3/E-AC-3-*specific*, but

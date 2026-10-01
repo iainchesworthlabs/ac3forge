@@ -43,7 +43,7 @@ What has been published so far, from each registry's own listing and from GitHub
   x64, macOS arm64 and Linux x86-64) and no sdist. The Linux aarch64 and Intel macOS rows were
   added to `wheels.yml` on 2026-09-02, so the next release is the first to carry them.
 - **Homebrew:** the tap
-  [`iainchesworthlabs/homebrew-ac3forge`](https://github.com/iainchesworthlabs/homebrew-ac3forge)
+  [`iainchesworthlabs/homebrew-iclforge`](https://github.com/iainchesworthlabs/homebrew-iclforge)
   is a public repository. Its `Formula/iclforge.rb` and `Casks/forge-gui.rb` are both at
   `v0.10.0-beta.1`. The formula was added on 2026-08-18, and the bumps to `v0.8.0-beta.2`,
   `v0.9.0-beta.1` and `v0.10.0-beta.1` are the tap's merged pull requests #1 to #3.
@@ -111,7 +111,7 @@ dispatched build fetches full history (or gets the version stamped directly via
 1. **Before tagging**: confirm `main` carries no unexplained open code-scanning alerts.
 
    ```bash
-   gh api "repos/iainchesworthlabs/ac3forge/code-scanning/alerts?ref=refs/heads/main&state=open" -q '.[] | [.number, .rule.id, .most_recent_instance.location.path] | @tsv'
+   gh api "repos/iainchesworthlabs/iclforge/code-scanning/alerts?ref=refs/heads/main&state=open" -q '.[] | [.number, .rule.id, .most_recent_instance.location.path] | @tsv'
    ```
 
    Empty output - or every remaining line individually understood and either fixed or
@@ -145,7 +145,7 @@ dispatched build fetches full history (or gets the version stamped directly via
 3. Releases must be **cut from main** - `resolve-version` checks this with
    `git merge-base --is-ancestor` and fails otherwise (dry runs are exempt).
 4. Decide the tag.
-5. **Update [CHANGELOG.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/CHANGELOG.md)**
+5. **Update [CHANGELOG.md](https://github.com/iainchesworthlabs/iclforge/blob/main/CHANGELOG.md)**
    - move `## [Unreleased]`'s content down to a `## [x.y.z] - YYYY-MM-DD` section matching the
      tag from step 4 without its `v` (`## [0.10.0-beta.1] - 2026-09-01` for `v0.10.0-beta.1`),
      [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format, grouped by
@@ -215,14 +215,14 @@ Most of what used to be a manual post-release checklist here is now automated:
    installer page names the new release's version.
 3. **The four packaging manifests bump themselves.** Once `github-release` has published the
    release and uploaded every asset, the `manifest-bump` job calls
-   [`.github/workflows/manifest-bump.yml`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/manifest-bump.yml),
+   [`.github/workflows/manifest-bump.yml`](https://github.com/iainchesworthlabs/iclforge/blob/main/.github/workflows/manifest-bump.yml),
    which downloads the release's own source tarball and (where they exist)
    `iclforge-*-Darwin.dmg`/`iclforge-*-win64.zip`, computes the digests each manifest needs,
    cross-checks the two platform-asset digests against the release's published `SHA512SUMS` (the
    source tarball has none to check against - see that workflow's own comments), and opens a PR
    bumping [vcpkg port](#vcpkg-port), [Homebrew formula and cask](#homebrew-formula-and-cask),
    [winget manifest](#winget-manifest) and [Conan recipe](#conan-recipe) together. It also opens
-   a pull request on the live `iainchesworthlabs/homebrew-ac3forge` tap with the new Formula and
+   a pull request on the live `iainchesworthlabs/homebrew-iclforge` tap with the new Formula and
    Cask, if `HOMEBREW_TAP_TOKEN` is provisioned (see below). The tap carries a `main protection`
    ruleset with no bypass actors, so a pull request is the only way into it: an earlier version of
    this workflow pushed straight to the tap's `main` and was refused, and the bumps to
@@ -250,7 +250,7 @@ Most of what used to be a manual post-release checklist here is now automated:
 
    **`HOMEBREW_TAP_TOKEN`** (optional, and set on this repository): a fine-grained GitHub PAT
    scoped to `Contents: Read and write` and `Pull requests: Read and write` on
-   `iainchesworthlabs/homebrew-ac3forge` only (the first pushes the branch, the second opens the
+   `iainchesworthlabs/homebrew-iclforge` only (the first pushes the branch, the second opens the
    pull request; the built-in `GITHUB_TOKEN` cannot reach another repository). Without it, the
    tap step is skipped (its `if:` gate simply doesn't fire, with nothing logged) - the in-tree PR
    still opens - and the PR body says so. Add it the same way as
@@ -267,7 +267,7 @@ Most of what used to be a manual post-release checklist here is now automated:
 ## vcpkg port
 
 A vcpkg port for `iclforge` is staged in-tree at
-[`packaging/vcpkg-port/iclforge/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/packaging/vcpkg-port/iclforge)
+[`packaging/vcpkg-port/iclforge/`](https://github.com/iainchesworthlabs/iclforge/tree/main/packaging/vcpkg-port/iclforge)
 (`vcpkg.json`,
 `portfile.cmake`, `usage`). It is not in the curated `microsoft/vcpkg` registry: it was submitted
 as pull request #53470, which is a draft with changes requested (last updated 2026-08-19) - see
@@ -470,16 +470,16 @@ trusted-published package. Until step 5, a tag push builds and tests `js/` and s
 ## Homebrew formula and cask
 
 A Homebrew formula for `forge` is staged in-tree at
-[`packaging/homebrew/Formula/iclforge.rb`](https://github.com/iainchesworthlabs/ac3forge/blob/main/packaging/homebrew/Formula/iclforge.rb)
+[`packaging/homebrew/Formula/iclforge.rb`](https://github.com/iainchesworthlabs/iclforge/blob/main/packaging/homebrew/Formula/iclforge.rb)
 and published to the live personal tap
-[`iainchesworthlabs/homebrew-ac3forge`](https://github.com/iainchesworthlabs/homebrew-ac3forge) - see
-[`packaging/homebrew/README.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/packaging/homebrew/README.md)
+[`iainchesworthlabs/homebrew-iclforge`](https://github.com/iainchesworthlabs/homebrew-iclforge) - see
+[`packaging/homebrew/README.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/packaging/homebrew/README.md)
 for why a personal tap rather than a `homebrew-core` submission. Unlike the vcpkg port, this
 packages the CLI (`forge`), not the library: `ICLFORGE_BUILD_CLI=ON` with GUI/tests/examples/
 fuzzers off, built from the release source tarball.
 
 The GUI (`forge-gui`) is a separate Homebrew Cask,
-[`packaging/homebrew/Casks/iclforge.rb`](https://github.com/iainchesworthlabs/ac3forge/blob/main/packaging/homebrew/Casks/iclforge.rb)
+[`packaging/homebrew/Casks/iclforge.rb`](https://github.com/iainchesworthlabs/iclforge/blob/main/packaging/homebrew/Casks/iclforge.rb)
 - a Cask, not a Formula, is the right shape for a bundled, prebuilt `.app` the way `forge-gui.app`
 already ships in every platform's release archive (`cmake/Packaging.cmake`'s DragNDrop `.dmg` on
 macOS). It's staged the same way the formula is, and pinned to `v0.10.0-beta.1` today (its `version` and
@@ -498,7 +498,7 @@ the formula or the cask:
    points at, just a different digest algorithm).
 2. Validate locally first (see below) before touching a tap - a formula change that fails
    `brew audit` is slower to iterate on there than here.
-3. Open a pull request on the `homebrew-ac3forge` tap with the updated formula as
+3. Open a pull request on the `homebrew-iclforge` tap with the updated formula as
    `Formula/iclforge.rb`; the tap's `main` accepts nothing else.
 
 The same three steps apply to the cask now that it tracks a real release too: bump `version` to
@@ -532,7 +532,7 @@ the tap's pull request for you - unlike the vcpkg `--overlay-ports` flow above.
 ## winget manifest
 
 A winget manifest for `iclforge` (`forge` and `forge-gui` together) is staged in-tree at
-[`packaging/winget/manifests/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/packaging/winget/manifests),
+[`packaging/winget/manifests/`](https://github.com/iainchesworthlabs/iclforge/tree/main/packaging/winget/manifests),
 at the exact `manifests/<first-letter>/<publisher>/<package>/<version>/` path a
 `microsoft/winget-pkgs` submission uses, so the version directory can be copied straight into a
 fork of that repo. It is not in the winget registry. The one submission, for `0.8.0-beta.1`
@@ -598,7 +598,7 @@ winget validate --manifest packaging/winget/manifests/i/iainchesworthlabs/ac3for
 ## Conan recipe
 
 A Conan (2.x) recipe for `iclforge` is staged in-tree at
-[`packaging/conan/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/packaging/conan)
+[`packaging/conan/`](https://github.com/iainchesworthlabs/iclforge/tree/main/packaging/conan)
 (`conanfile.py`, `conandata.yml`, `test_package/`) and has not been submitted to ConanCenter
 (`conan-center-index`), where no pull request names it. Scoped the same as the vcpkg port - the library only (`iclforge::ac3`,
 plus `iclforge::matroska`/`iclforge::mp4`/`iclforge::mpegts` behind their own default-on `matroska`/
@@ -812,7 +812,7 @@ its own - and from there it is signed, checksummed, SBOM'd and attested exactly 
 See [Conformance vectors](conformance-vectors.md) for what is in it and how a decoder implementer
 uses it.
 
-And **the Hearth sink firmware** ([planning/esp32-ota.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-ota.md#published-images),
+And **the Hearth sink firmware** ([planning/esp32-ota.md](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/esp32-ota.md#published-images),
 O8). No tag has been cut since this job landed (`v0.10.0-beta.1` has no `hearth-sink-*` assets), so
 this is what the workflow is configured to publish rather than a route a published release has
 been seen to take. `_build.yml`'s `package-esp32-firmware` job gathers the four board images `build-esp32s3`
@@ -971,7 +971,7 @@ Then, in the GitHub repo, go to Settings > Secrets and variables > Actions and a
 
 ```bash
 # Provenance (keyless, ties the bytes to this exact repo/workflow/commit)
-gh attestation verify ac3forge-0.2.0-win64.zip --repo iainchesworthlabs/ac3forge
+gh attestation verify ac3forge-0.2.0-win64.zip --repo iainchesworthlabs/iclforge
 
 # GPG (ties the bytes to the maintainer's key)
 gpg --import iclforge-signing-key.asc

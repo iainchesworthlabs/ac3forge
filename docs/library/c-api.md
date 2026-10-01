@@ -4,11 +4,11 @@ A stable, minimal C-callable surface over `iclforge::ac3`'s encode/decode core �
 AC-3, E-AC-3 and Atmos (OAMD + JOC) — and over the AC-4 decoder and encoder ([AC-4](#ac-4)), for
 bindings and embedding by callers that cannot or do not want to link C++23. The whole surface is
 one header,
-[`iclforge_c/iclforge.h`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/capi/include/iclforge_c/iclforge.h),
+[`iclforge_c/iclforge.h`](https://github.com/iainchesworthlabs/iclforge/blob/main/src/capi/include/iclforge_c/iclforge.h),
 plain C11 with no C++ type crossing it anywhere — only opaque handles and POD structs. It is a
 separate library from `iclforge::ac3`: link `iclforge::c` instead, not both.
 
-[`examples/capi_encode_decode.c`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/capi_encode_decode.c)
+[`examples/capi_encode_decode.c`](https://github.com/iainchesworthlabs/iclforge/blob/main/examples/capi_encode_decode.c)
 is a complete, buildable program (compiled as C, not C++, so the build itself proves the header
 is C-usable) — the excerpts below are drawn from it. `tests/capi/test_capi.cpp` covers the
 rest of the surface, including Atmos encode/decode and the error paths, from Catch2.
@@ -166,7 +166,7 @@ status = iclforge_eac3_access_unit_encoder_create(&independent, &dependent, 1, &
 and writes an owned `iclforge_eac3_access_unit_t` — `..._data`/`..._size` for the concatenated
 bytes, `..._substream_count`/`..._substream_bytes` for the per-substream boundaries `crc2`
 recomputation or demuxing needs. Full program:
-[`examples/capi_encode_eac3.c`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/capi_encode_eac3.c).
+[`examples/capi_encode_eac3.c`](https://github.com/iainchesworthlabs/iclforge/blob/main/examples/capi_encode_eac3.c).
 
 ## Atmos encoding
 
@@ -390,7 +390,7 @@ application layer, which composes the same three the way a caller of this API wo
 `iclforge_ac4_decoder_t` and `iclforge_ac4_encoder_t` mirror `iclforge::ac4::Decoder`/`iclforge::ac4::Encoder`
 (ETSI TS 103 190-1 V1.4.1, TS 103 190-2 V1.3.1) behind the same opaque-handle, `_config_init()`
 and out-parameter conventions as the rest of this header — see
-[`iclforge_c/iclforge.h`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/capi/include/iclforge_c/iclforge.h)'s
+[`iclforge_c/iclforge.h`](https://github.com/iainchesworthlabs/iclforge/blob/main/src/capi/include/iclforge_c/iclforge.h)'s
 own AC-4 section for the full surface. The section is declared whether or not this library was
 configured with `ICLFORGE_BUILD_AC4` (on by default): built without it, every fallible function
 returns `ICLFORGE_ERROR_UNSUPPORTED` (4), a `_create()` leaves its out-parameter `NULL`, and

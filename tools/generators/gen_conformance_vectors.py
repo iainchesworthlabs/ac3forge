@@ -922,7 +922,7 @@ def write_readme(out_dir: Path, manifest: dict) -> None:
 
 {len(manifest["vectors"])} AC-3 / E-AC-3 / Dolby Atmos streams ({by_codec}), each with the PCM it
 was encoded from and a description of what it exercises. Produced by
-[iclforge](https://github.com/iainchesworthlabs/ac3forge), a clean-room C++23 implementation.
+[iclforge](https://github.com/iainchesworthlabs/iclforge), a clean-room C++23 implementation.
 
 No free ATSC or ETSI conformance bitstreams exist publicly. This set exists so another decoder
 implementer has something concrete to test against.
@@ -973,7 +973,7 @@ independent implementation is most useful, because nothing else public reads the
 ## Reproducing this bundle
 
 ```
-git clone https://github.com/iainchesworthlabs/ac3forge && cd ac3forge
+git clone https://github.com/iainchesworthlabs/iclforge && cd iclforge
 git checkout {manifest["version"]}
 cmake --preset config-linux-gcc && cmake --build --preset build-linux-gcc
 python tools/generators/gen_conformance_vectors.py \\

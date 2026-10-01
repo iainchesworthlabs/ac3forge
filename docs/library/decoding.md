@@ -237,7 +237,7 @@ for (const auto unit : scanned->access_units) {
 }
 ```
 
-Full program: [`examples/decode_stream.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/decode_stream.cpp).
+Full program: [`examples/decode_stream.cpp`](https://github.com/iainchesworthlabs/iclforge/blob/main/examples/decode_stream.cpp).
 
 Both decoders keep overlap-add state, so feed frames in order. `Eac3Decoder` keys its state on
 `strmtyp` and `substreamid` together, because a dependent's id lives in its own numbering
@@ -689,7 +689,7 @@ for (std::size_t i = 0; i < frames->size(); ++i) {
 }
 ```
 
-Full program: [`examples/decode_robustness.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/decode_robustness.cpp)
+Full program: [`examples/decode_robustness.cpp`](https://github.com/iainchesworthlabs/iclforge/blob/main/examples/decode_robustness.cpp)
 — corrupts one frame in the middle of an otherwise-good eight-frame stream and confirms the
 other seven still decode.
 
@@ -795,13 +795,13 @@ filterbank's own `dsp::kQmfDelay` (576 samples) on top of the bed's 256, for 832
 in the same `DecodedAccessUnit` still lags by 256, so **objects and bed are not aligned with each
 other** — anything mixing the two has to delay the bed by 576 samples. `oba::AtmosEncoder::latency()`
 reports the object path's budget and `bed_latency()` the bed's; the 832 is measured end to end in
-[`tests/ac3/decoder/test_latency.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tests/ac3/decoder/test_latency.cpp).
+[`tests/ac3/decoder/test_latency.cpp`](https://github.com/iainchesworthlabs/iclforge/blob/main/tests/ac3/decoder/test_latency.cpp).
 
 With `DecoderConfig::joc_domain` set to `kMdctBand`, the reconstruction costs 256 samples rather
 than 576, so objects lag their input by 512 and the bed has to be delayed by 256.
 `iclforge::render::LayoutRenderer` does this delaying for the one bed channel it plays beside placed
 objects, the LFE, once `set_joc_domain()` has told it the decoder's domain;
-[`tests/render/test_object_lfe_timing.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tests/render/test_object_lfe_timing.cpp)
+[`tests/render/test_object_lfe_timing.cpp`](https://github.com/iainchesworthlabs/iclforge/blob/main/tests/render/test_object_lfe_timing.cpp)
 measures the rendered feeds.
 
 ## Streams with more than one programme

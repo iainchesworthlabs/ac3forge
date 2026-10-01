@@ -84,7 +84,7 @@ Per OS, in order:
    up to two API calls, summed, each reading every page of the list (`--paginate`: the API
    returns 30 runners a page, and an organisation with 45 once hid all four Windows runners
    on its second page):
-   - This repo's own registered runners (`GET /repos/iainchesworthlabs/ac3forge/actions/runners`,
+   - This repo's own registered runners (`GET /repos/iainchesworthlabs/iclforge/actions/runners`,
      using the workflow's own `GITHUB_TOKEN` - no extra setup). Empty, because the fleet is
      registered at the organisation level, the model `ci-runners` uses.
    - `iainchesworthlabs`'s org-level runners (`GET /orgs/iainchesworthlabs/actions/runners`),
@@ -238,7 +238,7 @@ repo's own architecture (see [Why no separate drift-warning action](#why-no-sepa
 below for what differs and why).
 
 1. **One manifest, several sources.**
-   [`.github/toolchain-versions.json`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/toolchain-versions.json)
+   [`.github/toolchain-versions.json`](https://github.com/iainchesworthlabs/iclforge/blob/main/.github/toolchain-versions.json)
    holds only the three pins that have no other canonical home in this repo: the MSVC
    toolset prefix (`msvc_toolset`), the Qt version (`qt`), and the exact LLVM point release
    the Windows LLVM leg (`_ci-windows.yml`) downloads as a win64 installer (`llvm_windows_version` -
@@ -252,7 +252,7 @@ below for what differs and why).
    track the same toolchain), CMake's minimum from
    `CMakePresets.json`'s `cmakeMinimumRequired`, and vcpkg's baseline from `vcpkg.json`'s
    `builtin-baseline`.
-   [`_toolchain-versions.yml`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/_toolchain-versions.yml)
+   [`_toolchain-versions.yml`](https://github.com/iainchesworthlabs/iclforge/blob/main/.github/workflows/_toolchain-versions.yml)
    is a small reusable `workflow_call` that
    reads the manifest plus those four other files once and exposes `gcc_version` / `llvm_version`
    / `llvm_windows_version` / `msvc_toolset` / `qt_version` / `cmake_min` / `vcpkg_commit`

@@ -83,7 +83,7 @@ iclforge::signing::VerifySummary v = iclforge::signing::verify_atmos_stream(stre
 // v.valid == n, v.mismatch == 0, assuming `stream` and `key` are unchanged.
 ```
 
-Full program: [`examples/object_signing.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/object_signing.cpp)
+Full program: [`examples/object_signing.cpp`](https://github.com/iainchesworthlabs/iclforge/blob/main/examples/object_signing.cpp)
 — encodes a two-object Atmos stream and signs it; see [Object signing](../library/signing.md)
 in the library reference for the rest of the API surface.
 
@@ -197,7 +197,7 @@ protection bytes (`src/ac4enc/ERRATA.md`), and the decoder reconstructs objects 
 
 ## Planned decode modes
 
-Roadmap: [Object authenticity modes](https://github.com/iainchesworthlabs/ac3forge/blob/main/ROADMAP.md) (Partial tail + Proposed). Three policies
+Roadmap: [Object authenticity modes](https://github.com/iainchesworthlabs/iclforge/blob/main/ROADMAP.md) (Partial tail + Proposed). Three policies
 for decode into multi-channel / objects — only the first two ship today:
 
 | Mode | Intent | Today |

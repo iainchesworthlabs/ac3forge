@@ -115,7 +115,7 @@ Still deliberately out: the caller-buffer `_into` decode forms (a realtime-embed
 convenience whose Rust ergonomics want `&mut [f32]` scratch the value forms already avoid
 allocating twice for), the level meter (`iclforge_level_meter_t`) and the QC gates, and a few
 scanned-stream, frame-metadata and latency accessors — recorded, not silently missing; the full
-list is [What is not wrapped](https://iainchesworthlabs.github.io/ac3forge/library/rust-api/#what-is-not-wrapped).
+list is [What is not wrapped](https://iainchesworthlabs.github.io/iclforge/library/rust-api/#what-is-not-wrapped).
 
 ## Header defects found while building this
 

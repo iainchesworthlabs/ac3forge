@@ -193,7 +193,7 @@ is its own `ctest` process. `config-linux-gcc-coverage` itself (not the shared `
 fragment, since `config-windows-llvm-coverage` also inherits that fragment and stays
 Crucible-scoped) extends `VCPKG_MANIFEST_FEATURES` to `adm;hearth` so `src/sendspin` and
 `apps/hearth`'s engine and test sink — on by default like everywhere else — are measured too; see
-[`tools/checks/coverage_report.sh`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/checks/coverage_report.sh)
+[`tools/checks/coverage_report.sh`](https://github.com/iainchesworthlabs/iclforge/blob/main/tools/checks/coverage_report.sh)
 for their floors. `config-windows-llvm-coverage` is the Windows counterpart, Release-based (the
 profile runtime is built against the release CRT), with Crucible on and ADM and Hearth off; its
 test preset runs the `crucible` and `crucible-ui` labels, and
@@ -353,7 +353,7 @@ the failures of the last run; add `--output-on-failure` to any run to see a fail
 | `ICLFORGE_SANITIZERS` | empty | Comma-separated `-fsanitize=` value, e.g. `address,undefined` — see `cmake/Sanitizers.cmake`. Empty is a no-op; GCC/Clang only, MSVC is a configure error. Set via the `-asan-ubsan` or `-tsan` preset above rather than by hand. |
 | `ICLFORGE_ENABLE_COVERAGE` | `OFF` | Coverage instrumentation over every target it's linked into — see `cmake/Coverage.cmake`. gcov's `--coverage` on GCC and Clang, LLVM source-based coverage on clang-cl; off is a no-op, and other compilers get a configure-time warning and no instrumentation. Set via the `-coverage` presets above rather than by hand. |
 | `ICLFORGE_ENABLE_TRACY` | `OFF` | Tracy profiler instrumentation (`iclforge::tracy` — see `cmake/Tracy.cmake`). Needs vcpkg's `profiling` manifest feature (`-DVCPKG_MANIFEST_FEATURES=profiling`), which supplies Tracy itself; off is a no-op. |
-| `ICLFORGE_BUILD_FUZZERS` | `OFF` | Build the libFuzzer harnesses under `fuzz/`. Clang only (GCC and MSVC ship no libFuzzer); use `fuzz/run.sh` rather than this option directly — it configures a dedicated `build/fuzz` with the right compiler. See [`fuzz/README.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/fuzz/README.md). |
+| `ICLFORGE_BUILD_FUZZERS` | `OFF` | Build the libFuzzer harnesses under `fuzz/`. Clang only (GCC and MSVC ship no libFuzzer); use `fuzz/run.sh` rather than this option directly — it configures a dedicated `build/fuzz` with the right compiler. See [`fuzz/README.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/fuzz/README.md). |
 | `ICLFORGE_MINIMAL_DECODER` | `OFF` | Build **only** `iclforge::ac3_minimal`: one decode-only static library with no exceptions, no RTTI and no direct-form transform tables, for a target with a few hundred kilobytes of RAM and no operating system. Not a "build X too" option — it replaces what `src/ac3` builds, and configure fails with a list if any component that needs the full library is still on. GCC/Clang only. See [Minimum-footprint decoder profile](#minimum-footprint-decoder-profile). |
 | `ICLFORGE_MINIMAL_ENCODER` | `OFF` | The same profile pointed the other way: build **only** an encode-only `iclforge::ac3_minimal` carrying the AC-3 and the E-AC-3 encoder. Mutually exclusive with `ICLFORGE_MINIMAL_DECODER`, which configure enforces (see [The encode direction](#the-encode-direction)). GCC/Clang only. |
 | `ICLFORGE_MINIMAL_AC4` | `OFF` | Only with `ICLFORGE_MINIMAL_DECODER`: also build the AC-4 inspector, core and decoder (`src/ac4`, `src/ac4core`, `src/ac4dec`) as static archives with the profile's own compile options - no encoder, no shared library, no position-independent code. The ESP-IDF component sets it from `CONFIG_ICLFORGE_AC4`, which only a part with a floating-point unit offers ([ESP32-P4](platforms/bare-metal/esp32-p4.md#ac-4) is the part built and measured), and the `-minimal-ac4` presets set it together with `ICLFORGE_DECODE_SCALAR=float`; the fixed-point tier of the AC-4 decoder is a later phase. `ICLFORGE_BUILD_AC4` stays the full build's option and the profile refuses it. |
@@ -363,7 +363,7 @@ the failures of the last run; add `--output-on-failure` to any run to see a fail
 | `ICLFORGE_INSTALL_BOTH_LINKAGES` | `ON` | Install and export both the static and the shared variant of each library. `OFF` installs only the one `BUILD_SHARED_LIBS` selects, which is what the vcpkg port and the Conan recipe pass. See `cmake/InstallLibrary.cmake` and [Releasing](releasing.md#vcpkg-port). |
 | `ICLFORGE_QT_ROOT` | empty | Path to a Qt kit or a Qt install root, searched before the default install roots `cmake/FindQt6.cmake` looks in; a value that yields no kit is an error. The `ICLFORGE_QT_ROOT`, `QT_ROOT_DIR` and `QTDIR` environment variables work the same way (a stale `QT_ROOT_DIR` or `QTDIR` falls through to the defaults instead), and `-DCMAKE_PREFIX_PATH` and `-DQt6_DIR` take priority over all of them. See [Qt](#qt). |
 
-The ESP-IDF component and the bare-metal probes read further variables and Kconfig symbols (`ICLFORGE_ESP_PROFILE`, `ICLFORGE_MINIMAL_HOT_O2`, `ICLFORGE_BAREMETAL_CLOCK`, `CONFIG_ICLFORGE_AC4`, `CONFIG_ICLFORGE_SENDSPIN`, and others); the Kconfig symbols are in `esp-idf/iclforge/Kconfig`, and the rest are described in [`esp-idf/iclforge/README.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/iclforge/README.md) and on the [ESP32-S3](platforms/bare-metal/esp32-s3.md), [ESP32-P4](platforms/bare-metal/esp32-p4.md) and [Cortex-M3](platforms/bare-metal/cortex-m3.md) pages.
+The ESP-IDF component and the bare-metal probes read further variables and Kconfig symbols (`ICLFORGE_ESP_PROFILE`, `ICLFORGE_MINIMAL_HOT_O2`, `ICLFORGE_BAREMETAL_CLOCK`, `CONFIG_ICLFORGE_AC4`, `CONFIG_ICLFORGE_SENDSPIN`, and others); the Kconfig symbols are in `esp-idf/iclforge/Kconfig`, and the rest are described in [`esp-idf/iclforge/README.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/esp-idf/iclforge/README.md) and on the [ESP32-S3](platforms/bare-metal/esp32-s3.md), [ESP32-P4](platforms/bare-metal/esp32-p4.md) and [Cortex-M3](platforms/bare-metal/cortex-m3.md) pages.
 
 Building the library and CLI alone, with neither Qt nor vcpkg's extra features involved:
 
@@ -685,7 +685,7 @@ the Cortex-M3 leg, and CI holds both to the pinned ones in
 Catch2 suite is not one of its gates: two of the encoder's mirror self-checks compare the
 encoder's model against a real decode at a tolerance set for the double decoder, and fail under
 the fixed one. The plan, phases, and measurements are in
-[`planning/arithmetic-tiers.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/arithmetic-tiers.md).
+[`planning/arithmetic-tiers.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/arithmetic-tiers.md).
 
 **And the encoders' analysis front end, on its own axis.**
 `src/ac3/variants/encode-scalar-{float64,float32}/` carries `encode_scalar_t`: the type
@@ -1168,7 +1168,7 @@ your machine before a push. clang-tidy runs nightly against `main` from
 finding opens a `nightly-analysis` issue instead of failing a pull request. ffmpeg-validate is a
 separate, CLI-only linux-llvm build that runs FFmpeg as an independent oracle against the full
 layout/tool/metadata option space (see
-[CONTRIBUTING.md's Oracles section](https://github.com/iainchesworthlabs/ac3forge/blob/main/CONTRIBUTING.md#oracles)) — a different question from the
+[CONTRIBUTING.md's Oracles section](https://github.com/iainchesworthlabs/iclforge/blob/main/CONTRIBUTING.md#oracles)) — a different question from the
 [gold-reference gate](#gold-reference-correctness-gate) below, which every leg runs against one
 fixed sample to check output *quality*; ffmpeg-validate instead checks that every option
 combination produces a *structurally correct* stream at all, plus a numeric fidelity floor for

@@ -29,9 +29,9 @@ The decode and the audio both come from `iclforge::ac3`'s own decode path, runni
 The per-channel bed energy drives the two speaker rings (solid = ear-level, dashed = ceiling —
 ported from the desktop GUI's `SoundfieldView.qml`). For a stream carrying Atmos objects, each
 object's decoded position (OAMD,
-[`iclforge::ac3#168`](https://github.com/iainchesworthlabs/ac3forge/pull/168)) moves in the
+[`iclforge::ac3#168`](https://github.com/iainchesworthlabs/iclforge/pull/168)) moves in the
 top-down/elevation room view, and a "solo object" control plays that object's own
-JOC-reconstructed audio ([`iclforge::ac3#169`](https://github.com/iainchesworthlabs/ac3forge/pull/169)) —
+JOC-reconstructed audio ([`iclforge::ac3#169`](https://github.com/iainchesworthlabs/iclforge/pull/169)) —
 its isolated waveform, decoded from the bitstream, rather than a re-panned approximation of its
 slice of the bed. Drop in your own `.ac3`, `.ec3` or `.eac3` file to decode something other than
 the bundled fixture; a plain (non-Atmos) stream simply has zero objects.
@@ -46,7 +46,7 @@ The module this page loads carries more than `iclforge::ac3`. It statically link
 (`cmake/Fmt.cmake` pins 12.2.0, and the committed `iclforge_decode.wasm` carries
 `fmt::v12::format_error`'s mangled RTTI name), which is distributed under the MIT licence, whose
 text is in this repository at
-[`apps/crucible/notices/licences/MIT-fmt.txt`](https://github.com/iainchesworthlabs/ac3forge/blob/main/apps/crucible/notices/licences/MIT-fmt.txt).
+[`apps/crucible/notices/licences/MIT-fmt.txt`](https://github.com/iainchesworthlabs/iclforge/blob/main/apps/crucible/notices/licences/MIT-fmt.txt).
 The module also carries the Emscripten runtime and the C++ standard library that toolchain
 supplies, each under its own licence.
 
@@ -55,13 +55,13 @@ does not yet, so this section stands in for one.
 
 ## Source and how it's built
 
-Source: [`apps/wasm/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/apps/wasm) —
+Source: [`apps/wasm/`](https://github.com/iainchesworthlabs/iclforge/tree/main/apps/wasm) —
 see [WebAssembly](platforms/wasm.md) for the build/toolchain details and what's reused vs. new. CI
 rebuilds this embed fresh from source on every deploy to `main`; see
 [Release / CI](platforms/wasm.md#release-ci).
 
 This page is a consumer of `iclforge-wasm-decoder`
-(source: [`js/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/js)) rather
+(source: [`js/`](https://github.com/iainchesworthlabs/iclforge/tree/main/js)) rather
 than a parallel implementation of its own: the decode, the §7.8 fold and (in the demo's realtime
 section further down) the AudioWorklet playback pipeline all come from that package.
 
@@ -79,7 +79,7 @@ request that touches it — and point your project at the resulting `js/dist/`. 
 compiled `.wasm` of its own: `decodeFile()` and `PushDecoder` take the instantiated Embind module
 as their first argument, and `IclForgeDecoderNode` takes a `wasmGlueUrl` pointing at the Emscripten
 glue, so you also need the module built from `apps/wasm/`; [WebAssembly](platforms/wasm.md) covers
-that build. The [README](https://github.com/iainchesworthlabs/ac3forge/blob/main/js/README.md) is
+that build. The [README](https://github.com/iainchesworthlabs/iclforge/blob/main/js/README.md) is
 the package's own API documentation. The package exists at all because a browser cannot be
 relied on to decode EC-3: [Chrome reports a decoder error](https://github.com/videojs/http-streaming/issues/1297)
 when an EC-3 track turns up in an MPD, in a report that has been open since 2023.

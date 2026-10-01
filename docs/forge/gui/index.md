@@ -205,9 +205,9 @@ A real dialog, persisted across sessions (QSettings), three columns:
       file](accessibility.md#saving-a-diagnostics-file).
 
 Application icons are generated from a single procedural source; see
-[`apps/gui/icons/README.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/apps/gui/icons/README.md).
+[`apps/gui/icons/README.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/apps/gui/icons/README.md).
 Headless QML coverage is tracked in
-[`apps/gui/tests/FEATURE_COVERAGE.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/apps/gui/tests/FEATURE_COVERAGE.md).
+[`apps/gui/tests/FEATURE_COVERAGE.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/apps/gui/tests/FEATURE_COVERAGE.md).
 
 ## Next
 

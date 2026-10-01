@@ -2,7 +2,7 @@
 
 ## Build and test
 
-Setup is in [docs/building.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/building.md). The short form, from any shell (a Developer PowerShell is not required — see that page):
+Setup is in [docs/building.md](https://github.com/iainchesworthlabs/iclforge/blob/main/docs/building.md). The short form, from any shell (a Developer PowerShell is not required — see that page):
 
 ```bash
 cmake --preset config-windows-msvc-debug && cmake --build --preset build-windows-msvc-debug && ctest --preset test-windows-msvc-debug
@@ -45,14 +45,14 @@ other compilers and platforms one run at a time, and nightly the sanitizers, cov
 validation and every other leg. When a merge breaks `main`, `main-health` opens a `main-red`
 issue naming the merges since the last verified commit. A change that needs more than the gate
 before it merges (an ESP-IDF, Android or WASM change, a sanitizer question) can label its PR
-`ci:deep` or dispatch `ci.yml` on its branch. [CI for many agents](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/ci-agentic.md)
+`ci:deep` or dispatch `ci.yml` on its branch. [CI for many agents](https://github.com/iainchesworthlabs/iclforge/blob/main/docs/ci-agentic.md)
 describes the stages, and
-[.github/branch-protection.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/branch-protection.md)
+[.github/branch-protection.md](https://github.com/iainchesworthlabs/iclforge/blob/main/.github/branch-protection.md)
 has the required-check list and the merge-queue rationale. clang-tidy, CodeQL, MSVC
 PREfast and SonarCloud do not gate a PR: they run nightly against `main` and open a
 `nightly-analysis` issue when a run finds something new (same file, "Nightly analysis and
 other visible-only scanners"). Releases are tags cut directly
-from `main` — see [docs/releasing.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/releasing.md).
+from `main` — see [docs/releasing.md](https://github.com/iainchesworthlabs/iclforge/blob/main/docs/releasing.md).
 
 ## The clean-room rule
 
@@ -97,7 +97,7 @@ it, and those identifiers name its packages too. `apps/cli`, `apps/gui` and `app
 in `apps/windows`, is **Crucible**. `apps/hearth`, `src/sendspin` and the `hearth_sink` example
 are **Hearth**. `apps/android` and `apps/wasm` are library demonstrations. `src/audio`, `tests/`,
 `tools/`, `cmake/`, `packaging/` and the version line are shared and owned by no one product.
-[The naming and scope plan](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/recasting.md)
+[The naming and scope plan](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/recasting.md)
 records what each member owns, down to the targets, packages and CI legs.
 
 **These naming rules govern prose and code.** `iclforge` and
@@ -266,7 +266,7 @@ Ranked by how much they prove. Prefer the strongest one available for what you a
      gate and on every platform leg):
      *quality* and cross-platform reproducibility on one fixed sample - does forge's own decoder
      agree with FFmpeg's, by SNR, on every compiler this project builds with. See
-     [docs/building.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/building.md#gold-reference-correctness-gate).
+     [docs/building.md](https://github.com/iainchesworthlabs/iclforge/blob/main/docs/building.md#gold-reference-correctness-gate).
 
    The same job also runs `tools/checks/check_matrix_coverage.py`, which asks a different question: not
    "is the output correct" but "does anything exercise this at all". It reads the CLI's own
@@ -299,7 +299,7 @@ Ranked by how much they prove. Prefer the strongest one available for what you a
    and the nightly `Interop` workflow runs `tools/checks/verify_fate_interop.py` over eight
    SHA-256-pinned commercial-encoder excerpts fetched from FFmpeg's FATE archive. Reach for this
    one whenever you touch decoder syntax the encoder here never emits — and read
-   [docs/verification.md](https://iainchesworthlabs.github.io/ac3forge/verification/#third-party-bitstreams)
+   [docs/verification.md](https://iainchesworthlabs.github.io/iclforge/verification/#third-party-bitstreams)
    first, because there are no free AC-3 or E-AC-3 conformance vectors and this is the
    substitute, not the real thing.
 4. **The Python references in `tools/`.** Independent transcriptions of the same spec text.
@@ -307,7 +307,7 @@ Ranked by how much they prove. Prefer the strongest one available for what you a
    self-consistent round trip cannot.
 5. **Dolby's Reference Player and Media Encoder**, for object-layer syntax.
 
-**AC-4 has a ladder of its own**, set out in [docs/verification.md](https://iainchesworthlabs.github.io/ac3forge/verification/#ac-4)
+**AC-4 has a ladder of its own**, set out in [docs/verification.md](https://iainchesworthlabs.github.io/iclforge/verification/#ac-4)
 and in `planning/ac4.md`. FFmpeg reads AC-4's framing and its MP4 track and has no AC-4 decoder, so
 it does not check audio. The decoder is scored against the streams Dolby Encoding Engine (DEE)
 makes from known sources, the committed ones in `tests/golden/external-baseline/ac4-*` and a larger
@@ -330,27 +330,27 @@ implements no JOC reconstruction at all. Nothing outside this repository can pro
 independent object decode of an ICL Forge stream. What exists instead is a self-consistency
 series with real resolution — `tools/ci/quality_race.py`'s `objects` mode scores a committed
 five-object scene per object per rate in the nightly run, trended at [Object quality
-trend](https://iainchesworthlabs.github.io/ac3forge/object-quality-trend/). If you are changing
+trend](https://iainchesworthlabs.github.io/iclforge/object-quality-trend/). If you are changing
 `iclforge::oba::joc` or `iclforge::oba`, run it before and after and put both numbers in the commit message;
 it takes seconds and it is the only quality signal that layer has.
 
 Neither decoder covers everything, and the gaps do not overlap: see the [verification-gap
-table](https://iainchesworthlabs.github.io/ac3forge/verification/#where-the-oracles-dont-reach). If your change lands in a cell with no oracle, say so in
+table](https://iainchesworthlabs.github.io/iclforge/verification/#where-the-oracles-dont-reach). If your change lands in a cell with no oracle, say so in
 the commit message and cover it bit-by-bit instead.
 
 ## Documentation
 
-The examples in [docs/library/](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/library/index.md) are excerpts from programs in
-[`examples/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/examples), which are build targets and `ctest` entries. If you change a public
+The examples in [docs/library/](https://github.com/iainchesworthlabs/iclforge/blob/main/docs/library/index.md) are excerpts from programs in
+[`examples/`](https://github.com/iainchesworthlabs/iclforge/tree/main/examples), which are build targets and `ctest` entries. If you change a public
 API, update the example — the build will tell you if you forget. Do not add a snippet to the
 docs that is not backed by a compiled file.
 
 If you add a capability or find a new limitation, the tables in
-[docs/library/capabilities.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/library/capabilities.md)
+[docs/library/capabilities.md](https://github.com/iainchesworthlabs/iclforge/blob/main/docs/library/capabilities.md)
 ("What it does" / "What it does not do") and, for oracle coverage specifically,
-[docs/verification.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/verification.md)
+[docs/verification.md](https://github.com/iainchesworthlabs/iclforge/blob/main/docs/verification.md)
 are the authority and must be updated with it. README.md's own summary of the same material
-should stay a summary, not grow back into a second copy. [docs/history.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/history.md) is a
+should stay a summary, not grow back into a second copy. [docs/history.md](https://github.com/iainchesworthlabs/iclforge/blob/main/docs/history.md) is a
 record of past work and is not maintained against the current state.
 
 The platform tables under `docs-snippets/generated/` are generated from
@@ -387,24 +387,24 @@ a mid-level developer who does not already know this audio domain.
 - `ROADMAP.md` is the **status board** for in-flight, partial, proposed, blocked, and out-of-scope
   work. It uses plain-English names; do not allocate new numeric roadmap IDs (`EQ1`, `UX12`, …).
   Legacy IDs at the bottom of `ROADMAP.md` resolve old PR references only.
-- Product index pages (`docs/*/index.md`) and [`docs/library/capabilities.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/library/capabilities.md)
+- Product index pages (`docs/*/index.md`) and [`docs/library/capabilities.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/docs/library/capabilities.md)
   state **what ships today**.
-- Detailed implementation decisions belong in [`planning/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/planning)
+- Detailed implementation decisions belong in [`planning/`](https://github.com/iainchesworthlabs/iclforge/tree/main/planning)
   or a product's `design/` record. When a plan lands, update CHANGELOG and the product index; trim
-  the roadmap row; leave or mark the plan superseded ([`planning/SUPERSEDED.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/SUPERSEDED.md)).
+  the roadmap row; leave or mark the plan superseded ([`planning/SUPERSEDED.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/SUPERSEDED.md)).
 
 **Each product page set follows one shape.** An `index.md` opens with a status callout (what's
 built, what isn't, what's verified on real hardware versus under emulation or in CI only),
 sub-pages carry plain topic titles rather than repeating the product's binary name, and a
 `design/` subfolder holds phase records and promotion plans — evidence a reference page cites,
-not a guide a user reads first. [docs/crucible/design/promotion.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/crucible/design/promotion.md)
-and [docs/hearth/design/player-appliance.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/hearth/design/player-appliance.md)
+not a guide a user reads first. [docs/crucible/design/promotion.md](https://github.com/iainchesworthlabs/iclforge/blob/main/docs/crucible/design/promotion.md)
+and [docs/hearth/design/player-appliance.md](https://github.com/iainchesworthlabs/iclforge/blob/main/docs/hearth/design/player-appliance.md)
 are the pattern to follow for a new one.
 
 **Non-trivial design work starts in `planning/`, not `docs/`.** A phase plan, a naming decision,
 or a proposal that touches more than a page or two belongs in
-[`planning/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/planning) first —
-see [`planning/README.md`](https://github.com/iainchesworthlabs/ac3forge/tree/main/planning/README.md)
+[`planning/`](https://github.com/iainchesworthlabs/iclforge/tree/main/planning) first —
+see [`planning/README.md`](https://github.com/iainchesworthlabs/iclforge/tree/main/planning/README.md)
 for the index and how it relates to the roadmap. `docs/` describes what exists; `planning/` is
 where what might exist gets argued out first, and a page only moves (or a `design/` record
 gets written) once the work has actually landed. Plans link to the roadmap for status; they do

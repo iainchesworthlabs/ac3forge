@@ -28,7 +28,7 @@
     </p>
   </description>
   <launchable type="desktop-id">forge-gui.desktop</launchable>
-  <url type="homepage">https://github.com/iainchesworthlabs/ac3forge</url>
+  <url type="homepage">https://github.com/iainchesworthlabs/iclforge</url>
   <provides>
     <binary>forge-gui</binary>
   </provides>

@@ -6,7 +6,7 @@ the [ESP32-S3](esp32-s3.md) does, from the same `esp-idf/iclforge/` component, w
 lists `esp32p4` beside `esp32s3`, `esp32c3` and `esp32c6`.
 
 It is the "best" tier of the shared C6/S3/P4 sink family
-([`planning/esp32-sink-tiers.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-sink-tiers.md)):
+([`planning/esp32-sink-tiers.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/esp32-sink-tiers.md)):
 closed 2026-09-08 as a replacement for the S3 Wi-Fi Sendspin sink (no on-die radio, the S3 probe
 already real-time), reopened 2026-09-21 as a complementary module once a board existed to measure
 it on. This page is that plan's Phase P1 — the probe and a board timing table, with no network —
@@ -38,7 +38,7 @@ and display, GPIO headers along both edges, no separate UART bridge chip). It ca
 - An ESP32-C6-MINI-1 module wired to the P4 over SDIO (`GPIO14`-`GPIO19`) for Wi-Fi 6 and
   Bluetooth LE, per DFRobot's documentation. This probe does not touch it. `hearth_sink` does: it
   reaches Wi-Fi through `esp_hosted` over that link ([the example's
-  README](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/iclforge/examples/hearth_sink/README.md#on-the-esp32-p4)),
+  README](https://github.com/iainchesworthlabs/iclforge/blob/main/esp-idf/iclforge/examples/hearth_sink/README.md#on-the-esp32-p4)),
   and the [AC-4](#ac-4) figures were measured that way.
 - **Two USB-C connectors**, wired to two different on-die USB peripherals, not one connector
   shared between them: one silkscreened "USB 2.0 OTG", reaching the part's native high-speed
@@ -284,7 +284,7 @@ one pass, since an HTTP source cannot rewind, and its first frame carries one-of
 time per frame is the play without its first frame and the first frame has a column of its own. The
 hash costs 0.6 ms a frame at 2.0: a play with it off agrees with the same play with it on to 0.1%.
 Heap is `heap_caps_monitor_local_minimum_free_size`, as
-[the stream set's plan](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-stream-set.md)
+[the stream set's plan](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/esp32-stream-set.md)
 has it: the peak of what the play took from internal RAM and PSRAM together, and the least
 internal RAM that was free while it ran. Stack left is the decode task's
 `stream.decode_stack_free`, of 64 KB. The stage timers are those of `ICLFORGE_STAGE_TIMERS`: a
@@ -500,7 +500,7 @@ routines. At 25/24 and 15/16 it takes no longer than any other.
 
 ### Float output on the host, the Cortex-M3 leg and the board
 
-[Decision 26](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/ac4.md#decisions-of-2026-09-25)
+[Decision 26](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/ac4.md#decisions-of-2026-09-25)
 promises identical `float` output everywhere, and the probe's six AC-4 fixtures pin it
 (`tests/golden/ac4-probe-pcm-hashes.json`, held on the x86-64 host and on the Cortex-M3 under QEMU).
 The board's PCM hash (FNV-1a over the sample bit patterns in the order the player delivered them, the
@@ -619,11 +619,11 @@ the same reason (see that step's own comment).
 
 ## Where to go next
 
-- [`planning/esp32-sink-tiers.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-sink-tiers.md) —
+- [`planning/esp32-sink-tiers.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/esp32-sink-tiers.md) —
   the plan this page is Phase P1 of, with the Ethernet shape (P2, for a board that has a PHY,
   which this one does not) and the Wi-Fi shape over the onboard C6 and `esp_hosted` (P3), both
   onto TDM and a pair of ES9080 DACs, and where each stands.
-- [`planning/ac4.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/ac4.md) —
+- [`planning/ac4.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/ac4.md) —
   phase D14b, of which the [AC-4](#ac-4) section is the measurement, D14a's third part, which
   reworks what it found to cost most, and D14a4, which took the converter and the last libm
   disagreements out of the `float` decode.

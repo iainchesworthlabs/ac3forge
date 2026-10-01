@@ -114,7 +114,7 @@ surround, stereo and headphones play a decode of it. Atmos is E-AC-3 with a JOC 
 with no signing key, or on a receiver that takes AC-3 only, the stream is a 5.1 E-AC-3 or AC-3
 bed. Crucible has no AC-4 path. It captures what applications play as PCM and places it as
 Atmos objects for a receiver, and no receiver found accepts AC-4
-([planning/ac4.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/ac4.md),
+([planning/ac4.md](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/ac4.md),
 decision 20).
 
 ## Objects need a signing key
@@ -140,4 +140,4 @@ the path to it. See [Object signing](../concepts/object-signing.md).
 - [Languages](localisation.md) — the seven the window ships in, and what changes when one reads right to left
 - [Troubleshooting](troubleshooting.md) — when you hear nothing, or hear everything twice
 - [The promotion plan](design/promotion.md) — the design record, phase by phase, and what is unverified
-- [Crucible QML feature coverage](https://github.com/iainchesworthlabs/ac3forge/blob/main/apps/crucible/ui/tests/FEATURE_COVERAGE.md) — what the headless QML suites exercise
+- [Crucible QML feature coverage](https://github.com/iainchesworthlabs/iclforge/blob/main/apps/crucible/ui/tests/FEATURE_COVERAGE.md) — what the headless QML suites exercise

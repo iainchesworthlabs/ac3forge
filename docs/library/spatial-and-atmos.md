@@ -34,7 +34,7 @@ const std::array<std::span<const float>, 1> audio{std::span<const float>{source}
 renderer.render_block(audio, block_out);
 ```
 
-Full program: [`examples/spatial_objects.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/spatial_objects.cpp).
+Full program: [`examples/spatial_objects.cpp`](https://github.com/iainchesworthlabs/iclforge/blob/main/examples/spatial_objects.cpp).
 
 `pan_azimuth(deg)` and `pan_room(x, y)` expose the panner directly if you want the gains
 without the renderer. Both are energy-normalized pairwise (VBAP on the horizontal ring),
@@ -107,7 +107,7 @@ and gain do (BS.2076-2 §10.3 lists width/height/depth among its interpolatable 
 `snap`, `zone` and `enable_elevation` do not — they are discrete decisions with no meaningful
 halfway point, so `evaluate()` holds the earlier keyframe's value until the later one is reached.
 
-Full program: [`examples/atmos_objects.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/atmos_objects.cpp).
+Full program: [`examples/atmos_objects.cpp`](https://github.com/iainchesworthlabs/iclforge/blob/main/examples/atmos_objects.cpp).
 
 | `AtmosConfig` | Default | Notes |
 |---|---|---|
@@ -222,7 +222,7 @@ const auto placement = iclforge::oba::evaluate_placements(paths, seconds);
 const auto unit = encoder.encode_frame(views, placement);
 ```
 
-Full program: [`examples/scripted_object_motion.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/scripted_object_motion.cpp).
+Full program: [`examples/scripted_object_motion.cpp`](https://github.com/iainchesworthlabs/iclforge/blob/main/examples/scripted_object_motion.cpp).
 
 `ObjectPath` is a `std::variant` of the two kinds behind one `evaluate(time_s)` interface, so a
 caller doesn't need to know which one it holds. It is the *per-object* layer: one object, one
@@ -261,7 +261,7 @@ scene.evaluate_into(seconds, placement);        // allocation-free, once per fra
 const auto unit = encoder.encode_frame(views, placement);
 ```
 
-Full program: [`examples/scripted_object_motion.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/scripted_object_motion.cpp).
+Full program: [`examples/scripted_object_motion.cpp`](https://github.com/iainchesworthlabs/iclforge/blob/main/examples/scripted_object_motion.cpp).
 
 ### Interpolation and ramp semantics
 
@@ -347,7 +347,7 @@ for (const auto& update : iclforge::oba::parse_osc_packet(datagram, &stats)) {
 }
 ```
 
-Full program: [`examples/osc_object_control.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/osc_object_control.cpp).
+Full program: [`examples/osc_object_control.cpp`](https://github.com/iainchesworthlabs/iclforge/blob/main/examples/osc_object_control.cpp).
 
 Address patterns match LITERALLY — no OSC glob (`?`/`*`/`[]`/`{}`) matching — with `<n>` the
 0-based object index:
@@ -485,7 +485,7 @@ stream doesn't *advertise* an object layer either. That marker (`flag_ec3_extens
 "Dolby Digital Plus + Dolby Atmos" profile off. Left in, all four would claim objects that were
 never encoded — the same empty-promise this mode exists to avoid.
 
-Full program: [`examples/atmos_fallback.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/atmos_fallback.cpp)
+Full program: [`examples/atmos_fallback.cpp`](https://github.com/iainchesworthlabs/iclforge/blob/main/examples/atmos_fallback.cpp)
 — encodes the same objects both ways and confirms both decode as an ordinary 5.1 bed.
 
 The stream size is unaffected either way — this is CBR, so `frmsiz` follows `bitrate_kbps`

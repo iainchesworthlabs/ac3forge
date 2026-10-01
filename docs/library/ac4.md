@@ -70,7 +70,7 @@ for (;;) {
 decoder.flush(sink);  // the samples held back short of a block, as one shorter block
 ```
 
-Full program: [`examples/decode_ac4.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/decode_ac4.cpp) —
+Full program: [`examples/decode_ac4.cpp`](https://github.com/iainchesworthlabs/iclforge/blob/main/examples/decode_ac4.cpp) —
 decodes the stream it is given to stereo, then prints the presentations it found and the metadata
 of the one it decoded. `ctest` runs it on a committed DEE stream.
 

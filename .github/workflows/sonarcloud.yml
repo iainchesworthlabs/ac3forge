@@ -291,8 +291,8 @@ jobs:
       # sonar-project.properties from sonar.projectBaseDir, which the action
       # sets to `.`, and naming the file explicitly is a trap in a container
       # job. `github.workspace` expands on the HOST, to
-      # /home/runner/work/ac3forge/ac3forge, while the container sees the same
-      # tree at /__w/ac3forge/ac3forge - so the path resolves to nothing
+      # /home/runner/work/<repo>/<repo>, while the container sees the same
+      # tree at /__w/<repo>/<repo> - so the path resolves to nothing
       # inside, the scanner logs "Project root configuration file: NONE" and
       # fails on missing sonar.projectKey/sonar.organization. Every other
       # property below is relative and resolves against the base dir.

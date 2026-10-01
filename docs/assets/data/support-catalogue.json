@@ -1971,7 +1971,7 @@
       "state": "published",
       "artifact": "NSIS installer or ZIP containing forge and forge-gui",
       "action": "Open GitHub releases",
-      "url": "https://github.com/iainchesworthlabs/ac3forge/releases/latest",
+      "url": "https://github.com/iainchesworthlabs/iclforge/releases/latest",
       "note": "The binaries are unsigned; Windows may show a SmartScreen warning."
     },
     {
@@ -1981,7 +1981,7 @@
       "state": "published",
       "artifact": "NSIS installer or ZIP containing forge",
       "action": "Open GitHub releases",
-      "url": "https://github.com/iainchesworthlabs/ac3forge/releases/latest",
+      "url": "https://github.com/iainchesworthlabs/iclforge/releases/latest",
       "note": "The CI leg is experimental and forge-gui is not included."
     },
     {
@@ -1991,7 +1991,7 @@
       "state": "published",
       "artifact": "TGZ, DEB or RPM; forge-gui is also available as an AppImage",
       "action": "Open GitHub releases",
-      "url": "https://github.com/iainchesworthlabs/ac3forge/releases/latest",
+      "url": "https://github.com/iainchesworthlabs/iclforge/releases/latest",
       "note": "Choose the package format used by your distribution."
     },
     {
@@ -2001,7 +2001,7 @@
       "state": "published",
       "artifact": "TGZ, DEB or RPM containing forge and forge-gui",
       "action": "Open GitHub releases",
-      "url": "https://github.com/iainchesworthlabs/ac3forge/releases/latest",
+      "url": "https://github.com/iainchesworthlabs/iclforge/releases/latest",
       "note": "This is the Raspberry Pi 4/5 package when the operating system is 64-bit."
     },
     {
@@ -2011,7 +2011,7 @@
       "state": "published",
       "artifact": "Universal DMG containing forge and forge-gui",
       "action": "Open GitHub releases",
-      "url": "https://github.com/iainchesworthlabs/ac3forge/releases/latest",
+      "url": "https://github.com/iainchesworthlabs/iclforge/releases/latest",
       "note": "The package is CI-tested; no project maintainer has used it on a Mac."
     },
     {
@@ -2021,7 +2021,7 @@
       "state": "configured",
       "artifact": "Separate Crucible ZIP when present in the release",
       "action": "Open GitHub releases",
-      "url": "https://github.com/iainchesworthlabs/ac3forge/releases/latest",
+      "url": "https://github.com/iainchesworthlabs/iclforge/releases/latest",
       "note": "Packaging is wired, but no tag has exercised this route. The archive has driver scripts; the test-signed driver must be built from source."
     },
     {
@@ -2031,7 +2031,7 @@
       "state": "configured",
       "artifact": "TGZ or DEB when present in the release",
       "action": "Open GitHub releases",
-      "url": "https://github.com/iainchesworthlabs/ac3forge/releases/latest",
+      "url": "https://github.com/iainchesworthlabs/iclforge/releases/latest",
       "note": "Packaging is wired, but no tag has exercised this route; the x86_64 asset is best-effort."
     },
     {
@@ -2041,7 +2041,7 @@
       "state": "configured",
       "artifact": "TGZ or DEB when present in the release",
       "action": "Open GitHub releases",
-      "url": "https://github.com/iainchesworthlabs/ac3forge/releases/latest",
+      "url": "https://github.com/iainchesworthlabs/iclforge/releases/latest",
       "note": "Packaging is wired, but no tag has exercised this route."
     },
     {
@@ -2141,7 +2141,7 @@
       "state": "published",
       "artifact": "iclforge-dev ZIP",
       "action": "Open GitHub releases",
-      "url": "https://github.com/iainchesworthlabs/ac3forge/releases/latest",
+      "url": "https://github.com/iainchesworthlabs/iclforge/releases/latest",
       "note": "Contains headers, libraries and CMake package files."
     },
     {
@@ -2151,7 +2151,7 @@
       "state": "published",
       "artifact": "iclforge-dev ZIP",
       "action": "Open GitHub releases",
-      "url": "https://github.com/iainchesworthlabs/ac3forge/releases/latest",
+      "url": "https://github.com/iainchesworthlabs/iclforge/releases/latest",
       "note": "The CI leg is experimental."
     },
     {
@@ -2161,7 +2161,7 @@
       "state": "published",
       "artifact": "iclforge-dev TGZ, DEB or RPM development package",
       "action": "Open GitHub releases",
-      "url": "https://github.com/iainchesworthlabs/ac3forge/releases/latest",
+      "url": "https://github.com/iainchesworthlabs/iclforge/releases/latest",
       "note": "The system packages separate runtime libraries from headers and CMake files."
     },
     {
@@ -2171,7 +2171,7 @@
       "state": "published",
       "artifact": "iclforge-dev TGZ, DEB or RPM development package",
       "action": "Open GitHub releases",
-      "url": "https://github.com/iainchesworthlabs/ac3forge/releases/latest",
+      "url": "https://github.com/iainchesworthlabs/iclforge/releases/latest",
       "note": "Suitable for a 64-bit Raspberry Pi."
     },
     {
@@ -2181,7 +2181,7 @@
       "state": "published",
       "artifact": "Best-effort iclforge-dev ZIP",
       "action": "Open GitHub releases",
-      "url": "https://github.com/iainchesworthlabs/ac3forge/releases/latest",
+      "url": "https://github.com/iainchesworthlabs/iclforge/releases/latest",
       "note": "The development archive may be absent from a release."
     },
     {
@@ -2261,7 +2261,7 @@
       "state": "published",
       "artifact": "Release APK",
       "action": "Open GitHub releases",
-      "url": "https://github.com/iainchesworthlabs/ac3forge/releases/latest",
+      "url": "https://github.com/iainchesworthlabs/iclforge/releases/latest",
       "note": "Sideload with adb; it is not distributed through the Play Store."
     }
   ]

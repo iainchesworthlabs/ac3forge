@@ -21,10 +21,10 @@ classifiers = [
 dependencies = ["numpy>=1.24"]
 
 [project.urls]
-Homepage = "https://github.com/iainchesworthlabs/ac3forge"
-Documentation = "https://iainchesworthlabs.github.io/ac3forge/library/python-api/"
-Repository = "https://github.com/iainchesworthlabs/ac3forge"
-Changelog = "https://github.com/iainchesworthlabs/ac3forge/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/iainchesworthlabs/iclforge"
+Documentation = "https://iainchesworthlabs.github.io/iclforge/library/python-api/"
+Repository = "https://github.com/iainchesworthlabs/iclforge"
+Changelog = "https://github.com/iainchesworthlabs/iclforge/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 test = ["pytest>=7"]

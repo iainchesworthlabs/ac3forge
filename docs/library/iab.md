@@ -26,7 +26,7 @@ for (const auto& entry : *frames) {
 }
 ```
 
-Full program: [`examples/read_iab.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/read_iab.cpp) —
+Full program: [`examples/read_iab.cpp`](https://github.com/iainchesworthlabs/iclforge/blob/main/examples/read_iab.cpp) —
 writes the same small IAB fixture both as a bare elementary file and wrapped in a synthetic MXF
 Track File, parses both, and prints that they agree.
 
@@ -56,7 +56,7 @@ examples) consumes it.
   `AuthoringToolInfo` and `UserData`. Positions (§5.4's `DistanceXY`/`DistanceZ` formulas), gains
   and spreads (§5.5) are resolved to their final linear/physical values on the way in, the same
   "plain aggregate, already-resolved" shape [`iclforge/adm/model.hpp`](adm.md) uses for ADM — see
-  [`iclforge/iab/model.hpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/iab/include/iclforge/iab/model.hpp)
+  [`iclforge/iab/model.hpp`](https://github.com/iainchesworthlabs/iclforge/blob/main/src/iab/include/iclforge/iab/model.hpp)
   for the full struct-by-struct citation trail.
 - **`AudioDataDLC`** (§9.6/§10.7, Annex B) is read only by identity — its forward-adaptive lattice
   predictor plus entropy-coded residual is left as an opaque `std::vector<std::byte>` rather than
@@ -78,7 +78,7 @@ examples) consumes it.
   skips everything that is not a match by that KLV's own declared Length, and hands the one KLV
   whose Key matches ST 2067-201 Table 4.2's registered value straight to `parse_iabitstream`'s
   `std::istream` overload, unmodified. See
-  [`src/iab/src/mxf_reader.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/iab/src/mxf_reader.cpp)'s
+  [`src/iab/src/mxf_reader.cpp`](https://github.com/iainchesworthlabs/iclforge/blob/main/src/iab/src/mxf_reader.cpp)'s
   own header comment for the full clause-by-clause trail, including why Header Metadata's
   Preface/ContentStorage/Package object graph is never parsed at all (locating essence is a
   KLV-Key matter, not an object-graph one).
@@ -126,7 +126,7 @@ to drive `encode_frame()` in a loop, the same destination shape `iclforge::admbr
 for ADM. See [ADM → Atmos bridging](adm-bridge.md#bridging-iab) for what gets
 mapped (Table 19 → `iclforge::oba::BedLabel`, position conversion, MetaID-based cross-frame identity)
 and what does not (spread, the 9-zone `ObjectZoneControl`).
-[`examples/encode_iab.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/encode_iab.cpp)
+[`examples/encode_iab.cpp`](https://github.com/iainchesworthlabs/iclforge/blob/main/examples/encode_iab.cpp)
 is the full read → bridge → encode pipeline; `forge atmos-iab` drives the identical pipeline from
 the command line.
 

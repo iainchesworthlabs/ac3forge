@@ -246,11 +246,11 @@ PackageVersion: {version}
 PackageLocale: en-US
 Publisher: iainchesworthlabs
 PublisherUrl: https://github.com/iainchesworthlabs
-PublisherSupportUrl: https://github.com/iainchesworthlabs/ac3forge/issues
+PublisherSupportUrl: https://github.com/iainchesworthlabs/iclforge/issues
 PackageName: iclforge
-PackageUrl: https://github.com/iainchesworthlabs/ac3forge
+PackageUrl: https://github.com/iainchesworthlabs/iclforge
 License: GPL-3.0-or-later
-LicenseUrl: https://github.com/iainchesworthlabs/ac3forge/blob/main/LICENSE
+LicenseUrl: https://github.com/iainchesworthlabs/iclforge/blob/main/LICENSE
 ShortDescription: Clean-room AC-3/E-AC-3/AC-4 encoder, decoder and Atmos object-layer CLI/GUI
 Description: >-
   iclforge is a clean-room C++23 implementation of the AC-3 (ATSC A/52, "Dolby Digital"),

@@ -15,7 +15,7 @@
   const mount = document.getElementById("ac3f-stats");
   if (!mount) return; // not the homepage
 
-  const REPO = "iainchesworthlabs/ac3forge";
+  const REPO = "iainchesworthlabs/iclforge";
   const HISTORY_BRANCH = "quality-history";
 
   // >>> measurement summary

@@ -10,7 +10,7 @@
 
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
-    REPO iainchesworthlabs/ac3forge
+    REPO iainchesworthlabs/iclforge
     REF "v${VERSION}"
     SHA512 b28a4de6884a952007140f4766db4c28fc7892abed374472df0decbf5d6e9eda5f3cc12170b2ba7b6df9b9e10d22f99a790258a465e7b432e73b4759bb151d35
     HEAD_REF main

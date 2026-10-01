@@ -14,7 +14,7 @@ it has been validated on an ESP32-S3 board configuration only.
 external_components:
   - source:
       type: git
-      url: https://github.com/iainchesworthlabs/ac3forge
+      url: https://github.com/iainchesworthlabs/iclforge
       ref: main
       path: esphome/components
     components: [iclforge]
@@ -52,7 +52,7 @@ job is the `esp-component` call in the `esp` lane of `ci.yml`, which runs after 
 changes the ESP32 trees or a tree its component ships, and nightly ([the lane table](../../ci-lanes.md#lane-table),
 [CI for many agents](../../ci-agentic.md#the-tiers)).
 
-[`esphome/README.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/esphome/README.md)
+[`esphome/README.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/esphome/README.md)
 has the rest, including why PSRAM is worth having on a board that also runs WiFi.
 
 ## Where to go next

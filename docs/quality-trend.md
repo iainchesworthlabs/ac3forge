@@ -2,7 +2,7 @@
 
 This page has two series. The first, from here to "Where the data lives", is the
 [gold-reference
-gate](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/checks/verify_gold_reference.sh)'s
+gate](https://github.com/iainchesworthlabs/iclforge/blob/main/tools/checks/verify_gold_reference.sh)'s
 (encode the checked-in golden 5.1 WAV, strict-decode with FFmpeg and with
 `forge`'s own decoder, delay-compensated SNR between the two), which covers
 AC-3 and E-AC-3, and its measure is Decode accuracy: how closely this decoder agrees with
@@ -47,7 +47,7 @@ top octave that no real programme material has, and tuning the encoder's
 bandwidth default against it once produced a measured 2.1 dB "win" that was
 purely an artefact of the fixture. Real speech and music fixtures exist for
 that question — see [Landscape](landscape.md) and
-[tools/generators/README.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/generators/README.md).
+[tools/generators/README.md](https://github.com/iainchesworthlabs/iclforge/blob/main/tools/generators/README.md).
 
 <div id="quality-trend-app">
   <p class="quality-trend-status">Loading trend data…</p>
@@ -80,7 +80,7 @@ that question — see [Landscape](landscape.md) and
 
 <script>
 (function () {
-  const REPO = "iainchesworthlabs/ac3forge";
+  const REPO = "iainchesworthlabs/iclforge";
   const HISTORY_BRANCH = "quality-history";
   const MAIN_COLOR = "#00acc1";
   // Muted and dashed (see buildChart) rather than a third saturated colour -
@@ -706,7 +706,7 @@ commit SHA already in quality-history, not a separate data source.
 `_fixed`-suffixed checks are the gate run against a decoder built with
 `-DICLFORGE_DECODE_SCALAR=fixed` - Q7.24 integer arithmetic under a block
 exponent, the tier for a part with no FPU
-([`planning/arithmetic-tiers.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/arithmetic-tiers.md)).
+([`planning/arithmetic-tiers.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/arithmetic-tiers.md)).
 It differs from the double decode at 121 dB and above on the gold streams
 (`tools/checks/check_decode_scalar_snr.py`, held to 110 in the same pass), which is as
 far below this gate's coding noise as the float32 decode's 139, so the same
@@ -760,7 +760,7 @@ there outside of what `mkdocs build` itself generates. This page prefers each
 history's generated `.recent.jsonl` window and falls back to the full file,
 both fetched from `raw.githubusercontent.com`, so a new
 push shows up here without waiting on a docs deploy (which,
-per [docs.yml](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/docs.yml),
+per [docs.yml](https://github.com/iainchesworthlabs/iclforge/blob/main/.github/workflows/docs.yml),
 only runs on push to `main`).
 
 `develop.jsonl` stopped gaining rows on 2026-08-24, `develop`'s last commit
@@ -797,7 +797,7 @@ its own, and nothing was dropped.
 Two runs can still write here at once, for example the nightly run and a run
 after a merge. The run that pushes second is rejected, rebases onto the first,
 and meets a conflict: both runs added records to the end of the same file.
-[`tools/ci/resolve_history_conflict.py`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/ci/resolve_history_conflict.py)
+[`tools/ci/resolve_history_conflict.py`](https://github.com/iainchesworthlabs/iclforge/blob/main/tools/ci/resolve_history_conflict.py)
 settles it by keeping both runs' records and writing the `.recent.jsonl`
 window again from the result, so what this page reads carries every run's
 numbers whichever run finishes first. Anything it cannot account for fails the
@@ -808,14 +808,14 @@ publishing job rather than being guessed at, which is what happened to
 
 Everything above is AC-3 and E-AC-3. AC-4 has its own series, because its oracle is different:
 FFmpeg does not decode AC-4, so
-[`tools/checks/score_ac4_decode.py`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/checks/score_ac4_decode.py)
+[`tools/checks/score_ac4_decode.py`](https://github.com/iainchesworthlabs/iclforge/blob/main/tools/checks/score_ac4_decode.py)
 decodes the Dolby Encoding Engine's AC-4 streams and scores each against the source it was encoded
 from ([Validation](verification.md#ac-4) describes how). Its measure is Decode accuracy against
 that source, not against another decoder. It runs in FFmpeg Validate, a nightly job, on the
 `linux-llvm` build, and its pinned floors fail that run. The same run writes the scores as a JSON
 artifact, and the `Publish quality trend` job appends one row per stream to
 `ac4-quality-main.jsonl` on the same `quality-history` branch, by
-[`tools/ci/append_ac4_quality_history.py`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/ci/append_ac4_quality_history.py):
+[`tools/ci/append_ac4_quality_history.py`](https://github.com/iainchesworthlabs/iclforge/blob/main/tools/ci/append_ac4_quality_history.py):
 one set of rows per nightly run. It covers 10 of the 15 committed legs, described below the
 chart. The AC-4 encoder's own scores (`score_ac4_encode.py`) are held to pinned floors only, and
 its race against the Dolby encoder runs locally, so neither has a series; nor do AC-4's objects.
@@ -826,7 +826,7 @@ its race against the Dolby encoder runs locally, so neither has a series; nor do
 
 <script>
 (function () {
-  const REPO = "iainchesworthlabs/ac3forge";
+  const REPO = "iainchesworthlabs/iclforge";
   const HISTORY_BRANCH = "quality-history";
   const HISTORY_FILE = "ac4-quality-main";
   // Mirrors tools/ci/append_ac4_quality_history.py's thresholds - a display

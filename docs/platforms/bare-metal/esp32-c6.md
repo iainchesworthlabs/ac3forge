@@ -26,7 +26,7 @@ again, so the memory and fit figures below are those of 2026-09-15.
 | Memory, no network | Every fixture fits: 383,416 bytes free before the decode, largest block 352,256, against a largest peak of 234,070 (7.1.4 folded to stereo) |
 | Memory, with WiFi and a stream | About 236,000 bytes free before the decode, largest block 217,088 to 221,184. Everything up to the Atmos objects rows (212,253 bytes of peak) fits, and leaves 18,152 bytes free at the lowest; 7.1.4 (227,662) does not. With ESP-IDF's WiFi IRAM options off every fixture fits, 7.1.4 included, and the decode is slower |
 | Encode | Not measured. Both encoders are floating-point, which on this part is software floating point |
-| AC-4 | Not built for this part. `CONFIG_ICLFORGE_AC4` is offered only where ESP-IDF sets `SOC_CPU_HAS_FPU`, which the C6 does not, and the AC-4 decoder has no fixed-point tier yet: that is phase D14d of [`planning/ac4.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/ac4.md#d14-ac-4-on-the-esp32s), core decoding first. The sink decodes AC-3 and E-AC-3 only, and no ESP32 sink takes AC-4 in a Sendspin group |
+| AC-4 | Not built for this part. `CONFIG_ICLFORGE_AC4` is offered only where ESP-IDF sets `SOC_CPU_HAS_FPU`, which the C6 does not, and the AC-4 decoder has no fixed-point tier yet: that is phase D14d of [`planning/ac4.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/ac4.md#d14-ac-4-on-the-esp32s), core decoding first. The sink decodes AC-3 and E-AC-3 only, and no ESP32 sink takes AC-4 in a Sendspin group |
 | QEMU | Not emulated, see [QEMU](#qemu) |
 | CI | The component pack builds for `esp32c6` from its archive, and the `build-esp32c3` job builds this probe with both network loads and `hearth_sink` for the part with 4 MB and with 16 MB of flash. Nothing runs. Both are in the `esp` lane of `ci.yml`, which runs after a merge to main that changes the ESP32 trees or a tree its component ships (the [lane table](../../ci-lanes.md#lane-table) lists them), and nightly ([CI for many agents](../../ci-agentic.md#the-tiers)) |
 
@@ -369,7 +369,7 @@ with socket.create_connection((host, port)) as s:
 
 Playback (I2S, a DMA queue, underruns) and a second board are outside this probe's own scope, but
 both are covered on the part now: `hearth_sink`'s Sendspin player runs on this board, and its
-[README, "On the ESP32-C6"](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/iclforge/examples/hearth_sink/README.md#on-the-esp32-c6)
+[README, "On the ESP32-C6"](https://github.com/iainchesworthlabs/iclforge/blob/main/esp-idf/iclforge/examples/hearth_sink/README.md#on-the-esp32-c6)
 has the clock, memory and two-board figures.
 
 ## Where to go next

@@ -17,7 +17,7 @@
     consecutive clean runs — two `release.yml` dry runs and a feature branch's own PR CI — with
     gold-reference SNR numbers (67.80/67.82/67.76 dB, matching the x86 baseline every other
     non-arm64 leg reports) before its own `continue-on-error` escape hatch came off the same way
-    (see [`.github/workflows/_build.yml`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/_build.yml)).
+    (see [`.github/workflows/_build.yml`](https://github.com/iainchesworthlabs/iclforge/blob/main/.github/workflows/_build.yml)).
     A red leg now opens the `main-red` or `main-red-nightly` issue, as any other
     non-experimental leg does ([CI for many agents](../ci-agentic.md#after-the-merge)).
 
@@ -359,10 +359,10 @@ rules ran, and `forge-gui`'s already runs whenever `ICLFORGE_BUILD_GUI` is `ON` 
 generator itself is unconditional on `APPLE`, GUI or not. No stable (non-beta) release has been
 tagged yet. See [Packaging](../building.md#packaging).
 
-Through Homebrew, the personal tap `iainchesworthlabs/ac3forge` (the `homebrew-ac3forge`
-repository, [staged here](https://github.com/iainchesworthlabs/ac3forge/tree/main/packaging/homebrew))
+Through Homebrew, the personal tap `iainchesworthlabs/iclforge` (the `homebrew-iclforge`
+repository, [staged here](https://github.com/iainchesworthlabs/iclforge/tree/main/packaging/homebrew))
 carries the source formula `iclforge` for the CLI and the cask `forge-gui` for the GUI:
-`brew tap iainchesworthlabs/ac3forge`, then `brew install iclforge` or `brew install --cask
+`brew tap iainchesworthlabs/iclforge`, then `brew install iclforge` or `brew install --cask
 forge-gui`. The app is neither code-signed nor notarized, so Gatekeeper refuses it on first launch
 until it is opened from Finder's context menu or `xattr -dr com.apple.quarantine` is run on it.
 Neither route has been run end to end on a Mac.

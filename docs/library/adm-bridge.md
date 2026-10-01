@@ -7,7 +7,7 @@ directions live here:
   [`iclforge::oba::AtmosEncoder`](spatial-and-atmos.md)'s input shape — one `iclforge::oba::ObjectPath` plus
   one mono PCM span per bed speaker feed or dynamic object, ready to drive `encode_frame()` in a
   loop. Driven end to end by `forge atmos-adm` and
-  [`examples/encode_adm.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/encode_adm.cpp).
+  [`examples/encode_adm.cpp`](https://github.com/iainchesworthlabs/iclforge/blob/main/examples/encode_adm.cpp).
   `build_iab()` does the same for a parsed IAB sequence ([below](#bridging-iab)), driven by
   `forge atmos-iab`. With `codec=ac4` those two commands hand the same result to the AC-4 object
   encoder instead ([AC-4](ac4.md#encoding-objects)).

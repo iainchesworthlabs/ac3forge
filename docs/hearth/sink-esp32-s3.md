@@ -5,8 +5,8 @@ synchronised audio from a compatible server. The board can play stereo PCM, or d
 E-AC-3 (including Atmos objects) for its configured speakers.
 
 This guide covers building, flashing, network setup, pairing, and group playback. The example
-[README](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/iclforge/examples/hearth_sink/README.md)
-and the [ESP-IDF component overview](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/iclforge/README.md)
+[README](https://github.com/iainchesworthlabs/iclforge/blob/main/esp-idf/iclforge/examples/hearth_sink/README.md)
+and the [ESP-IDF component overview](https://github.com/iainchesworthlabs/iclforge/blob/main/esp-idf/iclforge/README.md)
 contain implementation details and measurements. For the stereo ESP32-C6 player, see
 [An ESP32-C6 sink](sink-esp32-c6.md).
 
@@ -265,7 +265,7 @@ the page or with `PUT /layout`, and it applies from the next chunk the board pla
 sends its own settings replaces it. At `2.0` and `1.0` the decoder folds the programme down. On a
 wider layout each channel plays at its own location, objects are placed by their positions when
 the layout has height speakers, and nothing is upmixed. The
-[README](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/iclforge/examples/hearth_sink/README.md#layouts-and-more-than-two-channels)
+[README](https://github.com/iainchesworthlabs/iclforge/blob/main/esp-idf/iclforge/examples/hearth_sink/README.md#layouts-and-more-than-two-channels)
 has the grammar and the rules.
 
 ## Memory
@@ -313,9 +313,9 @@ an earlier one-minute run a 108-byte allocation did, with no effect on the strea
 
 ## Where to go next
 
-- [The example's README](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/iclforge/examples/hearth_sink/README.md):
+- [The example's README](https://github.com/iainchesworthlabs/iclforge/blob/main/esp-idf/iclforge/examples/hearth_sink/README.md):
   every setting, the REST routes, and the measurements.
 - [ESP32-S3](../platforms/bare-metal/esp32-s3.md): the decoder on this part, and its timing and
   memory.
-- [The plan](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/hearth-reference-player.md):
+- [The plan](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/hearth-reference-player.md):
   what Hearth is building, and in what order.

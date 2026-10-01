@@ -3,10 +3,10 @@
 *Maintainer notes - CI structure; not a build or contribution guide.*
 
 For triaging GitHub Advanced Security code-scanning alerts on pull requests, see
-[`tools/ci/code_scanning_triage.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/ci/code_scanning_triage.md).
+[`tools/ci/code_scanning_triage.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/tools/ci/code_scanning_triage.md).
 
 Pull requests and merge-queue entries run
-[`pr-gate.yml`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/pr-gate.yml),
+[`pr-gate.yml`](https://github.com/iainchesworthlabs/iclforge/blob/main/.github/workflows/pr-gate.yml),
 described in [CI for many agents](ci-agentic.md), and `ci.yml` has no `pull_request` or
 `merge_group` trigger. `ci.yml` runs on every push to main (one run at a time), on the nightly
 schedule, and on a dispatch, and it uses the lanes on this page to decide what to run: a lane is a

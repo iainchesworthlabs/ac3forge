@@ -7,7 +7,7 @@ branch's JSONL and it prints the vectors to paste back, plus what each one
 changes, so a floor move is always reviewable as a diff against evidence
 rather than an assertion.
 
-    curl -sL https://raw.githubusercontent.com/iainchesworthlabs/ac3forge/\\
+    curl -sL https://raw.githubusercontent.com/iainchesworthlabs/iclforge/\\
 quality-history/main.jsonl -o main.jsonl
     python3 tools/checks/derive_channel_floors.py --history main.jsonl
 

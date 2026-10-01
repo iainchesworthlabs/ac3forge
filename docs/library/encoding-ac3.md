@@ -30,7 +30,7 @@ for (int frame = 0; frame < 31; ++frame) {  // 48000 / 1536, near enough
 }
 ```
 
-Full program: [`examples/encode_ac3.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/encode_ac3.cpp).
+Full program: [`examples/encode_ac3.cpp`](https://github.com/iainchesworthlabs/iclforge/blob/main/examples/encode_ac3.cpp).
 
 ## `EncoderConfig`
 
@@ -297,7 +297,7 @@ both blocks whose windows cover it. So the frame the encoder emits reconstructs 
 `[-256, 1280)`: the frame's last block-worth of input is still in the encoder's overlap history
 and only reaches the wire in the next frame. Put the other way round, **decoded output sample
 `k` is input sample `k - 256`** — and that is a claim you can check, not a description of intent.
-[`tests/ac3/decoder/test_latency.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tests/ac3/decoder/test_latency.cpp)
+[`tests/ac3/decoder/test_latency.cpp`](https://github.com/iainchesworthlabs/iclforge/blob/main/tests/ac3/decoder/test_latency.cpp)
 puts an impulse into silence at a known absolute position, encodes, decodes, and finds it again
 256 samples later; a decaying tone burst through the same chain gives the same 256 by
 cross-correlation, which is immune to a quantizer having moved the peak.

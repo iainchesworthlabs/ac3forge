@@ -9,7 +9,7 @@ Five separate mechanisms, not one, and it matters which is which:
   development machine. It runs in the pull-request gate, where the `Performance` ctest
   label runs alone and last, in the merge queue and after each merge. A failure here
   blocks CI outright - see
-  [CI Status](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/pr-gate.yml).
+  [CI Status](https://github.com/iainchesworthlabs/iclforge/blob/main/.github/workflows/pr-gate.yml).
   Not run under the ASan/UBSan leg: instrumented code has nothing useful to say about
   throughput at any slack factor, so that leg excludes the `Performance` label entirely
   (`CMakePresets.json`'s `test-linux-llvm-asan-ubsan` preset).
@@ -242,7 +242,7 @@ follow the same convention, table-only (no chart to style).
   // are the only ones on the same page repeating each other - the sibling
   // pages' own near-duplication is across separate documents, not something
   // a page-local script can reach anyway.
-  const PERF_TREND_REPO = "iainchesworthlabs/ac3forge";
+  const PERF_TREND_REPO = "iainchesworthlabs/iclforge";
   const PERF_TREND_HISTORY_BRANCH = "quality-history";
   const PERF_TREND_MAIN_COLOR = "#7c4dff";
   // Muted and dashed (see each section's buildChart) rather than a second
@@ -690,7 +690,7 @@ table's, the step does not). AC-3 encode is untouched because it plans its
 exponent runs through its own encoder.
 
 The extra churn was a defect rather than the planner's intended cost, and was
-tracked as [#544](https://github.com/iainchesworthlabs/ac3forge/issues/544).
+tracked as [#544](https://github.com/iainchesworthlabs/iclforge/issues/544).
 `encode_run` in `src/ac3/src/encoder/eac3_frame.cpp` assigned the by-value
 return of `iclforge::encode_exponents`, which owns a `std::vector`, so each run
 reallocated that buffer on every frame; the planner multiplied the number of
@@ -1054,7 +1054,7 @@ run's own lines, and the ceilings above hold the same headroom the other gates d
 
 The same clock on the same leg with the decoder built as its fixed-point tier
 (`tools/checks/run_baremetal_probe.sh --scalar=fixed --icount`,
-[`planning/arithmetic-tiers.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/arithmetic-tiers.md)),
+[`planning/arithmetic-tiers.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/arithmetic-tiers.md)),
 measured 2026-09-10. Integer arithmetic where the
 row above it is software floating point: a Q7.24 multiply is one `smull` and a
 shift where a soft-float one is a call. The ceilings are `ICOUNT_CEILING_FIXED`

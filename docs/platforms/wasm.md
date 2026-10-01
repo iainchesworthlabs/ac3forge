@@ -12,7 +12,7 @@ verdict against five delivery presets, and a round-trip preview through the deco
 subdirectory of the same demo (`apps/wasm/atmos/`) is an **Atmos object-authoring page** — drag
 audio objects around a room canvas while the page encodes, each drag becoming that frame's OAMD
 placement in an E-AC-3 + JOC stream. The third surface is
-**[`js/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/js)**, the
+**[`js/`](https://github.com/iainchesworthlabs/iclforge/tree/main/js)**, the
 `iclforge-wasm-decoder` npm package that turns the same decode path into a
 push-frame API, a realtime AudioWorklet pipeline, and an hls.js/MSE bridge, answering the fact
 that a browser cannot be relied on to decode EC-3: [Chrome reports a decoder error](https://github.com/videojs/http-streaming/issues/1297)
@@ -23,7 +23,7 @@ below. A fourth piece, the [AC-4 module](#ac-4-module), wraps the AC-4 decoder a
 the `ac4::` libraries rather than `iclforge::ac3`; it has no demo page, and the package exports its
 typed wrapper as `./ac4`.
 The decode demo consumes the package (see "What's reused, what's new" below) rather than
-reimplementing it — see [js/README.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/js/README.md)
+reimplementing it — see [js/README.md](https://github.com/iainchesworthlabs/iclforge/blob/main/js/README.md)
 for the package's own API docs. The demos exist to prove the codec runs correctly outside a
 native process and to give the documentation site live demos (see
 [Live decode demo](../wasm-demo.md) and [Live encode demo](../wasm-encode-demo.md)); they are
@@ -209,7 +209,7 @@ whole-file convenience helper the demo's scrub/solo experience needs),
 AudioWorklet pipeline - decode runs in a Worker, since `AudioWorkletGlobalScope` has neither
 `fetch()` nor `TextDecoder`, both of which the Emscripten glue needs; only a lock-free
 `SharedArrayBuffer` ring-buffer drain runs on the audio thread itself), and `fmp4.ts`/
-`hls-bridge.ts` (the hls.js/MSE bridge - see [js/README.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/js/README.md)
+`hls-bridge.ts` (the hls.js/MSE bridge - see [js/README.md](https://github.com/iainchesworthlabs/iclforge/blob/main/js/README.md)
 for what that bridge does and does not cover). The package embeds no compiled `.wasm`/`.js`
 binary of its own; every API takes the `createIclForgeModule` factory (or a URL to it) as a
 parameter, so a consumer controls their own hosting/CORS story for the binary this page's build
@@ -433,7 +433,7 @@ would never trigger a redeploy at all, and the live demo would silently drift fr
     it — its `MediaSource` shim mechanics and its fMP4 sample extraction are each unit-tested in
     isolation (see the note above), but the full integration against a real hls.js instance
     playing a real EC-3 HLS stream has not been attempted. See
-    [js/README.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/js/README.md#whats-verified)
+    [js/README.md](https://github.com/iainchesworthlabs/iclforge/blob/main/js/README.md#whats-verified)
     for the same gap stated from the package's own side, including the A/V-sync approximation
     it ships with.
 

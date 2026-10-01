@@ -39,7 +39,7 @@ if (!file) {
 }
 ```
 
-Full program: [`examples/mux_iamf.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/mux_iamf.cpp) — the whole
+Full program: [`examples/mux_iamf.cpp`](https://github.com/iainchesworthlabs/iclforge/blob/main/examples/mux_iamf.cpp) — the whole
 round trip: encode a synthetic 7.1.4 E-AC-3 access unit, decode it with `iclforge::Eac3Decoder`,
 permute the result, and mux it.
 
@@ -72,8 +72,8 @@ one-directional, and this is what it looks like.
 ## What gets written
 
 Every OBU/box field is transcribed directly from the published IAMF v1.1.0 specification
-(section numbers cited throughout [`src/iamf/src/obu_detail.hpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/iamf/src/obu_detail.hpp) and
-[`isobmff_detail.hpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/iamf/src/isobmff_detail.hpp)), per this project's clean-room rule — `libiamf` and AOM's Open
+(section numbers cited throughout [`src/iamf/src/obu_detail.hpp`](https://github.com/iainchesworthlabs/iclforge/blob/main/src/iamf/src/obu_detail.hpp) and
+[`isobmff_detail.hpp`](https://github.com/iainchesworthlabs/iclforge/blob/main/src/iamf/src/isobmff_detail.hpp)), per this project's clean-room rule — `libiamf` and AOM's Open
 Audio Renderer are oracles used to validate the output, never sources this code was transcribed
 from.
 
