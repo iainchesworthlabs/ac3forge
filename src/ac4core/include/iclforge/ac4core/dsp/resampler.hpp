@@ -39,17 +39,36 @@
 //
 // The scalar. The table is designed in double, whatever it is kept in: the
 // window, the sinc and each phase's normalisation are computed at double, and
-// a filter whose Coefficient is float rounds each phase to float once, as it
-// is built. A converter that runs at float (the decoder in the float tier, on
-// the ESP32-P4, whose FPU is single precision and where a double multiply and
-// add is a call to a software routine) then sums float products of float
-// history over four lanes in an order fixed in dsp/resampler_vector.hpp, so
-// its output is the same float on every platform; a converter at double, the
-// encoder's and the decoder's in the default build, sums double products of the
-// double table in the order of the taps, as it always did (planning/ac4.md,
-// D14a4).
+// a filter whose Coefficient is float rounds each phase to float once. A
+// converter that runs at float (the decoder in the float tier, on the
+// ESP32-P4, whose FPU is single precision and where a double multiply and
+// add is a call to a software routine) sums float products of float history
+// over four lanes in an order fixed in dsp/resampler_vector.hpp, so its output
+// is the same float on every platform; a converter at double, the encoder's
+// and the decoder's in the default build, sums double products of the double
+// table in the order of the taps, as it always did (planning/ac4.md, D14a4).
+//
+// Where the table comes from. At double the filter designs its table when it
+// is made, with the C library's sin and sqrt, as it always has. At float the
+// decoder's three ratios, 25/24, 15/16 and 1001/960, are tables the compiler
+// built (dsp/resampler_design.hpp, with the portable functions of
+// dsp/portable_math.hpp), data in the program's read-only memory that the
+// filter copies when it is made: nothing is designed on a part that has no use
+// for the time it takes (5.9 s at 1001/960 on the ESP32-P4's soft-float
+// double) and the same coefficients are on every platform. The copy is for a
+// part that executes from flash behind a cache, where reading a table the
+// cache cannot hold from the constants is several times slower than reading it
+// from the heap (src/ac4core/src/dsp/resampler.cpp has the figures). The tables
+// hold phases 0 to up / 2: phase up - p is phase p read from its last coefficient
+// to its first, so that is half of each, 188 KB at 1001/960, and phase() says
+// which way to read (planning/ac4.md, D14a5). Any other ratio at float is
+// designed when the filter is made, with the same functions, and kept the same
+// way.
 
 namespace iclforge::ac4::detail::dsp {
+
+// How far down the stopband is, in dB.
+inline constexpr double kResamplerAttenuationDb = 100.0;
 
 template <typename Coefficient>
 class BasicResamplerFilter {
@@ -66,12 +85,24 @@ class BasicResamplerFilter {
     // the stopband attenuation in dB.
     [[nodiscard]] double passband_edge() const noexcept { return passband_; }
     [[nodiscard]] double stopband_edge() const noexcept { return stopband_; }
-    static constexpr double kAttenuationDb = 100.0;
+    static constexpr double kAttenuationDb = kResamplerAttenuationDb;
 
     // The taps() coefficients for an output that falls p / up() of an input
     // sample past its taps' centre, 0 <= p < up(): coefficient k weights input
     // sample start + k, where the output's taps start (see the header comment).
-    [[nodiscard]] std::span<const Coefficient> phase(int p) const noexcept;
+    // The table keeps a phase either as it is or as the one it is the mirror of,
+    // which `coefficients` then names, to be read from its last coefficient to
+    // its first: coefficient k is coefficients[taps() - 1 - k] if `reversed`.
+    // Null for a p out of range.
+    struct PhaseRef {
+        const Coefficient* coefficients = nullptr;
+        bool reversed = false;
+    };
+    [[nodiscard]] PhaseRef phase(int p) const noexcept;
+
+    // Coefficient k of phase p, however the table keeps it; 0 for a p or k out
+    // of range.
+    [[nodiscard]] Coefficient coefficient(int p, int k) const noexcept;
 
     // The converter's delay, in input samples.
     [[nodiscard]] double delay() const noexcept;
@@ -82,7 +113,10 @@ class BasicResamplerFilter {
     int taps_ = 1;
     double passband_ = 0.5;
     double stopband_ = 0.5;
-    std::vector<Coefficient> table_;  // up_ phases of taps_ coefficients
+    // Every phase of the table, up_ of taps_ coefficients; at float, phases 0
+    // to up_ / 2 only (halved_).
+    std::vector<Coefficient> table_;
+    bool halved_ = false;
 };
 
 // The filter at double: the design itself, as the encoder's converters and the

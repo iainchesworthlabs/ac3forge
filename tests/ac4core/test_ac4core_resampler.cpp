@@ -15,11 +15,14 @@
 #include <memory>
 #include <numbers>
 #include <span>
+#include <tuple>
+#include <type_traits>
 #include <vector>
 
 #include <catch2/catch_test_macros.hpp>
 
 #include "iclforge/ac4core/dsp/resampler.hpp"
+#include "iclforge/ac4core/dsp/resampler_design.hpp"
 #include "iclforge/ac4core/dsp/resampler_vector.hpp"
 
 namespace {
@@ -312,6 +315,48 @@ TEST_CASE("the converter delays by the delay() it states", "[ac4core][dsp][src]"
     }
 }
 
+namespace {
+
+// The float table of a ratio as the converter keeps it, whichever scalar the build runs at: the
+// design of dsp/resampler_design.hpp made now, at run time, with the portable functions, phases 0
+// to up / 2 rounded to float, and the rest written out as those read backwards.
+std::vector<float> portable_float_table(int up, int down, int& taps) {
+    // Through volatile, so that the compiler cannot evaluate the design while it compiles this.
+    volatile int up_now = up;
+    volatile int down_now = down;
+    const dsp::ResamplerDesign design = dsp::design_resampler<dsp::PortableMath>(up_now, down_now);
+    taps = design.taps;
+    const auto width = static_cast<std::size_t>(taps);
+    std::vector<float> half(static_cast<std::size_t>(up / 2 + 1) * width);
+    std::vector<double> row(width);
+    dsp::design_half_phases<dsp::PortableMath>(design, half.data(), row.data());
+    std::vector<float> full(static_cast<std::size_t>(up) * width);
+    for (int p = 0; p < up; ++p) {
+        const bool mirrored = p > up / 2;
+        const auto source = static_cast<std::size_t>(mirrored ? up - p : p);
+        for (std::size_t k = 0; k < width; ++k) {
+            full[static_cast<std::size_t>(p) * width + k] =
+                half[source * width + (mirrored ? width - 1 - k : k)];
+        }
+    }
+    return full;
+}
+
+// FNV-1a over the bit pattern of every coefficient of a float table.
+std::uint64_t fnv_float_image(const std::vector<float>& coefficients) {
+    std::uint64_t hash = 14695981039346656037ULL;
+    for (const float coefficient : coefficients) {
+        const auto bits = std::bit_cast<std::uint32_t>(coefficient);
+        for (unsigned shift = 0; shift < 32; shift += 8) {
+            hash ^= (bits >> shift) & 0xFFU;
+            hash *= 1099511628211ULL;
+        }
+    }
+    return hash;
+}
+
+}  // namespace
+
 TEST_CASE("the converter's table is the double design rounded once to the scalar it runs at",
           "[ac4core][dsp][src]") {
     const auto epsilon = static_cast<double>(std::numeric_limits<Real>::epsilon());
@@ -323,20 +368,23 @@ TEST_CASE("the converter's table is the double design rounded once to the scalar
         REQUIRE(kept.down() == design.down());
         REQUIRE(kept.taps() == design.taps());
         CHECK(kept.delay() == design.delay());
-        bool rounded_once = true;
+        // At float the table is the compiler's, designed without the C library and with the
+        // mirrored half of it read backwards; at double it is the C library's design. Every
+        // coefficient is what the double design rounds to.
+        int rounded_differently = 0;
         double worst_sum = 0.0;
         for (int p = 0; p < design.up(); ++p) {
-            const std::span<const double> exact = design.phase(p);
-            const std::span<const Real> stored = kept.phase(p);
-            REQUIRE(stored.size() == exact.size());
             double sum = 0.0;
-            for (std::size_t k = 0; k < exact.size(); ++k) {
-                rounded_once = rounded_once && stored[k] == static_cast<Real>(exact[k]);
-                sum += static_cast<double>(stored[k]);
+            for (int k = 0; k < design.taps(); ++k) {
+                const Real stored = kept.coefficient(p, k);
+                if (stored != static_cast<Real>(design.coefficient(p, k))) {
+                    ++rounded_differently;
+                }
+                sum += static_cast<double>(stored);
             }
             worst_sum = std::max(worst_sum, std::abs(sum - 1.0));
         }
-        CHECK(rounded_once);
+        CHECK(rounded_differently == 0);
         // A phase still sums to 1 to the scalar's precision: a constant passes unchanged.
         CHECK(worst_sum < epsilon * design.taps());
     }
@@ -344,11 +392,14 @@ TEST_CASE("the converter's table is the double design rounded once to the scalar
 
 TEST_CASE("the converter's table rounded to float is the same on every platform",
           "[ac4core][dsp][src]") {
-    // FNV-1a over the bit pattern of every coefficient of every phase as a float, the double
-    // design's entries rounded once. The design calls sin and sqrt at double, whose last bit the C
-    // libraries do not all agree on, and a float table that differs by a bit anywhere would give
-    // the host, the Cortex-M3 leg and the ESP32s each a converter of its own (planning/ac4.md,
-    // D14a4): what the pins hold is that the libraries in CI round it the same way.
+    // FNV-1a over the bit pattern of every coefficient of every phase as a float. The table is
+    // pinned three ways: the double design's entries rounded once (the design calls sin and sqrt at
+    // double, whose last bit the C libraries do not all agree on), the same design with the
+    // portable functions made now at run time, and, in a float build, the table the compiler made.
+    // A float table that differs by a bit anywhere would give the host, the Cortex-M3 leg and the
+    // ESP32s each a converter of its own (planning/ac4.md, D14a4 and D14a5): what the pins hold is
+    // that the libraries in CI round it the same way and that the compiler's evaluation agrees with
+    // the machine's.
     struct Pin {
         const Rate& rate;
         std::uint64_t hash;
@@ -359,18 +410,169 @@ TEST_CASE("the converter's table rounded to float is the same on every platform"
     for (const Pin& pin : pins) {
         CAPTURE(pin.rate.index, pin.rate.up, pin.rate.down);
         const dsp::ResamplerFilter design(pin.rate.up, pin.rate.down);
-        std::uint64_t hash = 14695981039346656037ULL;
+        std::vector<float> rounded;
         for (int p = 0; p < design.up(); ++p) {
-            for (const double coefficient : design.phase(p)) {
-                const auto bits = std::bit_cast<std::uint32_t>(static_cast<float>(coefficient));
-                for (unsigned shift = 0; shift < 32; shift += 8) {
-                    hash ^= (bits >> shift) & 0xFFU;
-                    hash *= 1099511628211ULL;
-                }
+            for (int k = 0; k < design.taps(); ++k) {
+                rounded.push_back(static_cast<float>(design.coefficient(p, k)));
             }
         }
-        CHECK(hash == pin.hash);
+        CHECK(fnv_float_image(rounded) == pin.hash);
+        int taps = 0;
+        const std::vector<float> portable_table =
+            portable_float_table(pin.rate.up, pin.rate.down, taps);
+        REQUIRE(taps == design.taps());
+        CHECK(fnv_float_image(portable_table) == pin.hash);
+        if constexpr (std::is_same_v<Real, float>) {
+            const RealFilter kept(pin.rate.up, pin.rate.down);
+            std::vector<float> image;
+            for (int p = 0; p < kept.up(); ++p) {
+                for (int k = 0; k < kept.taps(); ++k) {
+                    image.push_back(static_cast<float>(kept.coefficient(p, k)));
+                }
+            }
+            CHECK(fnv_float_image(image) == pin.hash);
+        }
     }
+}
+
+TEST_CASE(
+    "the converter's float table built by the compiler is what the design makes at run time",
+    "[ac4core][dsp][src]") {
+    // The compiler evaluates the design with no library, and this machine runs it: the same
+    // function in IEEE double arithmetic, so the same bits. The ratios here are small, for the
+    // compiler's step limit in a test; the decoder's own three are in the test above.
+    constexpr dsp::HalfTable<3, 2> kThreeHalves = dsp::design_half_table<3, 2>();
+    constexpr dsp::HalfTable<5, 4> kFiveQuarters = dsp::design_half_table<5, 4>();
+    static_assert(kThreeHalves.kPhases == 2);
+    static_assert(kFiveQuarters.kPhases == 3);
+    static_assert(kThreeHalves.kTaps == 94);
+    const auto check = [](int up, int down, std::span<const float> compiled) {
+        CAPTURE(up, down);
+        int taps = 0;
+        const std::vector<float> run_time = portable_float_table(up, down, taps);
+        const auto width = static_cast<std::size_t>(taps);
+        REQUIRE(compiled.size() == static_cast<std::size_t>(up / 2 + 1) * width);
+        int differ = 0;
+        for (std::size_t i = 0; i < compiled.size(); ++i) {
+            // The first phases of the run-time table, written out in full, are the compiler's.
+            if (std::bit_cast<std::uint32_t>(run_time[i]) !=
+                std::bit_cast<std::uint32_t>(compiled[i])) {
+                ++differ;
+            }
+        }
+        CHECK(differ == 0);
+    };
+    check(3, 2, kThreeHalves.coefficients);
+    check(5, 4, kFiveQuarters.coefficients);
+    // And the variable template is that table.
+    CHECK(dsp::kHalfTable<3, 2>.coefficients == kThreeHalves.coefficients);
+}
+
+TEST_CASE("phase up - p of the design is phase p read from its last coefficient to its first",
+          "[ac4core][dsp][src]") {
+    // The window and the sinc are even, so tap k of one is, in the other, tap taps - 1 - k, and a
+    // table can keep half its phases. The double design, whose phases are all computed, shows it to
+    // the rounding of their arguments.
+    for (const Rate& rate : {kRates[1], kRates[2], kRates[0]}) {
+        CAPTURE(rate.index);
+        const dsp::ResamplerFilter design(rate.up, rate.down);
+        double worst = 0.0;
+        for (int p = 1; p < design.up(); ++p) {
+            for (int k = 0; k < design.taps(); ++k) {
+                worst = std::max(worst, std::abs(design.coefficient(design.up() - p, k) -
+                                                 design.coefficient(p, design.taps() - 1 - k)));
+            }
+        }
+        CAPTURE(worst);
+        CHECK(worst < 1e-13);
+    }
+}
+
+namespace {
+
+// At float a filter keeps half its phases and the others are read backwards, whether the compiler
+// built the table or the filter did; at double it keeps all of them. Only a float build has a float
+// filter to ask.
+template <typename Scalar>
+void check_how_the_filter_keeps_its_phases() {
+    if constexpr (std::is_same_v<Scalar, float>) {
+        struct Ratio {
+            int up;
+            int down;
+            bool compiled;
+        };
+        // The decoder's three, whose tables the compiler built; the others the filter designs when
+        // it is made, the last with an even number of phases.
+        constexpr std::array<Ratio, 6> kRatios{{{25, 24, true},
+                                                {15, 16, true},
+                                                {1001, 960, true},
+                                                {3, 2, false},
+                                                {5, 4, false},
+                                                {4, 3, false}}};
+        for (const Ratio& ratio : kRatios) {
+            CAPTURE(ratio.up, ratio.down, ratio.compiled);
+            const dsp::BasicResamplerFilter<float> filter(ratio.up, ratio.down);
+            REQUIRE(filter.up() == ratio.up);
+            REQUIRE(filter.taps() > 1);
+            // Phase 0 and the first half are kept as they are, the rest as the mirror of another.
+            CHECK(!filter.phase(0).reversed);
+            for (int p = 1; p < ratio.up; ++p) {
+                const auto here = filter.phase(p);
+                const auto there = filter.phase(ratio.up - p);
+                REQUIRE(here.coefficients != nullptr);
+                CHECK(here.reversed == (p > ratio.up / 2));
+                if (here.reversed) {
+                    // Phase p is phase up - p read backwards.
+                    CHECK(here.coefficients == there.coefficients);
+                    CHECK(!there.reversed);
+                }
+                for (int k = 0; k < filter.taps(); ++k) {
+                    const float a = filter.coefficient(ratio.up - p, k);
+                    const float b = filter.coefficient(p, filter.taps() - 1 - k);
+                    REQUIRE(std::bit_cast<std::uint32_t>(a) == std::bit_cast<std::uint32_t>(b));
+                }
+            }
+            // Out of range.
+            CHECK(filter.phase(-1).coefficients == nullptr);
+            CHECK(filter.phase(ratio.up).coefficients == nullptr);
+            CHECK(filter.coefficient(0, -1) == 0.0F);
+            CHECK(filter.coefficient(0, filter.taps()) == 0.0F);
+            CHECK(filter.coefficient(ratio.up, 0) == 0.0F);
+            // A phase sums to 1, to the precision of float.
+            for (int p = 0; p < ratio.up; p += std::max(1, ratio.up / 13)) {
+                double sum = 0.0;
+                for (int k = 0; k < filter.taps(); ++k) {
+                    sum += static_cast<double>(filter.coefficient(p, k));
+                }
+                CHECK(std::abs(sum - 1.0) <
+                      100.0 * static_cast<double>(std::numeric_limits<float>::epsilon()));
+            }
+        }
+        // The filter's own design of a ratio is the compiler's of the same ratio: both are
+        // dsp::design_half_phases, so a filter of 3/2 has the table the compiler makes of it.
+        const dsp::BasicResamplerFilter<float> own(3, 2);
+        const dsp::HalfTable<3, 2>& compiled = dsp::kHalfTable<3, 2>;
+        for (int p = 0; p < 2; ++p) {
+            for (int k = 0; k < own.taps(); ++k) {
+                REQUIRE(std::bit_cast<std::uint32_t>(own.coefficient(p, k)) ==
+                        std::bit_cast<std::uint32_t>(
+                            compiled.coefficients[static_cast<std::size_t>(p * own.taps() + k)]));
+            }
+        }
+    } else {
+        // A double filter keeps every phase as it is.
+        const dsp::BasicResamplerFilter<Scalar> filter(1001, 960);
+        for (int p = 0; p < filter.up(); ++p) {
+            CHECK(!filter.phase(p).reversed);
+        }
+    }
+}
+
+}  // namespace
+
+TEST_CASE("a filter at float keeps half its phases and reads the others backwards",
+          "[ac4core][dsp][src]") {
+    check_how_the_filter_keeps_its_phases<Real>();
 }
 
 TEST_CASE("the converter's float dot product is the sum of four lanes added in the order it states",
@@ -403,6 +605,30 @@ TEST_CASE("the converter's float dot product is the sum of four lanes added in t
             want += c[k] * x[k];
         }
         const float got = dsp::dot_four_lanes(c.data(), x.data(), n);
+        CHECK(std::bit_cast<std::uint32_t>(got) == std::bit_cast<std::uint32_t>(want));
+    }
+}
+
+TEST_CASE("the reversed dot product is the four lane sum of the phase written out backwards",
+          "[ac4core][dsp][src]") {
+    std::uint32_t state = 11U;
+    const auto next = [&state] {
+        state = state * 1664525U + 1013904223U;
+        return static_cast<float>(static_cast<double>(state >> 8U) / 16777216.0 - 0.5);
+    };
+    constexpr std::array<std::size_t, 13> kCounts{0, 1, 2, 3, 4, 5, 7, 8, 9, 94, 100, 101, 1001};
+    for (const std::size_t n : kCounts) {
+        CAPTURE(n);
+        std::vector<float> c(n);
+        std::vector<float> x(n);
+        for (std::size_t i = 0; i < n; ++i) {
+            c[i] = next();
+            x[i] = next() * 30000.0F;
+        }
+        // The phase as the filter's caller would have it in full: tap k is c[n - 1 - k].
+        const std::vector<float> backwards(c.rbegin(), c.rend());
+        const float want = dsp::dot_four_lanes(backwards.data(), x.data(), n);
+        const float got = dsp::dot_four_lanes_reversed(c.data(), x.data(), n);
         CHECK(std::bit_cast<std::uint32_t>(got) == std::bit_cast<std::uint32_t>(want));
     }
 }

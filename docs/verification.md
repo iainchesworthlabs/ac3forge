@@ -1177,7 +1177,15 @@ processing" and in "A change of source" and "What an I-frame does not restore".
   out flat to 0.001 dB with everything else 100 dB under them, and converting down, a tone between the
   two Nyquist frequencies comes out 100 dB down. DEE's immersive stereo at 23.976, 24, 25 and 29.97 fps
   decodes at Table 47's counts, and `score_ac4_decode.py` scores it as it scores index 13: each rate lags
-  its source by a constant, within 1.3 samples of DEE's half frame plus the decoder's delay.
+  its source by a constant, within 1.3 samples of DEE's half frame plus the decoder's delay. At `float`
+  the tables of the three ratios are the compiler's (D14a5, `dsp/resampler_design.hpp`): the FNV-1a
+  image of each is pinned and equal to the C library's design rounded once to `float`, every
+  coefficient of it; the phases the table keeps and the ones it reads backwards agree with each other
+  and with a copy written out; the compiler's evaluation equals the same function run on the machine,
+  bit for bit; and the dot product that reads a phase backwards equals the four-lane sum of that phase
+  written out. `tests/ac4core/test_ac4core_portable_math.cpp` holds the functions the design calls
+  without a library (sin, cos, sqrt, ceil and the Kaiser window's I0) to their definitions, to the C
+  library's values and to their own values at compile time.
 - **The output level and DRC** (`tests/ac4dec/test_ac4dec_drc.cpp`): Table 162's profiles and the
   curves DEE transmits are the compression curves the text defines; stepped tones at steady state
   follow each profile's static curve within 0.5 dB, and a step in level moves the gain at the attack and

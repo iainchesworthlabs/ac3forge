@@ -2,16 +2,28 @@
 
 #include <algorithm>
 #include <cmath>
-#include <numbers>
 #include <numeric>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 #include "iclforge/ac4core/detail/profiling.hpp"
-#include "iclforge/ac4core/dsp/kbd.hpp"
+#include "iclforge/ac4core/dsp/resampler_design.hpp"
 #include "iclforge/ac4core/dsp/resampler_vector.hpp"
 
 namespace iclforge::ac4::detail::dsp {
+namespace {
+
+// The design's functions as the C library has them, which design the table at double as the
+// converter has always designed it.
+struct LibmMath {
+    [[nodiscard]] static double ceil(double x) noexcept { return std::ceil(x); }
+    [[nodiscard]] static double sqrt(double x) noexcept { return std::sqrt(x); }
+    [[nodiscard]] static double sin(double x) noexcept { return std::sin(x); }
+    [[nodiscard]] static double bessel_i0(double x) noexcept { return dsp::bessel_i0(x); }
+};
+
+}  // namespace
 
 template <typename Coefficient>
 BasicResamplerFilter<Coefficient>::BasicResamplerFilter(int up, int down) {
@@ -26,54 +38,83 @@ BasicResamplerFilter<Coefficient>::BasicResamplerFilter(int up, int down) {
         table_.assign(1, Coefficient{1});
         return;
     }
-    // In cycles per input sample: the lower rate's Nyquist frequency is the
-    // stopband edge, and the passband runs to 0.86 of it.
-    const double nyquist =
-        0.5 * std::min(1.0, static_cast<double>(up_) / static_cast<double>(down_));
-    passband_ = 0.86 * nyquist;
-    stopband_ = nyquist;
-    const double cutoff = 0.5 * (passband_ + stopband_);
-    // Kaiser's estimates for the window's beta and length at the attenuation.
-    const double beta = 0.1102 * (kAttenuationDb - 8.7);
-    const double length =
-        (kAttenuationDb - 7.95) / (2.285 * 2.0 * std::numbers::pi * (stopband_ - passband_)) + 1.0;
-    taps_ = 2 * static_cast<int>(std::ceil(length / 2.0));
-    const double half_width = static_cast<double>(taps_) / 2.0;
-    const double norm = bessel_i0(beta);
-    table_.resize(static_cast<std::size_t>(up_) * static_cast<std::size_t>(taps_));
-    // One phase at a time, designed in double whatever the table is kept in,
-    // then normalised to sum to 1 in double and rounded to the table's scalar.
-    std::vector<double> design(static_cast<std::size_t>(taps_));
-    for (int p = 0; p < up_; ++p) {
-        double sum = 0.0;
-        for (int k = 0; k < taps_; ++k) {
-            // The distance from the output's position to the tap's input sample.
-            const double t = static_cast<double>(k - taps_ / 2 + 1) -
-                             static_cast<double>(p) / static_cast<double>(up_);
-            const double x = t / half_width;
-            const double window = bessel_i0(beta * std::sqrt(std::max(0.0, 1.0 - x * x))) / norm;
-            const double arg = std::numbers::pi * 2.0 * cutoff * t;
-            const double sinc = t == 0.0 ? 1.0 : std::sin(arg) / arg;
-            design[static_cast<std::size_t>(k)] = 2.0 * cutoff * sinc * window;
-            sum += design[static_cast<std::size_t>(k)];
+    if constexpr (std::is_same_v<Coefficient, float>) {
+        // At float: the compiler's table for one of the decoder's ratios, and for any other the
+        // same design made now, with the same functions. Either way phases 0 to up / 2, the rest
+        // being those read backwards.
+        halved_ = true;
+        // One of the decoder's three ratios (Part 1 clause 6.2.15) has a table the compiler built;
+        // naming it here is what makes the compiler evaluate it (dsp/resampler_design.hpp), and
+        // only a build that has this scalar's filter reaches the names.
+        const auto adopt = [this]<int Up, int Down>() {
+            if (up_ != Up || down_ != Down) {
+                return false;
+            }
+            const HalfTable<Up, Down>& compiled = kHalfTable<Up, Down>;
+            taps_ = compiled.kDesign.taps;
+            passband_ = compiled.kDesign.passband;
+            stopband_ = compiled.kDesign.stopband;
+            // The filter keeps a copy of the table, so that the converter reads it from the memory
+            // the heap gives and not from the program's constants: on the ESP32-P4 and -S3 those
+            // are flash behind a cache, where a miss costs ten times a PSRAM's, and the table of
+            // 1001/960 (188 KB against a cache of 128 KB) misses on most of what it reads. Read in
+            // place it took the converter 60 ms a frame at 23.976 fps on the P4; from the copy, in
+            // the PSRAM that the heap puts a block of that size in, 17 ms (planning/ac4.md, D14a5).
+            table_.assign(compiled.coefficients.begin(), compiled.coefficients.end());
+            return true;
+        };
+        if (adopt.template operator()<25, 24>() || adopt.template operator()<15, 16>() ||
+            adopt.template operator()<1001, 960>()) {
+            return;
         }
-        const std::span<Coefficient> row(
-            table_.data() + static_cast<std::size_t>(p) * static_cast<std::size_t>(taps_),
-            static_cast<std::size_t>(taps_));
-        for (std::size_t k = 0; k < row.size(); ++k) {
-            row[k] = static_cast<Coefficient>(design[k] / sum);
+        const ResamplerDesign design = design_resampler<PortableMath>(up_, down_);
+        taps_ = design.taps;
+        passband_ = design.passband;
+        stopband_ = design.stopband;
+        table_.resize(static_cast<std::size_t>(up_ / 2 + 1) * static_cast<std::size_t>(taps_));
+        std::vector<double> row(static_cast<std::size_t>(taps_));
+        design_half_phases<PortableMath>(design, table_.data(), row.data());
+    } else {
+        // At double: every phase designed with the C library's functions, as it always was.
+        const ResamplerDesign design = design_resampler<LibmMath>(up_, down_);
+        taps_ = design.taps;
+        passband_ = design.passband;
+        stopband_ = design.stopband;
+        table_.resize(static_cast<std::size_t>(up_) * static_cast<std::size_t>(taps_));
+        // One phase at a time, designed in double whatever the table is kept in, normalised to sum
+        // to 1 in double and rounded to the table's scalar.
+        std::vector<double> row(static_cast<std::size_t>(taps_));
+        for (int p = 0; p < up_; ++p) {
+            design_phase<LibmMath>(design, p, row.data());
+            Coefficient* out =
+                table_.data() + static_cast<std::size_t>(p) * static_cast<std::size_t>(taps_);
+            for (std::size_t k = 0; k < row.size(); ++k) {
+                out[k] = static_cast<Coefficient>(row[k]);
+            }
         }
     }
 }
 
 template <typename Coefficient>
-std::span<const Coefficient> BasicResamplerFilter<Coefficient>::phase(int p) const noexcept {
+typename BasicResamplerFilter<Coefficient>::PhaseRef BasicResamplerFilter<Coefficient>::phase(
+    int p) const noexcept {
     if (p < 0 || p >= up_) {
         return {};
     }
-    return std::span<const Coefficient>(table_).subspan(
-        static_cast<std::size_t>(p) * static_cast<std::size_t>(taps_),
-        static_cast<std::size_t>(taps_));
+    const auto taps = static_cast<std::size_t>(taps_);
+    if (!halved_ || p <= up_ / 2) {
+        return {table_.data() + static_cast<std::size_t>(p) * taps, false};
+    }
+    return {table_.data() + static_cast<std::size_t>(up_ - p) * taps, true};
+}
+
+template <typename Coefficient>
+Coefficient BasicResamplerFilter<Coefficient>::coefficient(int p, int k) const noexcept {
+    const PhaseRef ref = phase(p);
+    if (ref.coefficients == nullptr || k < 0 || k >= taps_) {
+        return Coefficient{};
+    }
+    return ref.coefficients[ref.reversed ? taps_ - 1 - k : k];
 }
 
 template <typename Coefficient>
@@ -141,15 +182,18 @@ void Resampler<Real>::process(std::span<const Real> in, std::vector<Real>& out) 
         // The dot product in Real: at double the taps in order, as it always
         // was; at float over four lanes (dsp/resampler_vector.hpp), a float
         // multiply and add a tap, which is the whole of the converter's cost on
-        // a part whose FPU is single precision.
-        const std::span<const Real> coefficients = filter_->phase(p);
+        // a part whose FPU is single precision. A float phase the table keeps
+        // as the mirror of another is read backwards.
+        const auto phase = filter_->phase(p);
         const Real* samples = history_.data() + (whole - taps - first_);
+        const auto count = static_cast<std::size_t>(taps);
         Real sum{};
         if constexpr (std::is_same_v<Real, float>) {
-            sum = dot_four_lanes(coefficients.data(), samples, coefficients.size());
+            sum = phase.reversed ? dot_four_lanes_reversed(phase.coefficients, samples, count)
+                                 : dot_four_lanes(phase.coefficients, samples, count);
         } else {
-            for (std::size_t k = 0; k < coefficients.size(); ++k) {
-                sum += coefficients[k] * samples[k];
+            for (std::size_t k = 0; k < count; ++k) {
+                sum += phase.coefficients[k] * samples[k];
             }
         }
         out.push_back(sum);

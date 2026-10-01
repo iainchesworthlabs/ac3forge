@@ -44,24 +44,6 @@ double kbd_alpha(int length, int rate_multiplier) noexcept {
     return 0.0;
 }
 
-double bessel_i0(double x) noexcept {
-    // Terms grow while (x/2)/k > 1, then fall faster than geometrically; stop
-    // once one no longer changes the sum.
-    const double half = x / 2.0;
-    double term = 1.0;  // ((x/2)^k / k!), squared when added
-    double sum = 1.0;
-    for (int k = 1; k < 500; ++k) {
-        term *= half / static_cast<double>(k);
-        const double add = term * term;
-        const double next = sum + add;
-        if (next == sum) {
-            break;
-        }
-        sum = next;
-    }
-    return sum;
-}
-
 std::vector<double> kbd_left(int length, double alpha) {
     std::vector<double> window;
     if (length <= 0) {
