@@ -325,7 +325,7 @@ void write_pair_method(json::Writer& w, const PairMethodDescriptor& descriptor, 
         if (!value.is_object()) {
             return false;
         }
-        for (const json::Member member : value.members()) {
+        for (const json::Member& member : value.members()) {
             const std::optional<std::string_view> key = member.key.raw();
             const std::optional<PairMethod> method =
                 key ? find_value(kPairMethods, *key) : std::nullopt;

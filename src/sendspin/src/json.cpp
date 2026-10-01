@@ -666,7 +666,7 @@ std::optional<std::int64_t> Value::as_int() const {
     if (error != std::errc{} || end != digits.data() + digits.size()) {
         return std::nullopt;
     }
-    const auto limit = static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max());
+    constexpr auto limit = static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max());
     if (negative) {
         if (magnitude > limit + 1U) {
             return std::nullopt;
@@ -750,7 +750,7 @@ std::size_t Value::size() const {
             ++n;
         }
     } else if (t->type == Type::kObject) {
-        for ([[maybe_unused]] const Member member : members()) {
+        for ([[maybe_unused]] const Member& member : members()) {
             ++n;
         }
     }
