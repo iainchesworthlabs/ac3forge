@@ -291,20 +291,26 @@ enum JointParam : std::uint8_t {
 // e^(-i 2 pi k t / kWindowSlots) for bin k.
 using DftWeights = std::array<std::array<std::complex<double>, kWindowSlots>, kWindowSlots>;
 
-[[nodiscard]] const DftWeights& dft_weights() {
-    static const auto weights = [] {
-        DftWeights w{};
+// The table is 36 kB and is filled where it lives: a lambda that built it as a local and returned
+// it would hold a second copy in its frame.
+struct DftWeightTable {
+    DftWeights weights{};
+
+    DftWeightTable() {
         const auto n = static_cast<double>(kWindowSlots);
         for (int k = 0; k < kWindowSlots; ++k) {
             for (int t = 0; t < kWindowSlots; ++t) {
                 const double tt = static_cast<double>(t);
                 const double hann = 0.5 - 0.5 * std::cos(2.0 * std::numbers::pi * (tt + 0.5) / n);
-                w[at(k)][at(t)] = std::polar(hann, -2.0 * std::numbers::pi * k * tt / n);
+                weights[at(k)][at(t)] = std::polar(hann, -2.0 * std::numbers::pi * k * tt / n);
             }
         }
-        return w;
-    }();
-    return weights;
+    }
+};
+
+[[nodiscard]] const DftWeights& dft_weights() {
+    static const DftWeightTable table;
+    return table.weights;
 }
 
 // Whether a DFT bin lies in subband sb's own band (kBandCentreBin's comment).
