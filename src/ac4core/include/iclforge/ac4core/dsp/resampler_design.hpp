@@ -122,8 +122,11 @@ struct HalfTable {
         coefficients{};
 };
 
+// consteval: the table is built by the compiler and at no other time, so no call that reaches run
+// time can be written. The functions it calls stay constexpr, since a ratio outside the three is
+// designed at run time with them (dsp/resampler.cpp).
 template <int Up, int Down>
-[[nodiscard]] constexpr HalfTable<Up, Down> design_half_table() {
+[[nodiscard]] consteval HalfTable<Up, Down> design_half_table() {
     HalfTable<Up, Down> table;
     std::array<double, static_cast<std::size_t>(HalfTable<Up, Down>::kTaps)> row{};
     design_half_phases<PortableMath>(HalfTable<Up, Down>::kDesign, table.coefficients.data(),
