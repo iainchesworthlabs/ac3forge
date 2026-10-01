@@ -11,9 +11,10 @@ endpoint's name wherever it names the device. `check` reads and writes nothing: 
 carries an old name, by family, which is the list the pull request gives and the proof that the
 rewrite left nothing it should have taken.
 
-The one place the names are is NAMES below. To change one (the endpoint is the likely one), set the
-row's `old` to what the tree says now and its `new` to what it should say, and run the phases. A
-second run of the same table changes nothing.
+The names are the three tables below: IDENTITY (the driver's, in every case form it is written in),
+ENDPOINT (the name Windows shows for the device) and NAMESPACE (the scripts' .NET namespace). To
+change one (the endpoint is the likely one), set the row's `old` to what the tree says now and its
+`new` to what it should say, and run the phases. A second run of the same table changes nothing.
 
 What the pass leaves alone, and why:
 
