@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <cmath>
 #include <numeric>
-#include <optional>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -23,37 +22,6 @@ struct LibmMath {
     [[nodiscard]] static double sin(double x) noexcept { return std::sin(x); }
     [[nodiscard]] static double bessel_i0(double x) noexcept { return dsp::bessel_i0(x); }
 };
-
-// A ratio's table as the compiler built it.
-struct SharedTable {
-    ResamplerDesign design;
-    const float* coefficients;
-};
-
-// Naming a ratio's table is what makes the compiler evaluate it (dsp/resampler_design.hpp), so each
-// is named here and only in a build that has the float scalar's filter: a converter at double never
-// instantiates this branch.
-template <int Up, int Down>
-[[nodiscard]] SharedTable shared_table() noexcept {
-    return {HalfTable<Up, Down>::kDesign, kHalfTable<Up, Down>.coefficients.data()};
-}
-
-// The decoder's three ratios (Part 1 clause 6.2.15), for the scalar that keeps their tables: float.
-template <typename Coefficient>
-[[nodiscard]] std::optional<SharedTable> find_shared_table(int up, int down) noexcept {
-    if constexpr (std::is_same_v<Coefficient, float>) {
-        if (up == 25 && down == 24) {
-            return shared_table<25, 24>();
-        }
-        if (up == 15 && down == 16) {
-            return shared_table<15, 16>();
-        }
-        if (up == 1001 && down == 960) {
-            return shared_table<1001, 960>();
-        }
-    }
-    return std::nullopt;
-}
 
 }  // namespace
 
@@ -75,19 +43,28 @@ BasicResamplerFilter<Coefficient>::BasicResamplerFilter(int up, int down) {
         // same design made now, with the same functions. Either way phases 0 to up / 2, the rest
         // being those read backwards.
         halved_ = true;
-        if (const std::optional<SharedTable> shared = find_shared_table<Coefficient>(up_, down_)) {
-            taps_ = shared->design.taps;
-            passband_ = shared->design.passband;
-            stopband_ = shared->design.stopband;
+        // One of the decoder's three ratios (Part 1 clause 6.2.15) has a table the compiler built;
+        // naming it here is what makes the compiler evaluate it (dsp/resampler_design.hpp), and
+        // only a build that has this scalar's filter reaches the names.
+        const auto adopt = [this]<int Up, int Down>() {
+            if (up_ != Up || down_ != Down) {
+                return false;
+            }
+            const HalfTable<Up, Down>& compiled = kHalfTable<Up, Down>;
+            taps_ = compiled.kDesign.taps;
+            passband_ = compiled.kDesign.passband;
+            stopband_ = compiled.kDesign.stopband;
             // The filter keeps a copy of the table, so that the converter reads it from the memory
             // the heap gives and not from the program's constants: on the ESP32-P4 and -S3 those
             // are flash behind a cache, where a miss costs ten times a PSRAM's, and the table of
             // 1001/960 (188 KB against a cache of 128 KB) misses on most of what it reads. Read in
             // place it took the converter 60 ms a frame at 23.976 fps on the P4; from the copy, in
             // the PSRAM that the heap puts a block of that size in, 17 ms (planning/ac4.md, D14a5).
-            const auto count =
-                static_cast<std::size_t>(up_ / 2 + 1) * static_cast<std::size_t>(taps_);
-            table_.assign(shared->coefficients, shared->coefficients + count);
+            table_.assign(compiled.coefficients.begin(), compiled.coefficients.end());
+            return true;
+        };
+        if (adopt.template operator()<25, 24>() || adopt.template operator()<15, 16>() ||
+            adopt.template operator()<1001, 960>()) {
             return;
         }
         const ResamplerDesign design = design_resampler<PortableMath>(up_, down_);

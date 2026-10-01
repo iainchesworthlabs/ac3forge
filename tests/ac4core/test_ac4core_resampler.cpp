@@ -315,6 +315,8 @@ TEST_CASE("the converter delays by the delay() it states", "[ac4core][dsp][src]"
     }
 }
 
+namespace {
+
 // The float table of a ratio as the converter keeps it, whichever scalar the build runs at: the
 // design of dsp/resampler_design.hpp made now, at run time, with the portable functions, phases 0
 // to up / 2 rounded to float, and the rest written out as those read backwards.
@@ -352,6 +354,8 @@ std::uint64_t fnv_float_image(const std::vector<float>& coefficients) {
     }
     return hash;
 }
+
+}  // namespace
 
 TEST_CASE("the converter's table is the double design rounded once to the scalar it runs at",
           "[ac4core][dsp][src]") {
@@ -484,6 +488,8 @@ TEST_CASE("phase up - p of the design is phase p read from its last coefficient 
     }
 }
 
+namespace {
+
 // At float a filter keeps half its phases and the others are read backwards, whether the compiler
 // built the table or the filter did; at double it keeps all of them. Only a float build has a float
 // filter to ask.
@@ -561,6 +567,8 @@ void check_how_the_filter_keeps_its_phases() {
         }
     }
 }
+
+}  // namespace
 
 TEST_CASE("a filter at float keeps half its phases and reads the others backwards",
           "[ac4core][dsp][src]") {
