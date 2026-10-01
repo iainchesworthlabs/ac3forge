@@ -239,7 +239,7 @@ shape as the ASan/UBSan pass.
 
 Passing tests do not show that `iclforge-tests` ran against `libiclforge_ac3.so`, so that is checked
 separately: `tools/checks/check_shared_forge_binding.sh` reads the dynamic linker's bindings
-(`LD_DEBUG=bindings`) and fails if any `ac3::` symbol the test binary takes from `libiclforge_ac3.so`
+(`LD_DEBUG=bindings`) and fails if any `iclforge::` symbol the test binary takes from `libiclforge_ac3.so`
 binds to another library, or if the binary carries its own copy of the codec. The few test files
 that reach into the library's internals — the AC-4 syntax cases and `core/test_fixed32_ecpl.cpp` —
 are built only when `iclforge::ac3` is the static library, because a `.so` exports none of that.

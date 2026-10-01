@@ -65,7 +65,7 @@ constexpr std::array<Location, 12> kIamf714Order{
 
 This permutation is not part of `iclforge::iamf` itself — the module stays codec-blind, the same
 reason `iclforge::mp4::AudioTrack::codec_config`'s ETSI TS 102 366 payload is built by the *caller*
-(`iclforge::io::build_codec_config_box`), not by `mp4::` — so it lives in the example, not a bridge
+(`iclforge::io::build_codec_config_box`), not by `iclforge::mp4` — so it lives in the example, not a bridge
 library. There is no `iamfbridge` module mirroring `iclforge::admbridge`; the mapping is small,
 one-directional, and this is what it looks like.
 

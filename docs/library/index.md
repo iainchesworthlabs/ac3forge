@@ -89,7 +89,7 @@ all: one that had linked {fmt} would leave every consumer an unresolved `fmt::v1
 only the same major version of {fmt} can supply.
 
 What a static variant does leave to the consumer's link is the C++ runtime. A CMake project links
-an installed static `ac3::` target with the C++ driver when it enables the CXX language, so a C
+an installed static `iclforge::` target with the C++ driver when it enables the CXX language, so a C
 program using `iclforge::c_static` needs `project(your_project LANGUAGES C CXX)`; that driver
 supplies libm as well. With only C enabled the link goes through the C driver and stops at C++
 runtime symbols such as `operator new`, although the exported target records that it holds C++

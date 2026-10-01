@@ -116,7 +116,7 @@ extension (TS 103 420 §8.3.1/§8.3.2.2) alike.
 The same codec-blind contract carries **AC-4**: `codec_id = iclforge::mp4::kCodecAc4`
 selects TS 103 190-2 Annex E.4's `ac-4` sample entry with a `dac4` configuration box, whose
 payload comes from `iclforge::ac4::build_dac4()` off the stream's own parsed TOC — the AC-4 twin of
-`build_codec_config_box`, in `ac4::` where the codec knowledge lives. An ISOBMFF `ac-4`
+`build_codec_config_box`, in `iclforge::ac4` where the codec knowledge lives. An ISOBMFF `ac-4`
 *sample* is the `raw_ac4_frame` alone (no sync word, no CRC), `samples_per_frame` and
 `AudioTrack::timescale` come from `iclforge::ac4::media_timing()` (TS 103 190-2 Table E.1: the sample rate,
 or 240 000 for the 1000/1001-family rates whose frame length alternates at 48 kHz, where a frame is
@@ -203,7 +203,7 @@ crucially — TS 103 420's `flag_ec3_extension_type_a`/`complexity_index_type_a`
 `optional<int>`. That last field is the Atmos/JOC marker an FFmpeg remux is known to drop, and
 reading it back is what makes the repair case possible: demux a file, keep the complexity index,
 re-mux it with the signalling intact. The values are reported as raw syntax numbers rather than
-`ac3::` enums, because this module has no dependency on the codec library and no business
+`iclforge::` enums, because this module has no dependency on the codec library and no business
 deciding what `fscod` 0 means. `payload` keeps the bytes verbatim, so a caller remuxing into
 another container can hand them straight back.
 
@@ -298,7 +298,7 @@ underlying A/52 field values once, as `iclforge::mpegts::ServiceInfo`, and the m
 whichever registry's tables the profile calls for — EN 300 468 Tables D.1–D.8, A/52 Tables
 A4.2–A4.6 and G.2–G.6. That mapping is descriptor syntax, which is this module's job; reading
 those values off the bitstream is `iclforge::io::scan`'s, which is why `ServiceInfo` is plain
-integers and `mpegts::` still links nothing from `iclforge::ac3`.
+integers and `iclforge::mpegts` still links nothing from `iclforge::ac3`.
 
 `iclforge::io::ScannedStream` supplies every one of them: `bsmod` (with `bsmod_present`, since
 Annex E only carries it inside `infomdate`), `acmod`, `lfe`, the rendered `channels`, `bsid`,
@@ -474,7 +474,7 @@ media rendition instead of a plain channel count, where N is the decodable objec
 documentation](https://ott.dolby.com/OnDelKits/DDP/Dolby_Digital_Plus_Online_Delivery_Kit_v1.5/Documentation/Content_Creation/SDM/help_files/topics/hls_c_hls_signal_atmos_ddp.html)
 and shown verbatim in a real manifest (`CODECS="avc1.64001f,ec-3"` / `CHANNELS="12/JOC"`) by
 [AWS MediaLive's own HLS+Atmos
-documentation](https://docs.aws.amazon.com/medialive/latest/ug/feature-dolbyatmos.html). `mp4::`
+documentation](https://docs.aws.amazon.com/medialive/latest/ug/feature-dolbyatmos.html). `iclforge::mp4`
 itself never reads that TS 103 420 object-layer syntax — `HlsOptions::channels_attribute` is
 opaque to it, the same way `AudioTrack::codec_config` is; `forge fmp4` is the caller that
 already has `oba_complexity_index` (it read it to build the `dec3` box) and supplies the string.
@@ -523,14 +523,14 @@ stream carries is `acmod`/`lfeon`/`chanmap` syntax, and a manifest writer has no
 re-deriving AC-3 semantics. `forge fmp4`, the GUI and the live paths all supply it.
 
 `FragmentOptions::object_audio_brand` and `DashOptions::joc_complexity_index` are caller-supplied
-for the same reason `HlsOptions::channels_attribute` is — `mp4::` never reads TS 103 420's object
+for the same reason `HlsOptions::channels_attribute` is — `iclforge::mp4` never reads TS 103 420's object
 layer, and the caller that scanned `oba_complexity_index` off the bitstream to build the `dec3`
 box already has it.
 
 ### AC-4 fragments: sync samples, a time scale of its own, brands and descriptors
 
 An AC-4 track (`iclforge::mp4::kCodecAc4`, its `dac4` from `iclforge::ac4::build_dac4()`) fragments with four things an
-AC-3 or E-AC-3 track never needs, each supplied by the caller, since `mp4::` reads no AC-4 syntax:
+AC-3 or E-AC-3 track never needs, each supplied by the caller, since `iclforge::mp4` reads no AC-4 syntax:
 
 - **Sync samples.** Only an I-frame decodes on its own, and ETSI TS 103 190-2 Annex E.2 and E.3
   make the I-frames the sync samples and start every fragment at one.
@@ -611,7 +611,7 @@ false` writes `type="dynamic"` with `availabilityStartTime`, `minimumUpdatePerio
 `timeShiftBufferDepth` and no `mediaPresentationDuration` — the attribute set TS 103 420 §D.2.3's
 own example MPD carries — and the SegmentTemplate's `@startNumber` and the SegmentTimeline's
 first `<S t="…">` both come from the window rather than being assumed to be the start of the
-track. `mp4::` has no clock (no file I/O, no time), so the caller supplies the timestamp strings;
+track. `iclforge::mp4` has no clock (no file I/O, no time), so the caller supplies the timestamp strings;
 that is also what keeps the manifests deterministic under test.
 
 This is what `forge record`/`forge live` with `container=fmp4` and the GUI's live session with

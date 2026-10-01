@@ -901,7 +901,7 @@ not syntax" limit this page already states for the AC-3/E-AC-3 JOC side); `dee_a
 — the other locally available object-adjacent encoder, despite its "immersive stereo" name — was
 confirmed to stay channel-coded regardless of input. What stands in for a DEE fixture is a set of
 **synthetic, hand-built bitstreams** (`tests/ac4/test_ac4.cpp`), each assembled by a from-scratch
-`BitWriter` sharing no code with either `ac4::` or `tools/references/ac4_parse.py`, field-traced
+`BitWriter` sharing no code with either `iclforge::ac4` or `tools/references/ac4_parse.py`, field-traced
 against the spec text (including Table 64/65's array-position-to-bit-index mapping, cross-checked
 against §6.3.2.10.8's own worked EXAMPLE 2/3 values) rather than against an external reader. Two
 streams from elsewhere now go through the same framing: Chromium's public A-JOC test file, which
@@ -933,7 +933,7 @@ kind of gap tier 3 above exists to narrow and tier 1/2 cannot: two transcription
 misreading neither catches.
 
 **EMDF-only presentations** (`presentation_config` 6) have no real stream either: no DEE encode
-writes one. `ac4::` used to stop reading such a presentation before the `n_add_emdf_substreams`
+writes one. `iclforge::ac4` used to stop reading such a presentation before the `n_add_emdf_substreams`
 loop that TS 103 190-1 §4.2.3.2 and TS 103 190-2 §6.2.1.3 place after the config-6 branch, on both
 TOC paths. `tools/references/ac4_parse.py` did the same on the `bitstream_version` 2 path. Every
 later presentation, the substream groups and `substream_index_table()` were then read from the

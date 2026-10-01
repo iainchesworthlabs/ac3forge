@@ -20,7 +20,7 @@ when an EC-3 track turns up in an MPD, in a report that has been open since 2023
 That package is named but **not published**: this repository has never released it to npm, so
 building it from `js/` is the only way to get it — see [Publishing](#publishing)
 below. A fourth piece, the [AC-4 module](#ac-4-module), wraps the AC-4 decoder and encoder over
-the `ac4::` libraries rather than `iclforge::ac3`; it has no demo page, and the package exports its
+the `iclforge::ac4` libraries rather than `iclforge::ac3`; it has no demo page, and the package exports its
 typed wrapper as `./ac4`.
 The decode demo consumes the package (see "What's reused, what's new" below) rather than
 reimplementing it — see [js/README.md](https://github.com/iainchesworthlabs/iclforge/blob/main/js/README.md)
