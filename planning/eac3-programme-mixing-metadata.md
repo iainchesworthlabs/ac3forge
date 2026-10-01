@@ -191,7 +191,7 @@ encode-side widgets.
 
 ### Phase 5 — Decode-time associated-service mixing
 
-**Status: not built.** `src/forge/include/ac3/decoder/associated_service.hpp`, its source, the two gain helpers in
+**Status: not built.** `src/ac3/include/iclforge/ac3/decoder/associated_service.hpp`, its source, the two gain helpers in
 `mixing.hpp` and the mixer's tests do not exist. The two readings under "Before writing the pan-law/premix-scale code"
 are unchecked, and Decision 3 is open.
 
@@ -199,7 +199,7 @@ The one new feature. Full design (produced via a dedicated design pass, included
 full below the phase list) recommends a small, stateful, **post-decode, PCM-domain** component:
 
 ```cpp
-// src/forge/include/ac3/decoder/associated_service.hpp
+// src/ac3/include/iclforge/ac3/decoder/associated_service.hpp
 class AC3FORGE_EXPORT AssociatedServiceMixer {
    public:
     [[nodiscard]] std::expected<AssociatedServiceMixResult, MixError> mix(
@@ -242,8 +242,8 @@ Key formulas (all cite existing spec sections already used elsewhere in this cod
   increment, not folded in here); resampling between differently-rated main/associated programmes
   (mismatch is a checked error, not silently handled).
 
-New files: `src/forge/include/ac3/decoder/associated_service.hpp`,
-`src/forge/src/decoder/associated_service.cpp`,
+New files: `src/ac3/include/iclforge/ac3/decoder/associated_service.hpp`,
+`src/ac3/src/decoder/associated_service.cpp`,
 `tests/decoder/test_associated_service_mixer.cpp`. Touched: `mixing.hpp`/`mixing.cpp` (two new
 gain helpers), `CMakeLists.txt`/`tests/CMakeLists.txt` (registration), `docs/library/decoding.md`
 (new subsection), `docs/library/capabilities.md` (Metadata table + Decoding section).
