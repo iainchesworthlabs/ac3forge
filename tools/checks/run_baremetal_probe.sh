@@ -285,11 +285,13 @@ if [[ "$DIRECTION" == "ac4" ]]; then
     PRESET="${PRESET}-ac4"
     BUILD_PRESET="${BUILD_PRESET}-ac4"
     # Plain assignments over the E-AC-3 defaults above, for the reason the encode block's
-    # comment gives. Measured 2026-09-30: image 486,192 bytes (483,540 .text, 392 .data, 2,260
-    # .bss); peak heap 1,931,680 (the 5.1.4 fixture); 0 retained; the stack a decode used, read
-    # by painting, 19,456 bytes on the Cortex-M3 and 25,968 on the x86-64 host, whose frames
-    # are larger. Every ceiling a tenth or so over its figure.
-    ICLFORGE_MAX_IMAGE_BYTES=${ICLFORGE_MAX_IMAGE_BYTES_AC4:-535000}
+    # comment gives. Measured 2026-10-01: image 683,488 bytes (680,836 .text, 392 .data, 2,260
+    # .bss), 197,296 bytes of .text more than on 2026-09-30 for the sample rate converter's float
+    # tables, which the compiler builds into the image (planning/ac4.md, D14a5); peak heap
+    # 1,931,680 (the 5.1.4 fixture); 0 retained; the stack a decode used, read by painting, 19,456
+    # bytes on the Cortex-M3 and 25,968 on the x86-64 host, whose frames are larger. Every ceiling
+    # a tenth or so over its figure.
+    ICLFORGE_MAX_IMAGE_BYTES=${ICLFORGE_MAX_IMAGE_BYTES_AC4:-750000}
     ICLFORGE_MAX_HEAP_BYTES=${ICLFORGE_MAX_HEAP_BYTES_AC4:-2130000}
     ICLFORGE_MAX_STEADY_ALLOCS_PER_FRAME=${ICLFORGE_MAX_STEADY_ALLOCS_PER_FRAME_AC4:-210}
     ICLFORGE_MAX_RETAINED_BYTES=${ICLFORGE_MAX_RETAINED_BYTES_AC4:-1024}
