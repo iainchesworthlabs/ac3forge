@@ -12,8 +12,8 @@
     cross-platform product on 2026-09-04 and renamed: it is now **AC3Forge Crucible**,
     `ac3crucible`, `ac3::crucible`, under `apps/crucible/`. For what it is today, and for the
     Linux and macOS work, see [the promotion plan](../crucible/design/promotion.md).
-    Only the null-sink driver keeps its old names, under `apps/windows/driver/`, until
-    attestation signing lands.
+    The null-sink driver, under `apps/windows/driver/`, kept its old names until 2026-10-01; the
+    note after this one says what it is called now.
 
     Read the names below through this table. The window `ac3desk` is `ac3crucible`, and the
     runner `ac3windemo` is `ac3crucible-run`. `apps/windows/{engine,runner,ui,translations,spikes}`
@@ -22,6 +22,13 @@
     `ac3forge-desktop-atmos-<version>-win64.zip` is `ac3forge-crucible-<version>-win64.zip`,
     `tools/ci/check_windemo_package.py` is `tools/ci/check_crucible_package.py`, and the legs'
     `windemo: true` is `crucible: true`, now in `.github/ci/legs.jsonc`.
+
+!!! info "The driver's names"
+    The driver on this page is `Ac3ForgeNullSink`, and its endpoint is "Desktop Atmos Speakers" or
+    "Speakers (Desktop Atmos)": the names of the demo's time. Since 2026-10-01 the driver is
+    `IclForgeNullSink` and the endpoint is "Speakers (Crucible Silent Output)". The records below
+    keep the old names; [the driver's page](windows-driver-acx.md#the-rename-2026-10-01) has the
+    change.
 
 !!! note "Status: built, one item open"
     Phases 1 to 5 landed 2026-09-03: the library taps and watcher, the engine
@@ -550,15 +557,16 @@ neither format), the spatial path (Windows Sonic is off here), and a real device
 switch. Fades on a mode switch are not written; the switch is a stop and a start.
 
 The runner's surface as it stands on 2026-09-03 (`apps/crucible/runner/main.cpp`). Flags:
-`--null-sink SUBSTR` names the silent endpoint (default "Desktop Atmos"); `--key PATH` loads
-a signing key file, otherwise the `AC3FORGE_SIGNING_KEY_FILE` and `AC3FORGE_SIGNING_KEY`
-variables are read; `--pin MODE` starts pinned to one of `atmos`, `ddplus`, `dd`, `pcm`,
-`headphones` or `stereo`; `--low-latency` selects one-block frames; `--bitrate KBPS` fixes
-the bitrate (otherwise 448 kb/s, or 1536 in low latency); `--set-default SUBSTR` moves the
-system default output to that endpoint before starting and restores it on quit. The verbs
-on stdin, `<app>` being the id that `list` prints: `list`, `status`, `pos <app> x y z`,
-`bed <app>`, `pin <mode>|off`, `key <path>|none`, `bypass on|off`, `split <app> on|off`,
-`size <app> 0..1`, `probe`, `default <substr>|restore`, and `quit` or `exit`.
+`--null-sink SUBSTR` names the silent endpoint (default "Desktop Atmos" then, and "Crucible Silent
+Output" since 2026-10-01); `--key PATH` loads a signing key file, otherwise the
+`AC3FORGE_SIGNING_KEY_FILE` and `AC3FORGE_SIGNING_KEY` variables are read; `--pin MODE` starts
+pinned to one of `atmos`, `ddplus`, `dd`, `pcm`, `headphones` or `stereo`; `--low-latency`
+selects one-block frames; `--bitrate KBPS` fixes the bitrate (otherwise 448 kb/s, or 1536 in low
+latency); `--set-default SUBSTR` moves the system default output to that endpoint before starting
+and restores it on quit. The verbs on stdin, `<app>` being the id that `list` prints: `list`,
+`status`, `pos <app> x y z`, `bed <app>`, `pin <mode>|off`, `key <path>|none`, `bypass on|off`,
+`split <app> on|off`, `size <app> 0..1`, `probe`, `default <substr>|restore`, and `quit` or
+`exit`.
 
 ### Phase 3: UI
 
@@ -1095,8 +1103,9 @@ of the `build` matrix: the self-hosted fleet has neither, and none of that matri
 (CMake, ctest, cpack, the gold-reference gate) mean anything for a `.sys`. It gates on the
 package being complete and on Code Analysis at the driver rule set reporting zero defects,
 the same bar `Analyze-Driver.ps1` holds locally, and uploads the result as the
-`ac3forge-nullsink-driver-testsigned` artifact. First run 2026-09-04: green in two and a half
-minutes, VS 2026 Enterprise with MSVC 14.51 on the image, five reports and no defects.
+`iclforge-nullsink-driver-testsigned` artifact (`ac3forge-nullsink-driver-testsigned` when the
+job first ran). First run 2026-09-04: green in two and a half minutes, VS 2026 Enterprise with
+MSVC 14.51 on the image, five reports and no defects.
 CodeQL's driver pack and the DVL are not in the job - they need the CodeQL CLI and the
 `microsoft/windows-drivers` pack downloaded - and the dynamic tier cannot be: Driver Verifier
 and KASAN need the throwaway guest and a reboot. Both stay local, in
@@ -1125,8 +1134,9 @@ port, what it keeps, its steps and the findings from Phase 4 that carry into it 
 and recorded on [their own page](windows-driver-acx.md); it was made the same day. Signing
 waits for it, so it is paid once. The driver is built, test-signed and Code-Analysed in CI
 whenever the Windows lane runs (`_build.yml`'s `windows-driver` job, from the WDK's NuGet
-packages on GitHub's hosted image; the run after a merge that lights the lane, and the nightly
-run) and uploaded as an artifact; the dynamic tier stays in the guest.
+packages on GitHub's hosted image; the run after a merge that lights the lane, the nightly run,
+and a `ci.yml` dispatch with `-f legs=windows-driver`) and uploaded as an artifact; the dynamic
+tier stays in the guest.
 
 On how the driver reaches a machine once it is signed: with the installer, not from inside
 the window. The package installs the driver (`pnputil /add-driver /install` on the attested
@@ -1146,10 +1156,10 @@ driver-test VM (2026-09-04), with the driver installed and a signing key loaded,
 earlier captures taken on the workstation against FxSound's stand-in endpoint with no key.
 They show what [Object signing](#object-signing) and
 [the driver](#the-driver-and-its-licence) sections above describe: the "Speakers (Desktop
-Atmos)" endpoint as the default, and the codec running with signed object metadata
-(E-AC-3 JOC, "objects on"). The room in French is still from the workstation, with tone
-players standing in for applications, since the driver and the language are independent of
-each other.
+Atmos)" endpoint (its name until 2026-10-01) as the default, and the codec running with signed
+object metadata (E-AC-3 JOC, "objects on"). The room in French is still from the workstation,
+with tone players standing in for applications, since the driver and the language are independent
+of each other.
 
 ![The room: a placed application with height, two idle applications in the bed, the real Desktop Atmos endpoint as the default and a signing key loaded](screenshots/windows-demo-room.png)
 
@@ -1191,8 +1201,6 @@ primitive it would use, and `ac3cli spatial` has driven a spatial endpoint throu
 - Whether the foreground full-screen check should use the shell's full-screen notification
   (`SHQueryUserNotificationState`) or a window-rect comparison. Either is app-level; the
   first is cheaper and the plan starts there.
-- The app's name. It was settled on 2026-09-04 as AC3Forge Crucible; "Desktop Atmos
-  Speakers" is still the silent device's name, until the driver is rebuilt and re-signed.
 
 ## Deliberately not in scope
 

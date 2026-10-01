@@ -132,14 +132,14 @@ valid. The driver compiles at `/W4 /WX`.
 
 **Without the EWDK, and in CI.** The WDK and SDK are also NuGet packages, which is how
 Microsoft's own driver-samples CI builds and how this driver is built whenever the Windows
-lane runs, in the run after a merge that lights it and in the nightly run
-(`.github/workflows/_build.yml`, the `windows-driver` job on GitHub's `windows-latest`
-image): `packages.config` names the three packages, `Directory.Build.props` imports them
-when they are present and is inert when they are not, so the EWDK build above is
-unaffected. What the packages do not carry, and the runner image does, is the "Windows
-Driver Kit" Visual Studio component (the `WindowsKernelModeDriver10.0` toolset) and the
-Spectre-mitigated libraries; a workstation needs both from the Visual Studio installer
-before this works there. Then, from a Visual Studio developer shell:
+lane runs, in the run after a merge that lights it, in the nightly run and in a `ci.yml`
+dispatch that names it (`-f legs=windows-driver`; `.github/workflows/_build.yml`, the
+`windows-driver` job on GitHub's `windows-latest` image): `packages.config` names the three
+packages, `Directory.Build.props` imports them when they are present and is inert when they are
+not, so the EWDK build above is unaffected. What the packages do not carry, and the runner image
+does, is the "Windows Driver Kit" Visual Studio component (the `WindowsKernelModeDriver10.0`
+toolset) and the Spectre-mitigated libraries; a workstation needs both from the Visual Studio
+installer before this works there. Then, from a Visual Studio developer shell:
 
 ```powershell
 nuget restore .\packages.config -PackagesDirectory .\packages
