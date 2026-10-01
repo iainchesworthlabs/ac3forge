@@ -29,3 +29,4 @@ af6b96212eae0a22514aec67bd68c4a061854a41  # S4: paths in text follow the moved p
 848910ab02d6a369f4a6b94bd1b241cddf58fd10  # N1A: the programs take their own names, and what they register follows
 758ac01b8ac625a49c0973d04c1a124dd0bac294  # N1A: wrap the lines the program-names pass pushed past 100 columns
 377c3d5ef3811d2ba334bc762c4500eb3bb180fc  # N1A: lupdate and the pseudo-locale generator on the renamed sources
+5b9ada431ba1c655ed9eb13f45bd71dd5d9ca772  # N1A: clang-format the settings migration and its tests
