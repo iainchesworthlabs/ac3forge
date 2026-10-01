@@ -62,11 +62,13 @@ QString standard_directory(const Identity& id, QStandardPaths::StandardLocation 
 
 int copy_tree_once(const QString& from, const QString& to) {
     const QDir source(from);
-    if (!source.exists() || QFileInfo(from).absoluteFilePath() == QFileInfo(to).absoluteFilePath()) {
+    if (!source.exists() ||
+        QFileInfo(from).absoluteFilePath() == QFileInfo(to).absoluteFilePath()) {
         return 0;
     }
     const QDir target(to);
-    const QStringList taken = target.entryList(QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden);
+    const QStringList taken =
+        target.entryList(QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden);
     for (const QString& entry : taken) {
         if (entry.compare(QLatin1String(kCacheDirectory), Qt::CaseInsensitive) != 0) {
             return 0;
@@ -80,7 +82,8 @@ int copy_tree_once(const QString& from, const QString& to) {
         const QString relative = source.relativeFilePath(path);
         // Qt keeps its QML and shader caches under <local data>/cache: regenerable, and made for
         // the program that wrote them, so not what a person saved.
-        if (relative.startsWith(QLatin1String(kCacheDirectory) + QLatin1Char('/'), Qt::CaseInsensitive)) {
+        if (relative.startsWith(QLatin1String(kCacheDirectory) + QLatin1Char('/'),
+                                Qt::CaseInsensitive)) {
             continue;
         }
         const QString destination = target.filePath(relative);
@@ -119,7 +122,8 @@ Outcome migrate_settings(const Identity& current, const std::vector<Former>& for
         }
         store.sync();
         if (store.status() != QSettings::NoError) {
-            qWarning("settings migration: could not write the settings of %s", qPrintable(label(current)));
+            qWarning("settings migration: could not write the settings of %s",
+                     qPrintable(label(current)));
             outcome.status = Status::kFailed;
             return outcome;
         }
@@ -148,7 +152,8 @@ Outcome migrate(const Identity& current, const std::vector<Former>& former) {
     for (const QStandardPaths::StandardLocation where : kDirectories) {
         const QString target = standard_directory(current, where);
         for (const Former& candidate : former) {
-            const int copied = copy_tree_once(standard_directory(candidate.identity, where), target);
+            const int copied =
+                copy_tree_once(standard_directory(candidate.identity, where), target);
             if (copied < 0) {
                 failed = true;
                 break;

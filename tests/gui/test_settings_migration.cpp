@@ -27,8 +27,8 @@
 // ones Qt keeps for tests (setTestModeEnabled) under identities no real program has.
 
 using iclforge::settings_migration::copy_tree_once;
-using iclforge::settings_migration::former_identities;
 using iclforge::settings_migration::Former;
+using iclforge::settings_migration::former_identities;
 using iclforge::settings_migration::Identity;
 using iclforge::settings_migration::identity_of;
 using iclforge::settings_migration::migrate;
@@ -47,7 +47,7 @@ const Identity kBefore{QStringLiteral("ac3forge"), QStringLiteral("ac3forge")};
 // The settings format and directory the test runs under. The temporary directory goes when the
 // test does, and with it every store written to it.
 class Scratch {
-public:
+   public:
     Scratch() {
         REQUIRE(dir_.isValid());
         QSettings::setDefaultFormat(QSettings::IniFormat);
@@ -58,7 +58,7 @@ public:
     Scratch& operator=(const Scratch&) = delete;
     [[nodiscard]] QString path() const { return dir_.path(); }
 
-private:
+   private:
     QTemporaryDir dir_;
 };
 
@@ -86,7 +86,9 @@ QMap<QString, QString> read(const Identity& id) {
     return out;
 }
 
-QString file_of(const Identity& id) { return open(id).fileName(); }
+QString file_of(const Identity& id) {
+    return open(id).fileName();
+}
 
 QByteArray bytes_of(const QString& path) {
     QFile file(path);
@@ -96,7 +98,8 @@ QByteArray bytes_of(const QString& path) {
 
 // What a person's store holds: a preference of each kind, a session, and the keys Hearth keeps its
 // pairings and its server identity under (qsettings_store.hpp, pairing_store.hpp).
-const QString kHex = QStringLiteral("00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff");
+const QString kHex =
+    QStringLiteral("00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff");
 
 QMap<QString, QVariant> a_persons_settings() {
     return {
@@ -104,9 +107,11 @@ QMap<QString, QVariant> a_persons_settings() {
         {QStringLiteral("workbench/textScale"), 1.25},
         {QStringLiteral("workbench/restoreSession"), false},
         {QStringLiteral("workbench/defaultBitrateKbps"), 448},
-        {QStringLiteral("workbench/recent"), QStringList{QStringLiteral("a.wav"), QStringLiteral("b.wav")}},
+        {QStringLiteral("workbench/recent"),
+         QStringList{QStringLiteral("a.wav"), QStringLiteral("b.wav")}},
         {QStringLiteral("workbench/geometry"), QByteArray("\x01\x02\xd9\xff", 4)},
-        {QStringLiteral("workbench/outputFolder"), QStringLiteral("C:/Users/\u00c9lo\u00efse/Music")},
+        {QStringLiteral("workbench/outputFolder"),
+         QStringLiteral("C:/Users/\u00c9lo\u00efse/Music")},
         {QStringLiteral("language/code"), QStringLiteral("fr")},
         {QStringLiteral("pairing/size"), 1},
         {QStringLiteral("pairing/1/client"), kHex},
@@ -137,7 +142,8 @@ TEST_CASE("the old store is copied to a new one that holds nothing", "[settings]
     }
 }
 
-TEST_CASE("the pairing records and the server identity are copied to the letter", "[settings][migration]") {
+TEST_CASE("the pairing records and the server identity are copied to the letter",
+          "[settings][migration]") {
     const Scratch scratch;
     write(kBefore, a_persons_settings());
 
@@ -147,15 +153,18 @@ TEST_CASE("the pairing records and the server identity are copied to the letter"
     CHECK(store.value(QStringLiteral("pairing/size")).toInt() == 1);
     CHECK(store.value(QStringLiteral("pairing/1/client")).toString() == kHex);
     CHECK(store.value(QStringLiteral("pairing/1/psk")).toString() == kHex);
-    CHECK(store.value(QStringLiteral("pairing/1/name")).toString() == QStringLiteral("Living room"));
+    CHECK(store.value(QStringLiteral("pairing/1/name")).toString() ==
+          QStringLiteral("Living room"));
     CHECK(store.value(QStringLiteral("identity/server")).toString() == kHex);
     CHECK(store.value(QStringLiteral("workbench/outputFolder")).toString() ==
           QStringLiteral("C:/Users/\u00c9lo\u00efse/Music"));
     CHECK(store.value(QStringLiteral("workbench/recent")).toStringList().size() == 2);
-    CHECK(store.value(QStringLiteral("workbench/geometry")).toByteArray() == QByteArray("\x01\x02\xd9\xff", 4));
+    CHECK(store.value(QStringLiteral("workbench/geometry")).toByteArray() ==
+          QByteArray("\x01\x02\xd9\xff", 4));
 }
 
-TEST_CASE("the copy is recorded in the new store and not counted as a setting", "[settings][migration]") {
+TEST_CASE("the copy is recorded in the new store and not counted as a setting",
+          "[settings][migration]") {
     const Scratch scratch;
     write(kBefore, {{QStringLiteral("a"), 1}, {QStringLiteral("b/c"), 2}});
 
@@ -163,7 +172,8 @@ TEST_CASE("the copy is recorded in the new store and not counted as a setting", 
 
     CHECK(outcome.keys == 2);
     QSettings store = open(kNow);
-    CHECK(store.value(QStringLiteral("migration/fromIdentity")).toString() == QStringLiteral("ac3forge/ac3forge"));
+    CHECK(store.value(QStringLiteral("migration/fromIdentity")).toString() ==
+          QStringLiteral("ac3forge/ac3forge"));
     CHECK(store.value(QStringLiteral("migration/copiedKeys")).toInt() == 2);
 }
 
@@ -193,7 +203,8 @@ TEST_CASE("a new store with settings of its own is left as it is", "[settings][m
     CHECK_FALSE(QFileInfo::exists(file_of(kBefore)));
 }
 
-TEST_CASE("when both stores hold settings the new one wins and keeps only its own", "[settings][migration]") {
+TEST_CASE("when both stores hold settings the new one wins and keeps only its own",
+          "[settings][migration]") {
     const Scratch scratch;
     write(kBefore, a_persons_settings());
     write(kNow, {{QStringLiteral("workbench/theme"), QStringLiteral("light")}});
@@ -219,7 +230,8 @@ TEST_CASE("with no store at all nothing is written", "[settings][migration]") {
     CHECK_FALSE(QFileInfo::exists(file_of(kBefore)));
 }
 
-TEST_CASE("a second start finds the new store in use and changes nothing", "[settings][migration]") {
+TEST_CASE("a second start finds the new store in use and changes nothing",
+          "[settings][migration]") {
     const Scratch scratch;
     write(kBefore, {{QStringLiteral("workbench/theme"), QStringLiteral("dark")}});
     REQUIRE(migrate_settings(kNow, {{kBefore, {}}}).status == Status::kMigrated);
@@ -236,11 +248,13 @@ TEST_CASE("a second start finds the new store in use and changes nothing", "[set
     CHECK_FALSE(read(kNow).contains(QStringLiteral("workbench/later")));
 }
 
-TEST_CASE("the organisation's own keys are not the application's and are not copied", "[settings][migration]") {
+TEST_CASE("the organisation's own keys are not the application's and are not copied",
+          "[settings][migration]") {
     const Scratch scratch;
     write(kBefore, {{QStringLiteral("workbench/theme"), QStringLiteral("dark")}});
     {
-        QSettings organisation(QSettings::IniFormat, QSettings::UserScope, QStringLiteral("ac3forge"));
+        QSettings organisation(QSettings::IniFormat, QSettings::UserScope,
+                               QStringLiteral("ac3forge"));
         organisation.setValue(QStringLiteral("organisation/wide"), 9);
         organisation.sync();
     }
@@ -256,7 +270,8 @@ TEST_CASE("the first former store that holds settings is the one copied", "[sett
     const Identity product{QStringLiteral("ac3forge"), QStringLiteral("Crucible")};
     const Identity demo{QStringLiteral("ac3forge"), QStringLiteral("DesktopAtmos")};
     const Identity current{QStringLiteral("iclforge"), QStringLiteral("Crucible")};
-    const std::vector<Former> former{{product, {}}, {demo, QStringLiteral("migration/fromDesktopAtmos")}};
+    const std::vector<Former> former{{product, {}},
+                                     {demo, QStringLiteral("migration/fromDesktopAtmos")}};
 
     SECTION("the product's store wins over the demo's") {
         write(product, {{QStringLiteral("endpoint"), QStringLiteral("product")}});
@@ -267,7 +282,8 @@ TEST_CASE("the first former store that holds settings is the one copied", "[sett
         CHECK(read(current).value(QStringLiteral("endpoint")) == QStringLiteral("product"));
         CHECK_FALSE(read(current).contains(QStringLiteral("migration/fromDesktopAtmos")));
     }
-    SECTION("a machine that only ever ran the demo gets the demo's, and the record the dialog reads") {
+    SECTION(
+        "a machine that only ever ran the demo gets the demo's, and the record the dialog reads") {
         write(demo, {{QStringLiteral("endpoint"), QStringLiteral("demo")}});
         const Outcome outcome = migrate_settings(current, former);
         CHECK(outcome.status == Status::kMigrated);
@@ -277,7 +293,8 @@ TEST_CASE("the first former store that holds settings is the one copied", "[sett
     }
 }
 
-TEST_CASE("a store that cannot be written is reported and the old one is left alone", "[settings][migration]") {
+TEST_CASE("a store that cannot be written is reported and the old one is left alone",
+          "[settings][migration]") {
     const Scratch scratch;
     write(kBefore, {{QStringLiteral("workbench/theme"), QStringLiteral("dark")}});
     const QByteArray bytes = bytes_of(file_of(kBefore));
@@ -292,7 +309,8 @@ TEST_CASE("a store that cannot be written is reported and the old one is left al
     CHECK(bytes_of(file_of(kBefore)) == bytes);
 }
 
-TEST_CASE("the three programs have the new names and the old organisation", "[settings][migration]") {
+TEST_CASE("the three programs have the new names and the old organisation",
+          "[settings][migration]") {
     CHECK(identity_of(Program::kForgeGui).organization == QStringLiteral("iclforge"));
     CHECK(identity_of(Program::kForgeGui).application == QStringLiteral("forge-gui"));
     CHECK(identity_of(Program::kHearth).application == QStringLiteral("Hearth"));
@@ -305,8 +323,10 @@ TEST_CASE("the three programs have the new names and the old organisation", "[se
             CHECK(f.identity.organization == QStringLiteral("ac3forge"));
         }
     }
-    CHECK(former_identities(Program::kForgeGui).front().identity.application == QStringLiteral("ac3forge"));
-    CHECK(former_identities(Program::kHearth).front().identity.application == QStringLiteral("Hearth"));
+    CHECK(former_identities(Program::kForgeGui).front().identity.application ==
+          QStringLiteral("ac3forge"));
+    CHECK(former_identities(Program::kHearth).front().identity.application ==
+          QStringLiteral("Hearth"));
     const auto crucible = former_identities(Program::kCrucible);
     REQUIRE(crucible.size() == 2);
     CHECK(crucible[0].identity.application == QStringLiteral("Crucible"));
@@ -314,7 +334,8 @@ TEST_CASE("the three programs have the new names and the old organisation", "[se
     CHECK(crucible[1].marker_key == QStringLiteral("migration/fromDesktopAtmos"));
 }
 
-TEST_CASE("a program's start-up copy takes its old store and leaves the old one", "[settings][migration]") {
+TEST_CASE("a program's start-up copy takes its old store and leaves the old one",
+          "[settings][migration]") {
     const Scratch scratch;
     // Hearth's real identities, in the scratch directory: nothing here reads the registry.
     const Identity old_hearth = former_identities(Program::kHearth).front().identity;
@@ -371,13 +392,15 @@ TEST_CASE("a directory tree is copied once to a place that is empty", "[settings
     CHECK(get(to + QStringLiteral("/a.bin")) == QByteArray("edited"));
 }
 
-TEST_CASE("Qt's own cache directory is neither copied nor counted as something already there", "[settings][migration]") {
+TEST_CASE("Qt's own cache directory is neither copied nor counted as something already there",
+          "[settings][migration]") {
     const QTemporaryDir root;
     REQUIRE(root.isValid());
     const QString from = QDir(root.path()).filePath(QStringLiteral("old"));
     const QString to = QDir(root.path()).filePath(QStringLiteral("new"));
     put(from + QStringLiteral("/sinks.json"), QByteArray("[]"));
-    put(from + QStringLiteral("/cache/qmlcache/Main_qml.qmlc"), QByteArray("compiled for the old binary"));
+    put(from + QStringLiteral("/cache/qmlcache/Main_qml.qmlc"),
+        QByteArray("compiled for the old binary"));
     put(from + QStringLiteral("/cache/qtpipelinecache-x86_64"), QByteArray("shaders"));
     // the new program has already started its own cache before the copy looks
     put(to + QStringLiteral("/cache/qmlcache/other.qmlc"), QByteArray("new"));
@@ -394,7 +417,8 @@ TEST_CASE("Qt's own cache directory is neither copied nor counted as something a
     CHECK(copy_tree_once(only_cache, QDir(root.path()).filePath(QStringLiteral("elsewhere"))) == 0);
 }
 
-TEST_CASE("a directory that exists and is empty is filled and one with a file in it is not", "[settings][migration]") {
+TEST_CASE("a directory that exists and is empty is filled and one with a file in it is not",
+          "[settings][migration]") {
     const QTemporaryDir root;
     REQUIRE(root.isValid());
     const QString from = QDir(root.path()).filePath(QStringLiteral("old"));
@@ -410,7 +434,8 @@ TEST_CASE("a directory that exists and is empty is filled and one with a file in
     CHECK_FALSE(QFileInfo::exists(taken + QStringLiteral("/a.bin")));
 }
 
-TEST_CASE("a directory that is not there, or is the same one, is not a copy", "[settings][migration]") {
+TEST_CASE("a directory that is not there, or is the same one, is not a copy",
+          "[settings][migration]") {
     const QTemporaryDir root;
     REQUIRE(root.isValid());
     const QString here = QDir(root.path()).filePath(QStringLiteral("here"));
@@ -421,7 +446,8 @@ TEST_CASE("a directory that is not there, or is the same one, is not a copy", "[
     CHECK(get(here + QStringLiteral("/a.bin")) == QByteArray("a"));
 }
 
-TEST_CASE("the directories under the old names follow the settings to the new ones", "[settings][migration]") {
+TEST_CASE("the directories under the old names follow the settings to the new ones",
+          "[settings][migration]") {
     const Scratch scratch;
     // Identities no program has, so the directories Qt keeps for tests belong to this test alone.
     const QString tag = QUuid::createUuid().toString(QUuid::Id128).left(12);
@@ -460,7 +486,8 @@ TEST_CASE("the directories under the old names follow the settings to the new on
     }
 }
 
-TEST_CASE("the directory of an identity is what Qt builds for that identity", "[settings][migration]") {
+TEST_CASE("the directory of an identity is what Qt builds for that identity",
+          "[settings][migration]") {
     const Scratch scratch;
     const Identity id{QStringLiteral("iclforge-shape"), QStringLiteral("probe")};
 

@@ -71,11 +71,13 @@ Outcome migrate_settings(const Identity& current, const std::vector<Former>& for
 // Copies the tree at `from` into `to` when `from` holds files and `to` holds nothing, and returns
 // the files copied; -1 when a file could not be copied. An existing file of `to` is never replaced.
 // A directory named `cache` at the top of either is Qt's own cache (QML and shader caches, made for
-// the program that wrote them): it is not copied, and a `to` that holds only one still holds nothing.
+// the program that wrote them): it is not copied, and a `to` that holds only one still holds
+// nothing.
 int copy_tree_once(const QString& from, const QString& to);
 
 // The directory QStandardPaths gives `where` for a process that set `id`'s names, the way Qt builds
-// it on this platform (`<base>/<organization>/<application>`), whatever the process's own names are.
+// it on this platform (`<base>/<organization>/<application>`), whatever the process's own names
+// are.
 QString standard_directory(const Identity& id, QStandardPaths::StandardLocation where);
 
 // The settings and the directories (data, local data, configuration) of `former` into those of
