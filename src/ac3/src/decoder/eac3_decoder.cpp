@@ -1552,7 +1552,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     if (decoded.has_value() && decoded->has_value() && impl_->transient_[slot] != nullptr) {
         auto& hold = *impl_->transient_[slot];
         if (hold_back(hold, std::move(**decoded), {})) {
-            **decoded = std::move(hold.released);
+            *decoded = std::move(hold.released);
         } else {
             decoded->reset();
         }

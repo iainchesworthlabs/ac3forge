@@ -300,7 +300,7 @@ std::string RecordingSink::close() {
     }
     if (mpegts_.has_value()) {
         // Always empty by contract; called so the two writers age uniformly.
-        std::ignore = mpegts_->finalize();
+        static_cast<void>(mpegts_->finalize());
     }
     file_.close();
     if (file_.fail()) {
