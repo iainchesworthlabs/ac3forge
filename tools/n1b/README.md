@@ -519,5 +519,7 @@ that the branch meets only the hand-written commits of the stage; `-Measure` cou
 branch, the files that conflict by hand and after the scripts. `check_anchors.py`, `check_tables.py`,
 `json_diff.py`, `show_conflicts.py`, `branch_table.py` and `control_experiment.ps1` are the small tools
 the study used to check its pages and its measurements. `adapt_branch.ps1` runs the scripts of S2 and S3 only (`n1b_apply.py`,
-`n1b_cmake.py`, `n1b_paths.py`, `n1b_names.py`); the scripts of S4 and N1A (`n1b_idents.py`, `n1b_programs.py`) are run on a branch by
-hand, in the order of their sections above, and the commit of each is merged the same way.
+`n1b_cmake.py`, `n1b_paths.py`, `n1b_names.py`); the scripts of S4, N1A and S5 (`n1b_idents.py`, `n1b_programs.py`, `n1b_docs.py`) are run on a branch
+by hand, in the order of their sections above, and the commit of each is merged the same way. A branch that edits a
+page, a workflow or a CMake comment before S5 merges runs the three phases of `n1b_docs.py` on it, in the order text,
+urls, words; a page it writes afterwards names the new names.
