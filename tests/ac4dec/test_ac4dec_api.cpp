@@ -297,14 +297,15 @@ std::vector<std::vector<std::byte>> tones_with_their_own_gains(std::size_t frame
     iclforge::ac4::EncoderConfig config;
     config.channels = 6;
     config.bitrate_kbps = 384;
-    config.downmix = iclforge::ac4::DownmixConfig{.loro_centre_db = -1.5,
-                                                  .loro_surround_db = -4.5,
-                                                  .ltrt_centre_db = -3.0,
-                                                  .ltrt_surround_db = -6.0,
-                                                  .lfe_db = -4.5,
-                                                  .preferred = iclforge::ac4::PreferredDownmix::kLtRt,
-                                                  .loro_correction_db2 = std::nullopt,
-                                                  .ltrt_correction_db2 = std::nullopt};
+    config.downmix =
+        iclforge::ac4::DownmixConfig{.loro_centre_db = -1.5,
+                                     .loro_surround_db = -4.5,
+                                     .ltrt_centre_db = -3.0,
+                                     .ltrt_surround_db = -6.0,
+                                     .lfe_db = -4.5,
+                                     .preferred = iclforge::ac4::PreferredDownmix::kLtRt,
+                                     .loro_correction_db2 = std::nullopt,
+                                     .ltrt_correction_db2 = std::nullopt};
     REQUIRE(config.iframe_interval == 24);
     std::vector<std::vector<float>> input;
     for (const double hz : {440.0, 620.0, 800.0, 90.0, 1030.0, 1270.0}) {
@@ -331,8 +332,9 @@ std::vector<std::vector<std::byte>> tones_with_their_own_gains(std::size_t frame
 }
 
 // The first sample in [from, to) at which a and b differ.
-std::optional<std::size_t> first_difference(const std::vector<float>& a, const std::vector<float>& b,
-                                            std::size_t from, std::size_t to) {
+std::optional<std::size_t> first_difference(const std::vector<float>& a,
+                                            const std::vector<float>& b, std::size_t from,
+                                            std::size_t to) {
     for (std::size_t n = from; n < to && n < a.size() && n < b.size(); ++n) {
         if (a[n] != b[n]) {
             return n;
@@ -345,8 +347,8 @@ std::optional<std::size_t> first_difference(const std::vector<float>& a, const s
 // comes out is a decode with `before` throughout up to the change, and from
 // two frames after it, the control data having reached the QMF domain, a
 // decode with `after` throughout.
-void require_change_lands_whole(const std::vector<std::vector<std::byte>>& frames, std::size_t change,
-                                const iclforge::ac4::OutputConfig& before,
+void require_change_lands_whole(const std::vector<std::vector<std::byte>>& frames,
+                                std::size_t change, const iclforge::ac4::OutputConfig& before,
                                 const iclforge::ac4::OutputConfig& after) {
     iclforge::ac4::Decoder first(iclforge::ac4::DecoderConfig{.syntax = {}, .output = before});
     iclforge::ac4::Decoder second(iclforge::ac4::DecoderConfig{.syntax = {}, .output = after});
