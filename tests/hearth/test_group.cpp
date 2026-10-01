@@ -250,16 +250,16 @@ struct PackedBurst {
 // The bursts iclforge::iec61937::Eac3BurstPacker makes of `stream`'s access units, `passes` times over as
 // one programme: each with the Pc and Pd the packer writes, the access units it holds, and the
 // programme frame of its first sample.
-std::vector<PackedBurst> pack_bursts(const iclforge::io::ScannedStream& stream, int passes) {
+std::vector<PackedBurst> pack_bursts(const iclforge::ac3::io::ScannedStream& stream, int passes) {
     iclforge::iec61937::Eac3BurstPacker packer;
     std::vector<PackedBurst> bursts;
-    const std::uint64_t pass_samples = iclforge::io::stream_duration_samples(stream);
+    const std::uint64_t pass_samples = iclforge::ac3::io::stream_duration_samples(stream);
     PackedBurst pending;
     for (int pass = 0; pass < passes; ++pass) {
         for (std::size_t i = 0; i < stream.access_units.size(); ++i) {
             const std::span<const std::byte> unit = stream.access_units[i];
             if (pending.payload.empty()) {
-                const std::optional<iclforge::io::AccessUnitTiming> timing = iclforge::io::access_unit_timing(stream, i);
+                const std::optional<iclforge::ac3::io::AccessUnitTiming> timing = iclforge::ac3::io::access_unit_timing(stream, i);
                 REQUIRE(timing.has_value());
                 pending.frame = static_cast<std::int64_t>((pass_samples * static_cast<std::uint64_t>(pass)) +
                                                           timing->start_sample);
@@ -288,30 +288,30 @@ std::vector<PackedBurst> pack_bursts(const iclforge::io::ScannedStream& stream, 
 // A local decode and render of `stream`'s access units, `passes` times over, as the test sink's
 // BurstOutput decodes and renders (burst_output.hpp): each block of `layout`'s slots to `consume`.
 template <class Consume>
-void decode_and_render(const iclforge::io::ScannedStream& stream, int passes, const iclforge::render::OutputLayout& layout,
+void decode_and_render(const iclforge::ac3::io::ScannedStream& stream, int passes, const iclforge::render::OutputLayout& layout,
                        Consume&& consume) {
-    const iclforge::render::Serving serving = iclforge::render::serve(
-        layout, iclforge::DownmixTarget::kLoRo, iclforge::render::ObjectsPolicy::kAuto);
+    const iclforge::ac3::render::Serving serving = iclforge::ac3::render::serve(
+        layout, iclforge::ac3::DownmixTarget::kLoRo, iclforge::ac3::render::ObjectsPolicy::kAuto);
     REQUIRE_FALSE(serving.fold.has_value());
-    iclforge::DecoderConfig config;
-    config.output.mode = iclforge::OperatingMode::kLine;
-    iclforge::render::configure_decoder(serving, config);
-    iclforge::Eac3Decoder decoder(config);
+    iclforge::ac3::DecoderConfig config;
+    config.output.mode = iclforge::ac3::OperatingMode::kLine;
+    iclforge::ac3::render::configure_decoder(serving, config);
+    iclforge::ac3::Eac3Decoder decoder(config);
     iclforge::render::LayoutRenderer renderer(layout);
     const std::size_t slots = layout.slots();
-    std::vector<std::array<float, iclforge::kSamplesPerBlock>> block(slots);
+    std::vector<std::array<float, iclforge::ac3::kSamplesPerBlock>> block(slots);
     std::vector<std::span<float>> spans;
-    for (std::array<float, iclforge::kSamplesPerBlock>& slot : block) {
+    for (std::array<float, iclforge::ac3::kSamplesPerBlock>& slot : block) {
         spans.emplace_back(slot);
     }
     // Each unit's bed, taken by its first block whichever call delivers it.
-    std::deque<iclforge::eac3::chanmap::Layout> beds;
+    std::deque<iclforge::ac3::eac3::chanmap::Layout> beds;
     for (int pass = 0; pass < passes; ++pass) {
         for (const std::span<const std::byte> unit : stream.access_units) {
-            const std::expected<iclforge::io::ScannedStream, iclforge::io::ScanError> scanned = iclforge::io::scan(unit);
+            const std::expected<iclforge::ac3::io::ScannedStream, iclforge::ac3::io::ScanError> scanned = iclforge::ac3::io::scan(unit);
             REQUIRE(scanned.has_value());
-            beds.push_back(iclforge::eac3::chanmap::expand(scanned->channel_map));
-            const auto decoded = decoder.decode_access_unit_by_block(unit, [&](const iclforge::PcmBlock& pcm) {
+            beds.push_back(iclforge::ac3::eac3::chanmap::expand(scanned->channel_map));
+            const auto decoded = decoder.decode_access_unit_by_block(unit, [&](const iclforge::ac3::PcmBlock& pcm) {
                 if (pcm.index == 0) {
                     renderer.set_bed(beds.front());
                     beds.pop_front();
@@ -320,7 +320,7 @@ void decode_and_render(const iclforge::io::ScannedStream& stream, int passes, co
                     }
                 }
                 renderer.render(pcm, serving.reconstruct, 1.0F, spans);
-                consume(std::span<const std::array<float, iclforge::kSamplesPerBlock>>(block),
+                consume(std::span<const std::array<float, iclforge::ac3::kSamplesPerBlock>>(block),
                         pcm.channels.empty() ? std::size_t{0} : pcm.channels.front().size());
             });
             REQUIRE(decoded.has_value());
@@ -337,8 +337,8 @@ void play_joc_programme(const fs::path& scratch, const std::string& layout_text,
     const std::optional<iclforge::render::OutputLayout> layout = iclforge::render::OutputLayout::parse(layout_text);
     REQUIRE(layout.has_value());
     const std::vector<std::byte> fixture = read_bytes(ICLFORGE_GOLDEN_OBJECT_DIR "/dee_joc_514.ec3");
-    const std::expected<iclforge::io::ScannedStream, iclforge::io::ScanError> stream =
-        iclforge::io::scan(fixture);
+    const std::expected<iclforge::ac3::io::ScannedStream, iclforge::ac3::io::ScanError> stream =
+        iclforge::ac3::io::scan(fixture);
     REQUIRE(stream.has_value());
     const std::vector<PackedBurst> bursts = pack_bursts(*stream, passes);
     REQUIRE(bursts.size() == stream->access_units.size() * static_cast<std::size_t>(passes));
@@ -446,7 +446,7 @@ void play_joc_programme(const fs::path& scratch, const std::string& layout_text,
     // Each WAV is the local decode and render, sample for sample, both read a block at a time
     // against one decode.
     struct Played {
-        iclforge::io::WavStreamReader wav;
+        iclforge::ac3::io::WavStreamReader wav;
         std::vector<std::vector<float>> samples;
         std::vector<std::span<float>> spans;
         std::uint64_t different = 0;
@@ -456,14 +456,14 @@ void play_joc_programme(const fs::path& scratch, const std::string& layout_text,
     for (std::size_t i = 0; i < played.size(); ++i) {
         REQUIRE(played[i].wav.open(only_file(directories[i] / "out", "bursts-", ".wav").string()).has_value());
         REQUIRE(static_cast<std::size_t>(played[i].wav.channels()) == layout->slots());
-        played[i].samples.assign(layout->slots(), std::vector<float>(iclforge::kSamplesPerBlock));
+        played[i].samples.assign(layout->slots(), std::vector<float>(iclforge::ac3::kSamplesPerBlock));
         played[i].spans.assign(played[i].samples.begin(), played[i].samples.end());
     }
     std::uint64_t frames = 0;
     decode_and_render(*stream, passes, *layout,
-                      [&](std::span<const std::array<float, iclforge::kSamplesPerBlock>> block, std::size_t n) {
+                      [&](std::span<const std::array<float, iclforge::ac3::kSamplesPerBlock>> block, std::size_t n) {
                           for (Played& sink_played : played) {
-                              const std::expected<std::size_t, iclforge::io::WavError> got =
+                              const std::expected<std::size_t, iclforge::ac3::io::WavError> got =
                                   sink_played.wav.read_planar(sink_played.spans, n);
                               REQUIRE(got.has_value());
                               REQUIRE(*got == n);
@@ -567,7 +567,7 @@ TEST_CASE("group: two test sinks play one programme in step, in PCM and FLAC", "
 
     // Each WAV is the programme, sample for sample.
     for (const fs::path& directory : {scratch / "kitchen", scratch / "lounge"}) {
-        const auto wav = iclforge::io::read_wav((directory / "out" / "stream-1-1.wav").string());
+        const auto wav = iclforge::ac3::io::read_wav((directory / "out" / "stream-1-1.wav").string());
         REQUIRE(wav.has_value());
         REQUIRE(wav->frame_count() == 96000);
         std::size_t different = 0;
@@ -1014,8 +1014,8 @@ TEST_CASE("group: a mixed group delivers PCM and bursts to their own members at 
     // The burst feed: a real E-AC-3 stream, packed exactly as the JOC test's
     // own helper does.
     const std::vector<std::byte> fixture = read_bytes(ICLFORGE_GOLDEN_OBJECT_DIR "/dee_joc_514.ec3");
-    const std::expected<iclforge::io::ScannedStream, iclforge::io::ScanError> stream =
-        iclforge::io::scan(fixture);
+    const std::expected<iclforge::ac3::io::ScannedStream, iclforge::ac3::io::ScanError> stream =
+        iclforge::ac3::io::scan(fixture);
     REQUIRE(stream.has_value());
     const std::vector<PackedBurst> bursts = pack_bursts(*stream, 1);
     REQUIRE_FALSE(bursts.empty());
@@ -1243,20 +1243,20 @@ TEST_CASE("group: a paired test sink decodes AC-4 sent over the extension role",
     host->reset();
 
     // The WAV is the local decode, rendered as BurstOutput renders AC-4, sample for sample.
-    iclforge::io::WavStreamReader wav;
+    iclforge::ac3::io::WavStreamReader wav;
     REQUIRE(wav.open(only_file(scratch / "out", "bursts-", ".wav").string()).has_value());
     REQUIRE(static_cast<std::size_t>(wav.channels()) == layout->slots());
     std::vector<std::vector<float>> played(layout->slots(),
-                                           std::vector<float>(iclforge::kSamplesPerBlock));
+                                           std::vector<float>(iclforge::ac3::kSamplesPerBlock));
     std::vector<std::span<float>> played_spans(played.begin(), played.end());
-    std::vector<std::array<float, iclforge::kSamplesPerBlock>> rendered(layout->slots());
+    std::vector<std::array<float, iclforge::ac3::kSamplesPerBlock>> rendered(layout->slots());
     std::vector<std::span<float>> rendered_spans;
-    for (std::array<float, iclforge::kSamplesPerBlock>& slot : rendered) {
+    for (std::array<float, iclforge::ac3::kSamplesPerBlock>& slot : rendered) {
         rendered_spans.emplace_back(slot);
     }
     iclforge::ac4::Decoder decoder;
     iclforge::render::LayoutRenderer renderer(*layout);
-    std::optional<iclforge::eac3::chanmap::Layout> bed_set;
+    std::optional<iclforge::ac3::eac3::chanmap::Layout> bed_set;
     std::uint64_t frames = 0;
     std::uint64_t different = 0;
     for (const iclforge::ac4::SyncFrame& frame : scanned.frames) {
@@ -1266,7 +1266,7 @@ TEST_CASE("group: a paired test sink decodes AC-4 sent over the extension role",
             continue;
         }
         const iclforge::ac4::DecodedFrame& pcm = **decoded;
-        const iclforge::eac3::chanmap::Layout bed = testsink::ac4_bed(pcm.speakers);
+        const iclforge::ac3::eac3::chanmap::Layout bed = testsink::ac4_bed(pcm.speakers);
         if (!bed_set || bed_set->count != bed.count ||
             !std::equal(bed.begin(), bed.end(), bed_set->begin())) {
             renderer.set_bed(bed);
@@ -1274,21 +1274,21 @@ TEST_CASE("group: a paired test sink decodes AC-4 sent over the extension role",
         }
         const std::size_t n = pcm.channels.front().size();
         std::vector<std::span<const float>> block_channels(pcm.channels.size());
-        for (std::size_t at = 0; at < n; at += iclforge::kSamplesPerBlock) {
-            const std::size_t m = std::min<std::size_t>(iclforge::kSamplesPerBlock, n - at);
+        for (std::size_t at = 0; at < n; at += iclforge::ac3::kSamplesPerBlock) {
+            const std::size_t m = std::min<std::size_t>(iclforge::ac3::kSamplesPerBlock, n - at);
             for (std::size_t c = 0; c < pcm.channels.size(); ++c) {
                 block_channels[c] = std::span<const float>(pcm.channels[c]).subspan(at, m);
             }
-            const iclforge::PcmBlock block{
-                .index = static_cast<int>(at / iclforge::kSamplesPerBlock),
-                .blocks = static_cast<int>((n + iclforge::kSamplesPerBlock - 1) /
-                                           iclforge::kSamplesPerBlock),
+            const iclforge::ac3::PcmBlock block{
+                .index = static_cast<int>(at / iclforge::ac3::kSamplesPerBlock),
+                .blocks = static_cast<int>((n + iclforge::ac3::kSamplesPerBlock - 1) /
+                                           iclforge::ac3::kSamplesPerBlock),
                 .channels = block_channels,
                 .objects = {},
                 .object_indices = {},
                 .object_metadata = nullptr};
             renderer.render(block, false, 1.0F, rendered_spans);
-            const std::expected<std::size_t, iclforge::io::WavError> got =
+            const std::expected<std::size_t, iclforge::ac3::io::WavError> got =
                 wav.read_planar(played_spans, m);
             REQUIRE(got.has_value());
             REQUIRE(*got == m);

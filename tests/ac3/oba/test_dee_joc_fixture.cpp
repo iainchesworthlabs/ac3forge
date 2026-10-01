@@ -86,11 +86,11 @@ TEST_CASE("the DEE fixture's EMDF container uses configurations Table 56 does no
     // decode succeeds at all is itself the check on audblk's cplfgaincod,
     // which used to be skipped and desynchronised the frame three bits later.
     const auto data = read_fixture();
-    const auto units = iclforge::split_access_units(data);
+    const auto units = iclforge::ac3::split_access_units(data);
     REQUIRE(units.has_value());
     REQUIRE(units->size() > 3);  // real audio over more than three frames
 
-    iclforge::Eac3Decoder decoder;
+    iclforge::ac3::Eac3Decoder decoder;
     const auto decoded = decoder.decode_access_unit(units->front());
     REQUIRE(decoded.has_value());
     REQUIRE(decoded->has_value());
@@ -100,10 +100,10 @@ TEST_CASE("the DEE fixture's EMDF container uses configurations Table 56 does no
 TEST_CASE("the DEE fixture's OAMD is a twelve-channel bed with a trim element",
           "[oba][fixture]") {
     const auto data = read_fixture();
-    const auto units = iclforge::split_access_units(data);
+    const auto units = iclforge::ac3::split_access_units(data);
     REQUIRE(units.has_value());
 
-    iclforge::Eac3Decoder decoder;
+    iclforge::ac3::Eac3Decoder decoder;
     const auto decoded = decoder.decode_access_unit(units->front());
     REQUIRE(decoded.has_value());
     REQUIRE(decoded->has_value());
@@ -143,10 +143,10 @@ TEST_CASE("the DEE fixture's JOC is sparse, phase-shifted and twelve-band",
     // Straight at the payload: the decoder consumes JOC internally, so the
     // header fields it does not surface are only visible from here.
     const auto data = read_fixture();
-    const auto units = iclforge::split_access_units(data);
+    const auto units = iclforge::ac3::split_access_units(data);
     REQUIRE(units.has_value());
 
-    iclforge::Eac3Decoder decoder;
+    iclforge::ac3::Eac3Decoder decoder;
     const auto decoded = decoder.decode_access_unit(units->front());
     REQUIRE(decoded.has_value());
     REQUIRE(decoded->has_value());
@@ -162,10 +162,10 @@ TEST_CASE("the DEE fixture's JOC is sparse, phase-shifted and twelve-band",
 TEST_CASE("every JOC object the DEE fixture reconstructs carries its own bed channel's tone",
           "[oba][fixture]") {
     const auto data = read_fixture();
-    const auto units = iclforge::split_access_units(data);
+    const auto units = iclforge::ac3::split_access_units(data);
     REQUIRE(units.has_value());
 
-    iclforge::Eac3Decoder decoder;
+    iclforge::ac3::Eac3Decoder decoder;
     // Objects 5 and 6 are Lb/Rb: a 5.1.4 source has nothing for them, so DEE
     // fills them from Ls/Rs and they reconstruct as near-copies. They are
     // deliberately not asserted against a tone of their own.

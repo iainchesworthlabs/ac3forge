@@ -23,7 +23,7 @@
 
 namespace {
 
-using iclforge::eac3::blocks_per_syncframe;
+using iclforge::ac3::eac3::blocks_per_syncframe;
 
 std::uint8_t u8(std::span<const std::byte> bytes, std::size_t index) {
     return std::to_integer<std::uint8_t>(bytes[index]);
@@ -68,7 +68,7 @@ double snr_db(const std::vector<float>& input, const std::vector<float>& decoded
 struct ShortRoundTrip {
     std::vector<std::vector<float>> source;    // per coded channel, full length
     std::vector<std::vector<float>> rendered;  // per rendered channel, full length
-    iclforge::eac3::chanmap::Layout layout;         // rendered[i]'s location is layout[i]
+    iclforge::ac3::eac3::chanmap::Layout layout;         // rendered[i]'s location is layout[i]
     int numblkscod = 3;
 };
 
@@ -79,11 +79,11 @@ struct ShortRoundTrip {
 // what a dependent's channels are actually transmitted in. A dependent with
 // no explicit chanmap renders the same way its acmod/lfeon would as an
 // independent, so it takes the same acmod_map fallback.
-std::vector<iclforge::eac3::chanmap::Location> coded_locations(
-    const iclforge::eac3::AccessUnitConfig& config) {
-    namespace cm = iclforge::eac3::chanmap;
+std::vector<iclforge::ac3::eac3::chanmap::Location> coded_locations(
+    const iclforge::ac3::eac3::AccessUnitConfig& config) {
+    namespace cm = iclforge::ac3::eac3::chanmap;
     std::vector<cm::Location> out;
-    const auto append = [&](const iclforge::eac3::FrameConfig& sub) {
+    const auto append = [&](const iclforge::ac3::eac3::FrameConfig& sub) {
         const auto map = sub.chanmap ? *sub.chanmap : cm::acmod_map(sub.acmod, sub.lfe);
         for (const auto location : cm::expand(map)) {
             out.push_back(location);
@@ -102,14 +102,14 @@ std::vector<iclforge::eac3::chanmap::Location> coded_locations(
 // slot for (§E3.8.2 overwrite) - and decodes it back through
 // split_access_units + Eac3Decoder, so the framing is exercised too, not just
 // the frames the encoder happened to hand over.
-ShortRoundTrip round_trip(const iclforge::eac3::AccessUnitConfig& config, int frame_calls) {
-    namespace cm = iclforge::eac3::chanmap;
-    iclforge::eac3::AccessUnitEncoder encoder{config};
+ShortRoundTrip round_trip(const iclforge::ac3::eac3::AccessUnitConfig& config, int frame_calls) {
+    namespace cm = iclforge::ac3::eac3::chanmap;
+    iclforge::ac3::eac3::AccessUnitEncoder encoder{config};
     const auto nchans = static_cast<std::size_t>(encoder.channel_count());
     const auto locations = coded_locations(config);
     REQUIRE(locations.size() == nchans);
     const auto samples_per_frame = static_cast<std::size_t>(
-        blocks_per_syncframe(config.independent.numblkscod) * iclforge::kSamplesPerBlock);
+        blocks_per_syncframe(config.independent.numblkscod) * iclforge::ac3::kSamplesPerBlock);
     const auto total_samples = samples_per_frame * static_cast<std::size_t>(frame_calls);
 
     // One tone per location that actually appears, keyed by the same
@@ -146,11 +146,11 @@ ShortRoundTrip round_trip(const iclforge::eac3::AccessUnitConfig& config, int fr
         stream.insert(stream.end(), unit->bytes.begin(), unit->bytes.end());
     }
 
-    const auto units = iclforge::split_access_units(stream);
+    const auto units = iclforge::ac3::split_access_units(stream);
     REQUIRE(units.has_value());
     REQUIRE(units->size() == static_cast<std::size_t>(frame_calls));
 
-    iclforge::Eac3Decoder decoder;
+    iclforge::ac3::Eac3Decoder decoder;
     for (const auto& unit : *units) {
         const auto decoded = decoder.decode_access_unit(unit);
         REQUIRE(decoded.has_value());
@@ -173,7 +173,7 @@ ShortRoundTrip round_trip(const iclforge::eac3::AccessUnitConfig& config, int fr
 // rt.layout[ch]'s location - the last one transmitted, since §E3.8.2's
 // overwrite is what a real decoder applies too.
 const std::vector<float>& expected_for(
-    const ShortRoundTrip& rt, const std::vector<iclforge::eac3::chanmap::Location>& locations,
+    const ShortRoundTrip& rt, const std::vector<iclforge::ac3::eac3::chanmap::Location>& locations,
     int rendered_index) {
     const auto location = rt.layout[rendered_index];
     int last = -1;
@@ -192,46 +192,46 @@ TEST_CASE("frame_words scales with numblkscod", "[eac3][numblkscod]") {
     // Table E2.4: 1/2/3/6 blocks - a code-0 frame is a sixth of a code-3
     // frame's words at the same rate, exactly, since both are the same exact
     // bit budget rounded to whole 16-bit words.
-    const auto six = iclforge::eac3::frame_words(iclforge::SampleRate::k48000, 192, 6);
-    STATIC_CHECK(iclforge::eac3::frame_words(iclforge::SampleRate::k48000, 192, 1) * 6 == 384);
+    const auto six = iclforge::ac3::eac3::frame_words(iclforge::ac3::SampleRate::k48000, 192, 6);
+    STATIC_CHECK(iclforge::ac3::eac3::frame_words(iclforge::ac3::SampleRate::k48000, 192, 1) * 6 == 384);
     CHECK(six == 384);
-    CHECK(iclforge::eac3::frame_words(iclforge::SampleRate::k48000, 192, 2) * 3 == six);
-    CHECK(iclforge::eac3::frame_words(iclforge::SampleRate::k48000, 192, 3) * 2 == six);
+    CHECK(iclforge::ac3::eac3::frame_words(iclforge::ac3::SampleRate::k48000, 192, 2) * 3 == six);
+    CHECK(iclforge::ac3::eac3::frame_words(iclforge::ac3::SampleRate::k48000, 192, 3) * 2 == six);
 }
 
 TEST_CASE("numblkscod rejects what Annex E cannot express", "[eac3][numblkscod]") {
     // Table E2.4 only defines codes 0-3.
     {
-        iclforge::eac3::FrameConfig config{.bitrate_kbps = 192, .numblkscod = 4};
-        const auto frame = iclforge::eac3::build_silent_frame(config);
+        iclforge::ac3::eac3::FrameConfig config{.bitrate_kbps = 192, .numblkscod = 4};
+        const auto frame = iclforge::ac3::eac3::build_silent_frame(config);
         CHECK_FALSE(frame.has_value());
     }
     // §E2.3.1.3: fscod2 replaces numblkscod outright at a reduced rate, so a
     // caller cannot ask for both a reduced rate and a short syncframe.
     {
-        iclforge::eac3::FrameConfig config{
-            .sample_rate = iclforge::SampleRate::k24000, .bitrate_kbps = 192, .numblkscod = 0};
-        const auto frame = iclforge::eac3::build_silent_frame(config);
+        iclforge::ac3::eac3::FrameConfig config{
+            .sample_rate = iclforge::ac3::SampleRate::k24000, .bitrate_kbps = 192, .numblkscod = 0};
+        const auto frame = iclforge::ac3::eac3::build_silent_frame(config);
         CHECK_FALSE(frame.has_value());
     }
     // Table E1.3: ahte is implied 0 below a six-block syncframe, so AHT has
     // no bit to switch it on with.
     {
-        iclforge::eac3::FrameConfig config{
+        iclforge::ac3::eac3::FrameConfig config{
             .bitrate_kbps = 192, .numblkscod = 1, .aht = true};
-        const auto frame = iclforge::eac3::build_silent_frame(config);
+        const auto frame = iclforge::ac3::eac3::build_silent_frame(config);
         CHECK_FALSE(frame.has_value());
     }
     {
-        iclforge::eac3::FrameConfig config{
+        iclforge::ac3::eac3::FrameConfig config{
             .bitrate_kbps = 192, .numblkscod = 1, .auto_tools = true};
-        const auto frame = iclforge::eac3::build_silent_frame(config);
+        const auto frame = iclforge::ac3::eac3::build_silent_frame(config);
         CHECK_FALSE(frame.has_value());
     }
     // The default, six blocks, is unaffected.
     {
-        iclforge::eac3::FrameConfig config{.bitrate_kbps = 192, .numblkscod = 3, .aht = true};
-        const auto frame = iclforge::eac3::build_silent_frame(config);
+        iclforge::ac3::eac3::FrameConfig config{.bitrate_kbps = 192, .numblkscod = 3, .aht = true};
+        const auto frame = iclforge::ac3::eac3::build_silent_frame(config);
         CHECK(frame.has_value());
     }
 }
@@ -240,16 +240,16 @@ TEST_CASE("an access unit refuses substreams with different numblkscod",
           "[eac3][numblkscod]") {
     // AccessUnitConfig's own contract: every substream codes the same
     // samples, so they cannot disagree about how many blocks a syncframe is.
-    iclforge::eac3::AccessUnitConfig config{
-        .independent = {.bitrate_kbps = 640, .acmod = iclforge::Acmod::k3_2, .lfe = true,
+    iclforge::ac3::eac3::AccessUnitConfig config{
+        .independent = {.bitrate_kbps = 640, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true,
                        .numblkscod = 1},
         .dependents = {{.bitrate_kbps = 320,
-                       .acmod = iclforge::Acmod::k2_2,
+                       .acmod = iclforge::ac3::Acmod::k2_2,
                        .numblkscod = 3,
-                       .chanmap = iclforge::eac3::chanmap::k71Rear}}};
-    iclforge::eac3::AccessUnitEncoder encoder{config};
+                       .chanmap = iclforge::ac3::eac3::chanmap::k71Rear}}};
+    iclforge::ac3::eac3::AccessUnitEncoder encoder{config};
     CHECK(encoder.channel_count() == 0);  // the constructor rejected the layout
-    const auto audio = tones(8, static_cast<std::size_t>(iclforge::kSamplesPerBlock));
+    const auto audio = tones(8, static_cast<std::size_t>(iclforge::ac3::kSamplesPerBlock));
     std::vector<std::span<const float>> views(audio.begin(), audio.end());
     const auto unit = encoder.encode_access_unit(views);
     CHECK_FALSE(unit.has_value());
@@ -263,7 +263,7 @@ TEST_CASE("numblkscod is written where Annex E puts it, and nowhere else",
     for (const int code : {0, 1, 2, 3}) {
         CAPTURE(code);
         const auto frame =
-            iclforge::eac3::build_silent_frame({.bitrate_kbps = 192, .numblkscod = code});
+            iclforge::ac3::eac3::build_silent_frame({.bitrate_kbps = 192, .numblkscod = code});
         REQUIRE(frame.has_value());
         const auto top = u8(*frame, 4) >> 4;
         CHECK(top == static_cast<std::uint8_t>(code));
@@ -285,13 +285,13 @@ TEST_CASE("a silent frame at every numblkscod decodes cleanly", "[eac3][numblksc
     // audio, including a dependent substream.
     for (const int code : {0, 1, 2, 3}) {
         CAPTURE(code);
-        const auto frame = iclforge::eac3::build_silent_frame(
-            {.bitrate_kbps = 192, .acmod = iclforge::Acmod::k3_2, .lfe = true, .numblkscod = code});
+        const auto frame = iclforge::ac3::eac3::build_silent_frame(
+            {.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true, .numblkscod = code});
         REQUIRE(frame.has_value());
-        const auto units = iclforge::split_access_units(*frame);
+        const auto units = iclforge::ac3::split_access_units(*frame);
         REQUIRE(units.has_value());
         REQUIRE(units->size() == 1);
-        iclforge::Eac3Decoder decoder;
+        iclforge::ac3::Eac3Decoder decoder;
         const auto decoded = decoder.decode_access_unit((*units)[0]);
         REQUIRE(decoded.has_value());
         REQUIRE(decoded->has_value());
@@ -311,10 +311,10 @@ TEST_CASE("convsync marks the first frame of every 6/numblkscod group",
     for (const int code : {0, 1, 2}) {
         CAPTURE(code);
         const int group = 6 / blocks_per_syncframe(code);
-        iclforge::eac3::FrameEncoder encoder{
-            {.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0, .numblkscod = code}};
+        iclforge::ac3::eac3::FrameEncoder encoder{
+            {.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k2_0, .numblkscod = code}};
         const auto samples =
-            static_cast<std::size_t>(blocks_per_syncframe(code) * iclforge::kSamplesPerBlock);
+            static_cast<std::size_t>(blocks_per_syncframe(code) * iclforge::ac3::kSamplesPerBlock);
         const auto audio = tones(2, samples);
         std::vector<std::span<const float>> views(audio.begin(), audio.end());
         for (int f = 0; f < group * 3; ++f) {
@@ -338,8 +338,8 @@ TEST_CASE("a short syncframe round-trips real audio", "[eac3][numblkscod][decode
     // six-block path already exercises. This is that stream.
     for (const int code : {0, 1, 2, 3}) {
         CAPTURE(code);
-        const iclforge::eac3::AccessUnitConfig config{
-            {.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0, .numblkscod = code}};
+        const iclforge::ac3::eac3::AccessUnitConfig config{
+            {.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k2_0, .numblkscod = code}};
         const auto locations = coded_locations(config);
         // More calls at a shorter frame, so every layout covers the same real
         // duration of audio - about 200 ms - and the SNR bar below means the
@@ -364,13 +364,13 @@ TEST_CASE("a short syncframe round-trips a dependent substream too",
     // k71Rear's own §E3.8.2 overwrite (the dependent's Ls/Rs replace the
     // bed's) is exercised deliberately, not sidestepped - expected_for above
     // is what makes comparing across that overwrite possible at all.
-    const iclforge::eac3::AccessUnitConfig config{
-        .independent = {.bitrate_kbps = 320, .acmod = iclforge::Acmod::k3_2, .lfe = true,
+    const iclforge::ac3::eac3::AccessUnitConfig config{
+        .independent = {.bitrate_kbps = 320, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true,
                        .numblkscod = 1},
         .dependents = {{.bitrate_kbps = 160,
-                       .acmod = iclforge::Acmod::k2_2,
+                       .acmod = iclforge::ac3::Acmod::k2_2,
                        .numblkscod = 1,
-                       .chanmap = iclforge::eac3::chanmap::k71Rear}}};
+                       .chanmap = iclforge::ac3::eac3::chanmap::k71Rear}}};
     const auto locations = coded_locations(config);
     const auto rt = round_trip(config, 24);
     REQUIRE(rt.numblkscod == 1);

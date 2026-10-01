@@ -129,7 +129,7 @@ struct RunFacts {
 struct ReportFacts {
     std::string written_at;      // ISO 8601, formatted by the caller
     std::string log_started_at;  // likewise
-    std::string version;         // iclforge::version_details()
+    std::string version;         // iclforge::ac3::version_details()
     std::vector<std::pair<std::string, std::string>> platform;  // name/value rows, in order
     // Whether the two signing variables exist. Their values are never read.
     bool env_key_file_set = false;    // ICLFORGE_SIGNING_KEY_FILE

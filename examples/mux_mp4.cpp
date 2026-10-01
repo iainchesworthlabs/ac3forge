@@ -2,7 +2,7 @@
 //
 // iclforge::mp4 links nothing from iclforge::ac3 — it takes frames, and the codec's
 // sample-entry configuration box, as opaque bytes. Pairing it with
-// iclforge::io::scan and iclforge::io::build_codec_config_box is what keeps the dec3
+// iclforge::ac3::io::scan and iclforge::ac3::io::build_codec_config_box is what keeps the dec3
 // box honest: fscod/bsid/bsmod/acmod/lfeon and the Dolby Atmos extension
 // (flag_ec3_extension_type_a/complexity_index_type_a) come straight off the
 // bitstream rather than from the caller.
@@ -25,15 +25,15 @@ int main() {
     // Some AC-3 to wrap.
     // Heap-allocated: FrameEncoder carries several KB of MDCT scratch/history
     // state (PREfast's C6262).
-    auto encoder = std::make_unique<iclforge::FrameEncoder>(
-        iclforge::EncoderConfig{.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0});
-    std::vector<std::vector<float>> pcm(2, std::vector<float>(iclforge::kSamplesPerFrame));
+    auto encoder = std::make_unique<iclforge::ac3::FrameEncoder>(
+        iclforge::ac3::EncoderConfig{.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k2_0});
+    std::vector<std::vector<float>> pcm(2, std::vector<float>(iclforge::ac3::kSamplesPerFrame));
     const std::vector<std::span<const float>> views{pcm[0], pcm[1]};
 
     std::vector<std::byte> elementary;
     for (int frame = 0; frame < 31; ++frame) {
         for (std::size_t ch = 0; ch < pcm.size(); ++ch) {
-            for (int n = 0; n < iclforge::kSamplesPerFrame; ++n) {
+            for (int n = 0; n < iclforge::ac3::kSamplesPerFrame; ++n) {
                 pcm[ch][static_cast<std::size_t>(n)] =
                     0.2F * static_cast<float>((n % 61) - 30) / 30.0F;
             }
@@ -46,7 +46,7 @@ int main() {
     }
 
     // Ask the bitstream what it is rather than asserting it.
-    const auto scanned = iclforge::io::scan(elementary);
+    const auto scanned = iclforge::ac3::io::scan(elementary);
     if (!scanned) {
         fmt::printf("scan failed\n");
         return 1;
@@ -62,16 +62,16 @@ int main() {
     }
 
     const iclforge::mp4::AudioTrack track{
-        .codec_id = std::string{scanned->kind == iclforge::io::StreamKind::kAc3
+        .codec_id = std::string{scanned->kind == iclforge::ac3::io::StreamKind::kAc3
                                     ? iclforge::mp4::kCodecAc3
                                     : iclforge::mp4::kCodecEac3},
-        .sample_rate = iclforge::sample_rate_hz(scanned->sample_rate),
+        .sample_rate = iclforge::ac3::sample_rate_hz(scanned->sample_rate),
         .channels = scanned->channels,
-        .samples_per_frame = iclforge::kSamplesPerFrame,
+        .samples_per_frame = iclforge::ac3::kSamplesPerFrame,
         // The dac3/dec3 sample-entry box, built from the same scan result -
-        // see ac3/io/dec3.hpp for why this lives in iclforge::io rather than in
+        // see ac3/io/dec3.hpp for why this lives in iclforge::ac3::io rather than in
         // iclforge::mp4 itself.
-        .codec_config = iclforge::io::build_codec_config_box(*scanned),
+        .codec_config = iclforge::ac3::io::build_codec_config_box(*scanned),
     };
 
     const auto file = iclforge::mp4::mux(track, frames);

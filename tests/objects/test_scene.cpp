@@ -52,8 +52,8 @@ bool exactly_equal(const iclforge::oba::ObjectPlacement& a,
 }
 
 std::vector<float> tone(double hz, double amplitude, std::uint64_t start) {
-    std::vector<float> out(iclforge::kSamplesPerFrame);
-    for (int n = 0; n < iclforge::kSamplesPerFrame; ++n) {
+    std::vector<float> out(iclforge::ac3::kSamplesPerFrame);
+    for (int n = 0; n < iclforge::ac3::kSamplesPerFrame; ++n) {
         const double t = static_cast<double>(start + static_cast<std::uint64_t>(n)) / 48000.0;
         out[static_cast<std::size_t>(n)] =
             static_cast<float>(amplitude * std::sin(2.0 * std::numbers::pi * hz * t));
@@ -151,7 +151,7 @@ TEST_CASE("a scene drives an encode to byte-identical output", "[oba][scene]") {
     REQUIRE(reloaded.has_value());
 
     const auto encode = [&](auto&& placement_at) {
-        iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, kObjects};
+        iclforge::ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, kObjects};
         std::vector<std::byte> stream;
         std::uint64_t n0 = 0;
         for (int frame = 0; frame < kFrames; ++frame) {
@@ -159,12 +159,12 @@ TEST_CASE("a scene drives an encode to byte-identical output", "[oba][scene]") {
                                                           tone(997.0, 0.22, n0)};
             const std::vector<std::span<const float>> views{sources[0], sources[1]};
             const double t =
-                static_cast<double>(n0 + iclforge::kSamplesPerFrame) / 48000.0;
+                static_cast<double>(n0 + iclforge::ac3::kSamplesPerFrame) / 48000.0;
             const auto placement = placement_at(t);
             const auto unit = encoder.encode_frame(views, placement);
             REQUIRE(unit.has_value());
             stream.insert(stream.end(), unit->bytes.begin(), unit->bytes.end());
-            n0 += iclforge::kSamplesPerFrame;
+            n0 += iclforge::ac3::kSamplesPerFrame;
         }
         return stream;
     };

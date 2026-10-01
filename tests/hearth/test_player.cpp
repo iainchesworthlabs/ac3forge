@@ -215,7 +215,7 @@ void advance(FakeDevice::Log& log, std::uint64_t frames) {
 }
 
 std::vector<float> tone(double hz, std::uint32_t rate, std::size_t offset, double level = 0.3) {
-    std::vector<float> out(iclforge::kSamplesPerFrame);
+    std::vector<float> out(iclforge::ac3::kSamplesPerFrame);
     for (std::size_t n = 0; n < out.size(); ++n) {
         out[n] = static_cast<float>(
             level * std::sin(2.0 * std::numbers::pi * hz * static_cast<double>(n + offset) / rate));
@@ -229,21 +229,21 @@ std::vector<float> tone(double hz, std::uint32_t rate, std::size_t offset, doubl
 // decoder that starts late draws different values for the same bins; the
 // difference is some 95 dB down, but it is not zero.
 std::vector<std::byte> eac3_stream(int frames,
-                                   iclforge::SampleRate rate = iclforge::SampleRate::k48000,
+                                   iclforge::ac3::SampleRate rate = iclforge::ac3::SampleRate::k48000,
                                    bool dither = true, double level = 0.3, int dialnorm = 31) {
-    iclforge::eac3::FrameConfig config;
+    iclforge::ac3::eac3::FrameConfig config;
     config.sample_rate = rate;
     config.bitrate_kbps = 384;
-    config.acmod = iclforge::Acmod::k3_2;
+    config.acmod = iclforge::ac3::Acmod::k3_2;
     config.lfe = true;
     config.dither = dither;
     config.dialnorm = dialnorm;
-    iclforge::eac3::FrameEncoder encoder{config};
+    iclforge::ac3::eac3::FrameEncoder encoder{config};
     const auto channels = static_cast<std::size_t>(encoder.channel_count());
     std::vector<std::byte> out;
     for (int f = 0; f < frames; ++f) {
-        const auto samples = tone(440.0, iclforge::sample_rate_hz(rate),
-                                  static_cast<std::size_t>(f) * iclforge::kSamplesPerFrame, level);
+        const auto samples = tone(440.0, iclforge::ac3::sample_rate_hz(rate),
+                                  static_cast<std::size_t>(f) * iclforge::ac3::kSamplesPerFrame, level);
         const std::vector<std::span<const float>> views(channels, samples);
         const auto frame = encoder.encode_frame(views);
         REQUIRE(frame.has_value());
@@ -253,18 +253,18 @@ std::vector<std::byte> eac3_stream(int frames,
 }
 
 std::vector<std::byte> ac3_stream(int frames,
-                                  iclforge::SampleRate rate = iclforge::SampleRate::k48000) {
-    iclforge::EncoderConfig config;
+                                  iclforge::ac3::SampleRate rate = iclforge::ac3::SampleRate::k48000) {
+    iclforge::ac3::EncoderConfig config;
     config.sample_rate = rate;
     config.bitrate_kbps = 384;
-    config.acmod = iclforge::Acmod::k3_2;
+    config.acmod = iclforge::ac3::Acmod::k3_2;
     config.lfe = true;
-    iclforge::FrameEncoder encoder{config};
+    iclforge::ac3::FrameEncoder encoder{config};
     const auto channels = static_cast<std::size_t>(encoder.channel_count());
     std::vector<std::byte> out;
     for (int f = 0; f < frames; ++f) {
-        const auto samples = tone(660.0, iclforge::sample_rate_hz(rate),
-                                  static_cast<std::size_t>(f) * iclforge::kSamplesPerFrame);
+        const auto samples = tone(660.0, iclforge::ac3::sample_rate_hz(rate),
+                                  static_cast<std::size_t>(f) * iclforge::ac3::kSamplesPerFrame);
         const std::vector<std::span<const float>> views(channels, samples);
         const auto frame = encoder.encode_frame(views);
         REQUIRE(frame.has_value());
@@ -277,15 +277,15 @@ std::vector<std::byte> ac3_stream(int frames,
 // when `edit` is given.
 std::vector<std::byte> in_mp4(const std::vector<std::byte>& stream,
                               std::optional<iclforge::mp4::MuxOptions::Edit> edit = std::nullopt) {
-    const auto scanned = iclforge::io::scan(stream);
+    const auto scanned = iclforge::ac3::io::scan(stream);
     REQUIRE(scanned.has_value());
     iclforge::mp4::AudioTrack track;
     track.codec_id =
-        std::string{scanned->kind == iclforge::io::StreamKind::kAc3 ? iclforge::mp4::kCodecAc3
+        std::string{scanned->kind == iclforge::ac3::io::StreamKind::kAc3 ? iclforge::mp4::kCodecAc3
                                                                     : iclforge::mp4::kCodecEac3};
-    track.sample_rate = iclforge::sample_rate_hz(scanned->sample_rate);
+    track.sample_rate = iclforge::ac3::sample_rate_hz(scanned->sample_rate);
     track.channels = scanned->channels;
-    track.codec_config = iclforge::io::build_codec_config_box(*scanned);
+    track.codec_config = iclforge::ac3::io::build_codec_config_box(*scanned);
     iclforge::mp4::MuxOptions options;
     options.edit = edit;
     const auto muxed = iclforge::mp4::mux(
@@ -295,13 +295,13 @@ std::vector<std::byte> in_mp4(const std::vector<std::byte>& stream,
 }
 
 std::vector<std::byte> in_mkv(const std::vector<std::byte>& stream) {
-    const auto scanned = iclforge::io::scan(stream);
+    const auto scanned = iclforge::ac3::io::scan(stream);
     REQUIRE(scanned.has_value());
     iclforge::matroska::AudioTrack track;
-    track.codec_id = std::string{scanned->kind == iclforge::io::StreamKind::kAc3
+    track.codec_id = std::string{scanned->kind == iclforge::ac3::io::StreamKind::kAc3
                                      ? iclforge::matroska::kCodecAc3
                                      : iclforge::matroska::kCodecEac3};
-    track.sample_rate = iclforge::sample_rate_hz(scanned->sample_rate);
+    track.sample_rate = iclforge::ac3::sample_rate_hz(scanned->sample_rate);
     track.channels = scanned->channels;
     const auto muxed = iclforge::matroska::mux(
         track, std::span<const std::span<const std::byte>>(scanned->access_units));
@@ -378,16 +378,16 @@ Slots played_alone(const Library& library, const std::string& path, const char* 
 // A stereo E-AC-3 programme of `frames` frames of one tone, as independent
 // substream `substreamid`.
 std::vector<std::vector<std::byte>> programme_frames(int frames, double hz, int substreamid) {
-    iclforge::eac3::FrameConfig config;
+    iclforge::ac3::eac3::FrameConfig config;
     config.bitrate_kbps = 192;
-    config.acmod = iclforge::Acmod::k2_0;
+    config.acmod = iclforge::ac3::Acmod::k2_0;
     config.substreamid = substreamid;
     config.dither = false;  // see eac3_stream()
-    iclforge::eac3::FrameEncoder encoder{config};
+    iclforge::ac3::eac3::FrameEncoder encoder{config};
     std::vector<std::vector<std::byte>> out;
     for (int f = 0; f < frames; ++f) {
         const auto samples =
-            tone(hz, 48000, static_cast<std::size_t>(f) * iclforge::kSamplesPerFrame);
+            tone(hz, 48000, static_cast<std::size_t>(f) * iclforge::ac3::kSamplesPerFrame);
         const std::vector<std::span<const float>> views(2, samples);
         auto frame = encoder.encode_frame(views);
         REQUIRE(frame.has_value());
@@ -537,8 +537,8 @@ TEST_CASE("player: a queue of mixed containers plays gaplessly, every join exact
 TEST_CASE("player: a rate change reopens the output, after the old item has been heard",
           "[hearth][player]") {
     Library library;
-    library.files["48k.ec3"] = eac3_stream(10, iclforge::SampleRate::k48000);
-    library.files["44k1.ac3"] = ac3_stream(8, iclforge::SampleRate::k44100);
+    library.files["48k.ec3"] = eac3_stream(10, iclforge::ac3::SampleRate::k48000);
+    library.files["44k1.ac3"] = ac3_stream(8, iclforge::ac3::SampleRate::k44100);
 
     auto log = std::make_shared<FakeDevice::Log>();
     // An output path that holds on to the audio for a while after the
@@ -575,8 +575,8 @@ TEST_CASE("player: a rate change reopens the output, after the old item has been
 TEST_CASE("player: an underrun before a reopen does not cut the old item short",
           "[hearth][player]") {
     Library library;
-    library.files["48k.ec3"] = eac3_stream(10, iclforge::SampleRate::k48000);
-    library.files["44k1.ac3"] = ac3_stream(8, iclforge::SampleRate::k44100);
+    library.files["48k.ec3"] = eac3_stream(10, iclforge::ac3::SampleRate::k48000);
+    library.files["44k1.ac3"] = ac3_stream(8, iclforge::ac3::SampleRate::k44100);
 
     auto log = std::make_shared<FakeDevice::Log>();
     const auto player = make_player(library, log);
@@ -917,7 +917,7 @@ TEST_CASE("player: two edited items join with nothing of either encoder's betwee
 }
 
 TEST_CASE("player: a seek in an edited item counts from what the item plays", "[hearth][player]") {
-    const std::vector<std::byte> stream = eac3_stream(40, iclforge::SampleRate::k48000, /*dither=*/false);
+    const std::vector<std::byte> stream = eac3_stream(40, iclforge::ac3::SampleRate::k48000, /*dither=*/false);
     const std::uint64_t kept = (40 * 1536) - 256 - 512;
     Library library;
     library.files["raw.ec3"] = stream;
@@ -1009,7 +1009,7 @@ TEST_CASE("player: a settings change reaches the playing item at a unit, losing 
           "nothing",
           "[hearth][player]") {
     Library library;
-    library.files["long.ec3"] = eac3_stream(30, iclforge::SampleRate::k48000, /*dither=*/false);
+    library.files["long.ec3"] = eac3_stream(30, iclforge::ac3::SampleRate::k48000, /*dither=*/false);
     const std::size_t total = 30 * 1536;
     const DecoderSettings before;
     DecoderSettings after;
@@ -1241,7 +1241,7 @@ TEST_CASE("player: removing the playing item goes on to the next, and the histor
 TEST_CASE("player: an edit while a reopen waits leaves the reopen on its item", "[hearth][player]") {
     Library library;
     library.files["48k.ec3"] = eac3_stream(6);
-    library.files["44k1.ac3"] = ac3_stream(4, iclforge::SampleRate::k44100);
+    library.files["44k1.ac3"] = ac3_stream(4, iclforge::ac3::SampleRate::k44100);
     library.files["new.ec3"] = eac3_stream(2);
     auto log = std::make_shared<FakeDevice::Log>();
     const auto player = make_player(library, log);
@@ -1411,7 +1411,7 @@ TEST_CASE("player: the report of the unit being heard waits for the device", "[h
     // Two items told apart by their dialnorm, joined.
     Library library;
     library.files["a.ec3"] = eac3_stream(20);
-    library.files["b.ec3"] = eac3_stream(20, iclforge::SampleRate::k48000, true, 0.3, 20);
+    library.files["b.ec3"] = eac3_stream(20, iclforge::ac3::SampleRate::k48000, true, 0.3, 20);
     auto log = std::make_shared<FakeDevice::Log>();
     const auto player = make_player(library, log, 8192, "2.0");
     player->add(item("a.ec3"));
@@ -1435,7 +1435,7 @@ TEST_CASE("player: the report of the unit being heard waits for the device", "[h
     CHECK(player->unit_report(report));
 
     // Up to the join, the first item's words; past it, the second's.
-    const std::uint64_t join = 20 * iclforge::kSamplesPerFrame;
+    const std::uint64_t join = 20 * iclforge::ac3::kSamplesPerFrame;
     for (int step = 0; step < 100000 && log->clock < join; ++step) {
         player->pump();
         advance(*log, std::min<std::uint64_t>(480, join - log->clock));
@@ -1465,13 +1465,13 @@ TEST_CASE("player: a join starts the next item's loudness, and momentary loudnes
     Library library;
     library.files["tone.ec3"] = eac3_stream(60);
     library.files["silence.ec3"] =
-        eac3_stream(60, iclforge::SampleRate::k48000, /*dither=*/false, 0.0);
+        eac3_stream(60, iclforge::ac3::SampleRate::k48000, /*dither=*/false, 0.0);
     auto log = std::make_shared<FakeDevice::Log>();
     const auto player = make_player(library, log, 8192, "2.0");
     player->add(item("tone.ec3"));
     player->add(item("silence.ec3"));
     player->play();
-    const std::uint64_t join = 60 * iclforge::kSamplesPerFrame;
+    const std::uint64_t join = 60 * iclforge::ac3::kSamplesPerFrame;
     const auto play_until = [&](std::uint64_t frame) {
         for (int step = 0; step < 100000 && log->clock < frame; ++step) {
             player->pump();
@@ -1527,7 +1527,7 @@ TEST_CASE("player: the diagnostics ring hears what playback did, and not where a
     const std::string folder = "C:\\Users\\Someone\\Music\\";
     library.files[folder + "a.ec3"] = eac3_stream(4);
     library.files[folder + "b.ec3"] = eac3_stream(3);
-    library.files["/home/someone/c.ec3"] = eac3_stream(2, iclforge::SampleRate::k44100);
+    library.files["/home/someone/c.ec3"] = eac3_stream(2, iclforge::ac3::SampleRate::k44100);
     auto log = std::make_shared<FakeDevice::Log>();
     iclforge::hearth::DiagnosticLog diagnostics;
     const auto layout = iclforge::render::OutputLayout::parse("5.1");
@@ -1570,7 +1570,7 @@ TEST_CASE("player: units that will not decode are noted once, then counted",
     // The middle of six units damaged, where only their CRC notices.
     auto damaged = eac3_stream(12);
     {
-        const auto scanned = iclforge::io::scan(damaged);
+        const auto scanned = iclforge::ac3::io::scan(damaged);
         REQUIRE(scanned.has_value());
         REQUIRE(scanned->access_units.size() == 12);
         for (std::size_t k = 3; k <= 8; ++k) {
@@ -1588,7 +1588,7 @@ TEST_CASE("player: units that will not decode are noted once, then counted",
     REQUIRE(layout.has_value());
     // Concealment would hide the damage from the player.
     DecoderSettings settings;
-    settings.concealment = iclforge::ConcealmentPolicy::kNone;
+    settings.concealment = iclforge::ac3::ConcealmentPolicy::kNone;
     Player player{std::make_unique<FakeDevice>(log, 8192), library.loader(), *layout, settings,
                   &diagnostics};
     player.add(item("damaged.ec3"));
@@ -1746,7 +1746,7 @@ TEST_CASE("player: the last item is still playing until its tail has been heard"
     Library library;
     library.files["last.ec3"] = eac3_stream(6);
     library.files["more.ec3"] = eac3_stream(4);
-    library.files["44k1.ac3"] = ac3_stream(4, iclforge::SampleRate::k44100);
+    library.files["44k1.ac3"] = ac3_stream(4, iclforge::ac3::SampleRate::k44100);
     auto log = std::make_shared<FakeDevice::Log>();
     const auto player = make_player(library, log);
     player->queue().add(item("last.ec3"));
@@ -1996,8 +1996,8 @@ TEST_CASE("player: an item queued all along joins even if the device ran dry bef
     Library library;
     library.files["first.ec3"] = eac3_stream(4);
     library.files["second.ec3"] = eac3_stream(3);
-    library.files["44k1-a.ac3"] = ac3_stream(3, iclforge::SampleRate::k44100);
-    library.files["44k1-b.ac3"] = ac3_stream(2, iclforge::SampleRate::k44100);
+    library.files["44k1-a.ac3"] = ac3_stream(3, iclforge::ac3::SampleRate::k44100);
+    library.files["44k1-b.ac3"] = ac3_stream(2, iclforge::ac3::SampleRate::k44100);
     auto log = std::make_shared<FakeDevice::Log>();
     log->instant = true;
     log->latency = 480;
@@ -2055,7 +2055,7 @@ TEST_CASE("player: an item queued all along joins even if the device ran dry bef
 TEST_CASE("player: a reopen decided before a pause waits for the resume", "[hearth][player]") {
     Library library;
     library.files["48k.ec3"] = eac3_stream(4);
-    library.files["44k1.ac3"] = ac3_stream(4, iclforge::SampleRate::k44100);
+    library.files["44k1.ac3"] = ac3_stream(4, iclforge::ac3::SampleRate::k44100);
     auto log = std::make_shared<FakeDevice::Log>();
     const auto player = make_player(library, log);
     player->add(item("48k.ec3"));

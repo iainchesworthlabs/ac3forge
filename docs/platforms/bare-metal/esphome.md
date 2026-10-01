@@ -1,7 +1,7 @@
 # ESPHome
 
 `esphome/components/iclforge/` is an ESPHome external component. It is the plumbing:
-`IclForgeComponent` owns an `iclforge::FrameDecoder` and an `iclforge::io::AccessUnitAccumulator`, takes
+`IclForgeComponent` owns an `iclforge::ac3::FrameDecoder` and an `iclforge::ac3::io::AccessUnitAccumulator`, takes
 bytes and hands back planar float PCM. It is **not** a `media_player` or a `speaker` source —
 ESPHome's `speaker` platform is ESP-IDF-only, so that is the obvious next step rather than a
 blocked one.

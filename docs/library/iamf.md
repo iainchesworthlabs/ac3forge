@@ -9,9 +9,9 @@ AC-3, E-AC-3 or the JOC/Atmos object layer, and takes already-rendered PCM in, t
 **Why a writer exists at all.** IAMF's codec list is Opus, AAC-LC, FLAC and LPCM — E-AC-3 can
 never be carried inside it. This is therefore a decode → rewrap bridge rather than a new encoder
 output. A caller decoding a stream that is
-already coded as a 7.1.4 channel layout (`iclforge::plan::LayoutId::k714` — an independent substream
+already coded as a 7.1.4 channel layout (`iclforge::ac3::plan::LayoutId::k714` — an independent substream
 plus two E-AC-3 dependents) gets the 12 discrete channels straight off
-`iclforge::Eac3Decoder::decode_access_unit`; this module needs them permuted into its own channel
+`iclforge::ac3::Eac3Decoder::decode_access_unit`; this module needs them permuted into its own channel
 order and handed over as PCM.
 
 **Two routes to the same ecosystem.** [ADM / BW64 writing](adm.md)'s `write_bw64()` already opens
@@ -27,7 +27,7 @@ the Conan recipe install it where asked for, off by default: `vcpkg install iclf
 `-o "iclforge/*:iamf=True"` (see [Using the libraries](index.md)).
 
 ```cpp
-iclforge::iamf::AudioTrack track{.samples_per_frame = iclforge::kSamplesPerFrame};
+iclforge::iamf::AudioTrack track{.samples_per_frame = iclforge::ac3::kSamplesPerFrame};
 std::vector<iclforge::iamf::Frame> frames;
 // ... frames.push_back(...) for each temporal unit ...
 
@@ -40,14 +40,14 @@ if (!file) {
 ```
 
 Full program: [`examples/mux_iamf.cpp`](https://github.com/iainchesworthlabs/iclforge/blob/main/examples/mux_iamf.cpp) — the whole
-round trip: encode a synthetic 7.1.4 E-AC-3 access unit, decode it with `iclforge::Eac3Decoder`,
+round trip: encode a synthetic 7.1.4 E-AC-3 access unit, decode it with `iclforge::ac3::Eac3Decoder`,
 permute the result, and mux it.
 
 ## The permutation a caller does
 
 `iclforge::iamf::Frame::channels` is planar, ordered exactly as this module's Audio Element OBU declares
 (IAMF §3.6.2, `loudspeaker_layout` = 7, "7.1.4ch"): **L, C, R, Lss, Rss, Lrs, Rrs, Ltf, Rtf, Ltb,
-Rtb, LFE**. A decoded `iclforge::DecodedAccessUnit::channels` is ordered by Table E2.5 *bit* order
+Rtb, LFE**. A decoded `iclforge::ac3::DecodedAccessUnit::channels` is ordered by Table E2.5 *bit* order
 instead (`DecodedAccessUnit::layout`), which is neither this order nor WAV's — so
 `examples/mux_iamf.cpp` builds the permutation itself, one `layout.index_of(Location::kX)` call
 per IAMF channel:
@@ -65,7 +65,7 @@ constexpr std::array<Location, 12> kIamf714Order{
 
 This permutation is not part of `iclforge::iamf` itself — the module stays codec-blind, the same
 reason `iclforge::mp4::AudioTrack::codec_config`'s ETSI TS 102 366 payload is built by the *caller*
-(`iclforge::io::build_codec_config_box`), not by `iclforge::mp4` — so it lives in the example, not a bridge
+(`iclforge::ac3::io::build_codec_config_box`), not by `iclforge::mp4` — so it lives in the example, not a bridge
 library. There is no `iamfbridge` module mirroring `iclforge::admbridge`; the mapping is small,
 one-directional, and this is what it looks like.
 
@@ -115,5 +115,5 @@ from.
 
 See also: [ADM / BW64 reading and writing](adm.md) — the indirect route to the same ecosystem;
 [Muxing & sinks](muxing-and-sinks.md) — `iclforge::mp4`/`iclforge::matroska`, the container modules
-this one's shape is modeled on; [Decoding](decoding.md) — `iclforge::Eac3Decoder`, this module's own
+this one's shape is modeled on; [Decoding](decoding.md) — `iclforge::ac3::Eac3Decoder`, this module's own
 source of PCM.

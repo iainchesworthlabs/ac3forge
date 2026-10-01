@@ -121,7 +121,7 @@ inline constexpr int kMaxAbsoluteExponent = 15;  // 4-bit exps[ch][0] field, §7
 // per-bin loop from vectorising at all - neither the call nor the rounding
 // could be hoisted or widened across bins. It is a public-header symbol the
 // library no longer exports: source callers are unaffected, a binary that
-// linked the old iclforge::to_fixed25 out of the shared library must recompile.
+// linked the old iclforge::ac3::to_fixed25 out of the shared library must recompile.
 //
 // The rounding is std::round's, exactly: half away from zero, bit-identical
 // on every input, which is what makes this substitution safe (the encoders'

@@ -114,24 +114,24 @@ std::array<double, 512> block_windowed(std::span<const float> channel, int block
                 : static_cast<double>(channel[static_cast<std::size_t>(index)]);
     }
     std::array<double, 512> windowed{};
-    iclforge::apply_analysis_window(time, windowed);
+    iclforge::ac3::apply_analysis_window(time, windowed);
     return windowed;
 }
 
 std::array<double, 256> block_coeffs(std::span<const float> channel, int block_index) {
     const auto windowed = block_windowed(channel, block_index);
     std::array<double, 256> coeffs{};
-    iclforge::mdct512_forward(windowed, coeffs);
+    iclforge::ac3::mdct512_forward(windowed, coeffs);
     return coeffs;
 }
 
 std::array<std::uint8_t, 256> exps_from_coeffs(const std::array<double, 256>& coeffs) {
     std::array<std::int32_t, 256> fixed{};
     for (std::size_t i = 0; i < coeffs.size(); ++i) {
-        fixed[i] = iclforge::to_fixed25(coeffs[i]);
+        fixed[i] = iclforge::ac3::to_fixed25(coeffs[i]);
     }
     std::array<std::uint8_t, 256> exps{};
-    iclforge::extract_exponents(fixed, exps);
+    iclforge::ac3::extract_exponents(fixed, exps);
     return exps;
 }
 
@@ -142,7 +142,7 @@ std::array<std::uint8_t, 256> exps_from_coeffs(const std::array<double, 256>& co
 // shared with iclforge-bench and iclforge-perf so the three benches cannot drift apart
 // again on what a bench input is.
 struct RealAudio {
-    iclforge::io::WavData wav;
+    iclforge::ac3::io::WavData wav;
     static constexpr std::size_t kMinChannels = 6;
     static constexpr int kMinBlocks = 8;  // covers every kernel's block reach
 
@@ -155,7 +155,7 @@ RealAudio load_fixture(const std::string& path) {
     return RealAudio{
         .wav = perf::load_real_audio(path, RealAudio::kMinChannels,
                                      static_cast<std::size_t>(RealAudio::kMinBlocks + 1) *
-                                         iclforge::kSamplesPerBlock)};
+                                         iclforge::ac3::kSamplesPerBlock)};
 }
 
 void write_json(const std::vector<KernelResult>& results, const std::string& path) {
@@ -203,7 +203,7 @@ int main(int argc, char** argv) {
     // --- mdct512_forward -----------------------------------------------------
     results.push_back(time_kernel("mdct512_forward", [&] {
         std::array<double, 256> coeffs{};
-        iclforge::mdct512_forward(windowed_block, coeffs);
+        iclforge::ac3::mdct512_forward(windowed_block, coeffs);
         g_sink += coeffs[64];
     }));
 
@@ -213,7 +213,7 @@ int main(int argc, char** argv) {
     // this kernel's own fast/direct comparison exists to produce.
     results.push_back(time_kernel("mdct512_forward_fast", [&] {
         std::array<double, 256> coeffs{};
-        iclforge::mdct512_forward(windowed_block, coeffs, /*fast=*/true);
+        iclforge::ac3::mdct512_forward(windowed_block, coeffs, /*fast=*/true);
         g_sink += coeffs[64];
     }));
 
@@ -222,8 +222,8 @@ int main(int argc, char** argv) {
         const std::span<const double, 512> full(windowed_block);
         std::array<double, 128> first{};
         std::array<double, 128> second{};
-        iclforge::mdct256_forward_first(full.first<256>(), first);
-        iclforge::mdct256_forward_second(full.last<256>(), second);
+        iclforge::ac3::mdct256_forward_first(full.first<256>(), first);
+        iclforge::ac3::mdct256_forward_second(full.last<256>(), second);
         g_sink += first[32] + second[32];
     }));
     // The same pair down their own DCT-IV folds - what a block-switched
@@ -233,8 +233,8 @@ int main(int argc, char** argv) {
         const std::span<const double, 512> full(windowed_block);
         std::array<double, 128> first{};
         std::array<double, 128> second{};
-        iclforge::mdct256_forward_first(full.first<256>(), first, /*fast=*/true);
-        iclforge::mdct256_forward_second(full.last<256>(), second, /*fast=*/true);
+        iclforge::ac3::mdct256_forward_first(full.first<256>(), first, /*fast=*/true);
+        iclforge::ac3::mdct256_forward_second(full.last<256>(), second, /*fast=*/true);
         g_sink += first[32] + second[32];
     }));
 
@@ -248,7 +248,7 @@ int main(int argc, char** argv) {
     // rows is what that choice costs.
     results.push_back(time_kernel("imdct512_windowed", [&] {
         std::array<double, 512> x{};
-        iclforge::imdct512_windowed(ch0_coeffs[4], x);
+        iclforge::ac3::imdct512_windowed(ch0_coeffs[4], x);
         g_sink += x[256];
     }));
     // The same inverse down its radix-2 step 3 - what DecoderConfig::fast_imdct
@@ -261,19 +261,19 @@ int main(int argc, char** argv) {
     // unaffected.)
     results.push_back(time_kernel("imdct512_windowed_fast", [&] {
         std::array<double, 512> x{};
-        iclforge::imdct512_windowed(ch0_coeffs[4], x, /*fast=*/true);
+        iclforge::ac3::imdct512_windowed(ch0_coeffs[4], x, /*fast=*/true);
         g_sink += x[256];
     }));
 
     // --- imdct256_pair_windowed (block-switched inverse) ----------------------
     results.push_back(time_kernel("imdct256_pair_windowed", [&] {
         std::array<double, 512> x{};
-        iclforge::imdct256_pair_windowed(ch0_coeffs[4], x);
+        iclforge::ac3::imdct256_pair_windowed(ch0_coeffs[4], x);
         g_sink += x[256];
     }));
     results.push_back(time_kernel("imdct256_pair_windowed_fast", [&] {
         std::array<double, 512> x{};
-        iclforge::imdct256_pair_windowed(ch0_coeffs[4], x, /*fast=*/true);
+        iclforge::ac3::imdct256_pair_windowed(ch0_coeffs[4], x, /*fast=*/true);
         g_sink += x[256];
     }));
 
@@ -291,18 +291,18 @@ int main(int argc, char** argv) {
     }));
 
     // --- compute_bit_allocation -----------------------------------------------
-    const iclforge::BitAllocCodes codes{};
+    const iclforge::ac3::BitAllocCodes codes{};
     const std::span<const std::uint8_t> exps4{ch0_exps[4].data(), kEndmant};
     results.push_back(time_kernel("compute_bit_allocation", [&] {
         std::array<std::uint8_t, kEndmant> bap{};
-        iclforge::compute_bit_allocation(exps4, iclforge::SampleRate::k48000, codes,
+        iclforge::ac3::compute_bit_allocation(exps4, iclforge::ac3::SampleRate::k48000, codes,
                                     /*csnroffst=*/10, /*fsnroffst=*/0, bap);
         g_sink += bap[64];
     }));
 
     // --- encode_exponents -------------------------------------------------
     results.push_back(time_kernel("encode_exponents", [&] {
-        const auto encoded = iclforge::encode_exponents(exps4, iclforge::ExpStrategy::kD15);
+        const auto encoded = iclforge::ac3::encode_exponents(exps4, iclforge::ac3::ExpStrategy::kD15);
         g_sink += encoded.absolute;
     }));
 
@@ -312,7 +312,7 @@ int main(int argc, char** argv) {
         const auto full_exps =
             exps_from_coeffs(block_coeffs(audio.channel(static_cast<std::size_t>(ch)), 4));
         const std::span<const std::uint8_t> exps{full_exps.data(), kEndmant};
-        iclforge::compute_bit_allocation(exps, iclforge::SampleRate::k48000, codes, 10, 0,
+        iclforge::ac3::compute_bit_allocation(exps, iclforge::ac3::SampleRate::k48000, codes, 10, 0,
                                     stream_bap[static_cast<std::size_t>(ch)]);
     }
     results.push_back(time_kernel("mantissa_bits_per_block", [&] {
@@ -321,7 +321,7 @@ int main(int argc, char** argv) {
         for (const auto& bap : stream_bap) {
             views.push_back(bap);
         }
-        g_sink += static_cast<double>(iclforge::mantissa_bits_per_block(views));
+        g_sink += static_cast<double>(iclforge::ac3::mantissa_bits_per_block(views));
     }));
 
     // --- quantize_mantissa loop (one real block's active bins) ---------------
@@ -332,36 +332,36 @@ int main(int argc, char** argv) {
             if (bap == 0) {
                 continue;
             }
-            const auto mantissa = iclforge::to_fixed25(ch0_coeffs[4][bin]);
-            checksum += iclforge::quantize_mantissa(mantissa, bap);
+            const auto mantissa = iclforge::ac3::to_fixed25(ch0_coeffs[4][bin]);
+            checksum += iclforge::ac3::quantize_mantissa(mantissa, bap);
         }
         g_sink += checksum;
     }));
 
     // --- aht_forward + aht_vector_quantize (real six-block window, one bin) --
     constexpr int kAhtBin = 64;
-    std::array<double, iclforge::eac3::kBlocksPerFrameSize> aht_blocks{};
-    for (std::size_t b = 0; b < iclforge::eac3::kBlocksPerFrameSize; ++b) {
+    std::array<double, iclforge::ac3::eac3::kBlocksPerFrameSize> aht_blocks{};
+    for (std::size_t b = 0; b < iclforge::ac3::eac3::kBlocksPerFrameSize; ++b) {
         aht_blocks[b] = ch0_coeffs[b][kAhtBin];
     }
     results.push_back(time_kernel("aht_forward", [&] {
-        std::array<double, iclforge::eac3::kBlocksPerFrameSize> out{};
-        iclforge::eac3::aht_forward(aht_blocks, out);
+        std::array<double, iclforge::ac3::eac3::kBlocksPerFrameSize> out{};
+        iclforge::ac3::eac3::aht_forward(aht_blocks, out);
         g_sink += out[0];
     }));
 
-    std::array<double, iclforge::eac3::kBlocksPerFrameSize> aht_coeffs{};
-    iclforge::eac3::aht_forward(aht_blocks, aht_coeffs);
+    std::array<double, iclforge::ac3::eac3::kBlocksPerFrameSize> aht_coeffs{};
+    iclforge::ac3::eac3::aht_forward(aht_blocks, aht_coeffs);
     results.push_back(time_kernel("aht_vector_quantize", [&] {
         auto values = aht_coeffs;
-        g_sink += iclforge::eac3::aht_vector_quantize(values, /*hebap=*/4);
+        g_sink += iclforge::ac3::eac3::aht_vector_quantize(values, /*hebap=*/4);
     }));
 
     // --- ecpl_channel_spectrum (real prev/curr/next 256-bin coefficient sets) -
     results.push_back(time_kernel("ecpl_channel_spectrum", [&] {
         std::array<double, 256> real_out{};
         std::array<double, 256> imag_out{};
-        iclforge::eac3::ecpl_channel_spectrum(ch0_coeffs[3], ch0_coeffs[4], ch0_coeffs[5], real_out,
+        iclforge::ac3::eac3::ecpl_channel_spectrum(ch0_coeffs[3], ch0_coeffs[4], ch0_coeffs[5], real_out,
                                          imag_out);
         g_sink += real_out[64];
     }));
@@ -372,24 +372,24 @@ int main(int argc, char** argv) {
     results.push_back(time_kernel("ecpl_channel_spectrum_fast", [&] {
         std::array<double, 256> real_out{};
         std::array<double, 256> imag_out{};
-        iclforge::eac3::ecpl_channel_spectrum(ch0_coeffs[3], ch0_coeffs[4], ch0_coeffs[5], real_out,
+        iclforge::ac3::eac3::ecpl_channel_spectrum(ch0_coeffs[3], ch0_coeffs[4], ch0_coeffs[5], real_out,
                                          imag_out, /*fast=*/true);
         g_sink += real_out[64];
     }));
 
     // --- band_energy (one real 5.1 frame, default 9-band JOC layout) ---------
-    const auto frame0 = audio.channel(0).subspan(0, static_cast<std::size_t>(iclforge::kSamplesPerFrame));
-    const auto& mapping = iclforge::oba::joc::kSubbandToBand[4];  // idx 4 -> 9 bands, AtmosConfig's default
+    const auto frame0 = audio.channel(0).subspan(0, static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame));
+    const auto& mapping = iclforge::ac3::oba::joc::kSubbandToBand[4];  // idx 4 -> 9 bands, AtmosConfig's default
     results.push_back(time_kernel("band_energy", [&] {
         std::array<double, 9> energy{};
-        iclforge::oba::band_energy(frame0, mapping, energy, /*fast=*/false);
+        iclforge::ac3::oba::band_energy(frame0, mapping, energy, /*fast=*/false);
         g_sink += energy[0];
     }));
     // The same frame down the §7.9.4 fast path - what AtmosConfig::fast_mdct
     // (default on) actually runs; the direct row above is the reference form.
     results.push_back(time_kernel("band_energy_fast", [&] {
         std::array<double, 9> energy{};
-        iclforge::oba::band_energy(frame0, mapping, energy, /*fast=*/true);
+        iclforge::ac3::oba::band_energy(frame0, mapping, energy, /*fast=*/true);
         g_sink += energy[0];
     }));
 
@@ -401,7 +401,7 @@ int main(int argc, char** argv) {
     results.push_back(time_kernel("qmf_band_energy", [&] {
         static iclforge::dsp::QmfAnalysis analysis;
         std::array<double, 9> energy{};
-        iclforge::oba::qmf_band_energy(frame0, mapping, energy, analysis);
+        iclforge::ac3::oba::qmf_band_energy(frame0, mapping, energy, analysis);
         g_sink += energy[0];
     }));
     results.push_back(time_kernel("qmf_analysis_timeslot", [&] {
@@ -429,11 +429,11 @@ int main(int argc, char** argv) {
     // five downmix channels analysed and four objects synthesised, per frame.
     {
         std::vector<std::vector<float>> bed_storage(
-            static_cast<std::size_t>(iclforge::oba::joc::kNumChannels5X),
-            std::vector<float>(static_cast<std::size_t>(iclforge::kSamplesPerFrame)));
+            static_cast<std::size_t>(iclforge::ac3::oba::joc::kNumChannels5X),
+            std::vector<float>(static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame)));
         for (std::size_t ch = 0; ch < bed_storage.size(); ++ch) {
             const auto source =
-                audio.channel(ch).subspan(0, static_cast<std::size_t>(iclforge::kSamplesPerFrame));
+                audio.channel(ch).subspan(0, static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame));
             std::copy(source.begin(), source.end(), bed_storage[ch].begin());
         }
         std::vector<std::span<const float>> bed;
@@ -441,7 +441,7 @@ int main(int argc, char** argv) {
         for (const auto& channel : bed_storage) {
             bed.emplace_back(channel);
         }
-        iclforge::oba::joc::FrameParameters params{
+        iclforge::ac3::oba::joc::FrameParameters params{
             .objects = 4, .num_bands_idx = 4, .seq_count = 5};
         params.matrix.assign(params.coefficient_count(), 0.0);
         for (int object = 0; object < params.objects; ++object) {
@@ -452,9 +452,9 @@ int main(int argc, char** argv) {
             }
         }
         results.push_back(time_kernel("joc_reconstruct_mdct_4obj", [&] {
-            static iclforge::oba::joc::ReconstructionState state;
+            static iclforge::ac3::oba::joc::ReconstructionState state;
             const auto out =
-                iclforge::oba::joc::reconstruct(bed, params, state, /*fast_mdct=*/true,
+                iclforge::ac3::oba::joc::reconstruct(bed, params, state, /*fast_mdct=*/true,
                                       /*fast_imdct=*/true, iclforge::oba::joc::Domain::kMdctBand);
             g_sink += static_cast<double>(out[0][128]);
         }));
@@ -463,16 +463,16 @@ int main(int argc, char** argv) {
         // Eac3Decoder's real default) - what DecoderConfig::fast_mdct now
         // switches, against the direct §8.2.3.2 form it replaced.
         results.push_back(time_kernel("joc_reconstruct_mdct_4obj_direct", [&] {
-            static iclforge::oba::joc::ReconstructionState state;
+            static iclforge::ac3::oba::joc::ReconstructionState state;
             const auto out =
-                iclforge::oba::joc::reconstruct(bed, params, state, /*fast_mdct=*/false,
+                iclforge::ac3::oba::joc::reconstruct(bed, params, state, /*fast_mdct=*/false,
                                       /*fast_imdct=*/true, iclforge::oba::joc::Domain::kMdctBand);
             g_sink += static_cast<double>(out[0][128]);
         }));
         results.push_back(time_kernel("joc_reconstruct_qmf_4obj", [&] {
-            static iclforge::oba::joc::ReconstructionState state;
+            static iclforge::ac3::oba::joc::ReconstructionState state;
             const auto out =
-                iclforge::oba::joc::reconstruct(bed, params, state, /*fast_mdct=*/true,
+                iclforge::ac3::oba::joc::reconstruct(bed, params, state, /*fast_mdct=*/true,
                                       /*fast_imdct=*/true, iclforge::oba::joc::Domain::kQmf);
             g_sink += static_cast<double>(out[0][128]);
         }));
@@ -494,7 +494,7 @@ int main(int argc, char** argv) {
         // cost that grows super-linearly in object count shows up here and
         // nowhere else in this bench.
         {
-            iclforge::oba::joc::FrameParameters wide{
+            iclforge::ac3::oba::joc::FrameParameters wide{
                 .objects = 12, .num_bands_idx = 4, .seq_count = 5};
             wide.matrix.assign(wide.coefficient_count(), 0.0);
             for (int object = 0; object < wide.objects; ++object) {
@@ -505,16 +505,16 @@ int main(int argc, char** argv) {
                 }
             }
             results.push_back(time_kernel("joc_reconstruct_mdct_12obj", [&] {
-                static iclforge::oba::joc::ReconstructionState state;
-                const auto out = iclforge::oba::joc::reconstruct(
+                static iclforge::ac3::oba::joc::ReconstructionState state;
+                const auto out = iclforge::ac3::oba::joc::reconstruct(
                     bed, wide, state, /*fast_mdct=*/true,
                     /*fast_imdct=*/true, iclforge::oba::joc::Domain::kMdctBand);
                 g_sink += static_cast<double>(out[0][128]);
             }));
             results.push_back(time_kernel("joc_reconstruct_qmf_12obj", [&] {
-                static iclforge::oba::joc::ReconstructionState state;
+                static iclforge::ac3::oba::joc::ReconstructionState state;
                 const auto out =
-                    iclforge::oba::joc::reconstruct(bed, wide, state, /*fast_mdct=*/true,
+                    iclforge::ac3::oba::joc::reconstruct(bed, wide, state, /*fast_mdct=*/true,
                                           /*fast_imdct=*/true, iclforge::oba::joc::Domain::kQmf);
                 g_sink += static_cast<double>(out[0][128]);
             }));
@@ -614,11 +614,11 @@ int main(int argc, char** argv) {
         for (int ch = 0; ch < 6; ++ch) {
             const std::span<const std::uint8_t> exps{
                 bits_at_exps_full[static_cast<std::size_t>(ch)].data(), kEndmant};
-            iclforge::compute_bit_allocation(exps, iclforge::SampleRate::k48000, codes, 10, 0,
+            iclforge::ac3::compute_bit_allocation(exps, iclforge::ac3::SampleRate::k48000, codes, 10, 0,
                                         bap[static_cast<std::size_t>(ch)]);
             views.push_back(bap[static_cast<std::size_t>(ch)]);
         }
-        g_sink += static_cast<double>(iclforge::mantissa_bits_per_block(views));
+        g_sink += static_cast<double>(iclforge::ac3::mantissa_bits_per_block(views));
     }));
 
     for (const auto& r : results) {

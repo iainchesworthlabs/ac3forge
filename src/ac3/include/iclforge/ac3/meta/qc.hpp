@@ -14,7 +14,7 @@
 // qc_preset()'s own comment on each case for the exact wording cited; every
 // number here was read out of the primary document, not recalled from memory.
 //
-// Deliberately the same shape iclforge::meta::Profile/ProfileId (drc.hpp) uses for
+// Deliberately the same shape iclforge::ac3::meta::Profile/ProfileId (drc.hpp) uses for
 // the §7.7.1 DRC profile table: a small enum naming the presets, a constexpr
 // accessor returning the numbers, and a name<->id parser - so a caller
 // (forge qc, and the GUI's own QC panel) reads one table instead of

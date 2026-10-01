@@ -15,7 +15,7 @@ void IclForgeComponent::setup() {
   // and a component that allocated it lazily on the first frame would give that
   // property away for nothing.
   storage_.resize(buffer_size_);
-  accumulator_ = std::make_unique<::iclforge::io::AccessUnitAccumulator>(storage_);
+  accumulator_ = std::make_unique<::iclforge::ac3::io::AccessUnitAccumulator>(storage_);
 }
 
 void IclForgeComponent::dump_config() {
@@ -49,7 +49,7 @@ const std::vector<std::vector<float>> *IclForgeComponent::decode() {
   }
 
   const auto unit = accumulator_->next();
-  using Status = ::iclforge::io::AccessUnitAccumulator::Status;
+  using Status = ::iclforge::ac3::io::AccessUnitAccumulator::Status;
   switch (unit.status) {
     case Status::kUnit:
       break;

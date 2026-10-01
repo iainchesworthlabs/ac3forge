@@ -27,15 +27,15 @@
 int main() {
     // Some AC-3 to fragment - enough frames to span several fragments below
     // (31 frames at 8/fragment is 4 fragments: 8, 8, 8, 7).
-    auto encoder = std::make_unique<iclforge::FrameEncoder>(
-        iclforge::EncoderConfig{.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0});
-    std::vector<std::vector<float>> pcm(2, std::vector<float>(iclforge::kSamplesPerFrame));
+    auto encoder = std::make_unique<iclforge::ac3::FrameEncoder>(
+        iclforge::ac3::EncoderConfig{.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k2_0});
+    std::vector<std::vector<float>> pcm(2, std::vector<float>(iclforge::ac3::kSamplesPerFrame));
     const std::vector<std::span<const float>> views{pcm[0], pcm[1]};
 
     std::vector<std::byte> elementary;
     for (int frame = 0; frame < 31; ++frame) {
         for (std::size_t ch = 0; ch < pcm.size(); ++ch) {
-            for (int n = 0; n < iclforge::kSamplesPerFrame; ++n) {
+            for (int n = 0; n < iclforge::ac3::kSamplesPerFrame; ++n) {
                 pcm[ch][static_cast<std::size_t>(n)] =
                     0.2F * static_cast<float>((n % 61) - 30) / 30.0F;
             }
@@ -47,7 +47,7 @@ int main() {
         elementary.insert(elementary.end(), encoded->begin(), encoded->end());
     }
 
-    const auto scanned = iclforge::io::scan(elementary);
+    const auto scanned = iclforge::ac3::io::scan(elementary);
     if (!scanned) {
         fmt::printf("scan failed\n");
         return 1;
@@ -60,13 +60,13 @@ int main() {
     }
 
     const iclforge::mp4::AudioTrack track{
-        .codec_id = std::string{scanned->kind == iclforge::io::StreamKind::kAc3
+        .codec_id = std::string{scanned->kind == iclforge::ac3::io::StreamKind::kAc3
                                     ? iclforge::mp4::kCodecAc3
                                     : iclforge::mp4::kCodecEac3},
-        .sample_rate = iclforge::sample_rate_hz(scanned->sample_rate),
+        .sample_rate = iclforge::ac3::sample_rate_hz(scanned->sample_rate),
         .channels = scanned->channels,
-        .samples_per_frame = iclforge::kSamplesPerFrame,
-        .codec_config = iclforge::io::build_codec_config_box(*scanned),
+        .samples_per_frame = iclforge::ac3::kSamplesPerFrame,
+        .codec_config = iclforge::ac3::io::build_codec_config_box(*scanned),
     };
 
     const auto fragmented = iclforge::mp4::fragment(

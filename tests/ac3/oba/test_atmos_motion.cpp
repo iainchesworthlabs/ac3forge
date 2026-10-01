@@ -18,7 +18,7 @@
 
 namespace {
 
-constexpr int kFrame = iclforge::kSamplesPerFrame;
+constexpr int kFrame = iclforge::ac3::kSamplesPerFrame;
 
 // Same helpers as test_atmos.cpp, duplicated here per this project's
 // per-file convention (no shared test-utility header exists). Objects that
@@ -46,10 +46,10 @@ std::complex<double> project(std::span<const float> x, double hz) {
 
 int band_of(double hz, int num_bands_idx) {
     const auto subband = static_cast<std::size_t>(hz / (24000.0 / 64.0));
-    return iclforge::oba::joc::kSubbandToBand[static_cast<std::size_t>(num_bands_idx)][subband];
+    return iclforge::ac3::oba::joc::kSubbandToBand[static_cast<std::size_t>(num_bands_idx)][subband];
 }
 
-std::complex<double> reconstruct_at(const iclforge::oba::AtmosEncoder& encoder, int object,
+std::complex<double> reconstruct_at(const iclforge::ac3::oba::AtmosEncoder& encoder, int object,
                                     double hz, int num_bands_idx) {
     constexpr std::array<int, 5> kAc3FromJoc = {0, 2, 1, 3, 4};
     const int band = band_of(hz, num_bands_idx);
@@ -208,8 +208,8 @@ TEST_CASE("a moving object's decoded bed tracks its authored path frame by frame
     std::vector<iclforge::oba::ObjectPath> paths;
     paths.emplace_back(make_holds(waypoints, kHoldFrames));
 
-    iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, 1};
-    iclforge::Eac3Decoder decoder;
+    iclforge::ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, 1};
+    iclforge::ac3::Eac3Decoder decoder;
     std::vector<std::span<const float>> views(1);
 
     const int total_frames = kHoldFrames * static_cast<int>(waypoints.size());
@@ -283,7 +283,7 @@ TEST_CASE("two independently moving objects keep reconstructing cleanly", "[atmo
     paths.emplace_back(make_holds(waypoints_a, kHoldFrames));
     paths.emplace_back(make_holds(waypoints_b, kHoldFrames));
 
-    iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 640}, 2};
+    iclforge::ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 640}, 2};
     std::vector<std::span<const float>> views(2);
 
     const int total_frames = kHoldFrames * static_cast<int>(waypoints_a.size());
@@ -365,7 +365,7 @@ TEST_CASE("AtmosEncoder transmits an object's size, snap and zone", "[atmos][mot
     // End to end: a placement in, a decoded OAMD payload out. The bed render
     // deliberately ignores all three (see ObjectPlacement's own comment), so
     // the bitstream is the only place they can be observed.
-    iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, 1};
+    iclforge::ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, 1};
     const auto source = tone(440.0, 0.4, 0.0, 0);
     const std::array<std::span<const float>, 1> audio{std::span<const float>{source}};
     const std::array<iclforge::oba::ObjectPlacement, 1> placement{
@@ -379,7 +379,7 @@ TEST_CASE("AtmosEncoder transmits an object's size, snap and zone", "[atmos][mot
     const auto unit = encoder.encode_frame(audio, placement);
     REQUIRE(unit.has_value());
 
-    iclforge::Eac3Decoder decoder;
+    iclforge::ac3::Eac3Decoder decoder;
     const auto decoded = decoder.decode_substream(unit->substream(0));
     REQUIRE(decoded.has_value());
     REQUIRE(decoded->has_value());

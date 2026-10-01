@@ -112,7 +112,7 @@ def test_access_unit_encoder_reports_channel_map_error():
     config = ac3.eac3.AccessUnitConfig(independent=independent, dependents=[dependent])
     encoder = ac3.eac3.AccessUnitEncoder(config)
 
-    # iclforge::eac3::AccessUnitEncoder's own constructor validates eagerly and builds no substreams
+    # iclforge::ac3::eac3::AccessUnitEncoder's own constructor validates eagerly and builds no substreams
     # for an invalid config - channel_count is 0, and encode_access_unit() is how the real reason
     # (an invalid channel map) surfaces.
     assert encoder.channel_count == 0

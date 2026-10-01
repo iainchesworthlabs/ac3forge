@@ -238,7 +238,7 @@ void qmf_band_energy(std::span<const float> signal, std::span<const std::uint8_t
 }
 
 // Every private data member, following the same pimpl pattern as
-// iclforge::io::WavStreamReader/Writer and iclforge::FrameEncoder.
+// iclforge::ac3::io::WavStreamReader/Writer and iclforge::ac3::FrameEncoder.
 struct AtmosEncoder::Impl {
     AtmosConfig config_;
     int objects_ = 0;
@@ -309,7 +309,7 @@ struct AtmosEncoder::Impl {
                               // complexity index - the object count, bed included.
                               // Only when the container is actually emitted: this
                               // marker is what a reader keys "this stream has an
-                              // object layer" off (iclforge::io::scan, the dec3 box's
+                              // object layer" off (iclforge::ac3::io::scan, the dec3 box's
                               // Atmos extension, HLS CHANNELS=.../JOC, FFmpeg's
                               // "Dolby Digital Plus + Dolby Atmos" profile), so
                               // writing it into a bed51 stream would advertise

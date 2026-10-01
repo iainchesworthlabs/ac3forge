@@ -13,7 +13,7 @@
 #include "iclforge/ac3/core/eac3_tools.hpp"
 #include "iclforge/dsp/fft.hpp"
 
-using namespace iclforge::eac3;
+using namespace iclforge::ac3::eac3;
 
 TEST_CASE("ecpl_begin_subbnd matches every row of Table E3.8", "[enhanced_coupling]") {
     // {sub-band #, ecplbegf} - every row of the table that carries a begf code.

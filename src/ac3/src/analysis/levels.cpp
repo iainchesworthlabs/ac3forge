@@ -120,7 +120,7 @@ double ChannelSummary::peak_db() const { return to_dbfs(peak); }
 double ChannelSummary::rms_db() const { return to_dbfs(rms()); }
 
 // Every private data member, following the same pimpl pattern as
-// iclforge::io::WavStreamReader/Writer and iclforge::FrameEncoder.
+// iclforge::ac3::io::WavStreamReader/Writer and iclforge::ac3::FrameEncoder.
 struct LevelMeter::Impl {
     Acmod acmod_;
     bool lfe_;

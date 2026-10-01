@@ -46,7 +46,7 @@ namespace {
 // (two keyframes cannot share one time_s - see iclforge::oba::PathError::kDuplicateTimestamp). This
 // is the same resolution tests/ac3/oba/test_atmos_motion.cpp's own make_holds() helper relies on
 // implicitly: every caller in this codebase samples ObjectPath::evaluate() once per encoded frame
-// (iclforge::kSamplesPerFrame = 1536 samples, 32 ms at 48 kHz - see iclforge::oba::AtmosEncoder::
+// (iclforge::ac3::kSamplesPerFrame = 1536 samples, 32 ms at 48 kHz - see iclforge::ac3::oba::AtmosEncoder::
 // encode_frame's own doc comment, "one placement per frame"), so any transition faster than one
 // frame period is already indistinguishable from instantaneous at the resolution that actually
 // reaches the bitstream. 1 microsecond is roughly 1/20 of one 48 kHz sample and about six orders

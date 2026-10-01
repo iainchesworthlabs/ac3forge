@@ -72,7 +72,7 @@ enum class Criterion : std::uint8_t {
     // and cheap, and still a waveform criterion: it prices a decibel in a
     // band nobody can hear the same as a decibel in one they can.
     kDistortion,
-    // Minimise the noise-to-mask ratio against iclforge::quality::PerceptualModel
+    // Minimise the noise-to-mask ratio against iclforge::ac3::quality::PerceptualModel
     // - the same measured noise, weighted by what the signal can actually
     // hide. Costs the psychoacoustic analysis on top.
     kPerceptual,

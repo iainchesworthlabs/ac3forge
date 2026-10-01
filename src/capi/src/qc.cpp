@@ -3,22 +3,22 @@
 #include "internal.hpp"
 
 namespace {
-iclforge::meta::QcPreset to_cpp(const iclforge_qc_preset_t& preset) {
-    return iclforge::meta::QcPreset{
+iclforge::ac3::meta::QcPreset to_cpp(const iclforge_qc_preset_t& preset) {
+    return iclforge::ac3::meta::QcPreset{
         .target_lkfs = preset.target_lkfs,
         .tolerance_lu = preset.tolerance_lu,
         .max_true_peak_dbtp = preset.max_true_peak_dbtp,
-        .loudness_limit = static_cast<iclforge::meta::QcLoudnessLimit>(preset.loudness_limit),
+        .loudness_limit = static_cast<iclforge::ac3::meta::QcLoudnessLimit>(preset.loudness_limit),
         .source = preset.source == nullptr ? std::string_view{} : std::string_view{preset.source}};
 }
 }  // namespace
 
 extern "C" {
 
-size_t iclforge_qc_preset_count(void) { return iclforge::meta::kQcPresetIds.size(); }
+size_t iclforge_qc_preset_count(void) { return iclforge::ac3::meta::kQcPresetIds.size(); }
 
 iclforge_qc_preset_t iclforge_qc_preset(iclforge_qc_preset_id_t id) {
-    const auto preset = iclforge::meta::qc_preset(static_cast<iclforge::meta::QcPresetId>(id));
+    const auto preset = iclforge::ac3::meta::qc_preset(static_cast<iclforge::ac3::meta::QcPresetId>(id));
     return iclforge_qc_preset_t{
         .target_lkfs = preset.target_lkfs,
         .tolerance_lu = preset.tolerance_lu,
@@ -28,15 +28,15 @@ iclforge_qc_preset_t iclforge_qc_preset(iclforge_qc_preset_id_t id) {
 }
 
 const char* iclforge_qc_preset_name(iclforge_qc_preset_id_t id) {
-    return iclforge::meta::qc_preset_name(static_cast<iclforge::meta::QcPresetId>(id)).data();
+    return iclforge::ac3::meta::qc_preset_name(static_cast<iclforge::ac3::meta::QcPresetId>(id)).data();
 }
 
 int iclforge_parse_qc_preset(const char* name, iclforge_qc_preset_id_t* out_id) {
     if (name == nullptr || out_id == nullptr) {
         return 0;
     }
-    iclforge::meta::QcPresetId id{};
-    if (!iclforge::meta::parse_qc_preset(name, id)) {
+    iclforge::ac3::meta::QcPresetId id{};
+    if (!iclforge::ac3::meta::parse_qc_preset(name, id)) {
         return 0;
     }
     *out_id = static_cast<iclforge_qc_preset_id_t>(id);
@@ -59,7 +59,7 @@ iclforge_qc_verdict_t iclforge_evaluate_qc_gate(const iclforge_qc_preset_t* pres
     if (preset == nullptr) {
         return empty;
     }
-    const auto verdict = iclforge::meta::evaluate_qc_gate(
+    const auto verdict = iclforge::ac3::meta::evaluate_qc_gate(
         to_cpp(*preset), has_integrated_lkfs != 0 ? std::optional<double>(integrated_lkfs) : std::nullopt,
         has_true_peak_dbtp != 0 ? std::optional<double>(true_peak_dbtp) : std::nullopt);
     return iclforge_qc_verdict_t{

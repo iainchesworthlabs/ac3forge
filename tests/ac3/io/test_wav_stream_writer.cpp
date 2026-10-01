@@ -45,7 +45,7 @@ constexpr std::array<float, 12> kInterleaved = {
 };
 
 void check_round_trip(const fs::path& path) {
-    const auto data = iclforge::io::read_wav(path.string());
+    const auto data = iclforge::ac3::io::read_wav(path.string());
     REQUIRE(data.has_value());
     CHECK(data->sample_rate == 44100);
     REQUIRE(data->channels.size() == kChannels);
@@ -61,7 +61,7 @@ void check_round_trip(const fs::path& path) {
 
 TEST_CASE("WavStreamWriter round-trips interleaved samples across several writes", "[wav]") {
     const auto path = scratch_dir() / "round_trip.wav";
-    iclforge::io::WavStreamWriter writer;
+    iclforge::ac3::io::WavStreamWriter writer;
     REQUIRE(writer.open(path.string(), 44100, kChannels).has_value());
     CHECK(writer.is_open());
     CHECK(writer.channels() == kChannels);
@@ -79,7 +79,7 @@ TEST_CASE("WavStreamWriter round-trips interleaved samples across several writes
 
 TEST_CASE("WavStreamWriter flush_header mid-stream does not corrupt later writes", "[wav]") {
     const auto path = scratch_dir() / "flush_mid_stream.wav";
-    iclforge::io::WavStreamWriter writer;
+    iclforge::ac3::io::WavStreamWriter writer;
     REQUIRE(writer.open(path.string(), 44100, kChannels).has_value());
 
     REQUIRE(writer.write(std::span{kInterleaved}.subspan(0, 6)));
@@ -97,7 +97,7 @@ TEST_CASE("WavStreamWriter flush_header mid-stream does not corrupt later writes
 
 TEST_CASE("WavStreamWriter flush_header puts bytes on disk before close()", "[wav]") {
     const auto path = scratch_dir() / "flush_before_close.wav";
-    iclforge::io::WavStreamWriter writer;
+    iclforge::ac3::io::WavStreamWriter writer;
     REQUIRE(writer.open(path.string(), 44100, kChannels).has_value());
     REQUIRE(writer.write(std::span{kInterleaved}.subspan(0, 6)));
     writer.flush_header();
@@ -125,19 +125,19 @@ TEST_CASE("WavStreamWriter open() refuses a path it cannot create", "[wav]") {
     // Several nonexistent parent directories - fails to create on both
     // Windows and POSIX without assuming a specific unwritable system path.
     const auto path = scratch_dir() / "no" / "such" / "dir" / "stream.wav";
-    iclforge::io::WavStreamWriter writer;
+    iclforge::ac3::io::WavStreamWriter writer;
     const auto result = writer.open(path.string(), 44100, kChannels);
     REQUIRE_FALSE(result.has_value());
-    CHECK(result.error() == iclforge::io::WavError::kCannotOpen);
+    CHECK(result.error() == iclforge::ac3::io::WavError::kCannotOpen);
     CHECK_FALSE(writer.is_open());
 }
 
 TEST_CASE("WavStreamWriter open() refuses zero channels", "[wav]") {
     const auto path = scratch_dir() / "zero_channels.wav";
-    iclforge::io::WavStreamWriter writer;
+    iclforge::ac3::io::WavStreamWriter writer;
     const auto result = writer.open(path.string(), 44100, 0);
     REQUIRE_FALSE(result.has_value());
-    CHECK(result.error() == iclforge::io::WavError::kUnsupportedFormat);
+    CHECK(result.error() == iclforge::ac3::io::WavError::kUnsupportedFormat);
 }
 
 namespace {
@@ -165,10 +165,10 @@ TEST_CASE("WavPcm16StreamWriter's closed file is byte-identical to write_wav_pcm
     }
 
     const auto one_shot = scratch_dir() / "pcm16_one_shot.wav";
-    REQUIRE(iclforge::io::write_wav_pcm16_raw(one_shot.string(), payload, 192000, 2).has_value());
+    REQUIRE(iclforge::ac3::io::write_wav_pcm16_raw(one_shot.string(), payload, 192000, 2).has_value());
 
     const auto streamed = scratch_dir() / "pcm16_streamed.wav";
-    iclforge::io::WavPcm16StreamWriter writer;
+    iclforge::ac3::io::WavPcm16StreamWriter writer;
     REQUIRE(writer.open(streamed.string(), 192000, 2).has_value());
     CHECK(writer.is_open());
     // Several uneven writes, with a mid-stream header patch to prove the
@@ -185,14 +185,14 @@ TEST_CASE("WavPcm16StreamWriter's closed file is byte-identical to write_wav_pcm
 }
 
 TEST_CASE("WavPcm16StreamWriter open() refuses zero channels and uncreatable paths", "[wav]") {
-    iclforge::io::WavPcm16StreamWriter writer;
+    iclforge::ac3::io::WavPcm16StreamWriter writer;
     const auto zero = writer.open((scratch_dir() / "pcm16_zero.wav").string(), 48000, 0);
     REQUIRE_FALSE(zero.has_value());
-    CHECK(zero.error() == iclforge::io::WavError::kUnsupportedFormat);
+    CHECK(zero.error() == iclforge::ac3::io::WavError::kUnsupportedFormat);
 
     const auto bad =
         writer.open((scratch_dir() / "no" / "such" / "dir" / "pcm16.wav").string(), 48000, 2);
     REQUIRE_FALSE(bad.has_value());
-    CHECK(bad.error() == iclforge::io::WavError::kCannotOpen);
+    CHECK(bad.error() == iclforge::ac3::io::WavError::kCannotOpen);
     CHECK_FALSE(writer.is_open());
 }

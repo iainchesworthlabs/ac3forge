@@ -22,7 +22,7 @@
 #include "iclforge/ac3/io/probe.hpp"
 #include "iclforge/ac3/meta/mixing.hpp"
 
-// iclforge::io::probe (probe command) and the two additions it is built on:
+// iclforge::ac3::io::probe (probe command) and the two additions it is built on:
 // io::read_frame_header and DecoderConfig::skip_reconstruction.
 //
 // The strongest claim any of this makes is skip_reconstruction's: that a parse
@@ -40,7 +40,7 @@ namespace {
 // would read the same whether or not it was being computed. Three distinct
 // tones so the channels are not correlated either.
 std::vector<std::vector<float>> tone_channels(int channels, int frames) {
-    const auto samples = static_cast<std::size_t>(frames) * iclforge::kSamplesPerFrame;
+    const auto samples = static_cast<std::size_t>(frames) * iclforge::ac3::kSamplesPerFrame;
     std::vector<std::vector<float>> out(static_cast<std::size_t>(channels),
                                         std::vector<float>(samples, 0.0f));
     for (int ch = 0; ch < channels; ++ch) {
@@ -56,14 +56,14 @@ std::vector<std::vector<float>> tone_channels(int channels, int frames) {
 }
 
 std::vector<std::byte> encode_ac3(int frames, bool coupling) {
-    // Built straight from EncoderConfig rather than through iclforge::plan: the
+    // Built straight from EncoderConfig rather than through iclforge::ac3::plan: the
     // subject here is what the BITSTREAM says, so the fewer layers between
     // the field being asserted and the field being set, the better.
-    const iclforge::EncoderConfig config{.bitrate_kbps = 448,
-                                    .acmod = iclforge::Acmod::k3_2,
+    const iclforge::ac3::EncoderConfig config{.bitrate_kbps = 448,
+                                    .acmod = iclforge::ac3::Acmod::k3_2,
                                     .lfe = true,
                                     .coupling = coupling};
-    iclforge::FrameEncoder encoder{config};
+    iclforge::ac3::FrameEncoder encoder{config};
     const auto pcm = tone_channels(6, frames);
     std::vector<std::span<const float>> views;
     views.reserve(pcm.size());
@@ -76,8 +76,8 @@ std::vector<std::byte> encode_ac3(int frames, bool coupling) {
         block.reserve(views.size());
         for (const auto& view : views) {
             block.emplace_back(
-                view.subspan(static_cast<std::size_t>(frame) * iclforge::kSamplesPerFrame,
-                             iclforge::kSamplesPerFrame));
+                view.subspan(static_cast<std::size_t>(frame) * iclforge::ac3::kSamplesPerFrame,
+                             iclforge::ac3::kSamplesPerFrame));
         }
         const auto encoded = encoder.encode_frame(block);
         REQUIRE(encoded.has_value());
@@ -96,8 +96,8 @@ std::vector<std::byte> encode_with(Encoder& encoder, int channels, int frames) {
         block.reserve(pcm.size());
         for (const auto& channel : pcm) {
             block.emplace_back(std::span{channel}.subspan(
-                static_cast<std::size_t>(frame) * iclforge::kSamplesPerFrame,
-                iclforge::kSamplesPerFrame));
+                static_cast<std::size_t>(frame) * iclforge::ac3::kSamplesPerFrame,
+                iclforge::ac3::kSamplesPerFrame));
         }
         const auto encoded = encoder.encode_frame(block);
         REQUIRE(encoded.has_value());
@@ -118,11 +118,11 @@ std::vector<std::byte> reserved_dmixmod_stream(std::span<const std::byte> ltrt,
     for (std::size_t i = 0; i < out.size(); ++i) {
         out[i] = ltrt[i] | loro[i];
     }
-    const auto frames = iclforge::split_frames(ltrt);
+    const auto frames = iclforge::ac3::split_frames(ltrt);
     REQUIRE(frames.has_value());
     for (const auto frame : *frames) {
         const auto at = static_cast<std::size_t>(frame.data() - ltrt.data());
-        REQUIRE(iclforge::io::restamp_crc(std::span{out}.subspan(at, frame.size())).has_value());
+        REQUIRE(iclforge::ac3::io::restamp_crc(std::span{out}.subspan(at, frame.size())).has_value());
     }
     return out;
 }
@@ -131,21 +131,21 @@ std::vector<std::byte> reserved_dmixmod_stream(std::span<const std::byte> ltrt,
 
 TEST_CASE("read_frame_header reports what a syncframe declares", "[io][probe]") {
     const auto stream = encode_ac3(3, true);
-    const auto header = iclforge::io::read_frame_header(stream);
+    const auto header = iclforge::ac3::io::read_frame_header(stream);
     REQUIRE(header.has_value());
-    CHECK(header->kind == iclforge::io::StreamKind::kAc3);
+    CHECK(header->kind == iclforge::ac3::io::StreamKind::kAc3);
     CHECK(header->bsid == 8);
-    CHECK(header->acmod == iclforge::Acmod::k3_2);
+    CHECK(header->acmod == iclforge::ac3::Acmod::k3_2);
     CHECK(header->lfe);
     CHECK(header->coded_channels() == 6);
-    CHECK(header->sample_rate == iclforge::SampleRate::k48000);
+    CHECK(header->sample_rate == iclforge::ac3::SampleRate::k48000);
     CHECK(header->bitrate_kbps == 448);
     CHECK(header->bytes > 0);
     CHECK_FALSE(header->reduced_rate);
     // The same walk scan() makes, so the two must agree about the frame it
     // describes - this is the property that let scan() stop keeping its own
     // private copy of the parse.
-    const auto scanned = iclforge::io::scan(stream);
+    const auto scanned = iclforge::ac3::io::scan(stream);
     REQUIRE(scanned.has_value());
     CHECK(scanned->bsid == header->bsid);
     CHECK(scanned->bsmod == header->bsmod);
@@ -155,26 +155,26 @@ TEST_CASE("read_frame_header reports what a syncframe declares", "[io][probe]") 
 
     SECTION("a span with no sync word is refused rather than misread") {
         std::vector<std::byte> noise(64, std::byte{0x5A});
-        CHECK_FALSE(iclforge::io::read_frame_header(noise).has_value());
+        CHECK_FALSE(iclforge::ac3::io::read_frame_header(noise).has_value());
     }
     SECTION("a span too short to hold a header is truncated, not guessed at") {
-        CHECK(iclforge::io::read_frame_header(std::span{stream}.first(4)).error() ==
-              iclforge::io::ScanError::kTruncated);
+        CHECK(iclforge::ac3::io::read_frame_header(std::span{stream}.first(4)).error() ==
+              iclforge::ac3::io::ScanError::kTruncated);
     }
 }
 
 TEST_CASE("skip_reconstruction reads the identical bits a full decode does",
           "[decoder][probe]") {
     const auto stream = encode_ac3(4, true);
-    const auto frames = iclforge::split_frames(stream);
+    const auto frames = iclforge::ac3::split_frames(stream);
     REQUIRE(frames.has_value());
 
-    iclforge::FrameDecoder full;
-    iclforge::FrameSyntax syntax;
-    iclforge::DecoderConfig parse_only;
+    iclforge::ac3::FrameDecoder full;
+    iclforge::ac3::FrameSyntax syntax;
+    iclforge::ac3::DecoderConfig parse_only;
     parse_only.skip_reconstruction = true;
     parse_only.syntax = &syntax;
-    iclforge::FrameDecoder parse{parse_only};
+    iclforge::ac3::FrameDecoder parse{parse_only};
 
     for (const auto& frame : *frames) {
         const auto whole = full.decode_frame(frame);
@@ -204,8 +204,8 @@ TEST_CASE("skip_reconstruction reads the identical bits a full decode does",
         CHECK(syntax.valid);
         CHECK(syntax.fbw_channels == 5);
         CHECK(syntax.lfe);
-        CHECK(syntax.block_count == iclforge::kBlocksPerFrame);
-        for (int blk = 0; blk < iclforge::kBlocksPerFrame; ++blk) {
+        CHECK(syntax.block_count == iclforge::ac3::kBlocksPerFrame);
+        for (int blk = 0; blk < iclforge::ac3::kBlocksPerFrame; ++blk) {
             CHECK(syntax.blocks[static_cast<std::size_t>(blk)].entered);
         }
     }
@@ -218,9 +218,9 @@ TEST_CASE("the syntax trace reports the tools the encoder was told to use",
     // unconditionally would pass a one-sided check.
     for (const bool coupling : {false, true}) {
         const auto stream = encode_ac3(2, coupling);
-        const auto report = iclforge::io::probe(stream);
+        const auto report = iclforge::ac3::io::probe(stream);
         REQUIRE(report.has_value());
-        CHECK(report->tools.blocks == 2 * iclforge::kBlocksPerFrame);
+        CHECK(report->tools.blocks == 2 * iclforge::ac3::kBlocksPerFrame);
         if (coupling) {
             CHECK(report->tools.coupling > 0);
         } else {
@@ -245,13 +245,13 @@ TEST_CASE("the syntax trace reports the tools the encoder was told to use",
 TEST_CASE("probe describes an AC-3 stream off the wire", "[io][probe]") {
     constexpr int kFrames = 6;
     const auto stream = encode_ac3(kFrames, true);
-    const auto report = iclforge::io::probe(stream);
+    const auto report = iclforge::ac3::io::probe(stream);
     REQUIRE(report.has_value());
 
-    CHECK(report->kind == iclforge::io::StreamKind::kAc3);
+    CHECK(report->kind == iclforge::ac3::io::StreamKind::kAc3);
     CHECK(report->bsid == 8);
-    CHECK(report->sample_rate == iclforge::SampleRate::k48000);
-    CHECK(report->acmod == iclforge::Acmod::k3_2);
+    CHECK(report->sample_rate == iclforge::ac3::SampleRate::k48000);
+    CHECK(report->acmod == iclforge::ac3::Acmod::k3_2);
     CHECK(report->lfe);
     CHECK(report->coded_channels == 6);
     CHECK(report->rendered_channels == 6);
@@ -260,7 +260,7 @@ TEST_CASE("probe describes an AC-3 stream off the wire", "[io][probe]") {
     CHECK(report->syncframes == kFrames);
     CHECK(report->bytes == stream.size());
     CHECK(report->substreams.size() == 1);
-    CHECK(report->substreams.front().strmtyp == iclforge::eac3::StreamType::kIndependent);
+    CHECK(report->substreams.front().strmtyp == iclforge::ac3::eac3::StreamType::kIndependent);
     CHECK(report->substreams.front().syncframes == kFrames);
     CHECK(report->substreams_per_unit == 1);
 
@@ -272,7 +272,7 @@ TEST_CASE("probe describes an AC-3 stream off the wire", "[io][probe]") {
     CHECK_FALSE(report->variable_bitrate);
     CHECK(report->min_access_unit_bytes == report->max_access_unit_bytes);
     const double expected =
-        static_cast<double>(kFrames) * iclforge::kSamplesPerFrame / 48000.0;
+        static_cast<double>(kFrames) * iclforge::ac3::kSamplesPerFrame / 48000.0;
     CHECK(report->duration_seconds > expected - 1e-9);
     CHECK(report->duration_seconds < expected + 1e-9);
 
@@ -301,7 +301,7 @@ TEST_CASE("probe describes an AC-3 stream off the wire", "[io][probe]") {
 
 TEST_CASE("probe reports a bad CRC without refusing the stream", "[io][probe]") {
     auto stream = encode_ac3(4, true);
-    const auto frames = iclforge::split_frames(stream);
+    const auto frames = iclforge::ac3::split_frames(stream);
     REQUIRE(frames.has_value());
     REQUIRE(frames->size() == 4);
     // Corrupt one byte of the SECOND frame's payload, well past its header:
@@ -310,14 +310,14 @@ TEST_CASE("probe reports a bad CRC without refusing the stream", "[io][probe]") 
     const auto offset = static_cast<std::size_t>(frames->at(1).data() - stream.data()) + 200;
     stream[offset] ^= std::byte{0xFF};
 
-    const auto report = iclforge::io::probe(stream);
+    const auto report = iclforge::ac3::io::probe(stream);
     REQUIRE(report.has_value());
     CHECK(report->access_units == 4);
     CHECK(report->crc_failures == 1);
     // The other three still describe themselves, and the stream-level facts
     // are unchanged - which is the whole reason the CRC check sits beside the
     // header parse rather than gating it.
-    CHECK(report->acmod == iclforge::Acmod::k3_2);
+    CHECK(report->acmod == iclforge::ac3::Acmod::k3_2);
     CHECK(report->syncframes == 4);
     CHECK(report->substreams.front().syncframes == 4);
 }
@@ -332,12 +332,12 @@ TEST_CASE("probe walks an E-AC-3 stream's Annex E tools", "[io][probe][eac3]") {
     // because both were requested would have been testing the request rather
     // than the stream.
     const auto encode = [](bool coupling, bool spx) {
-        const iclforge::eac3::FrameConfig config{.bitrate_kbps = 384,
-                                            .acmod = iclforge::Acmod::k3_2,
+        const iclforge::ac3::eac3::FrameConfig config{.bitrate_kbps = 384,
+                                            .acmod = iclforge::ac3::Acmod::k3_2,
                                             .lfe = true,
                                             .coupling = coupling,
                                             .spx = spx};
-        iclforge::eac3::FrameEncoder encoder{config};
+        iclforge::ac3::eac3::FrameEncoder encoder{config};
         const auto pcm = tone_channels(6, 4);
         std::vector<std::byte> stream;
         for (int frame = 0; frame < 4; ++frame) {
@@ -346,8 +346,8 @@ TEST_CASE("probe walks an E-AC-3 stream's Annex E tools", "[io][probe][eac3]") {
             for (const auto& channel : pcm) {
                 block.emplace_back(
                     std::span{channel}.subspan(static_cast<std::size_t>(frame) *
-                                                   iclforge::kSamplesPerFrame,
-                                               iclforge::kSamplesPerFrame));
+                                                   iclforge::ac3::kSamplesPerFrame,
+                                               iclforge::ac3::kSamplesPerFrame));
             }
             const auto encoded = encoder.encode_frame(block);
             REQUIRE(encoded.has_value());
@@ -357,10 +357,10 @@ TEST_CASE("probe walks an E-AC-3 stream's Annex E tools", "[io][probe][eac3]") {
     };
 
     SECTION("coupling") {
-        const auto report = iclforge::io::probe(encode(true, false));
+        const auto report = iclforge::ac3::io::probe(encode(true, false));
         REQUIRE(report.has_value());
-        CHECK(report->kind == iclforge::io::StreamKind::kEac3);
-        CHECK(report->bsid == iclforge::eac3::kBsid);
+        CHECK(report->kind == iclforge::ac3::io::StreamKind::kEac3);
+        CHECK(report->bsid == iclforge::ac3::eac3::kBsid);
         CHECK(report->numblkscod == 3);
         CHECK(report->access_units == 4);
         CHECK(report->crc_failures == 0);
@@ -375,7 +375,7 @@ TEST_CASE("probe walks an E-AC-3 stream's Annex E tools", "[io][probe][eac3]") {
     }
 
     SECTION("spectral extension") {
-        const auto report = iclforge::io::probe(encode(false, true));
+        const auto report = iclforge::ac3::io::probe(encode(false, true));
         REQUIRE(report.has_value());
         CHECK(report->crc_failures == 0);
         CHECK(report->parse_failures == 0);
@@ -391,51 +391,51 @@ TEST_CASE("probe reports the lead programme's dmixmod, the reserved code include
     // Annex E defines no dmixmod of its own), and a probe that read it back as
     // '00' would describe a different stream from the one it was given.
     SECTION("AC-3, in Annex D's xbsi1") {
-        const auto encode = [](iclforge::meta::DownmixMode dmixmod) {
-            iclforge::EncoderConfig config{
-                .bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true};
-            iclforge::meta::AlternateBsi alternate;
-            alternate.mix = iclforge::meta::MixMetadata{.dmixmod = dmixmod};
+        const auto encode = [](iclforge::ac3::meta::DownmixMode dmixmod) {
+            iclforge::ac3::EncoderConfig config{
+                .bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true};
+            iclforge::ac3::meta::AlternateBsi alternate;
+            alternate.mix = iclforge::ac3::meta::MixMetadata{.dmixmod = dmixmod};
             config.alternate_bsi = alternate;
-            iclforge::FrameEncoder encoder{config};
+            iclforge::ac3::FrameEncoder encoder{config};
             return encode_with(encoder, 6, 3);
         };
-        const auto ltrt = encode(iclforge::meta::DownmixMode::kLtRt);
-        const auto stated = iclforge::io::probe(ltrt);
+        const auto ltrt = encode(iclforge::ac3::meta::DownmixMode::kLtRt);
+        const auto stated = iclforge::ac3::io::probe(ltrt);
         REQUIRE(stated.has_value());
-        CHECK(stated->dmixmod == iclforge::meta::DownmixMode::kLtRt);
+        CHECK(stated->dmixmod == iclforge::ac3::meta::DownmixMode::kLtRt);
 
         const auto reserved =
-            reserved_dmixmod_stream(ltrt, encode(iclforge::meta::DownmixMode::kLoRo));
-        const auto report = iclforge::io::probe(reserved);
+            reserved_dmixmod_stream(ltrt, encode(iclforge::ac3::meta::DownmixMode::kLoRo));
+        const auto report = iclforge::ac3::io::probe(reserved);
         REQUIRE(report.has_value());
         CHECK(report->bsid == 6);
         CHECK(report->crc_failures == 0);
         CHECK(report->parse_failures == 0);
-        CHECK(report->dmixmod == iclforge::meta::DownmixMode::kReserved);
+        CHECK(report->dmixmod == iclforge::ac3::meta::DownmixMode::kReserved);
     }
 
     SECTION("E-AC-3, in mixmdate") {
-        const auto encode = [](iclforge::meta::DownmixMode dmixmod) {
-            iclforge::eac3::FrameConfig config{
-                .bitrate_kbps = 384, .acmod = iclforge::Acmod::k3_2, .lfe = true};
-            config.mixing = iclforge::meta::MixMetadata{.dmixmod = dmixmod};
-            iclforge::eac3::FrameEncoder encoder{config};
+        const auto encode = [](iclforge::ac3::meta::DownmixMode dmixmod) {
+            iclforge::ac3::eac3::FrameConfig config{
+                .bitrate_kbps = 384, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true};
+            config.mixing = iclforge::ac3::meta::MixMetadata{.dmixmod = dmixmod};
+            iclforge::ac3::eac3::FrameEncoder encoder{config};
             return encode_with(encoder, 6, 3);
         };
-        const auto reserved = reserved_dmixmod_stream(encode(iclforge::meta::DownmixMode::kLtRt),
-                                                      encode(iclforge::meta::DownmixMode::kLoRo));
-        const auto report = iclforge::io::probe(reserved);
+        const auto reserved = reserved_dmixmod_stream(encode(iclforge::ac3::meta::DownmixMode::kLtRt),
+                                                      encode(iclforge::ac3::meta::DownmixMode::kLoRo));
+        const auto report = iclforge::ac3::io::probe(reserved);
         REQUIRE(report.has_value());
-        CHECK(report->kind == iclforge::io::StreamKind::kEac3);
+        CHECK(report->kind == iclforge::ac3::io::StreamKind::kEac3);
         CHECK(report->crc_failures == 0);
         CHECK(report->parse_failures == 0);
-        CHECK(report->dmixmod == iclforge::meta::DownmixMode::kReserved);
+        CHECK(report->dmixmod == iclforge::ac3::meta::DownmixMode::kReserved);
     }
 
     SECTION("a stream that never sends one reports it absent") {
         // bsid 8: the two 14-bit fields are time code, and there is no xbsi1.
-        const auto report = iclforge::io::probe(encode_ac3(3, true));
+        const auto report = iclforge::ac3::io::probe(encode_ac3(3, true));
         REQUIRE(report.has_value());
         CHECK(report->bsid == 8);
         CHECK_FALSE(report->dmixmod.has_value());
@@ -447,9 +447,9 @@ TEST_CASE("the detail callback sees every access unit exactly once", "[io][probe
     const auto stream = encode_ac3(kFrames, true);
     std::vector<std::uint64_t> indices;
     std::vector<std::uint64_t> offsets;
-    iclforge::io::ProbeOptions options;
+    iclforge::ac3::io::ProbeOptions options;
     options.detail = true;
-    options.on_access_unit = [&](const iclforge::io::ProbeAccessUnit& unit) {
+    options.on_access_unit = [&](const iclforge::ac3::io::ProbeAccessUnit& unit) {
         indices.push_back(unit.index);
         offsets.push_back(unit.byte_offset);
         REQUIRE(unit.syncframes.size() == 1);
@@ -457,7 +457,7 @@ TEST_CASE("the detail callback sees every access unit exactly once", "[io][probe
         CHECK(unit.syncframes.front().crc_valid);
         CHECK(unit.syncframes.front().byte_offset == unit.byte_offset);
     };
-    const auto report = iclforge::io::probe(stream, options);
+    const auto report = iclforge::ac3::io::probe(stream, options);
     REQUIRE(report.has_value());
     REQUIRE(indices.size() == kFrames);
     for (int frame = 0; frame < kFrames; ++frame) {
@@ -479,7 +479,7 @@ void check_reader_against(std::span<const std::byte> stream,
                           std::span<const std::span<const std::byte>> expected) {
     std::string raw(reinterpret_cast<const char*>(stream.data()), stream.size());  // NOLINT
     std::istringstream in{raw};
-    iclforge::io::AccessUnitReader reader{in};
+    iclforge::ac3::io::AccessUnitReader reader{in};
 
     std::size_t seen = 0;
     std::uint64_t offset = 0;
@@ -517,7 +517,7 @@ TEST_CASE("AccessUnitReader delimits access units the way the format defines the
         // - it settles the generation through read_frame_header first - so
         // one syncframe per access unit is the right expectation here.
         const auto stream = encode_ac3(7, true);
-        const auto expected = iclforge::split_frames(stream);
+        const auto expected = iclforge::ac3::split_frames(stream);
         REQUIRE(expected.has_value());
         REQUIRE(expected->size() == 7);
         check_reader_against(stream, *expected);
@@ -529,13 +529,13 @@ TEST_CASE("AccessUnitReader delimits access units the way the format defines the
         // a reader that treated every syncframe as its own unit - or that
         // failed to close a unit at the next independent - would disagree here
         // and nowhere else.
-        namespace cm = iclforge::eac3::chanmap;
-        const iclforge::eac3::AccessUnitConfig config{
-            .independent = {.bitrate_kbps = 640, .acmod = iclforge::Acmod::k3_2, .lfe = true},
+        namespace cm = iclforge::ac3::eac3::chanmap;
+        const iclforge::ac3::eac3::AccessUnitConfig config{
+            .independent = {.bitrate_kbps = 640, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true},
             .dependents = {{.bitrate_kbps = 320,
-                            .acmod = iclforge::Acmod::k2_2,
+                            .acmod = iclforge::ac3::Acmod::k2_2,
                             .chanmap = cm::k71Rear}}};
-        iclforge::eac3::AccessUnitEncoder encoder{config};
+        iclforge::ac3::eac3::AccessUnitEncoder encoder{config};
         const auto pcm = tone_channels(10, 4);
         std::vector<std::byte> stream;
         for (int frame = 0; frame < 4; ++frame) {
@@ -543,15 +543,15 @@ TEST_CASE("AccessUnitReader delimits access units the way the format defines the
             views.reserve(pcm.size());
             for (const auto& channel : pcm) {
                 views.emplace_back(std::span{channel}.subspan(
-                    static_cast<std::size_t>(frame) * iclforge::kSamplesPerFrame,
-                    iclforge::kSamplesPerFrame));
+                    static_cast<std::size_t>(frame) * iclforge::ac3::kSamplesPerFrame,
+                    iclforge::ac3::kSamplesPerFrame));
             }
             const auto unit = encoder.encode_access_unit(views);
             REQUIRE(unit.has_value());
             stream.insert(stream.end(), unit->bytes.begin(), unit->bytes.end());
         }
 
-        const auto expected = iclforge::split_access_units(stream);
+        const auto expected = iclforge::ac3::split_access_units(stream);
         REQUIRE(expected.has_value());
         REQUIRE(expected->size() == 4);
         check_reader_against(stream, *expected);
@@ -559,14 +559,14 @@ TEST_CASE("AccessUnitReader delimits access units the way the format defines the
         // ...and probe reports the shape those units have: two substreams per
         // unit, 8 syncframes over 4 access units, and a 7.1 render from a 5.1
         // bed - the §E3.8.2 union, not the bed's own channel count.
-        const auto report = iclforge::io::probe(stream);
+        const auto report = iclforge::ac3::io::probe(stream);
         REQUIRE(report.has_value());
         CHECK(report->access_units == 4);
         CHECK(report->syncframes == 8);
         CHECK(report->substreams_per_unit == 2);
         REQUIRE(report->substreams.size() == 2);
-        CHECK(report->substreams[0].strmtyp == iclforge::eac3::StreamType::kIndependent);
-        CHECK(report->substreams[1].strmtyp == iclforge::eac3::StreamType::kDependent);
+        CHECK(report->substreams[0].strmtyp == iclforge::ac3::eac3::StreamType::kIndependent);
+        CHECK(report->substreams[1].strmtyp == iclforge::ac3::eac3::StreamType::kDependent);
         CHECK(report->substreams[1].chanmap == cm::k71Rear);
         CHECK(report->coded_channels == 6);
         CHECK(report->rendered_channels == 8);
@@ -575,7 +575,7 @@ TEST_CASE("AccessUnitReader delimits access units the way the format defines the
 }
 
 TEST_CASE("MinMax keeps absent and zero apart", "[io][probe]") {
-    iclforge::io::MinMax range;
+    iclforge::ac3::io::MinMax range;
     CHECK_FALSE(range.seen);
     CHECK_FALSE(range.constant());
     range.add(0);

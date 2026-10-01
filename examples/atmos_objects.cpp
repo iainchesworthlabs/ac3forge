@@ -9,7 +9,7 @@
 //
 // This example is also the end-to-end proof that the decode side actually
 // works: three objects circle continuously for two seconds (not a single
-// static frame), and every frame is decoded back through iclforge::Eac3Decoder as
+// static frame), and every frame is decoded back through iclforge::ac3::Eac3Decoder as
 // soon as it is encoded, so the reported positions and audio-tracking SNR
 // below are measured against real, moving ground truth.
 
@@ -33,14 +33,14 @@ int main() {
     constexpr int kObjects = 3;
     // Object metadata competes with the mantissas for the same frame, so an
     // object stream wants more headroom than a plain 5.1 one.
-    iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, kObjects};
+    iclforge::ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, kObjects};
     // Heap-allocated (PREfast's C6262, alert #77): Eac3Decoder's per-block
     // scratch members pushed this one-shot stack declaration over the
     // threshold - same pattern as atmos_fallback.cpp and PR #50.
-    auto decoder = std::make_unique<iclforge::Eac3Decoder>();
+    auto decoder = std::make_unique<iclforge::ac3::Eac3Decoder>();
 
     std::vector<std::vector<float>> sources(
-        kObjects, std::vector<float>(iclforge::kSamplesPerFrame));
+        kObjects, std::vector<float>(iclforge::ac3::kSamplesPerFrame));
     std::vector<std::span<const float>> views;
     for (const auto& source : sources) {
         views.emplace_back(source);
@@ -68,8 +68,8 @@ int main() {
 
     for (int frame = 0; frame < kTotalFrames; ++frame) {
         for (std::size_t obj = 0; obj < kObjects; ++obj) {
-            for (int n = 0; n < iclforge::kSamplesPerFrame; ++n) {
-                const double t = (frame * iclforge::kSamplesPerFrame + n) / 48000.0;
+            for (int n = 0; n < iclforge::ac3::kSamplesPerFrame; ++n) {
+                const double t = (frame * iclforge::ac3::kSamplesPerFrame + n) / 48000.0;
                 sources[obj][static_cast<std::size_t>(n)] = static_cast<float>(
                     0.3 * std::sin(2.0 * std::numbers::pi * tones[obj] * t));
             }
@@ -79,7 +79,7 @@ int main() {
         // the right, y 0 front to 1 back, z -1 at the floor to +1 at the
         // ceiling (0 is listener height). Each object circles at its own rate
         // and height - real motion, not a single static placement.
-        const double seconds = frame * iclforge::kSamplesPerFrame / 48000.0;
+        const double seconds = frame * iclforge::ac3::kSamplesPerFrame / 48000.0;
         std::array<iclforge::oba::ObjectPlacement, kObjects> placement{};
         for (std::size_t obj = 0; obj < kObjects; ++obj) {
             const double angle =

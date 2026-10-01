@@ -137,9 +137,9 @@ void check_clean(const std::string& output) {
 // how many there were; every frame must decode to `channels` channels.
 std::size_t decoded_ac3_frames(const fs::path& path, std::size_t channels) {
     const auto bytes = read_bytes(path);
-    const auto frames = iclforge::split_frames(bytes);
+    const auto frames = iclforge::ac3::split_frames(bytes);
     REQUIRE(frames.has_value());
-    iclforge::FrameDecoder decoder;
+    iclforge::ac3::FrameDecoder decoder;
     for (const auto& frame : *frames) {
         const auto decoded = decoder.decode_frame(frame);
         REQUIRE(decoded.has_value());
@@ -150,7 +150,7 @@ std::size_t decoded_ac3_frames(const fs::path& path, std::size_t channels) {
 
 std::size_t eac3_access_units(const fs::path& path) {
     const auto bytes = read_bytes(path);
-    const auto units = iclforge::split_access_units(bytes);
+    const auto units = iclforge::ac3::split_access_units(bytes);
     REQUIRE(units.has_value());
     return units->size();
 }
@@ -159,14 +159,14 @@ std::size_t eac3_access_units(const fs::path& path) {
 // frame, so no two frames are alike and an out-of-order or repeated frame
 // would show.
 std::vector<std::vector<std::byte>> tone_frames(int count) {
-    iclforge::FrameEncoder encoder{{.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0}};
+    iclforge::ac3::FrameEncoder encoder{{.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k2_0}};
     std::vector<std::vector<std::byte>> frames;
-    std::vector<float> left(iclforge::kSamplesPerFrame);
-    std::vector<float> right(iclforge::kSamplesPerFrame);
+    std::vector<float> left(iclforge::ac3::kSamplesPerFrame);
+    std::vector<float> right(iclforge::ac3::kSamplesPerFrame);
     for (int f = 0; f < count; ++f) {
         const double hz = 220.0 + 20.0 * f;
-        for (int i = 0; i < iclforge::kSamplesPerFrame; ++i) {
-            const double t = static_cast<double>(f * iclforge::kSamplesPerFrame + i) / 48000.0;
+        for (int i = 0; i < iclforge::ac3::kSamplesPerFrame; ++i) {
+            const double t = static_cast<double>(f * iclforge::ac3::kSamplesPerFrame + i) / 48000.0;
             left[static_cast<std::size_t>(i)] =
                 static_cast<float>(0.3 * std::sin(2.0 * std::numbers::pi * hz * t));
             right[static_cast<std::size_t>(i)] = -left[static_cast<std::size_t>(i)];
@@ -365,7 +365,7 @@ TEST_CASE("record keeps a bitstreaming capture's elementary stream, byte for byt
         // What the source sent, from its first burst: a whole second's worth
         // of the 40 frames, in order and unaltered.
         const auto recorded = read_bytes(take);
-        const auto split = iclforge::split_frames(recorded);
+        const auto split = iclforge::ac3::split_frames(recorded);
         REQUIRE(split.has_value());
         REQUIRE(split->size() >= 30);
         REQUIRE(split->size() <= frames.size());
@@ -406,7 +406,7 @@ TEST_CASE("record declines every container for a bitstreaming capture, and steps
             CHECK(contains(read_text(log),
                            "container=" + container + " does not apply to a passthrough capture"));
             const auto recorded = read_bytes(take);
-            const auto split = iclforge::split_frames(recorded);
+            const auto split = iclforge::ac3::split_frames(recorded);
             REQUIRE(split.has_value());
             CHECK(split->size() >= 30);
         }
@@ -420,7 +420,7 @@ TEST_CASE("record declines every container for a bitstreaming capture, and steps
         REQUIRE(run_cli(config, "record \"" + take.string() + "\" 1", log) == 0);
         CHECK(contains(read_text(log), "1 burst(s) of another data type skipped"));
         const auto recorded = read_bytes(take);
-        const auto split = iclforge::split_frames(recorded);
+        const auto split = iclforge::ac3::split_frames(recorded);
         REQUIRE(split.has_value());
         REQUIRE(split->size() >= 30);
         for (std::size_t i = 0; i < split->size(); ++i) {

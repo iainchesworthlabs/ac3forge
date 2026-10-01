@@ -101,7 +101,7 @@ that question — see [Landscape](landscape.md) and
   const REGRESSION_WINDOW = 10;
   const REGRESSION_DROP_DB = 0.5;
   const TABLE_ROWS = 40;
-  // WAV channel order iclforge::io::ac3_layout_for(6) expects - see
+  // WAV channel order iclforge::ac3::io::ac3_layout_for(6) expects - see
   // tools/generators/gen_gold_reference_wav.py - and so the order compare_wav.py's
   // channels_db is written in. Only meaningful for the current 6-channel 5.1
   // golden reference; anything else (e.g. a future Atmos-bed layout with a

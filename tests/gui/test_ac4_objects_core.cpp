@@ -28,11 +28,11 @@
 // Qt Quick suite (tst_e2e_ac4_objects.qml) the page.
 
 using iclforge::apps::Ac4ObjectSlot;
-using iclforge::plan::Assignment;
-using iclforge::plan::Destination;
-using iclforge::plan::DestinationKind;
-using iclforge::plan::SourceShape;
-using Location = iclforge::eac3::chanmap::Location;
+using iclforge::ac3::plan::Assignment;
+using iclforge::ac3::plan::Destination;
+using iclforge::ac3::plan::DestinationKind;
+using iclforge::ac3::plan::SourceShape;
+using Location = iclforge::ac3::eac3::chanmap::Location;
 
 namespace {
 

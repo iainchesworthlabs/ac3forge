@@ -45,7 +45,7 @@
 // happens in iclforge::ac3; this type owns nothing but the presentation state
 // and the workers that keep encoding off the GUI thread.
 //
-// Every choice a user makes here ends up in one iclforge::plan::Plan, which is the
+// Every choice a user makes here ends up in one iclforge::ac3::plan::Plan, which is the
 // same value forge builds from its command line. Nothing about layouts,
 // coding tools or metadata is decided in this file - if it were, the two front
 // ends could disagree about what "5.1.4" or "all" means and neither would be
@@ -371,7 +371,7 @@ class EncoderController : public QObject {
     // Tier 1: exactly one bed, always - one of Table 5.8's seven speaker
     // shapes - plus an independent LFE toggle. Tier 2: additive "extras"
     // pairs/singles on top. Replaces layoutNames() as a UI concept entirely;
-    // every combination resolves through the same iclforge::eac3::chanmap::allocate()
+    // every combination resolves through the same iclforge::ac3::eac3::chanmap::allocate()
     // a hand-typed comma list already did, so the picker can never express
     // something the encoder would then refuse.
     Q_PROPERTY(int bedIndex READ bedIndex WRITE setBedIndex NOTIFY planChanged)
@@ -575,7 +575,7 @@ class EncoderController : public QObject {
     // slots rather than overstating what is left.
     Q_PROPERTY(int pinnedObjectCount READ pinnedObjectCount NOTIFY sourceChanged)
     // The Objects tab's audible motion preview: every object rendered
-    // through iclforge::oba::AtmosEncoder exactly as encodeObjects() would, its
+    // through iclforge::ac3::oba::AtmosEncoder exactly as encodeObjects() would, its
     // 5.1 bed played back live through the same MonitorSink path a live
     // session uses, paced in real time rather than run flat-out - see
     // startMotionPreview(). motionPreviewActive is true only while that
@@ -758,7 +758,7 @@ public:
     [[nodiscard]] int bitrateKbps() const { return bitrate_kbps_; }
     [[nodiscard]] QVariantList bitrates() const;
     [[nodiscard]] bool vbrAvailable() const {
-        return codec_ == iclforge::plan::Codec::kEac3 && !atmos_enabled_ && !live_active_;
+        return codec_ == iclforge::ac3::plan::Codec::kEac3 && !atmos_enabled_ && !live_active_;
     }
     [[nodiscard]] bool vbrEnabled() const { return vbr_enabled_; }
     [[nodiscard]] int vbrQuality() const { return vbr_quality_; }
@@ -826,7 +826,7 @@ public:
     [[nodiscard]] bool ac4Crc() const { return ac4_.crc; }
     [[nodiscard]] QString ac4Tokens() const;
     [[nodiscard]] bool ac4Objects() const {
-        return atmos_enabled_ && codec_ == iclforge::plan::Codec::kAc4;
+        return atmos_enabled_ && codec_ == iclforge::ac3::plan::Codec::kAc4;
     }
     [[nodiscard]] int ac4ObjectCodingIndex() const { return static_cast<int>(ac4_.object_coding); }
     [[nodiscard]] QStringList ac4ObjectCodingNames() const;
@@ -854,7 +854,7 @@ public:
     [[nodiscard]] QString channelLocationsText() const;
 
     [[nodiscard]] bool toolsAvailable() const {
-        return codec_ == iclforge::plan::Codec::kEac3 && !atmos_enabled_;
+        return codec_ == iclforge::ac3::plan::Codec::kEac3 && !atmos_enabled_;
     }
     [[nodiscard]] bool coupling() const { return tools_.coupling; }
     [[nodiscard]] bool spx() const { return tools_.spx; }
@@ -882,14 +882,14 @@ public:
     [[nodiscard]] QStringList cmixNames() const;
     [[nodiscard]] int surmixIndex() const { return static_cast<int>(meta_.surmixlev); }
     [[nodiscard]] QStringList surmixNames() const;
-    [[nodiscard]] bool mixmetaAvailable() const { return codec_ == iclforge::plan::Codec::kEac3; }
+    [[nodiscard]] bool mixmetaAvailable() const { return codec_ == iclforge::ac3::plan::Codec::kEac3; }
     [[nodiscard]] bool mixmeta() const { return meta_.mixmeta; }
     [[nodiscard]] int lfeMix() const { return meta_.lfemix.value_or(-1); }
     [[nodiscard]] int dmixIndex() const { return static_cast<int>(meta_.dmixmod); }
     [[nodiscard]] QStringList dmixNames() const;
     [[nodiscard]] int bsmodIndex() const { return static_cast<int>(meta_.info.bsmod); }
     [[nodiscard]] QStringList bsmodNames() const;
-    [[nodiscard]] bool surroundModeAvailable() const { return bed_acmod_ == iclforge::Acmod::k2_0; }
+    [[nodiscard]] bool surroundModeAvailable() const { return bed_acmod_ == iclforge::ac3::Acmod::k2_0; }
     [[nodiscard]] int dsurmodIndex() const { return static_cast<int>(meta_.info.dsurmod); }
     [[nodiscard]] QStringList dsurmodNames() const;
     [[nodiscard]] int dheadphonIndex() const {
@@ -902,7 +902,7 @@ public:
     [[nodiscard]] int dsurexIndex() const { return static_cast<int>(meta_.info.dsurexmod); }
     [[nodiscard]] QStringList dsurexNames() const;
     [[nodiscard]] int mixLevelDbSpl() const {
-        return meta_.info.audprod ? iclforge::meta::mix_level_db_spl(meta_.info.audprod->mixlevel)
+        return meta_.info.audprod ? iclforge::ac3::meta::mix_level_db_spl(meta_.info.audprod->mixlevel)
                                   : -1;
     }
     [[nodiscard]] int roomTypeIndex() const {
@@ -913,7 +913,7 @@ public:
     [[nodiscard]] QStringList adConvNames() const;
     [[nodiscard]] bool copyrightBit() const { return meta_.info.copyrightb; }
     [[nodiscard]] bool originalBitstream() const { return meta_.info.origbs; }
-    [[nodiscard]] bool annexDAvailable() const { return codec_ == iclforge::plan::Codec::kAc3; }
+    [[nodiscard]] bool annexDAvailable() const { return codec_ == iclforge::ac3::plan::Codec::kAc3; }
     [[nodiscard]] bool annexD() const { return meta_.annexd; }
 
     [[nodiscard]] QString routingSummary() const { return routing_summary_; }
@@ -930,8 +930,8 @@ public:
     // soundstage between them - fullbw_channel_count alone would say
     // otherwise, so this checks acmod_ directly rather than trust it here.
     [[nodiscard]] bool surround() const {
-        return hasLevels() && acmod_ != iclforge::Acmod::kDualMono &&
-              iclforge::fullbw_channel_count(acmod_) >= 2;
+        return hasLevels() && acmod_ != iclforge::ac3::Acmod::kDualMono &&
+              iclforge::ac3::fullbw_channel_count(acmod_) >= 2;
     }
     [[nodiscard]] QVariantList channelLevels() const { return channel_levels_; }
     [[nodiscard]] QVariantMap soundfield() const { return soundfield_; }
@@ -1144,7 +1144,7 @@ public:
     // written.
     Q_INVOKABLE bool exportObjectScene(const QUrl& url) const;
     // Starts the audible motion preview: every current object rendered
-    // through iclforge::oba::AtmosEncoder the same way encodeObjects() would,
+    // through iclforge::ac3::oba::AtmosEncoder the same way encodeObjects() would,
     // its 5.1 bed played back live and paced in real time (not run flat-
     // out) through the same MonitorSink path a live session already uses.
     // Refused (silently, the usual convention for a start-a-thing entry
@@ -1355,7 +1355,7 @@ public:
     // gridline labels. The bars themselves get their positions in
     // channelLevels; this exists so the ticks cannot disagree with them.
     Q_INVOKABLE [[nodiscard]] double meterFraction(double db) const {
-        return iclforge::analysis::meter_fraction(db, kMeterFloorDb);
+        return iclforge::ac3::analysis::meter_fraction(db, kMeterFloorDb);
     }
     // "48 000" / "7 891" - the mockup's space-grouped integers, offered here
     // so every readout groups digits the same way.
@@ -1438,7 +1438,7 @@ private:
     static constexpr double kMeterFloorDb = -60.0;
 
     // Everything the user has chosen, as the one value forge also builds.
-    [[nodiscard]] iclforge::plan::Plan currentPlan() const;
+    [[nodiscard]] iclforge::ac3::plan::Plan currentPlan() const;
     // The bed's own acmod/lfeon plus every selected extra's bits, OR'd
     // together - what a request to chanmap::allocate() looks like from here.
     // Object mode overrides this entirely (see currentPlan()), so this never
@@ -1447,7 +1447,7 @@ private:
     // currentPlan() resolved to its actual channels - what every display and
     // routing computation below should read. Assumes currentPlan() validates,
     // the way forge's own resolve() does.
-    [[nodiscard]] iclforge::plan::ChannelPlan effectiveChannelPlan() const;
+    [[nodiscard]] iclforge::ac3::plan::ChannelPlan effectiveChannelPlan() const;
     // What the routing summary calls this plan: "5.1 bed" for object mode,
     // else the derived shape name (channelShapeName()).
     [[nodiscard]] QString effectiveLabel() const;
@@ -1456,13 +1456,13 @@ private:
     // a location mask (see kBeds' own comment and acmod_map's "not a
     // layout" one in eac3_tables.hpp), so every one of those call sites has
     // to branch on this rather than run the general chanmap path.
-    [[nodiscard]] bool isDualMono() const { return bed_acmod_ == iclforge::Acmod::kDualMono; }
+    [[nodiscard]] bool isDualMono() const { return bed_acmod_ == iclforge::ac3::Acmod::kDualMono; }
 
     // The primary source plus every extra, in load order - the same
     // concatenation order encodeTo() builds `planes` in, and what
-    // iclforge::plan::Assignment's (source, channel) addressing means here.
+    // iclforge::ac3::plan::Assignment's (source, channel) addressing means here.
     // Empty when nothing is loaded.
-    [[nodiscard]] std::vector<iclforge::plan::SourceShape> sourceShapes() const;
+    [[nodiscard]] std::vector<iclforge::ac3::plan::SourceShape> sourceShapes() const;
     // sourceShapes()'s own flat addressing, but each entry is that
     // channel's SOURCE's start offset, in samples at `sample_rate` -
     // encodeChannels/encodeObjects/previewPlanMeters all read this
@@ -1495,8 +1495,8 @@ private:
     // than one source is loaded with no explicit assignment (automatic
     // panning has no defined meaning there), or if the assignment/automatic
     // routing itself cannot be built.
-    [[nodiscard]] std::optional<iclforge::plan::Routing> routingForSources(
-        const iclforge::plan::ChannelPlan& target, const iclforge::plan::Plan& p) const;
+    [[nodiscard]] std::optional<iclforge::ac3::plan::Routing> routingForSources(
+        const iclforge::ac3::plan::ChannelPlan& target, const iclforge::ac3::plan::Plan& p) const;
     // The object-count/meter-preview/status bookkeeping addSourceFile and
     // removeSource both need after the source list changes - loadSourceFile
     // keeps its own equivalent tail untouched (see its own comments) rather
@@ -1512,7 +1512,7 @@ private:
     // cannot silently disagree with what the pre-encode preview already
     // showed.
     void encodeChannels(const QString& path, std::vector<std::vector<float>> planes,
-                        const iclforge::plan::Routing& routing, std::uint32_t sample_rate);
+                        const iclforge::ac3::plan::Routing& routing, std::uint32_t sample_rate);
     // AC-4: the source's own channels through iclforge::ac4::Encoder, the steps
     // `forge ac4-encode` takes (apps/common/ac4_encode_core.hpp), so the
     // command line the page echoes writes these bytes.
@@ -1533,7 +1533,7 @@ private:
     //
     // The assignment those steps read: the explicit one, else every channel of
     // every source an object.
-    [[nodiscard]] iclforge::plan::Assignment ac4ObjectAssignment() const;
+    [[nodiscard]] iclforge::ac3::plan::Assignment ac4ObjectAssignment() const;
     // The dynamic objects' automation, in the stream's order (the slots' kDynamic
     // ones): each object's authored keyframes where it has them, else its
     // static position, under the inverse-root gain law E-AC-3's fallback uses.
@@ -1552,8 +1552,8 @@ private:
     // the containers key on: E-AC-3 itself, or object mode under any codec but
     // AC-4.
     [[nodiscard]] bool eac3Stream() const {
-        return codec_ == iclforge::plan::Codec::kEac3 ||
-               (atmos_enabled_ && codec_ != iclforge::plan::Codec::kAc4);
+        return codec_ == iclforge::ac3::plan::Codec::kEac3 ||
+               (atmos_enabled_ && codec_ != iclforge::ac3::plan::Codec::kAc4);
     }
     // The bed that is the loaded source's own layout, where AC-4 encodes it:
     // mono, stereo, 5.0 or 5.1. Other channel counts leave the bed alone, and
@@ -1621,7 +1621,7 @@ private:
     // failure, just "there is nothing to open" - runLiveSession itself reads
     // write_to_disk again to tell the two apart. A unique_ptr rather than
     // a plain return-by-value: LiveOutputWriters is only forward-declared
-    // here (its definition, alongside iclforge::io::WavStreamWriter, has no
+    // here (its definition, alongside iclforge::ac3::io::WavStreamWriter, has no
     // business in this header), and unique_ptr is the one smart pointer that
     // tolerates an incomplete type at the declaration site.
     [[nodiscard]] std::unique_ptr<LiveOutputWriters> openLiveOutputWriters(
@@ -1746,7 +1746,7 @@ private:
     // IS the panned objects, so "carried as a channel" and "an object that
     // never moves off the L speaker" are the same coded thing. The LFE
     // position pins as a pure lfe_send object (no direction points at it).
-    [[nodiscard]] std::vector<std::pair<std::size_t, iclforge::eac3::chanmap::Location>>
+    [[nodiscard]] std::vector<std::pair<std::size_t, iclforge::ac3::eac3::chanmap::Location>>
     pinnedObjectChannels() const;
     // object_count_ from dynamicObjectChannels(), then refreshObjectConfigs().
     // Called wherever the source list or the assignment changes.
@@ -1771,8 +1771,8 @@ private:
     // A channel the source cannot fill reads -inf for a legitimate reason, and
     // that is a different thing from a meter wired to nothing; an empty vector
     // means every channel is fed.
-    void setLayout(iclforge::Acmod acmod, bool lfe, const QStringList& names, const QString& label,
-                   const std::vector<iclforge::plan::CodedChannel>& coded,
+    void setLayout(iclforge::ac3::Acmod acmod, bool lfe, const QStringList& names, const QString& label,
+                   const std::vector<iclforge::ac3::plan::CodedChannel>& coded,
                    const std::vector<bool>& fed = {});
     // Which coded channels the current plan feeds, sized to the layout.
     [[nodiscard]] std::vector<bool> fedChannels() const;
@@ -1784,11 +1784,11 @@ private:
     // field is always the latched value, so QML never has to know latching
     // exists (see clearClipLatch/clearClipLatches for the only two ways a
     // latch ever comes back down).
-    void publishLevels(std::span<const iclforge::analysis::ChannelLevel> levels);
+    void publishLevels(std::span<const iclforge::ac3::analysis::ChannelLevel> levels);
     // The same, built from a meter's exact whole-run statistics rather than
     // its ballistics: what a finished encode or a freshly loaded file should
     // leave on the display.
-    void publishSummary(const iclforge::analysis::LevelMeter& meter);
+    void publishSummary(const iclforge::ac3::analysis::LevelMeter& meter);
     // Zeroes every channel's latched CLIP flag (not the ballistic levels
     // themselves) - called once at the start of every real transport (see
     // encodeChannels/encodeObjects/runLiveSession/startRecording/
@@ -1805,11 +1805,11 @@ private:
     void resetSourceLevels();
     // sourceLevels' real half - one whole-programme peak/RMS reduction per
     // loaded source, pooling every one of that source's own channels into a
-    // single iclforge::analysis::ChannelSummary (not per-channel: a rail row is
+    // single iclforge::ac3::analysis::ChannelSummary (not per-channel: a rail row is
     // one pip, not one per channel) - published by previewPlanMeters'
     // background pass once it lands, the exact same async-then-overwrite
     // shape channelLevels already follows via publishLevels.
-    void publishSourceLevels(std::span<const iclforge::analysis::ChannelSummary> levels);
+    void publishSourceLevels(std::span<const iclforge::ac3::analysis::ChannelSummary> levels);
 
     QString source_path_;
     QString source_info_;
@@ -1844,18 +1844,18 @@ private:
     bool vbr_max_enabled_ = false;
     std::uint32_t vbr_max_kbps_ = 640;
 
-    iclforge::plan::Codec codec_ = iclforge::plan::Codec::kAc3;
+    iclforge::ac3::plan::Codec codec_ = iclforge::ac3::plan::Codec::kAc3;
     forge_gui::Ac4EncodeSettings ac4_{};
     // Tier 1: the bed and its independent LFE. Defaults to stereo, matching
     // what a freshly opened window always used to call itself; loading a
     // source or picking a preset moves it.
-    iclforge::Acmod bed_acmod_ = iclforge::Acmod::k2_0;
+    iclforge::ac3::Acmod bed_acmod_ = iclforge::ac3::Acmod::k2_0;
     bool bed_lfe_ = false;
     // Tier 2: OR of the selected extras' Table E2.5 bits (kLwRw, kLrsRrs,
     // kVhlVhr, kLtsRts, kLfe2 - see kExtras in the .cpp).
     std::uint16_t extras_mask_ = 0;
-    iclforge::plan::Tools tools_{};
-    iclforge::plan::Metadata meta_{};
+    iclforge::ac3::plan::Tools tools_{};
+    iclforge::ac3::plan::Metadata meta_{};
     int container_index_ = 0;
     // Held apart from meta_.drc because the combo box's "none" entry has no
     // Profile to point at, and apart from meta_.heavy because the two level
@@ -1961,7 +1961,7 @@ private:
     // through LiveSessionRequest.
     std::vector<int> live_selected_devices_;
 
-    iclforge::Acmod acmod_ = iclforge::Acmod::k2_0;
+    iclforge::ac3::Acmod acmod_ = iclforge::ac3::Acmod::k2_0;
     bool lfe_ = false;
     bool metering_ = false;
     QStringList channel_names_;
@@ -1969,7 +1969,7 @@ private:
     // Parallel to channel_names_/channel_fed_: each entry's Table E2.5
     // location (for soundfield placement) and whether it is a bed channel a
     // dependent substream replaces (for the Coded/Rendered meter split).
-    std::vector<iclforge::eac3::chanmap::Location> channel_locations_;
+    std::vector<iclforge::ac3::eac3::chanmap::Location> channel_locations_;
     std::vector<bool> channel_replaced_;
     QString layout_name_;
     QVariantList channel_levels_;
@@ -2022,7 +2022,7 @@ private:
     // Empty (every row implicitly kUnassigned) until setAssignment is
     // called at least once; see routingForSources for what that means for
     // which routing actually gets used.
-    iclforge::plan::Assignment assignment_;
+    iclforge::ac3::plan::Assignment assignment_;
     bool has_explicit_assignment_ = false;
     // Every (source, channel) setAssignment has ever been called for, "none"
     // included - Assignment itself cannot tell an explicit "none" apart from

@@ -115,13 +115,13 @@ using namespace std::chrono_literals;
 
 // `frames` E-AC-3 access units of a 440 Hz tone - test_engine_network_group.cpp's own programme.
 std::vector<std::byte> eac3_stream(int frames) {
-    iclforge::eac3::FrameConfig config;
+    iclforge::ac3::eac3::FrameConfig config;
     config.bitrate_kbps = 192;
-    config.acmod = iclforge::Acmod::k2_0;
-    iclforge::eac3::FrameEncoder encoder{config};
+    config.acmod = iclforge::ac3::Acmod::k2_0;
+    iclforge::ac3::eac3::FrameEncoder encoder{config};
     std::vector<std::byte> out;
     for (int f = 0; f < frames; ++f) {
-        std::vector<float> samples(iclforge::kSamplesPerFrame);
+        std::vector<float> samples(iclforge::ac3::kSamplesPerFrame);
         for (std::size_t n = 0; n < samples.size(); ++n) {
             samples[n] = static_cast<float>(
                 0.1 * std::sin(2.0 * std::numbers::pi * 440.0 *

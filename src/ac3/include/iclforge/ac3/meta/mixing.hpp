@@ -357,7 +357,7 @@ struct DownmixCoefficients {
 // channels as coded (its surround entries are zero), `surround` holds the
 // coefficients of the channels that form the sum, and the caller applies the
 // shift to that sum before adding it — negated into Lt, positive into Rt.
-// See iclforge::OutputStage, which owns the shift itself.
+// See iclforge::ac3::OutputStage, which owns the shift itself.
 //
 // Normalisation (§7.8.1) is over the WORST CASE of the two paths together,
 // since the shifted sum is not generally in quadrature with everything at

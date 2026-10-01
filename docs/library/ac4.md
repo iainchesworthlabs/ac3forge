@@ -385,7 +385,7 @@ Nothing throws for a stream or a configuration. `iclforge::ac4::Error` (`kTrunca
 `kUnsupportedBitstreamVersion`) is the inspector's, `iclforge::ac4::DecodeError` (`kTruncated`, `kInvalidToc`,
 `kInvalidStream`, `kUnsupported`, `kMissingIFrame`) the decoder's and `iclforge::ac4::EncodeError`
 (`kInvalidConfig`, `kInvalidInput`) the encoder's, each an `std::expected` error with a
-`describe()` overload. `iclforge::ac4::DecodeError` is a different type from `iclforge::DecodeError`, and the
+`describe()` overload. `iclforge::ac4::DecodeError` is a different type from `iclforge::ac3::DecodeError`, and the
 namespace tells them apart. A decoder or an encoder that refuses says why in words through
 `Decoder::refusal_reason()` and `Encoder::refusal_reason()`.
 

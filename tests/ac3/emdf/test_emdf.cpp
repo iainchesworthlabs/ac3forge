@@ -282,17 +282,17 @@ TEST_CASE("an EMDF container rides in a block skip field", "[emdf][eac3]") {
         {{.id = iclforge::emdf::kPayloadIdOamd, .bytes = payload}}};
     const auto container = iclforge::emdf::build_container(payloads);
 
-    const iclforge::eac3::FrameConfig config{
-        .bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true};
-    const auto plain = iclforge::eac3::build_silent_frame(config);
-    const auto carrying = iclforge::eac3::build_silent_frame(config, container);
+    const iclforge::ac3::eac3::FrameConfig config{
+        .bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true};
+    const auto plain = iclforge::ac3::eac3::build_silent_frame(config);
+    const auto carrying = iclforge::ac3::eac3::build_silent_frame(config, container);
     REQUIRE(plain.has_value());
     REQUIRE(carrying.has_value());
 
     // frmsiz is signalled, not derived, so carrying metadata must not change
     // the frame's length - the container displaces padding, nothing else.
     CHECK(plain->size() == carrying->size());
-    CHECK(iclforge::crc16(std::span<const std::byte>{*carrying}.subspan(2)) == 0x0000);
+    CHECK(iclforge::ac3::crc16(std::span<const std::byte>{*carrying}.subspan(2)) == 0x0000);
     CHECK(find_emdf_sync(*plain) == static_cast<std::size_t>(-1));
 
     const std::size_t at = find_emdf_sync(*carrying);
@@ -325,11 +325,11 @@ TEST_CASE("an EMDF container rides in a block skip field", "[emdf][eac3]") {
 }
 
 TEST_CASE("addbsi announces object audio", "[emdf][eac3]") {
-    const iclforge::eac3::FrameConfig config{.bitrate_kbps = 448,
-                                        .acmod = iclforge::Acmod::k3_2,
+    const iclforge::ac3::eac3::FrameConfig config{.bitrate_kbps = 448,
+                                        .acmod = iclforge::ac3::Acmod::k3_2,
                                         .lfe = true,
                                         .oba_complexity_index = 10};
-    const auto frame = iclforge::eac3::build_silent_frame(config);
+    const auto frame = iclforge::ac3::eac3::build_silent_frame(config);
     REQUIRE(frame.has_value());
 
     // bsi up to addbsie: sync(16) strmtyp(2) substreamid(3) frmsiz(11) fscod(2)
@@ -344,8 +344,8 @@ TEST_CASE("addbsi announces object audio", "[emdf][eac3]") {
     CHECK(r.read(8) == 10); // complexity_index_type_a
 
     // §8.3.2.2 caps the object count at 16.
-    CHECK(iclforge::eac3::build_silent_frame({.oba_complexity_index = 17}).error() ==
-          iclforge::FrameError::kInvalidObjectAudio);
+    CHECK(iclforge::ac3::eac3::build_silent_frame({.oba_complexity_index = 17}).error() ==
+          iclforge::ac3::FrameError::kInvalidObjectAudio);
 }
 
 TEST_CASE("the frame walker reaches addbsi through every optional bsi group", "[emdf][eac3]") {
@@ -356,29 +356,29 @@ TEST_CASE("the frame walker reaches addbsi through every optional bsi group", "[
     // proof each of these groups was walked at the right width: one bit off
     // anywhere ahead of it and the marker is not found, or the index is
     // wrong.
-    namespace cm = iclforge::eac3::chanmap;
-    using iclforge::eac3::FrameConfig;
-    iclforge::meta::MixMetadata full;  // every level a 3/2+LFE bed carries
+    namespace cm = iclforge::ac3::eac3::chanmap;
+    using iclforge::ac3::eac3::FrameConfig;
+    iclforge::ac3::meta::MixMetadata full;  // every level a 3/2+LFE bed carries
     full.lfemixlevcod = 10;
     full.pgmscl = 40;
     full.extpgmscl = 41;
-    full.mixing.mixdef = iclforge::meta::MixDefinition::kPremix;
-    iclforge::meta::MixMetadata dual;  // 1+1: both channels' scale and pan
+    full.mixing.mixdef = iclforge::ac3::meta::MixDefinition::kPremix;
+    iclforge::ac3::meta::MixMetadata dual;  // 1+1: both channels' scale and pan
     dual.pgmscl = 12;
     dual.pgmscl2 = 13;
-    dual.mixing.mixdef = iclforge::meta::MixDefinition::kReserved;
-    dual.pan = iclforge::meta::PanInfo{.panmean = 30};
-    dual.pan2 = iclforge::meta::PanInfo{.panmean = 200};
-    iclforge::meta::MixMetadata per_block;  // blkmixcfginfo, one flag per block
-    per_block.blkmixcfginfo = std::array<std::optional<int>, iclforge::kBlocksPerFrame>{3, {}};
-    iclforge::meta::MixMetadata extended;  // mixdef 3, skipped whole by its length
-    extended.mixing.mixdef = iclforge::meta::MixDefinition::kExtended;
-    extended.mixing.external = iclforge::meta::ExternalScales{.left = 5, .dmixscl = 9};
-    const iclforge::meta::BsiInfo info{.bsmod = iclforge::meta::BitstreamMode::kVisuallyImpaired,
-                                  .dsurmod = iclforge::meta::SurroundMode::kDolbySurround,
-                                  .dsurexmod = iclforge::meta::SurroundExMode::kSurroundEx,
-                                  .audprod = iclforge::meta::AudioProduction{.mixlevel = 20},
-                                  .audprod2 = iclforge::meta::AudioProduction{.mixlevel = 21}};
+    dual.mixing.mixdef = iclforge::ac3::meta::MixDefinition::kReserved;
+    dual.pan = iclforge::ac3::meta::PanInfo{.panmean = 30};
+    dual.pan2 = iclforge::ac3::meta::PanInfo{.panmean = 200};
+    iclforge::ac3::meta::MixMetadata per_block;  // blkmixcfginfo, one flag per block
+    per_block.blkmixcfginfo = std::array<std::optional<int>, iclforge::ac3::kBlocksPerFrame>{3, {}};
+    iclforge::ac3::meta::MixMetadata extended;  // mixdef 3, skipped whole by its length
+    extended.mixing.mixdef = iclforge::ac3::meta::MixDefinition::kExtended;
+    extended.mixing.external = iclforge::ac3::meta::ExternalScales{.left = 5, .dmixscl = 9};
+    const iclforge::ac3::meta::BsiInfo info{.bsmod = iclforge::ac3::meta::BitstreamMode::kVisuallyImpaired,
+                                  .dsurmod = iclforge::ac3::meta::SurroundMode::kDolbySurround,
+                                  .dsurexmod = iclforge::ac3::meta::SurroundExMode::kSurroundEx,
+                                  .audprod = iclforge::ac3::meta::AudioProduction{.mixlevel = 20},
+                                  .audprod2 = iclforge::ac3::meta::AudioProduction{.mixlevel = 21}};
 
     struct Case {
         const char* name;
@@ -387,29 +387,29 @@ TEST_CASE("the frame walker reaches addbsi through every optional bsi group", "[
     };
     const std::vector<Case> cases = {
         {"3/2+LFE, full mixmdate",
-         {.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true, .mixing = full,
+         {.bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true, .mixing = full,
           .oba_complexity_index = 7},
          true},
         {"1+1, both channels' pgmscl, pan and audprod, infomdate",
-         {.bitrate_kbps = 192, .acmod = iclforge::Acmod::kDualMono, .dialnorm2 = 20, .mixing = dual,
+         {.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::kDualMono, .dialnorm2 = 20, .mixing = dual,
           .info = info, .oba_complexity_index = 3},
          false},
         {"1/0 one-block frames, blkmixcfginfo as one field",
-         {.bitrate_kbps = 192, .acmod = iclforge::Acmod::k1_0, .numblkscod = 0,
+         {.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k1_0, .numblkscod = 0,
           .mixing = [] {
-              iclforge::meta::MixMetadata m;
-              m.blkmixcfginfo = std::array<std::optional<int>, iclforge::kBlocksPerFrame>{6, {}};
-              m.pan = iclforge::meta::PanInfo{.panmean = 90};
+              iclforge::ac3::meta::MixMetadata m;
+              m.blkmixcfginfo = std::array<std::optional<int>, iclforge::ac3::kBlocksPerFrame>{6, {}};
+              m.pan = iclforge::ac3::meta::PanInfo{.panmean = 90};
               return m;
           }(),
           .oba_complexity_index = 4},
          false},
         {"2/0 two-block frames with infomdate",
-         {.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0, .numblkscod = 1, .info = info,
+         {.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k2_0, .numblkscod = 1, .info = info,
           .oba_complexity_index = 9},
          false},
         {"3/2+LFE, per-block mix config",
-         {.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true, .mixing = per_block,
+         {.bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true, .mixing = per_block,
           .oba_complexity_index = 8},
          true},
         // The per-block form is one flag per block the syncframe carries -
@@ -417,27 +417,27 @@ TEST_CASE("the frame walker reaches addbsi through every optional bsi group", "[
         // slots; infomdate behind it proves the walk came out at the right
         // offset.
         {"2/0 two-block frames, per-block mix config and infomdate",
-         {.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0, .numblkscod = 1, .mixing = per_block,
+         {.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k2_0, .numblkscod = 1, .mixing = per_block,
           .info = info, .oba_complexity_index = 5},
          false},
         {"2/0 three-block frames, per-block mix config and infomdate",
-         {.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0, .numblkscod = 2, .mixing = per_block,
+         {.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k2_0, .numblkscod = 2, .mixing = per_block,
           .info = info, .oba_complexity_index = 6},
          false},
         {"3/2+LFE, extended mixdef",
-         {.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true, .mixing = extended,
+         {.bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true, .mixing = extended,
           .oba_complexity_index = 11},
          true},
         {"3/2 infomdate with dsurexmod",
-         {.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true, .info = info,
+         {.bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true, .info = info,
           .oba_complexity_index = 2},
          false},
     };
     for (const auto& c : cases) {
         CAPTURE(c.name);
-        const auto unit = iclforge::eac3::build_silent_access_unit({.independent = c.config});
+        const auto unit = iclforge::ac3::eac3::build_silent_access_unit({.independent = c.config});
         REQUIRE(unit.has_value());
-        const auto layout = iclforge::emdf::walk_frame(unit->substream(0));
+        const auto layout = iclforge::ac3::emdf::walk_frame(unit->substream(0));
         REQUIRE(layout.object_signals);
         CHECK(layout.addbsi_object_extension);
         CHECK(layout.oba_complexity_index == *c.config.oba_complexity_index);
@@ -448,16 +448,16 @@ TEST_CASE("the frame walker reaches addbsi through every optional bsi group", "[
     }
 
     // A dependent substream's chanmap sits ahead of mixmdate too.
-    const auto unit = iclforge::eac3::build_silent_access_unit(
-        {.independent = {.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true},
+    const auto unit = iclforge::ac3::eac3::build_silent_access_unit(
+        {.independent = {.bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true},
          .dependents = {{.bitrate_kbps = 192,
-                         .acmod = iclforge::Acmod::k2_0,
+                         .acmod = iclforge::ac3::Acmod::k2_0,
                          .chanmap = cm::k512Height,
-                         .mixing = iclforge::meta::MixMetadata{
-                             .ltrtsurmixlev = iclforge::meta::MixLevel::kMinus3dB}}}});
+                         .mixing = iclforge::ac3::meta::MixMetadata{
+                             .ltrtsurmixlev = iclforge::ac3::meta::MixLevel::kMinus3dB}}}});
     REQUIRE(unit.has_value());
     REQUIRE(unit->substream_count() == 2);
-    const auto dependent = iclforge::emdf::walk_frame(unit->substream(1));
+    const auto dependent = iclforge::ac3::emdf::walk_frame(unit->substream(1));
     CHECK(dependent.object_signals);
     CHECK_FALSE(dependent.addbsi_object_extension);
     CHECK(dependent.audio_end_bits == 0);  // a dependent is out of the map's scope
@@ -465,7 +465,7 @@ TEST_CASE("the frame walker reaches addbsi through every optional bsi group", "[
     // Reserved strmtyp: nothing past syncinfo has a defined layout at all.
     std::vector<std::byte> reserved(unit->substream(0).begin(), unit->substream(0).end());
     reserved[2] |= std::byte{0xC0};
-    CHECK_FALSE(iclforge::emdf::walk_frame(reserved).object_signals);
+    CHECK_FALSE(iclforge::ac3::emdf::walk_frame(reserved).object_signals);
     // Too short to hold even bsid.
-    CHECK_FALSE(iclforge::emdf::walk_frame(std::span{reserved}.first(5)).object_signals);
+    CHECK_FALSE(iclforge::ac3::emdf::walk_frame(std::span{reserved}.first(5)).object_signals);
 }

@@ -1,8 +1,8 @@
 // Encode a channel selection none of the eight named layouts covers.
 //
-// iclforge::plan::LayoutId only ever names a short, hand-picked list (mono through
+// iclforge::ac3::plan::LayoutId only ever names a short, hand-picked list (mono through
 // 7.1.4). Plan::custom_locations is the escape hatch onto the general
-// problem underneath: give iclforge::eac3::chanmap::allocate any set of Table E2.5
+// problem underneath: give iclforge::ac3::eac3::chanmap::allocate any set of Table E2.5
 // locations and it partitions them into a bed and however many dependents
 // the remainder needs. Here that's 5.1 plus a top-surround channel and a
 // front-wide pair — a layout no receiver profile names, built the same way a
@@ -22,39 +22,39 @@
 #include "iclforge/ac3/encoder/plan.hpp"
 
 int main() {
-    const auto locations = iclforge::plan::parse_channels("L,C,R,Ls,Rs,LFE,Ts,Lw,Rw");
+    const auto locations = iclforge::ac3::plan::parse_channels("L,C,R,Ls,Rs,LFE,Ts,Lw,Rw");
     if (!locations.has_value()) {
         fmt::printf("parse_channels failed\n");
         return 1;
     }
 
-    const iclforge::plan::Plan plan{
-        .codec = iclforge::plan::Codec::kEac3,
+    const iclforge::ac3::plan::Plan plan{
+        .codec = iclforge::ac3::plan::Codec::kEac3,
         .custom_locations = *locations,
         .bitrate_kbps = 640,
     };
-    if (const auto error = iclforge::plan::validate(plan)) {
+    if (const auto error = iclforge::ac3::plan::validate(plan)) {
         fmt::printf("invalid plan: %.*s\n",
-                    static_cast<int>(iclforge::plan::describe(*error).size()),
-                    iclforge::plan::describe(*error).data());
+                    static_cast<int>(iclforge::ac3::plan::describe(*error).size()),
+                    iclforge::ac3::plan::describe(*error).data());
         return 1;
     }
 
-    const auto channel_plan = iclforge::plan::resolve(plan);
-    const auto names = iclforge::plan::coded_channel_names(channel_plan);
+    const auto channel_plan = iclforge::ac3::plan::resolve(plan);
+    const auto names = iclforge::ac3::plan::coded_channel_names(channel_plan);
     fmt::printf("bed: %d full-bandwidth channel(s)%s, %zu dependent substream(s), %zu coded channels\n",
-                iclforge::fullbw_channel_count(channel_plan.bed_acmod), channel_plan.bed_lfe ? " + LFE" : "",
+                iclforge::ac3::fullbw_channel_count(channel_plan.bed_acmod), channel_plan.bed_lfe ? " + LFE" : "",
                 channel_plan.dependents.size(), names.size());
     for (const auto& name : names) {
         fmt::printf("  %s\n", name.c_str());
     }
 
-    const auto config = iclforge::plan::eac3_config(plan);
-    iclforge::eac3::AccessUnitEncoder encoder{config};
+    const auto config = iclforge::ac3::plan::eac3_config(plan);
+    iclforge::ac3::eac3::AccessUnitEncoder encoder{config};
 
     const auto channel_count = static_cast<std::size_t>(encoder.channel_count());
     std::vector<std::vector<float>> pcm(channel_count,
-                                        std::vector<float>(iclforge::kSamplesPerFrame));
+                                        std::vector<float>(iclforge::ac3::kSamplesPerFrame));
     std::vector<std::span<const float>> views;
     views.reserve(channel_count);
     for (auto& channel : pcm) {
@@ -65,8 +65,8 @@ int main() {
     for (int frame = 0; frame < 31; ++frame) {
         for (std::size_t ch = 0; ch < channel_count; ++ch) {
             const double tone = 400.0 + 300.0 * static_cast<double>(ch);
-            for (int n = 0; n < iclforge::kSamplesPerFrame; ++n) {
-                const double t = (frame * iclforge::kSamplesPerFrame + n) / 48000.0;
+            for (int n = 0; n < iclforge::ac3::kSamplesPerFrame; ++n) {
+                const double t = (frame * iclforge::ac3::kSamplesPerFrame + n) / 48000.0;
                 pcm[ch][static_cast<std::size_t>(n)] =
                     static_cast<float>(0.4 * std::sin(2.0 * std::numbers::pi * tone * t));
             }

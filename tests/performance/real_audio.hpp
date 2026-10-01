@@ -70,15 +70,15 @@ inline constexpr std::array<std::size_t, 4> kFourObjectChannels = {0, 1, 2, 3};
 // the whole point of these files is that the numbers came from real
 // programme material, and a bench that quietly substituted a tone when the
 // file was missing would report that it had measured something it had not.
-inline iclforge::io::WavData load_real_audio(const std::string& path, std::size_t min_channels,
+inline iclforge::ac3::io::WavData load_real_audio(const std::string& path, std::size_t min_channels,
                                         std::size_t min_samples) {
-    auto result = iclforge::io::read_wav(path);
+    auto result = iclforge::ac3::io::read_wav(path);
     if (!result) {
         std::fprintf(stderr,
                      "perf: failed to read real-audio fixture '%s' (%s) - bench inputs must "
                      "come from real audio, not synthetic silence, so there is no fallback "
                      "here\n",
-                     path.c_str(), std::string(iclforge::io::describe(result.error())).c_str());
+                     path.c_str(), std::string(iclforge::ac3::io::describe(result.error())).c_str());
         std::exit(1);
     }
     if (result->channels.size() < min_channels) {
@@ -112,8 +112,8 @@ inline iclforge::io::WavData load_real_audio(const std::string& path, std::size_
 // nothing in comparability.
 class FrameSource {
 public:
-    FrameSource(const iclforge::io::WavData& wav, std::span<const std::size_t> ac3_channels) {
-        const auto layout = iclforge::io::ac3_layout_for(wav.channels.size());
+    FrameSource(const iclforge::ac3::io::WavData& wav, std::span<const std::size_t> ac3_channels) {
+        const auto layout = iclforge::ac3::io::ac3_layout_for(wav.channels.size());
         ordered_.reserve(ac3_channels.size());
         for (const std::size_t ch : ac3_channels) {
             const std::size_t source = layout && ch < layout->wav_index.size()
@@ -122,7 +122,7 @@ public:
             ordered_.push_back(&wav.channels[source]);
         }
         views_.resize(ac3_channels.size());
-        available_ = wav.frame_count() / static_cast<std::size_t>(iclforge::kSamplesPerFrame);
+        available_ = wav.frame_count() / static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame);
     }
 
     [[nodiscard]] std::size_t available_frames() const { return available_; }
@@ -131,10 +131,10 @@ public:
     // next call.
     [[nodiscard]] std::span<const std::span<const float>> frame(std::size_t index) {
         const std::size_t offset =
-            (index % available_) * static_cast<std::size_t>(iclforge::kSamplesPerFrame);
+            (index % available_) * static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame);
         for (std::size_t ch = 0; ch < views_.size(); ++ch) {
             views_[ch] = std::span<const float>{*ordered_[ch]}.subspan(
-                offset, static_cast<std::size_t>(iclforge::kSamplesPerFrame));
+                offset, static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame));
         }
         return views_;
     }

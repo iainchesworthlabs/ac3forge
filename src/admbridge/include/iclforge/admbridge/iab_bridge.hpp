@@ -12,7 +12,7 @@
 #include "iclforge/iab/ac3iab.hpp"
 
 // Roadmap item IM1 phase 3 of 3 ("IAB (SMPTE ST 2098-2) reader"): maps the parsed
-// IAB bed/object graph (iclforge::iab, phases 1-2) onto iclforge::oba::AtmosEncoder's input shape -
+// IAB bed/object graph (iclforge::iab, phases 1-2) onto iclforge::ac3::oba::AtmosEncoder's input shape -
 // one iclforge::oba::ObjectPath plus one mono PCM buffer per bed speaker feed or dynamic object,
 // the same destination shape build() (bridge.hpp) already produces for ADM. This is still the one
 // place iclforge::iab and iclforge::ac3/iclforge::oba are allowed to meet - see bridge.hpp's own
@@ -79,7 +79,7 @@
 namespace iclforge::admbridge {
 
 // The result of bridging a whole parsed IAB frame sequence - everything needed to construct and
-// drive an iclforge::oba::AtmosEncoder, one entry per channel, all vectors indexed identically. See
+// drive an iclforge::ac3::oba::AtmosEncoder, one entry per channel, all vectors indexed identically. See
 // this header's own top comment for exactly how each field differs from BridgeResult's own ADM
 // shape.
 struct IabBridgeResult {

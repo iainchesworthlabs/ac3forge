@@ -373,7 +373,7 @@ struct ScannedStream {
     // The stream's rendered channel LOCATIONS as one ATSC A/52-2018 Table
     // E2.5 custom-channel-map word: bit 0 (Left) in the most significant bit
     // through bit 15 (LFE) in the least, six of the sixteen naming a PAIR
-    // rather than one channel (see iclforge::eac3::chanmap). `channels` above is
+    // rather than one channel (see iclforge::ac3::eac3::chanmap). `channels` above is
     // this word's channel count and nothing more - the scan already unions
     // the independent substream's acmod/lfeon with every dependent's own
     // chanmap to compute it (§E3.8.2), so keeping the word itself costs
@@ -384,12 +384,12 @@ struct ScannedStream {
     // expressed in the same vocabulary. 1+1 (dual mono) has no Table E2.5
     // location at all - Ch1/Ch2 are independent programmes rather than
     // directions - and stands in as Left|Right there, the same placeholder
-    // iclforge::eac3::chanmap::acmod_map() already uses for the channel count's
+    // iclforge::ac3::eac3::chanmap::acmod_map() already uses for the channel count's
     // sake.
     //
     // Describes the FIRST programme, same as every other scalar field above.
     //
-    // Written for iclforge::io::dash_channel_configuration() (ac3/io/dec3.hpp),
+    // Written for iclforge::ac3::io::dash_channel_configuration() (ac3/io/dec3.hpp),
     // whose DASH AudioChannelConfiguration @value IS this word in hex.
     std::uint16_t channel_map = 0;
 };

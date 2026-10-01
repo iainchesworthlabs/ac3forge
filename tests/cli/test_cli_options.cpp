@@ -93,18 +93,18 @@ fs::path write_tone_wav(const fs::path& path, std::size_t channels) {
                                                            static_cast<double>(n) / kRate));
         }
     }
-    REQUIRE(iclforge::io::write_wav_f32(path.string(), data, kRate).has_value());
+    REQUIRE(iclforge::ac3::io::write_wav_f32(path.string(), data, kRate).has_value());
     return path;
 }
 
 // The first syncframe of an AC-3 file, decoded - its bsi is what the
 // metadata tokens under test were meant to reach.
-iclforge::DecodedFrame first_frame(const fs::path& path) {
+iclforge::ac3::DecodedFrame first_frame(const fs::path& path) {
     const auto bytes = read_bytes(path);
-    const auto frames = iclforge::split_frames(bytes);
+    const auto frames = iclforge::ac3::split_frames(bytes);
     REQUIRE(frames.has_value());
     REQUIRE_FALSE(frames->empty());
-    iclforge::FrameDecoder decoder;
+    iclforge::ac3::FrameDecoder decoder;
     auto decoded = decoder.decode_frame(frames->front());
     REQUIRE(decoded.has_value());
     return std::move(*decoded);
@@ -788,14 +788,14 @@ TEST_CASE("AC-3 centre and surround downmix levels reach the bsi a decoder reads
 
     struct Case {
         std::string_view tokens;
-        iclforge::meta::CentreMixLevel cmixlev;
-        iclforge::meta::SurroundMixLevel surmixlev;
+        iclforge::ac3::meta::CentreMixLevel cmixlev;
+        iclforge::ac3::meta::SurroundMixLevel surmixlev;
     };
     for (const auto& c :
-         {Case{"cmixlev=-4.5 surmixlev=-6", iclforge::meta::CentreMixLevel::kMinus4_5dB,
-               iclforge::meta::SurroundMixLevel::kMinus6dB},
-          Case{"cmixlev=-6 surmixlev=off", iclforge::meta::CentreMixLevel::kMinus6dB,
-               iclforge::meta::SurroundMixLevel::kSilent}}) {
+         {Case{"cmixlev=-4.5 surmixlev=-6", iclforge::ac3::meta::CentreMixLevel::kMinus4_5dB,
+               iclforge::ac3::meta::SurroundMixLevel::kMinus6dB},
+          Case{"cmixlev=-6 surmixlev=off", iclforge::ac3::meta::CentreMixLevel::kMinus6dB,
+               iclforge::ac3::meta::SurroundMixLevel::kSilent}}) {
         CAPTURE(c.tokens);
         fs::remove(out_path);
         const auto rc = run_cli("encode \"" + wav.string() + "\" \"" + out_path.string() +
@@ -821,11 +821,11 @@ TEST_CASE("AC-3 dsurmod accepts its raw code and its names, reserved code 3 read
 
     struct Case {
         std::string_view token;
-        iclforge::meta::SurroundMode mode;
+        iclforge::ac3::meta::SurroundMode mode;
     };
-    for (const auto& c : {Case{"dsurmod=on", iclforge::meta::SurroundMode::kDolbySurround},
-                          Case{"dsurmod=1", iclforge::meta::SurroundMode::kNotDolbySurround},
-                          Case{"dsurmod=3", iclforge::meta::SurroundMode::kNotIndicated}}) {
+    for (const auto& c : {Case{"dsurmod=on", iclforge::ac3::meta::SurroundMode::kDolbySurround},
+                          Case{"dsurmod=1", iclforge::ac3::meta::SurroundMode::kNotDolbySurround},
+                          Case{"dsurmod=3", iclforge::ac3::meta::SurroundMode::kNotIndicated}}) {
         CAPTURE(c.token);
         fs::remove(out_path);
         const auto rc = run_cli("encode \"" + wav.string() + "\" \"" + out_path.string() +
@@ -855,9 +855,9 @@ TEST_CASE("AC-3 Annex D downmix preferences reach xbsi1 as asked", "[cli][option
     REQUIRE(frame.alternate_bsi.has_value());
     REQUIRE(frame.alternate_bsi->mix.has_value());
     const auto& mix = *frame.alternate_bsi->mix;
-    CHECK(mix.dmixmod == iclforge::meta::DownmixMode::kLoRo);
-    CHECK(mix.ltrtcmixlev == iclforge::meta::MixLevel::kPlus1_5dB);
-    CHECK(mix.lorocmixlev == iclforge::meta::MixLevel::kMinus4_5dB);
-    CHECK(mix.ltrtsurmixlev == iclforge::meta::MixLevel::kMinus1_5dB);
-    CHECK(mix.lorosurmixlev == iclforge::meta::MixLevel::kSilent);
+    CHECK(mix.dmixmod == iclforge::ac3::meta::DownmixMode::kLoRo);
+    CHECK(mix.ltrtcmixlev == iclforge::ac3::meta::MixLevel::kPlus1_5dB);
+    CHECK(mix.lorocmixlev == iclforge::ac3::meta::MixLevel::kMinus4_5dB);
+    CHECK(mix.ltrtsurmixlev == iclforge::ac3::meta::MixLevel::kMinus1_5dB);
+    CHECK(mix.lorosurmixlev == iclforge::ac3::meta::MixLevel::kSilent);
 }

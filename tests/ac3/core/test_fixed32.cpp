@@ -332,27 +332,27 @@ TEST_CASE("Fixed32 square root is the rounded-down root of the double value", "[
 TEST_CASE("the exponent scale and the mantissa tables read exactly through Fixed32",
           "[fixed32]") {
     for (int exp = 0; exp <= 24; ++exp) {
-        CHECK(iclforge::exponent_scale<Fixed32>(exp).raw == (Fixed32::kOne >> exp));
+        CHECK(iclforge::ac3::exponent_scale<Fixed32>(exp).raw == (Fixed32::kOne >> exp));
     }
     for (int exp = 25; exp < 32; ++exp) {
-        CHECK(iclforge::exponent_scale<Fixed32>(exp).raw == 0);  // below the format's floor
+        CHECK(iclforge::ac3::exponent_scale<Fixed32>(exp).raw == 0);  // below the format's floor
     }
     // Every symmetric and asymmetric reconstruction value within a raw unit of
     // the double one: the table is the double division rounded once.
     for (int bap = 1; bap <= 15; ++bap) {
-        const int codes = bap <= 5 ? iclforge::kSymmetricLevels[static_cast<std::size_t>(bap)]
-                                   : 1 << iclforge::kBapBits[static_cast<std::size_t>(bap)];
+        const int codes = bap <= 5 ? iclforge::ac3::kSymmetricLevels[static_cast<std::size_t>(bap)]
+                                   : 1 << iclforge::ac3::kBapBits[static_cast<std::size_t>(bap)];
         for (int code = 0; code < codes; ++code) {
-            const double wide = iclforge::dequantize_mantissa_as<double>(static_cast<std::uint32_t>(code), bap);
+            const double wide = iclforge::ac3::dequantize_mantissa_as<double>(static_cast<std::uint32_t>(code), bap);
             const double fixed = static_cast<double>(
-                iclforge::dequantize_mantissa_as<Fixed32>(static_cast<std::uint32_t>(code), bap));
+                iclforge::ac3::dequantize_mantissa_as<Fixed32>(static_cast<std::uint32_t>(code), bap));
             CHECK(std::abs(fixed - wide) <= kUlp);
         }
     }
     // A coupling coordinate, likewise.
-    const iclforge::coupling::Coordinate coordinate{.exp = 3, .mant = 9};
-    const double wide = iclforge::coupling::decode_coordinate_as<double>(coordinate, 1);
-    const double fixed = static_cast<double>(iclforge::coupling::decode_coordinate_as<Fixed32>(coordinate, 1));
+    const iclforge::ac3::coupling::Coordinate coordinate{.exp = 3, .mant = 9};
+    const double wide = iclforge::ac3::coupling::decode_coordinate_as<double>(coordinate, 1);
+    const double fixed = static_cast<double>(iclforge::ac3::coupling::decode_coordinate_as<Fixed32>(coordinate, 1));
     CHECK(std::abs(fixed - wide) <= 2 * kUlp);
 }
 
@@ -364,14 +364,14 @@ TEST_CASE("the tier's sine and cosine track the library's over a whole turn", "[
     const auto check = [&](double a) {
         Fixed32 s{};
         Fixed32 c{};
-        iclforge::eac3::sincos_pi(Fixed32{a}, s, c);
+        iclforge::ac3::eac3::sincos_pi(Fixed32{a}, s, c);
         const double angle = std::numbers::pi * static_cast<double>(Fixed32{a});
         worst = std::max({worst, std::abs(static_cast<double>(s) - std::sin(angle)),
                           std::abs(static_cast<double>(c) - std::cos(angle))});
     };
     // The 64 values ecplangle can carry, which is every angle a stream sends.
     for (int code = 0; code < 64; ++code) {
-        check(iclforge::eac3::decode_ecplangle(code));
+        check(iclforge::ac3::eac3::decode_ecplangle(code));
     }
     for (int i = -2048; i <= 2048; ++i) {
         check(static_cast<double>(i) / 2048.0);
@@ -383,16 +383,16 @@ TEST_CASE("the tier's sine and cosine track the library's over a whole turn", "[
     // The quadrants, exactly where they should be.
     Fixed32 s{};
     Fixed32 c{};
-    iclforge::eac3::sincos_pi(Fixed32{0.0}, s, c);
+    iclforge::ac3::eac3::sincos_pi(Fixed32{0.0}, s, c);
     CHECK(s.raw == 0);
     CHECK(c.raw == Fixed32::kOne);
-    iclforge::eac3::sincos_pi(Fixed32{0.5}, s, c);
+    iclforge::ac3::eac3::sincos_pi(Fixed32{0.5}, s, c);
     CHECK(std::abs(s.raw - Fixed32::kOne) < 64);
     CHECK(std::abs(c.raw) < 64);
-    iclforge::eac3::sincos_pi(Fixed32{1.0}, s, c);
+    iclforge::ac3::eac3::sincos_pi(Fixed32{1.0}, s, c);
     CHECK(std::abs(s.raw) < 64);
     CHECK(std::abs(c.raw + Fixed32::kOne) < 64);
-    iclforge::eac3::sincos_pi(Fixed32{-1.0}, s, c);
+    iclforge::ac3::eac3::sincos_pi(Fixed32{-1.0}, s, c);
     CHECK(std::abs(s.raw) < 64);
     CHECK(std::abs(c.raw + Fixed32::kOne) < 64);
 }
@@ -412,8 +412,8 @@ TEST_CASE("the tier's six-point inverse and its notch are the double ones", "[fi
         }
         std::array<double, 6> wide_out{};
         std::array<Fixed32, 6> narrow_out{};
-        iclforge::eac3::aht_inverse(wide, wide_out);
-        iclforge::eac3::aht_inverse(narrow, narrow_out);
+        iclforge::ac3::eac3::aht_inverse(wide, wide_out);
+        iclforge::ac3::eac3::aht_inverse(narrow, narrow_out);
         for (std::size_t m = 0; m < 6; ++m) {
             worst = std::max(worst, std::abs(static_cast<double>(narrow_out[m]) - wide_out[m]));
         }
@@ -425,7 +425,7 @@ TEST_CASE("the tier's six-point inverse and its notch are the double ones", "[fi
     // §E3.6.4.2.3's notch: the same taps, at the same seams, on the same
     // region - one product each, so it is exact to the attenuation's own
     // rounding.
-    iclforge::eac3::BandLayout bands{};
+    iclforge::ac3::eac3::BandLayout bands{};
     bands.count = 2;
     bands.start[0] = 20;
     bands.start[1] = 40;
@@ -439,8 +439,8 @@ TEST_CASE("the tier's six-point inverse and its notch are the double ones", "[fi
             wide[i] = 0.5 - static_cast<double>(i) / 128.0;
             narrow[i] = Fixed32{wide[i]};
         }
-        iclforge::eac3::spx_apply_notch(std::span<double>{wide}, 20, bands, wrapflag, code);
-        iclforge::eac3::spx_apply_notch(std::span<Fixed32>{narrow}, 20, bands, wrapflag, code);
+        iclforge::ac3::eac3::spx_apply_notch(std::span<double>{wide}, 20, bands, wrapflag, code);
+        iclforge::ac3::eac3::spx_apply_notch(std::span<Fixed32>{narrow}, 20, bands, wrapflag, code);
         for (std::size_t i = 0; i < wide.size(); ++i) {
             CHECK(std::abs(static_cast<double>(narrow[i]) - wide[i]) <= 2.0 * kUlp);
         }
@@ -448,8 +448,8 @@ TEST_CASE("the tier's six-point inverse and its notch are the double ones", "[fi
 }
 
 TEST_CASE("the noise generators draw in Fixed32 from the same state sequence", "[fixed32]") {
-    iclforge::DitherGenerator dither;
-    iclforge::DitherGenerator dither_wide;
+    iclforge::ac3::DitherGenerator dither;
+    iclforge::ac3::DitherGenerator dither_wide;
     for (int i = 0; i < 100; ++i) {
         const Fixed32 f = dither.next_as<Fixed32>();
         const double d = dither_wide.next_as<double>();
@@ -459,13 +459,13 @@ TEST_CASE("the noise generators draw in Fixed32 from the same state sequence", "
         // sits within a 2^-24 unit-interval step of the double one, scaled.
         CHECK(std::abs(static_cast<double>(f) - d) < 2.0 * 0.707 * 2.0 / 16777216.0 + 2 * kUlp);
     }
-    iclforge::eac3::SpxNoise spx;
+    iclforge::ac3::eac3::SpxNoise spx;
     for (int i = 0; i < 100; ++i) {
         const Fixed32 f = spx.next_as<Fixed32>();
         CHECK(std::abs(static_cast<double>(f)) <= 1.7320508075688772 + kUlp);
     }
     STATIC_CHECK(Fixed32::unit_from_state(0xFFFFFFFFU).raw == Fixed32::kOne - 1);
     STATIC_CHECK(Fixed32::unit_from_state(0).raw == 0);
-    STATIC_CHECK(iclforge::eac3::ecpl_rand_notrans_as<Fixed32>(0, 0) >= Fixed32{-1});
-    STATIC_CHECK(iclforge::eac3::ecpl_rand_notrans_as<Fixed32>(0, 0) < Fixed32{1});
+    STATIC_CHECK(iclforge::ac3::eac3::ecpl_rand_notrans_as<Fixed32>(0, 0) >= Fixed32{-1});
+    STATIC_CHECK(iclforge::ac3::eac3::ecpl_rand_notrans_as<Fixed32>(0, 0) < Fixed32{1});
 }

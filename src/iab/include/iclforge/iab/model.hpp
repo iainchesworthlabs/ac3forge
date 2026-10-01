@@ -220,7 +220,7 @@ struct AudioDataDlc {
 };
 
 // §9.7/§10.8: one frame of one monaural PCM waveform, decoded to normalized [-1, 1) samples -
-// the same convention iclforge::adm::PcmAudio and iclforge::io::WavData use elsewhere in this
+// the same convention iclforge::adm::PcmAudio and iclforge::ac3::io::WavData use elsewhere in this
 // project. §10.8.1: PCMData is little-endian per sample (16 or 24 bits, per the parent IAFrame's
 // own BitDepth, §10.2.3), each byte transmitted MSB-first - ordinary little-endian PCM, decoded
 // here rather than left as raw bytes since (unlike AudioDataDLC) there is no entropy coding

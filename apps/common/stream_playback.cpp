@@ -16,17 +16,17 @@ namespace iclforge::apps {
 
 namespace {
 
-namespace chanmap = iclforge::eac3::chanmap;
+namespace chanmap = iclforge::ac3::eac3::chanmap;
 
-[[nodiscard]] bool is_dependent(const iclforge::DecodedSubstream& sub) {
-    return sub.strmtyp == iclforge::eac3::StreamType::kDependent;
+[[nodiscard]] bool is_dependent(const iclforge::ac3::DecodedSubstream& sub) {
+    return sub.strmtyp == iclforge::ac3::eac3::StreamType::kDependent;
 }
 
 // §E3.8.2 for one substream: each of its channels into the slot its Table
 // E2.5 location occupies in `layout`, over whatever an earlier substream put
 // there. A location the layout does not have is skipped, and a channel longer
 // than the unit is cut to it - `slots` are already sized to the unit.
-void lay_over(const chanmap::Layout& layout, const iclforge::DecodedSubstream& sub,
+void lay_over(const chanmap::Layout& layout, const iclforge::ac3::DecodedSubstream& sub,
               std::vector<std::vector<float>>& slots) {
     const auto locations = chanmap::expand(sub.location_map());
     const auto count = std::min(static_cast<std::size_t>(locations.count), sub.channels.size());
@@ -44,16 +44,16 @@ void lay_over(const chanmap::Layout& layout, const iclforge::DecodedSubstream& s
 }  // namespace
 
 bool reads_as_access_units(std::span<const std::byte> stream) {
-    const auto bsid = iclforge::stream_bsid(stream);
-    return bsid.has_value() && (*bsid > 8 || iclforge::has_eac3_extension_substreams(stream));
+    const auto bsid = iclforge::ac3::stream_bsid(stream);
+    return bsid.has_value() && (*bsid > 8 || iclforge::ac3::has_eac3_extension_substreams(stream));
 }
 
-std::optional<iclforge::DecodedAccessUnit> held_back_unit(
-    std::vector<iclforge::DecodedSubstream> flushed,
-    const std::optional<iclforge::eac3::chanmap::Layout>& programme, bool folded) {
+std::optional<iclforge::ac3::DecodedAccessUnit> held_back_unit(
+    std::vector<iclforge::ac3::DecodedSubstream> flushed,
+    const std::optional<iclforge::ac3::eac3::chanmap::Layout>& programme, bool folded) {
     // decode_access_unit leads a unit with whatever substream is not a
     // dependent, §E1.3.1's convertible kind included.
-    const auto lead = std::ranges::find_if(flushed, [](const iclforge::DecodedSubstream& sub) {
+    const auto lead = std::ranges::find_if(flushed, [](const iclforge::ac3::DecodedSubstream& sub) {
         return !is_dependent(sub);
     });
     if (lead == flushed.end() || lead->channels.empty()) {
@@ -61,7 +61,7 @@ std::optional<iclforge::DecodedAccessUnit> held_back_unit(
     }
 
     // The fields decode_access_unit fills from its lead, from this one.
-    iclforge::DecodedAccessUnit out;
+    iclforge::ac3::DecodedAccessUnit out;
     out.sample_rate = lead->sample_rate;
     out.acmod = lead->acmod;
     out.dialnorm = lead->dialnorm;
@@ -80,7 +80,7 @@ std::optional<iclforge::DecodedAccessUnit> held_back_unit(
     // The object layer and a concealment note each come from the first
     // substream that has one, bed before dependents - decode_access_unit's
     // rule, in its order rather than flush()'s.
-    const auto take_from = [&out](iclforge::DecodedSubstream& sub) {
+    const auto take_from = [&out](iclforge::ac3::DecodedSubstream& sub) {
         if (!out.object_metadata.has_value() && sub.object_metadata.has_value()) {
             out.object_metadata = std::move(sub.object_metadata);
             out.object_audio = std::move(sub.object_audio);
@@ -97,7 +97,7 @@ std::optional<iclforge::DecodedAccessUnit> held_back_unit(
         }
     }
 
-    if (lead->acmod == iclforge::Acmod::kDualMono) {
+    if (lead->acmod == iclforge::ac3::Acmod::kDualMono) {
         out.channels = std::move(lead->channels);
         return out;
     }

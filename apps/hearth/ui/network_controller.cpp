@@ -862,7 +862,7 @@ void NetworkController::poll_firmware(const iclforge::hearth::NetworkStatus& sta
     }
     firmware_sink_id_ = sink_id;
     firmware_generation_ = snapshot.generation;
-    QVariantMap panel = firmware_panel_to_map(iclforge::hearth::to_firmware_panel(snapshot, iclforge::git_describe));
+    QVariantMap panel = firmware_panel_to_map(iclforge::hearth::to_firmware_panel(snapshot, iclforge::ac3::git_describe));
     if (panel != sink_firmware_) {
         sink_firmware_ = std::move(panel);
         emit sinkFirmwareChanged();

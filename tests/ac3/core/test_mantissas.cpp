@@ -19,8 +19,8 @@ TEST_CASE("quantize/dequantize round-trip error is within half a step", "[mantis
     std::uniform_real_distribution<double> dist(-0.999, 0.999);
     for (int bap = 1; bap <= 15; ++bap) {
         const double step =
-            bap <= 5 ? 2.0 / iclforge::kSymmetricLevels[static_cast<std::size_t>(bap)]
-                     : 1.0 / (1 << (iclforge::kBapBits[static_cast<std::size_t>(bap)] - 1));
+            bap <= 5 ? 2.0 / iclforge::ac3::kSymmetricLevels[static_cast<std::size_t>(bap)]
+                     : 1.0 / (1 << (iclforge::ac3::kBapBits[static_cast<std::size_t>(bap)] - 1));
         // Asymmetric two's complement tops out at 1 - step (A/52 7.3.2:
         // the mantissa word spans (1.0 - 2^-(qntztab-1)) to -1.0); values
         // beyond that clamp by design and carry a larger error.
@@ -28,8 +28,8 @@ TEST_CASE("quantize/dequantize round-trip error is within half a step", "[mantis
         for (int trial = 0; trial < 200; ++trial) {
             const double value = dist(rng);
             const auto mantissa = static_cast<std::int32_t>(std::lround(value * 16777216.0));
-            const auto code = iclforge::quantize_mantissa(mantissa, bap);
-            const double reconstructed = iclforge::dequantize_mantissa(code, bap);
+            const auto code = iclforge::ac3::quantize_mantissa(mantissa, bap);
+            const double reconstructed = iclforge::ac3::dequantize_mantissa(code, bap);
             CAPTURE(bap, value, code);
             if (value <= max_representable + step / 2) {
                 CHECK(std::abs(reconstructed - to_unit(mantissa)) <= step / 2 + 1e-9);
@@ -41,20 +41,20 @@ TEST_CASE("quantize/dequantize round-trip error is within half a step", "[mantis
 }
 
 TEST_CASE("symmetric quantizer maps zero to the middle code", "[mantissas]") {
-    CHECK(iclforge::quantize_mantissa(0, 1) == 1);   // 3-level: code 1 = 0
-    CHECK(iclforge::quantize_mantissa(0, 2) == 2);   // 5-level
-    CHECK(iclforge::quantize_mantissa(0, 3) == 3);   // 7-level
-    CHECK(iclforge::quantize_mantissa(0, 4) == 5);   // 11-level
-    CHECK(iclforge::quantize_mantissa(0, 5) == 7);   // 15-level
+    CHECK(iclforge::ac3::quantize_mantissa(0, 1) == 1);   // 3-level: code 1 = 0
+    CHECK(iclforge::ac3::quantize_mantissa(0, 2) == 2);   // 5-level
+    CHECK(iclforge::ac3::quantize_mantissa(0, 3) == 3);   // 7-level
+    CHECK(iclforge::ac3::quantize_mantissa(0, 4) == 5);   // 11-level
+    CHECK(iclforge::ac3::quantize_mantissa(0, 5) == 7);   // 15-level
     for (int bap = 1; bap <= 5; ++bap) {
-        CHECK(iclforge::dequantize_mantissa(iclforge::quantize_mantissa(0, bap), bap) == 0.0);
+        CHECK(iclforge::ac3::dequantize_mantissa(iclforge::ac3::quantize_mantissa(0, bap), bap) == 0.0);
     }
 }
 
 TEST_CASE("grouping: codeword sits at first member, counts match", "[mantissas]") {
     // Hand case: five bap-1 mantissas (one full group + a padded partial),
     // one bap-3, two bap-4 (one pair). Codes: bap1 of 0 -> 1 (middle).
-    iclforge::MantissaBlockWriter writer;
+    iclforge::ac3::MantissaBlockWriter writer;
     for (int i = 0; i < 5; ++i) {
         writer.add(0, 1);
     }
@@ -83,7 +83,7 @@ TEST_CASE("bit counter agrees with the writer for random allocations", "[mantiss
 
     for (int trial = 0; trial < 30; ++trial) {
         std::array<std::vector<std::uint8_t>, 2> baps;
-        iclforge::MantissaBlockWriter writer;
+        iclforge::ac3::MantissaBlockWriter writer;
         for (auto& channel : baps) {
             channel.resize(253);
             for (auto& bap : channel) {
@@ -103,7 +103,7 @@ TEST_CASE("bit counter agrees with the writer for random allocations", "[mantiss
             token_bits += token.bits;
         }
         CAPTURE(trial);
-        CHECK(writer.bit_count() == iclforge::mantissa_bits_per_block(views));
+        CHECK(writer.bit_count() == iclforge::ac3::mantissa_bits_per_block(views));
         CHECK(token_bits == writer.bit_count());
     }
 }

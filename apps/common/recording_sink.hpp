@@ -30,7 +30,7 @@
 // EncoderController's own live session shares (whose media segments are
 // likewise contract-identical to iclforge::mp4::fragment()'s);
 // the IEC 61937 WAV carrier via per-frame wrapping into
-// iclforge::io::WavPcm16StreamWriter, whose closed file is byte-identical to
+// iclforge::ac3::io::WavPcm16StreamWriter, whose closed file is byte-identical to
 // write_wav_pcm16_raw over the same bursts. Plain MP4 is the one deliberately
 // absent: moov/stco need every frame's final offset, so the
 // accumulate-then-mux shape in EncoderController::writeOutput IS its design,
@@ -131,7 +131,7 @@ class RecordingSink {
     // ...through these; kSpdif goes through wav_ instead.
     std::optional<iclforge::matroska::Writer> matroska_;
     std::optional<iclforge::mpegts::Writer> mpegts_;
-    iclforge::io::WavPcm16StreamWriter wav_;
+    iclforge::ac3::io::WavPcm16StreamWriter wav_;
     iclforge::iec61937::Eac3BurstPacker packer_;
     std::optional<iclforge::iec61937::Ac4BurstPacker> ac4_packer_;
     // ...and kFmp4 writes a folder of its own files through this.

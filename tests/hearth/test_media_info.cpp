@@ -48,7 +48,7 @@ using iclforge::hearth::MediaInspector;
 namespace json = iclforge::sendspin::json;
 
 std::vector<float> tone(std::size_t offset, double level = 0.3) {
-    std::vector<float> out(iclforge::kSamplesPerFrame);
+    std::vector<float> out(iclforge::ac3::kSamplesPerFrame);
     for (std::size_t n = 0; n < out.size(); ++n) {
         out[n] = static_cast<float>(level * std::sin(2.0 * std::numbers::pi * 440.0 *
                                                      static_cast<double>(n + offset) / 48000.0));
@@ -56,12 +56,12 @@ std::vector<float> tone(std::size_t offset, double level = 0.3) {
     return out;
 }
 
-std::vector<std::byte> ac3_stream(int frames, const iclforge::EncoderConfig& config) {
-    iclforge::FrameEncoder encoder{config};
+std::vector<std::byte> ac3_stream(int frames, const iclforge::ac3::EncoderConfig& config) {
+    iclforge::ac3::FrameEncoder encoder{config};
     const auto channels = static_cast<std::size_t>(encoder.channel_count());
     std::vector<std::byte> out;
     for (int f = 0; f < frames; ++f) {
-        const auto samples = tone(static_cast<std::size_t>(f) * iclforge::kSamplesPerFrame);
+        const auto samples = tone(static_cast<std::size_t>(f) * iclforge::ac3::kSamplesPerFrame);
         const std::vector<std::span<const float>> views(channels, samples);
         const auto frame = encoder.encode_frame(views);
         REQUIRE(frame.has_value());
@@ -71,12 +71,12 @@ std::vector<std::byte> ac3_stream(int frames, const iclforge::EncoderConfig& con
 }
 
 std::vector<std::vector<std::byte>> eac3_frames(int frames,
-                                                const iclforge::eac3::FrameConfig& config) {
-    iclforge::eac3::FrameEncoder encoder{config};
+                                                const iclforge::ac3::eac3::FrameConfig& config) {
+    iclforge::ac3::eac3::FrameEncoder encoder{config};
     const auto channels = static_cast<std::size_t>(encoder.channel_count());
     std::vector<std::vector<std::byte>> out;
     for (int f = 0; f < frames; ++f) {
-        const auto samples = tone(static_cast<std::size_t>(f) * iclforge::kSamplesPerFrame);
+        const auto samples = tone(static_cast<std::size_t>(f) * iclforge::ac3::kSamplesPerFrame);
         const std::vector<std::span<const float>> views(channels, samples);
         auto frame = encoder.encode_frame(views);
         REQUIRE(frame.has_value());
@@ -93,10 +93,10 @@ std::vector<std::byte> joined(const std::vector<std::vector<std::byte>>& frames)
     return out;
 }
 
-iclforge::eac3::FrameConfig surround_config() {
-    iclforge::eac3::FrameConfig config;
+iclforge::ac3::eac3::FrameConfig surround_config() {
+    iclforge::ac3::eac3::FrameConfig config;
     config.bitrate_kbps = 384;
-    config.acmod = iclforge::Acmod::k3_2;
+    config.acmod = iclforge::ac3::Acmod::k3_2;
     config.lfe = true;
     return config;
 }
@@ -114,13 +114,13 @@ LoadedItem load(std::span<const std::byte> file) {
 
 std::vector<std::byte> in_mp4(const std::vector<std::byte>& stream,
                               std::optional<iclforge::mp4::MuxOptions::Edit> edit = std::nullopt) {
-    const auto scanned = iclforge::io::scan(stream);
+    const auto scanned = iclforge::ac3::io::scan(stream);
     REQUIRE(scanned.has_value());
     iclforge::mp4::AudioTrack track;
     track.codec_id = std::string{iclforge::mp4::kCodecEac3};
-    track.sample_rate = iclforge::sample_rate_hz(scanned->sample_rate);
+    track.sample_rate = iclforge::ac3::sample_rate_hz(scanned->sample_rate);
     track.channels = scanned->channels;
-    track.codec_config = iclforge::io::build_codec_config_box(*scanned);
+    track.codec_config = iclforge::ac3::io::build_codec_config_box(*scanned);
     iclforge::mp4::MuxOptions options;
     options.edit = edit;
     const auto muxed = iclforge::mp4::mux(
@@ -152,16 +152,16 @@ struct Parsed {
 }  // namespace
 
 TEST_CASE("media info: an AC-3 stream's bitstream information and probe", "[hearth][media-info]") {
-    iclforge::EncoderConfig config;
+    iclforge::ac3::EncoderConfig config;
     config.bitrate_kbps = 192;
-    config.acmod = iclforge::Acmod::k2_0;
+    config.acmod = iclforge::ac3::Acmod::k2_0;
     config.dialnorm = 24;
-    config.info.bsmod = iclforge::meta::BitstreamMode::kMusicAndEffects;
-    config.info.dsurmod = iclforge::meta::SurroundMode::kDolbySurround;
+    config.info.bsmod = iclforge::ac3::meta::BitstreamMode::kMusicAndEffects;
+    config.info.dsurmod = iclforge::ac3::meta::SurroundMode::kDolbySurround;
     config.info.copyrightb = true;
     config.info.origbs = false;
-    config.info.audprod = iclforge::meta::AudioProduction{.mixlevel = 25,
-                                                     .roomtyp = iclforge::meta::RoomType::kSmallRoomFlat};
+    config.info.audprod = iclforge::ac3::meta::AudioProduction{.mixlevel = 25,
+                                                     .roomtyp = iclforge::ac3::meta::RoomType::kSmallRoomFlat};
     const auto stream = ac3_stream(10, config);
 
     const MediaInfo info = describe_media("music.ac3", load(stream));
@@ -173,7 +173,7 @@ TEST_CASE("media info: an AC-3 stream's bitstream information and probe", "[hear
     CHECK(info.stream_samples == 10 * 1536);
     CHECK(info.played_samples() == 10 * 1536);
     REQUIRE(info.programmes.size() == 1);
-    CHECK(info.programmes[0].acmod == iclforge::Acmod::k2_0);
+    CHECK(info.programmes[0].acmod == iclforge::ac3::Acmod::k2_0);
     CHECK(info.programmes[0].access_units == 10);
 
     REQUIRE(info.probe.has_value());
@@ -188,16 +188,16 @@ TEST_CASE("media info: an AC-3 stream's bitstream information and probe", "[hear
     REQUIRE(info.bitstream.has_value());
     REQUIRE(info.bitstream->info.has_value());
     const auto& bsi = *info.bitstream->info;
-    CHECK(bsi.bsmod == iclforge::meta::BitstreamMode::kMusicAndEffects);
-    CHECK(bsi.dsurmod == iclforge::meta::SurroundMode::kDolbySurround);
+    CHECK(bsi.bsmod == iclforge::ac3::meta::BitstreamMode::kMusicAndEffects);
+    CHECK(bsi.dsurmod == iclforge::ac3::meta::SurroundMode::kDolbySurround);
     CHECK(bsi.copyrightb);
     CHECK_FALSE(bsi.origbs);
     REQUIRE(bsi.audprod.has_value());
     CHECK(bsi.audprod->mixlevel == 25);
-    CHECK(bsi.audprod->roomtyp == iclforge::meta::RoomType::kSmallRoomFlat);
+    CHECK(bsi.audprod->roomtyp == iclforge::ac3::meta::RoomType::kSmallRoomFlat);
     // A 2/0 stream codes no mix levels, so the §7.8 defaults stand.
     CHECK_FALSE(info.bitstream->cmixlev.has_value());
-    CHECK(info.bitstream->levels.loro_clev == iclforge::meta::level::kMinus4_5dB);
+    CHECK(info.bitstream->levels.loro_clev == iclforge::ac3::meta::level::kMinus4_5dB);
 
     const Parsed parsed{media_info_json(info)};
     const auto root = parsed.root();
@@ -234,10 +234,10 @@ TEST_CASE("media info: an AC-3 stream's bitstream information and probe", "[hear
 
 TEST_CASE("media info: bsmod 7 is voice over at 1/0 and karaoke above it", "[hearth][media-info]") {
     // A/52 Table 5.7's one service that acmod names.
-    iclforge::EncoderConfig config;
+    iclforge::ac3::EncoderConfig config;
     config.bitrate_kbps = 96;
-    config.acmod = iclforge::Acmod::k1_0;
-    config.info.bsmod = iclforge::meta::BitstreamMode::kVoiceOverOrKaraoke;
+    config.acmod = iclforge::ac3::Acmod::k1_0;
+    config.info.bsmod = iclforge::ac3::meta::BitstreamMode::kVoiceOverOrKaraoke;
     const auto check = [](const MediaInfo& info, const char* label) {
         const Parsed parsed{media_info_json(info)};
         const auto root = parsed.root();
@@ -248,22 +248,22 @@ TEST_CASE("media info: bsmod 7 is voice over at 1/0 and karaoke above it", "[hea
     };
     check(describe_media("voice.ac3", load(ac3_stream(2, config))), "voice over");
     config.bitrate_kbps = 192;
-    config.acmod = iclforge::Acmod::k2_0;
+    config.acmod = iclforge::ac3::Acmod::k2_0;
     check(describe_media("karaoke.ac3", load(ac3_stream(2, config))), "karaoke");
 }
 
 TEST_CASE("media info: an AC-3 stream's coded mix levels, and Annex D's", "[hearth][media-info]") {
-    iclforge::EncoderConfig config;
+    iclforge::ac3::EncoderConfig config;
     config.bitrate_kbps = 448;
-    config.acmod = iclforge::Acmod::k3_2;
+    config.acmod = iclforge::ac3::Acmod::k3_2;
     config.lfe = true;
-    config.cmixlev = iclforge::meta::CentreMixLevel::kMinus3dB;
-    config.surmixlev = iclforge::meta::SurroundMixLevel::kSilent;
+    config.cmixlev = iclforge::ac3::meta::CentreMixLevel::kMinus3dB;
+    config.surmixlev = iclforge::ac3::meta::SurroundMixLevel::kSilent;
     SECTION("bsi's two") {
         const MediaInfo info = describe_media("bsi.ac3", load(ac3_stream(4, config)));
         REQUIRE(info.bitstream.has_value());
-        CHECK(info.bitstream->cmixlev == iclforge::meta::CentreMixLevel::kMinus3dB);
-        CHECK(info.bitstream->surmixlev == iclforge::meta::SurroundMixLevel::kSilent);
+        CHECK(info.bitstream->cmixlev == iclforge::ac3::meta::CentreMixLevel::kMinus3dB);
+        CHECK(info.bitstream->surmixlev == iclforge::ac3::meta::SurroundMixLevel::kSilent);
         CHECK_FALSE(info.bitstream->alternate_bsi.has_value());
         const Parsed parsed{media_info_json(info)};
         const auto bits = parsed.root()["bitstream"];
@@ -274,16 +274,16 @@ TEST_CASE("media info: an AC-3 stream's coded mix levels, and Annex D's", "[hear
         CHECK(bits["fold_levels"]["loro_surround_db"].is_null());
     }
     SECTION("xbsi1's, which a bsid 6 stream sends as well") {
-        iclforge::meta::MixMetadata mix;
-        mix.dmixmod = iclforge::meta::DownmixMode::kLtRt;
-        mix.ltrtcmixlev = iclforge::meta::MixLevel::kMinus1_5dB;
-        mix.lorocmixlev = iclforge::meta::MixLevel::kMinus6dB;
-        config.alternate_bsi = iclforge::meta::AlternateBsi{.mix = mix, .extended = std::nullopt};
+        iclforge::ac3::meta::MixMetadata mix;
+        mix.dmixmod = iclforge::ac3::meta::DownmixMode::kLtRt;
+        mix.ltrtcmixlev = iclforge::ac3::meta::MixLevel::kMinus1_5dB;
+        mix.lorocmixlev = iclforge::ac3::meta::MixLevel::kMinus6dB;
+        config.alternate_bsi = iclforge::ac3::meta::AlternateBsi{.mix = mix, .extended = std::nullopt};
         const MediaInfo info = describe_media("xbsi.ac3", load(ac3_stream(4, config)));
         REQUIRE(info.bitstream.has_value());
         REQUIRE(info.bitstream->alternate_bsi.has_value());
-        CHECK(info.bitstream->levels.preferred == iclforge::meta::DownmixMode::kLtRt);
-        CHECK(info.bitstream->levels.loro_clev == iclforge::meta::level::kMinus6dB);
+        CHECK(info.bitstream->levels.preferred == iclforge::ac3::meta::DownmixMode::kLtRt);
+        CHECK(info.bitstream->levels.loro_clev == iclforge::ac3::meta::level::kMinus6dB);
         const Parsed parsed{media_info_json(info)};
         const auto bits = parsed.root()["bitstream"];
         CHECK(bits["alternate_bsi"]["xbsi1"]["dmixmod"]["label"].equals("Lt/Rt"));
@@ -298,8 +298,8 @@ TEST_CASE("media info: an AC-3 stream's coded mix levels, and Annex D's", "[hear
 TEST_CASE("media info: an E-AC-3 stream in MP4, with its container and edit list",
           "[hearth][media-info]") {
     auto config = surround_config();
-    iclforge::meta::MixMetadata mix;
-    mix.dmixmod = iclforge::meta::DownmixMode::kLoRo;
+    iclforge::ac3::meta::MixMetadata mix;
+    mix.dmixmod = iclforge::ac3::meta::DownmixMode::kLoRo;
     mix.lfemixlevcod = 5;
     mix.pgmscl = 51;
     config.mixing = mix;
@@ -334,7 +334,7 @@ TEST_CASE("media info: an E-AC-3 stream in MP4, with its container and edit list
 
     REQUIRE(info.bitstream.has_value());
     REQUIRE(info.bitstream->mixing.has_value());
-    CHECK(info.bitstream->mixing->dmixmod == iclforge::meta::DownmixMode::kLoRo);
+    CHECK(info.bitstream->mixing->dmixmod == iclforge::ac3::meta::DownmixMode::kLoRo);
     CHECK(info.bitstream->levels.lfe_mix_level_db == 5.0);
 
     const Parsed parsed{media_info_json(info)};
@@ -360,7 +360,7 @@ TEST_CASE("media info: an E-AC-3 stream in MP4, with its container and edit list
     CHECK(root["probe"]["stream"]["nominal_bitrate_kbps"].is_null());
     CHECK(
         root["channel_map"].as_int() ==
-        static_cast<std::int64_t>(iclforge::eac3::chanmap::acmod_map(iclforge::Acmod::k3_2, true)));
+        static_cast<std::int64_t>(iclforge::ac3::eac3::chanmap::acmod_map(iclforge::ac3::Acmod::k3_2, true)));
 }
 
 TEST_CASE("media info: Matroska and MPEG-TS name their tracks", "[hearth][media-info]") {
@@ -419,12 +419,12 @@ TEST_CASE("media info: Matroska and MPEG-TS name their tracks", "[hearth][media-
 TEST_CASE("media info: a stream with two programmes lists both", "[hearth][media-info]") {
     auto first_config = surround_config();
     auto second_config = surround_config();
-    second_config.acmod = iclforge::Acmod::k2_0;
+    second_config.acmod = iclforge::ac3::Acmod::k2_0;
     second_config.lfe = false;
     second_config.bitrate_kbps = 192;
     second_config.substreamid = 1;
-    iclforge::meta::BsiInfo described;
-    described.bsmod = iclforge::meta::BitstreamMode::kCommentary;
+    iclforge::ac3::meta::BsiInfo described;
+    described.bsmod = iclforge::ac3::meta::BitstreamMode::kCommentary;
     second_config.info = described;
     const auto first = eac3_frames(4, first_config);
     const auto second = eac3_frames(4, second_config);
@@ -440,7 +440,7 @@ TEST_CASE("media info: a stream with two programmes lists both", "[hearth][media
     CHECK(info.programmes[0].substreamid == 0);
     CHECK(info.programmes[0].channels == 6);
     CHECK(info.programmes[1].substreamid == 1);
-    CHECK(info.programmes[1].acmod == iclforge::Acmod::k2_0);
+    CHECK(info.programmes[1].acmod == iclforge::ac3::Acmod::k2_0);
     CHECK(info.programmes[1].bsmod == 5);
     CHECK(info.associated_services[0].present);
     CHECK_FALSE(info.associated_services[1].present);
@@ -459,13 +459,13 @@ TEST_CASE("media info: a stream with two programmes lists both", "[hearth][media
 }
 
 TEST_CASE("media info: objects, and whether they are signed", "[hearth][media-info]") {
-    iclforge::oba::AtmosEncoder encoder{
+    iclforge::ac3::oba::AtmosEncoder encoder{
         {.bitrate_kbps = 448, .num_bands_idx = 4, .emit_object_metadata = true}, 1};
     const std::array<iclforge::oba::ObjectPlacement, 1> placement{{{}}};
     std::vector<std::span<const float>> views(1);
     std::vector<std::byte> stream;
     for (int f = 0; f < 4; ++f) {
-        const auto essence = tone(static_cast<std::size_t>(f) * iclforge::kSamplesPerFrame);
+        const auto essence = tone(static_cast<std::size_t>(f) * iclforge::ac3::kSamplesPerFrame);
         views[0] = essence;
         auto unit = encoder.encode_frame(views, placement);
         REQUIRE(unit.has_value());
@@ -682,9 +682,9 @@ private:
 
 TEST_CASE("media inspector: describes what it is asked for, on its own thread",
           "[hearth][media-inspector][concurrency]") {
-    iclforge::EncoderConfig config;
+    iclforge::ac3::EncoderConfig config;
     config.bitrate_kbps = 192;
-    config.acmod = iclforge::Acmod::k2_0;
+    config.acmod = iclforge::ac3::Acmod::k2_0;
     Shelf shelf;
     shelf.files["a.ac3"] = ac3_stream(4, config);
     // Declared before the inspector, which calls back into them until it
@@ -736,9 +736,9 @@ TEST_CASE("media inspector: describes what it is asked for, on its own thread",
 
 TEST_CASE("media inspector: a newer request replaces one not yet started",
           "[hearth][media-inspector][concurrency]") {
-    iclforge::EncoderConfig config;
+    iclforge::ac3::EncoderConfig config;
     config.bitrate_kbps = 192;
-    config.acmod = iclforge::Acmod::k2_0;
+    config.acmod = iclforge::ac3::Acmod::k2_0;
     Shelf shelf;
     for (const char* name : {"a.ac3", "b.ac3", "c.ac3"}) {
         shelf.files[name] = ac3_stream(2, config);

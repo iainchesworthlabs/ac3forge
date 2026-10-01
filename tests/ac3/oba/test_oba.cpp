@@ -45,7 +45,7 @@ std::uint32_t read_variable_bits_max(iclforge::BitReader& r, int group_bits, int
     }
 }
 
-int huff_decode(std::span<const iclforge::oba::joc::HuffCode> table, iclforge::BitReader& r) {
+int huff_decode(std::span<const iclforge::ac3::oba::joc::HuffCode> table, iclforge::BitReader& r) {
     std::uint32_t accumulated = 0;
     for (int bits = 1; bits <= 32; ++bits) {
         accumulated = (accumulated << 1) | r.read_bit();
@@ -63,28 +63,28 @@ int huff_decode(std::span<const iclforge::oba::joc::HuffCode> table, iclforge::B
 TEST_CASE("JOC quantization round-trips through the spec's own scale", "[oba][joc]") {
     // §6.6.4's note pins the reachable range exactly, which is the cheapest
     // check that the 820/4096 scale and the nquant/2 origin are both right.
-    CHECK_THAT(iclforge::oba::joc::dequantize(0, false),
+    CHECK_THAT(iclforge::ac3::oba::joc::dequantize(0, false),
                Catch::Matchers::WithinAbs(-9.609, 0.001));
-    CHECK_THAT(iclforge::oba::joc::dequantize(95, false),
+    CHECK_THAT(iclforge::ac3::oba::joc::dequantize(95, false),
                Catch::Matchers::WithinAbs(9.410, 0.001));
-    CHECK_THAT(iclforge::oba::joc::dequantize(0, true),
+    CHECK_THAT(iclforge::ac3::oba::joc::dequantize(0, true),
                Catch::Matchers::WithinAbs(-9.609, 0.001));
-    CHECK_THAT(iclforge::oba::joc::dequantize(191, true),
+    CHECK_THAT(iclforge::ac3::oba::joc::dequantize(191, true),
                Catch::Matchers::WithinAbs(9.509, 0.001));
 
     // Zero gain is a code, not an approximation - it is the origin.
-    CHECK(iclforge::oba::joc::quantize(0.0, false) == 48);
-    CHECK(iclforge::oba::joc::quantize(0.0, true) == 96);
-    CHECK(iclforge::oba::joc::dequantize(48, false) == 0.0);
+    CHECK(iclforge::ac3::oba::joc::quantize(0.0, false) == 48);
+    CHECK(iclforge::ac3::oba::joc::quantize(0.0, true) == 96);
+    CHECK(iclforge::ac3::oba::joc::dequantize(48, false) == 0.0);
 
     // Fine quantization must actually halve the step.
-    const double coarse_step = iclforge::oba::joc::dequantize(49, false);
-    const double fine_step = iclforge::oba::joc::dequantize(97, true);
+    const double coarse_step = iclforge::ac3::oba::joc::dequantize(49, false);
+    const double fine_step = iclforge::ac3::oba::joc::dequantize(97, true);
     CHECK_THAT(coarse_step, Catch::Matchers::WithinAbs(2.0 * fine_step, 1e-12));
 
     for (const bool fine : {false, true}) {
         for (const double value : {-9.0, -1.0, -0.2, 0.0, 0.5, 1.0, 3.3, 9.0}) {
-            const double back = iclforge::oba::joc::dequantize(iclforge::oba::joc::quantize(value, fine), fine);
+            const double back = iclforge::ac3::oba::joc::dequantize(iclforge::ac3::oba::joc::quantize(value, fine), fine);
             CHECK_THAT(back, Catch::Matchers::WithinAbs(value, fine ? 0.051 : 0.101));
         }
     }
@@ -93,19 +93,19 @@ TEST_CASE("JOC quantization round-trips through the spec's own scale", "[oba][jo
 TEST_CASE("Table 54 matches the standard's worked example", "[oba][joc]") {
     // §6.6.5: "If joc_num_bands = 15 and the input to sb_to_pb(subband) is the
     // subband value 24, sb_to_pb(24) returns the value 13."
-    STATIC_CHECK(iclforge::oba::joc::kNumBands[6] == 15);
-    STATIC_CHECK(iclforge::oba::joc::kSubbandToBand[6][24] == 13);
+    STATIC_CHECK(iclforge::ac3::oba::joc::kNumBands[6] == 15);
+    STATIC_CHECK(iclforge::ac3::oba::joc::kSubbandToBand[6][24] == 13);
     // Every mapping has to reach its last band, or the top of the spectrum
     // would be coded with parameters nothing ever reads.
-    for (std::size_t idx = 0; idx < iclforge::oba::joc::kNumBands.size(); ++idx) {
-        CHECK(iclforge::oba::joc::kSubbandToBand[idx][0] == 0);
-        CHECK(iclforge::oba::joc::kSubbandToBand[idx][63] ==
-              iclforge::oba::joc::kNumBands[idx] - 1);
+    for (std::size_t idx = 0; idx < iclforge::ac3::oba::joc::kNumBands.size(); ++idx) {
+        CHECK(iclforge::ac3::oba::joc::kSubbandToBand[idx][0] == 0);
+        CHECK(iclforge::ac3::oba::joc::kSubbandToBand[idx][63] ==
+              iclforge::ac3::oba::joc::kNumBands[idx] - 1);
     }
 }
 
 TEST_CASE("JOC payload decodes back to the matrix it was given", "[oba][joc]") {
-    iclforge::oba::joc::FrameParameters params{.objects = 4, .num_bands_idx = 4, .seq_count = 7};
+    iclforge::ac3::oba::joc::FrameParameters params{.objects = 4, .num_bands_idx = 4, .seq_count = 7};
     params.matrix.resize(params.coefficient_count());
     // A matrix with structure rather than noise: each object leans on a
     // different channel, and the lean varies across bands. Constant values
@@ -119,7 +119,7 @@ TEST_CASE("JOC payload decodes back to the matrix it was given", "[oba][joc]") {
         }
     }
 
-    const auto payload = iclforge::oba::joc::build_payload(params);
+    const auto payload = iclforge::ac3::oba::joc::build_payload(params);
     iclforge::BitReader r{payload};
 
     // --- joc_header ---
@@ -142,7 +142,7 @@ TEST_CASE("JOC payload decodes back to the matrix it was given", "[oba][joc]") {
 
     // --- joc_data, undone exactly as §6.6.2 Pseudocode 3 specifies ---
     constexpr int kNquant = 96;
-    const std::span<const iclforge::oba::joc::HuffCode> table{iclforge::oba::joc::kMtxCoarse};
+    const std::span<const iclforge::ac3::oba::joc::HuffCode> table{iclforge::ac3::oba::joc::kMtxCoarse};
     for (int object = 0; object < params.objects; ++object) {
         for (int channel = 0; channel < params.channels; ++channel) {
             int previous = kNquant / 2;  // the offset Pseudocode 3 starts from
@@ -151,7 +151,7 @@ TEST_CASE("JOC payload decodes back to the matrix it was given", "[oba][joc]") {
                 REQUIRE(difference >= 0);
                 const int code = (previous + difference) % kNquant;
                 previous = code;
-                CHECK_THAT(iclforge::oba::joc::dequantize(code, false),
+                CHECK_THAT(iclforge::ac3::oba::joc::dequantize(code, false),
                            Catch::Matchers::WithinAbs(
                                params.at(object, channel, band), 0.101));
             }
@@ -177,24 +177,24 @@ TEST_CASE("reconstruct is a delayed identity when the matrix is a pure passthrou
     for (const auto domain :
          {iclforge::oba::joc::Domain::kMdctBand, iclforge::oba::joc::Domain::kQmf}) {
         CAPTURE(domain == iclforge::oba::joc::Domain::kQmf);
-        iclforge::oba::joc::FrameParameters params{.objects = 1, .num_bands_idx = 4};
+        iclforge::ac3::oba::joc::FrameParameters params{.objects = 1, .num_bands_idx = 4};
         params.matrix.assign(params.coefficient_count(), 0.0);
         for (int band = 0; band < params.bands(); ++band) {
             params.at(0, 0, band) = 1.0;
         }
 
         std::vector<std::vector<float>> bed(5,
-                                            std::vector<float>(iclforge::kSamplesPerFrame, 0.0f));
-        for (int n = 0; n < iclforge::kSamplesPerFrame; ++n) {
+                                            std::vector<float>(iclforge::ac3::kSamplesPerFrame, 0.0f));
+        for (int n = 0; n < iclforge::ac3::kSamplesPerFrame; ++n) {
             bed[0][static_cast<std::size_t>(n)] = static_cast<float>(
                 0.3 * std::sin(2.0 * std::numbers::pi * 440.0 * static_cast<double>(n) / 48000.0));
         }
 
-        iclforge::oba::joc::ReconstructionState state;
+        iclforge::ac3::oba::joc::ReconstructionState state;
         const std::vector<std::span<const float>> bed_views(bed.begin(), bed.end());
         std::vector<std::vector<float>> out;
         for (int frame = 0; frame < 3; ++frame) {
-            out = iclforge::oba::joc::reconstruct(bed_views, params, state, /*fast_mdct=*/false,
+            out = iclforge::ac3::oba::joc::reconstruct(bed_views, params, state, /*fast_mdct=*/false,
                                        /*fast_imdct=*/false, domain);
         }
         REQUIRE(out.size() == 1);
@@ -202,7 +202,7 @@ TEST_CASE("reconstruct is a delayed identity when the matrix is a pure passthrou
         const int delay = iclforge::oba::joc::reconstruction_delay(domain);
         double signal = 0.0;
         double error = 0.0;
-        for (int n = delay; n < iclforge::kSamplesPerFrame; ++n) {
+        for (int n = delay; n < iclforge::ac3::kSamplesPerFrame; ++n) {
             const double s = static_cast<double>(bed[0][static_cast<std::size_t>(n - delay)]);
             const double r = static_cast<double>(out[0][static_cast<std::size_t>(n)]);
             signal += s * s;
@@ -225,37 +225,37 @@ TEST_CASE("clip_gain scales reconstructed object PCM by exactly that factor", "[
          {iclforge::oba::joc::Domain::kMdctBand, iclforge::oba::joc::Domain::kQmf}) {
         CAPTURE(domain == iclforge::oba::joc::Domain::kQmf);
 
-        iclforge::oba::joc::FrameParameters unity{.objects = 1, .num_bands_idx = 4};
+        iclforge::ac3::oba::joc::FrameParameters unity{.objects = 1, .num_bands_idx = 4};
         unity.matrix.assign(unity.coefficient_count(), 0.0);
         for (int band = 0; band < unity.bands(); ++band) {
             unity.at(0, 0, band) = 1.0;  // pass bed channel 0 straight through
         }
-        iclforge::oba::joc::FrameParameters scaled = unity;
+        iclforge::ac3::oba::joc::FrameParameters scaled = unity;
         // x=4, y=25 -> 1 + (25/32) * 2^(4-4) = 1.78125, the exact clip_gain
         // measured from a real DEE stream during the oracle comparison this
         // multiply is based on.
         scaled.clip_gain = 1.0 + (25.0 / 32.0) * std::exp2(4.0 - 4.0);
 
         std::vector<std::vector<float>> bed(5,
-                                            std::vector<float>(iclforge::kSamplesPerFrame, 0.0f));
-        for (int n = 0; n < iclforge::kSamplesPerFrame; ++n) {
+                                            std::vector<float>(iclforge::ac3::kSamplesPerFrame, 0.0f));
+        for (int n = 0; n < iclforge::ac3::kSamplesPerFrame; ++n) {
             bed[0][static_cast<std::size_t>(n)] = static_cast<float>(
                 0.3 * std::sin(2.0 * std::numbers::pi * 440.0 * static_cast<double>(n) / 48000.0));
         }
         const std::vector<std::span<const float>> bed_views(bed.begin(), bed.end());
 
-        iclforge::oba::joc::ReconstructionState unity_state;
-        iclforge::oba::joc::ReconstructionState scaled_state;
+        iclforge::ac3::oba::joc::ReconstructionState unity_state;
+        iclforge::ac3::oba::joc::ReconstructionState scaled_state;
         std::vector<std::vector<float>> unity_out;
         std::vector<std::vector<float>> scaled_out;
         // A few frames so both states are past their initial warmup, same as the
         // pure-passthrough delayed-identity test above - both states evolve in
         // lockstep since only clip_gain differs and nothing upstream reads it.
         for (int frame = 0; frame < 3; ++frame) {
-            unity_out = iclforge::oba::joc::reconstruct(bed_views, unity, unity_state,
+            unity_out = iclforge::ac3::oba::joc::reconstruct(bed_views, unity, unity_state,
                                                    /*fast_mdct=*/false, /*fast_imdct=*/false,
                                                    domain);
-            scaled_out = iclforge::oba::joc::reconstruct(bed_views, scaled, scaled_state,
+            scaled_out = iclforge::ac3::oba::joc::reconstruct(bed_views, scaled, scaled_state,
                                                     /*fast_mdct=*/false, /*fast_imdct=*/false,
                                                     domain);
         }
@@ -282,34 +282,34 @@ TEST_CASE("an object's overlap tail drains while absent instead of staying stale
     // drain whatever overlap tail its LAST present frame left behind, immediately - or the next
     // frame it reappears in starts its overlap-add from a stale one instead of a clean state. No
     // existing test ever sets ObjectShape::present = false at all.
-    iclforge::oba::joc::FrameParameters present_params{.objects = 1, .num_bands_idx = 4};
+    iclforge::ac3::oba::joc::FrameParameters present_params{.objects = 1, .num_bands_idx = 4};
     present_params.matrix.assign(present_params.coefficient_count(), 0.0);
     for (int band = 0; band < present_params.bands(); ++band) {
         present_params.at(0, 0, band) = 1.0;  // pass bed channel 0 straight through into object 0
     }
 
-    iclforge::oba::joc::FrameParameters absent_params{.objects = 1, .num_bands_idx = 4};
-    absent_params.shapes = {iclforge::oba::joc::ObjectShape{.present = false}};
+    iclforge::ac3::oba::joc::FrameParameters absent_params{.objects = 1, .num_bands_idx = 4};
+    absent_params.shapes = {iclforge::ac3::oba::joc::ObjectShape{.present = false}};
     absent_params.matrix.clear();  // the one object is absent, so coefficient_count() == 0
 
-    iclforge::oba::joc::FrameParameters silent_present_params{.objects = 1, .num_bands_idx = 4};
+    iclforge::ac3::oba::joc::FrameParameters silent_present_params{.objects = 1, .num_bands_idx = 4};
     silent_present_params.matrix.assign(silent_present_params.coefficient_count(), 0.0);
 
     std::vector<std::vector<float>> loud_bed(5,
-                                             std::vector<float>(iclforge::kSamplesPerFrame, 0.0f));
-    for (int n = 0; n < iclforge::kSamplesPerFrame; ++n) {
+                                             std::vector<float>(iclforge::ac3::kSamplesPerFrame, 0.0f));
+    for (int n = 0; n < iclforge::ac3::kSamplesPerFrame; ++n) {
         loud_bed[0][static_cast<std::size_t>(n)] = static_cast<float>(
             0.5 * std::sin(2.0 * std::numbers::pi * 440.0 * static_cast<double>(n) / 48000.0));
     }
-    const std::vector<float> silence(iclforge::kSamplesPerFrame, 0.0f);
+    const std::vector<float> silence(iclforge::ac3::kSamplesPerFrame, 0.0f);
     std::vector<std::vector<float>> silent_bed(5, silence);
     const std::vector<std::span<const float>> loud_views(loud_bed.begin(), loud_bed.end());
     const std::vector<std::span<const float>> silent_views(silent_bed.begin(), silent_bed.end());
 
-    iclforge::oba::joc::ReconstructionState state;
+    iclforge::ac3::oba::joc::ReconstructionState state;
 
     // Frame 1: object present, real signal - builds a real, nonzero overlap tail.
-    const auto out1 = iclforge::oba::joc::reconstruct(loud_views, present_params, state, false,
+    const auto out1 = iclforge::ac3::oba::joc::reconstruct(loud_views, present_params, state, false,
                                                       false, iclforge::oba::joc::Domain::kMdctBand);
     double energy1 = 0.0;
     for (const float v : out1[0]) {
@@ -319,14 +319,14 @@ TEST_CASE("an object's overlap tail drains while absent instead of staying stale
     REQUIRE(energy1 > 0.0);
 
     // Frame 2: object absent - its tail must drain now, not carry forward.
-    (void)iclforge::oba::joc::reconstruct(silent_views, absent_params, state, false, false,
+    (void)iclforge::ac3::oba::joc::reconstruct(silent_views, absent_params, state, false, false,
                                      iclforge::oba::joc::Domain::kMdctBand);
 
     // Frames 3-4: object present again, but with silent input and a zero matrix. If frame 2
     // failed to drain the tail, frame 1's energy leaks back in here via a stale overlap-add.
     std::vector<std::vector<float>> out;
     for (int f = 0; f < 2; ++f) {
-        out = iclforge::oba::joc::reconstruct(silent_views, silent_present_params, state, false,
+        out = iclforge::ac3::oba::joc::reconstruct(silent_views, silent_present_params, state, false,
                                               false, iclforge::oba::joc::Domain::kMdctBand);
     }
     double energy_after = 0.0;
@@ -355,38 +355,38 @@ TEST_CASE("a smooth two-data-point object ramps from the first coefficient towar
     // are visible in the call that "owns" them, the rest surfacing in the NEXT call's plain
     // tail-blend rather than through this same interpolation), so a single-frame energy-ramp
     // assertion like this one does not carry over cleanly to it.
-    iclforge::oba::joc::FrameParameters warmup{.objects = 1, .num_bands_idx = 4};
+    iclforge::ac3::oba::joc::FrameParameters warmup{.objects = 1, .num_bands_idx = 4};
     warmup.matrix.assign(warmup.coefficient_count(), 0.0);
     for (int band = 0; band < warmup.bands(); ++band) {
         warmup.at(0, 0, band) = 1.0;
     }
 
-    iclforge::oba::joc::FrameParameters ramp{.objects = 1, .num_bands_idx = 4, .seq_count = 1};
+    iclforge::ac3::oba::joc::FrameParameters ramp{.objects = 1, .num_bands_idx = 4, .seq_count = 1};
     ramp.shapes = {
-        iclforge::oba::joc::ObjectShape{.num_bands_idx = 4, .steep = false, .data_points = 2}};
+        iclforge::ac3::oba::joc::ObjectShape{.num_bands_idx = 4, .steep = false, .data_points = 2}};
     ramp.matrix.assign(static_cast<std::size_t>(2 * ramp.channels * ramp.bands()), 0.0);
     for (int band = 0; band < ramp.bands(); ++band) {
         ramp.at(0, 0, 0, band) = 1.0;  // data point 0: unity, matching the warmup frame
         ramp.at(0, 1, 0, band) = 0.0;  // data point 1: silence
     }
 
-    std::vector<std::vector<float>> bed(5, std::vector<float>(iclforge::kSamplesPerFrame, 0.0f));
-    for (int n = 0; n < iclforge::kSamplesPerFrame; ++n) {
+    std::vector<std::vector<float>> bed(5, std::vector<float>(iclforge::ac3::kSamplesPerFrame, 0.0f));
+    for (int n = 0; n < iclforge::ac3::kSamplesPerFrame; ++n) {
         bed[0][static_cast<std::size_t>(n)] = static_cast<float>(
             0.4 * std::sin(2.0 * std::numbers::pi * 600.0 * static_cast<double>(n) / 48000.0));
     }
     const std::vector<std::span<const float>> bed_views(bed.begin(), bed.end());
 
-    iclforge::oba::joc::ReconstructionState state;
-    (void)iclforge::oba::joc::reconstruct(bed_views, warmup, state, false, false,
+    iclforge::ac3::oba::joc::ReconstructionState state;
+    (void)iclforge::ac3::oba::joc::reconstruct(bed_views, warmup, state, false, false,
                                       iclforge::oba::joc::Domain::kMdctBand);
-    const auto out = iclforge::oba::joc::reconstruct(bed_views, ramp, state, false, false,
+    const auto out = iclforge::ac3::oba::joc::reconstruct(bed_views, ramp, state, false, false,
                                                  iclforge::oba::joc::Domain::kMdctBand);
     REQUIRE(out.size() == 1);
 
     const int delay =
         iclforge::oba::joc::reconstruction_delay(iclforge::oba::joc::Domain::kMdctBand);
-    const int usable = iclforge::kSamplesPerFrame - delay;
+    const int usable = iclforge::ac3::kSamplesPerFrame - delay;
     const int quarter = usable / 4;
     double first_quarter = 0.0;
     double last_quarter = 0.0;
@@ -407,7 +407,7 @@ TEST_CASE("a smooth two-data-point object ramps from the first coefficient towar
 TEST_CASE("JOC parse_payload decodes back to the matrix it was given", "[oba][joc]") {
     for (const bool fine : {false, true}) {
         CAPTURE(fine);
-        iclforge::oba::joc::FrameParameters params{
+        iclforge::ac3::oba::joc::FrameParameters params{
             .objects = 4, .num_bands_idx = 4, .fine_quant = fine, .seq_count = 7};
         params.matrix.resize(params.coefficient_count());
         for (int object = 0; object < params.objects; ++object) {
@@ -419,8 +419,8 @@ TEST_CASE("JOC parse_payload decodes back to the matrix it was given", "[oba][jo
             }
         }
 
-        const auto payload = iclforge::oba::joc::build_payload(params);
-        const auto decoded = iclforge::oba::joc::parse_payload(payload);
+        const auto payload = iclforge::ac3::oba::joc::build_payload(params);
+        const auto decoded = iclforge::ac3::oba::joc::parse_payload(payload);
         REQUIRE(decoded.has_value());
         CHECK(decoded->objects == params.objects);
         CHECK(decoded->channels == params.channels);
@@ -444,9 +444,9 @@ TEST_CASE("JOC parse_payload decodes back to the matrix it was given", "[oba][jo
 TEST_CASE("JOC parse_payload covers every band count and the object-count boundary", "[oba][joc]") {
     for (const int num_bands_idx : {0, 1, 2, 3, 4, 5, 6, 7}) {
         CAPTURE(num_bands_idx);
-        for (const int objects : {1, iclforge::oba::joc::kMaxObjects}) {
+        for (const int objects : {1, iclforge::ac3::oba::joc::kMaxObjects}) {
             CAPTURE(objects);
-            iclforge::oba::joc::FrameParameters params{.objects = objects, .num_bands_idx = num_bands_idx};
+            iclforge::ac3::oba::joc::FrameParameters params{.objects = objects, .num_bands_idx = num_bands_idx};
             params.matrix.assign(params.coefficient_count(), 0.0);
             for (int object = 0; object < objects; ++object) {
                 for (int channel = 0; channel < params.channels; ++channel) {
@@ -455,8 +455,8 @@ TEST_CASE("JOC parse_payload covers every band count and the object-count bounda
                     }
                 }
             }
-            const auto payload = iclforge::oba::joc::build_payload(params);
-            const auto decoded = iclforge::oba::joc::parse_payload(payload);
+            const auto payload = iclforge::ac3::oba::joc::build_payload(params);
+            const auto decoded = iclforge::ac3::oba::joc::parse_payload(payload);
             REQUIRE(decoded.has_value());
             CHECK(decoded->objects == objects);
             CHECK(decoded->bands() == params.bands());
@@ -465,17 +465,17 @@ TEST_CASE("JOC parse_payload covers every band count and the object-count bounda
 }
 
 TEST_CASE("JOC parse_payload rejects what it cannot cleanly interpret", "[oba][joc]") {
-    iclforge::oba::joc::FrameParameters params{.objects = 2, .num_bands_idx = 3};
+    iclforge::ac3::oba::joc::FrameParameters params{.objects = 2, .num_bands_idx = 3};
     params.matrix.assign(params.coefficient_count(), 0.5);
-    const auto payload = iclforge::oba::joc::build_payload(params);
-    REQUIRE(iclforge::oba::joc::parse_payload(payload).has_value());
+    const auto payload = iclforge::ac3::oba::joc::build_payload(params);
+    REQUIRE(iclforge::ac3::oba::joc::parse_payload(payload).has_value());
 
     SECTION("truncated payload") {
         for (const std::size_t cut : {std::size_t{1}, payload.size() / 2, payload.size() - 1}) {
             CAPTURE(cut);
             const std::vector<std::byte> truncated(payload.begin(),
                                                    payload.begin() + static_cast<std::ptrdiff_t>(cut));
-            CHECK_FALSE(iclforge::oba::joc::parse_payload(truncated).has_value());
+            CHECK_FALSE(iclforge::ac3::oba::joc::parse_payload(truncated).has_value());
         }
     }
 
@@ -485,11 +485,11 @@ TEST_CASE("JOC parse_payload rejects what it cannot cleanly interpret", "[oba][j
         // parser does not implement.
         auto corrupt = payload;
         corrupt[0] |= std::byte{0b001'00000};
-        CHECK_FALSE(iclforge::oba::joc::parse_payload(corrupt).has_value());
+        CHECK_FALSE(iclforge::ac3::oba::joc::parse_payload(corrupt).has_value());
     }
 
     SECTION("an empty payload") {
-        CHECK_FALSE(iclforge::oba::joc::parse_payload({}).has_value());
+        CHECK_FALSE(iclforge::ac3::oba::joc::parse_payload({}).has_value());
     }
 }
 
@@ -497,9 +497,9 @@ TEST_CASE("JOC codes an unchanged band in a single bit", "[oba][joc]") {
     // Value 0 has a one-bit codeword in every generic table, which is the
     // whole reason the matrix is differentially coded along the bands: a
     // coefficient that does not move across the spectrum is nearly free.
-    iclforge::oba::joc::FrameParameters flat{.objects = 1, .num_bands_idx = 7};  // 23 bands
+    iclforge::ac3::oba::joc::FrameParameters flat{.objects = 1, .num_bands_idx = 7};  // 23 bands
     flat.matrix.assign(flat.coefficient_count(), 0.0);
-    const auto payload = iclforge::oba::joc::build_payload(flat);
+    const auto payload = iclforge::ac3::oba::joc::build_payload(flat);
     // joc_header 12 + joc_info's fixed 18 + 8 per object (presence, bands,
     // sparse, quant, slope, data points) = 38 bits, then 5 channels x 23 bands
     // of zero-difference codewords at one bit each.
@@ -1236,21 +1236,21 @@ TEST_CASE("OAMD writes several metadata updates within one frame", "[oba][oamd]"
 }
 
 TEST_CASE("JOC parses every Table 47 downmix configuration it can", "[oba][joc]") {
-    CHECK(iclforge::oba::joc::dmx_channel_count(iclforge::oba::joc::kDmxConfig5X) == 5);
-    CHECK(iclforge::oba::joc::dmx_channel_count(iclforge::oba::joc::kDmxConfig7X) == 7);
-    CHECK(iclforge::oba::joc::dmx_channel_count(iclforge::oba::joc::kDmxConfig5XPlus2) == 7);
-    CHECK(iclforge::oba::joc::dmx_channel_count(iclforge::oba::joc::kDmxConfig5XPhaseShift) == 5);
-    CHECK(iclforge::oba::joc::dmx_channel_count(iclforge::oba::joc::kDmxConfig5XPlus2PhaseShift) ==
+    CHECK(iclforge::ac3::oba::joc::dmx_channel_count(iclforge::ac3::oba::joc::kDmxConfig5X) == 5);
+    CHECK(iclforge::ac3::oba::joc::dmx_channel_count(iclforge::ac3::oba::joc::kDmxConfig7X) == 7);
+    CHECK(iclforge::ac3::oba::joc::dmx_channel_count(iclforge::ac3::oba::joc::kDmxConfig5XPlus2) == 7);
+    CHECK(iclforge::ac3::oba::joc::dmx_channel_count(iclforge::ac3::oba::joc::kDmxConfig5XPhaseShift) == 5);
+    CHECK(iclforge::ac3::oba::joc::dmx_channel_count(iclforge::ac3::oba::joc::kDmxConfig5XPlus2PhaseShift) ==
           7);
     // Table 48 reserves 5..7 and gives them no channel count, which is what
     // parse_payload keys its refusal off.
-    CHECK(iclforge::oba::joc::dmx_channel_count(5) == 0);
-    CHECK(iclforge::oba::joc::dmx_channel_count(7) == 0);
+    CHECK(iclforge::ac3::oba::joc::dmx_channel_count(5) == 0);
+    CHECK(iclforge::ac3::oba::joc::dmx_channel_count(7) == 0);
 
     for (const int config :
-         {iclforge::oba::joc::kDmxConfig5XPhaseShift, iclforge::oba::joc::kDmxConfig7X}) {
+         {iclforge::ac3::oba::joc::kDmxConfig5XPhaseShift, iclforge::ac3::oba::joc::kDmxConfig7X}) {
         CAPTURE(config);
-        const int channels = iclforge::oba::joc::dmx_channel_count(config);
+        const int channels = iclforge::ac3::oba::joc::dmx_channel_count(config);
         iclforge::BitWriter w;
         w.put(static_cast<std::uint32_t>(config), 3);
         w.put(1, 6);  // joc_num_objects_bits => 2 objects
@@ -1283,7 +1283,7 @@ TEST_CASE("JOC parses every Table 47 downmix configuration it can", "[oba][joc]"
         }
         const auto payload = w.take();
 
-        const auto decoded = iclforge::oba::joc::parse_payload(payload);
+        const auto decoded = iclforge::ac3::oba::joc::parse_payload(payload);
         REQUIRE(decoded.has_value());
         CHECK(decoded->dmx_config_idx == config);
         CHECK(decoded->channels == channels);
@@ -1326,10 +1326,10 @@ TEST_CASE("JOC refuses the two headers that carry no length", "[oba][joc]") {
     };
     // A reserved joc_dmx_config_idx: Table 48 names no channel count, so
     // joc_data has no loop bound.
-    CHECK_FALSE(iclforge::oba::joc::parse_payload(header(6, 0)).has_value());
+    CHECK_FALSE(iclforge::ac3::oba::joc::parse_payload(header(6, 0)).has_value());
     // A nonzero joc_ext_config_idx: §6.2.1 gives joc_ext_data() no syntax at
     // all, so there is nothing to skip past either.
-    CHECK_FALSE(iclforge::oba::joc::parse_payload(header(0, 1)).has_value());
+    CHECK_FALSE(iclforge::ac3::oba::joc::parse_payload(header(0, 1)).has_value());
 }
 
 TEST_CASE("EMDF reports a payload configuration outside Table 56's shape", "[emdf]") {

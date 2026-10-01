@@ -4,7 +4,7 @@
 //
 // This demonstrates ADM BWF reader, phase 1's own API working end to end -
 // it is NOT the "end-to-end example" phase 3 refers to, which will show a
-// full ADM -> iclforge::oba::AtmosEncoder -> E-AC-3 pipeline once phase 2 (the
+// full ADM -> iclforge::ac3::oba::AtmosEncoder -> E-AC-3 pipeline once phase 2 (the
 // object/bed mapping layer) exists. iclforge::adm has no idea what AC-3,
 // E-AC-3 or Atmos are, so this program does not either - it only proves the
 // parsed graph is navigable. (It is also built on top of the vendored

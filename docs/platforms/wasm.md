@@ -53,9 +53,9 @@ it deliberately out of scope, reasoning from first principles about "real-time M
 JOC matrix work in a browser thread." That was measured rather than assumed, on the same
 WSL2/Emscripten 6.0.6 toolchain `build-wasm` uses:
 
-- **Binary size.** A module binding the AC-3 encoder (`iclforge::FrameEncoder`), the E-AC-3 encoder
-  (`iclforge::eac3::FrameEncoder`), the Atmos/JOC bed encoder (`iclforge::oba::AtmosEncoder`) and the QC
-  loudness meter (`iclforge::meta::LoudnessMeter`/`evaluate_qc_gate`) together — everything
+- **Binary size.** A module binding the AC-3 encoder (`iclforge::ac3::FrameEncoder`), the E-AC-3 encoder
+  (`iclforge::ac3::eac3::FrameEncoder`), the Atmos/JOC bed encoder (`iclforge::ac3::oba::AtmosEncoder`) and the QC
+  loudness meter (`iclforge::ac3::meta::LoudnessMeter`/`evaluate_qc_gate`) together — everything
   `encoder_bindings.cpp` binds, not a cut-down subset — compiles to **390 KB raw / 153 KB gzip**,
   against the decode module's own **372 KB raw / 133 KB gzip**. Comparable order of magnitude, not
   the multi-megabyte blow-up "much larger undertaking" implied; a third module split (e.g. Atmos
@@ -72,7 +72,7 @@ WSL2/Emscripten 6.0.6 toolchain `build-wasm` uses:
   why the encode module needs no `pthreads`/`SharedArrayBuffer` — everything above runs on the main
   thread (or a plain `postMessage`-fed Worker) with room to spare, which also means a future
   real-time (microphone-capture) product is a plumbing problem, not a CPU one.
-- **QC needs no new DSP.** `iclforge::meta::LoudnessMeter` and `iclforge::meta::evaluate_qc_gate`/
+- **QC needs no new DSP.** `iclforge::ac3::meta::LoudnessMeter` and `iclforge::ac3::meta::evaluate_qc_gate`/
   `qc_preset()` are the exact functions `forge qc` calls — pure, third-party-dependency-free,
   streaming (`push()` per block). One real nuance: `integrated_lkfs()` is a gated, whole-programme
   measure (`std::nullopt` until BS.1770's absolute gate has seen enough), so the delivery-preset
@@ -189,13 +189,13 @@ equivalent to add; a browser gets audio playback from the Web Audio API in JavaS
 for having no browser platform directory).
 
 `decoder_bindings.cpp` (the Embind wrapper) is new, but is now deliberately minimal: `scanStream()`
-(a thin wrapper over `iclforge::io::scan`) and `PushDecoder`, one `iclforge::Eac3Decoder` per instance
+(a thin wrapper over `iclforge::ac3::io::scan`) and `PushDecoder`, one `iclforge::ac3::Eac3Decoder` per instance
 decoding through `decode_access_unit_into`'s caller-buffer form - buffers allocated once at
 construction, reused for every call, so the hot path allocates nothing on the C++ side.
-`Eac3Decoder` alone handles every `iclforge::io::StreamKind` - a plain AC-3
+`Eac3Decoder` alone handles every `iclforge::ac3::io::StreamKind` - a plain AC-3
 syncframe "comes back as substream (kIndependent, 0)" per `decode_access_unit`'s own doc comment -
 so `scanStream()`'s reported kind is informational only, not something `PushDecoder` branches on.
-The optional §7.8 fold (`iclforge::OutputStage`/DC1, never a hand-rolled one) is applied over a small
+The optional §7.8 fold (`iclforge::ac3::OutputStage`/DC1, never a hand-rolled one) is applied over a small
 reused copy of the just-decoded channels, so both the coded channels and the fold are available
 from one decode - see `decoder_bindings.cpp`'s own `apply_fold()` comment for why it can't be done
 in place. Everything the OLD whole-file Embind `Decoder` class used to accumulate itself (per-file
@@ -236,7 +236,7 @@ dropped WAV's WAVEFORMATEXTENSIBLE channel order into AC-3's Table 5.8 order bef
 see `app.js`'s own comment on the exact mapping — and resamples via the browser's own
 `AudioContext`, rather than writing a sample-rate converter. The wide layouts (8 channels read as
 7.1, 10 as 5.1.4, 12 as 7.1.4) take a different path: the module routes the source through
-`iclforge::plan::route`/`render` — the same direction-based placement `forge` uses — so `app.js`
+`iclforge::ac3::plan::route`/`render` — the same direction-based placement `forge` uses — so `app.js`
 hands those over in plain WAV order and the channel-order knowledge stays in the plan code that
 defines it (`QcMeter.meterOrderForWav()` likewise hands the page the BS.1770-5 metering order
 instead of a second JS-side table). Encoding is two-pass: the whole programme is metered first

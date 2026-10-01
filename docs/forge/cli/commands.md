@@ -1260,7 +1260,7 @@ channel count or substream-per-unit count differ from the first — a decoder wa
 no way to be told the format changed.
 
 **Out of scope for all five:** `strmtyp 2` convertible streams — the spec's own no-re-encode
-path to AC-3 — which `iclforge::plan::validate` already refuses. Nothing here produces or consumes
+path to AC-3 — which `iclforge::ac3::plan::validate` already refuses. Nothing here produces or consumes
 one.
 
 **AC-4 and the four that copy.** `metadata`, `normalize`, `cut` and `cat` frame AC-3 and E-AC-3
@@ -1532,7 +1532,7 @@ than a measured one. Moving an object moves it in the right direction by the rig
 an approximate absolute distance. The session prints its object count and endpoint at the start,
 and the access units played, active dynamic objects and underruns at the end.
 
-`spatial` builds its `iclforge::DecoderConfig` from the same options `decode` and `monitor` do, so the
+`spatial` builds its `iclforge::ac3::DecoderConfig` from the same options `decode` and `monitor` do, so the
 decode-side tokens above (`drc=`, `heavy`, `conceal=`, `fast-imdct=off`) reach it, and
 `verify-objects` checks each frame's object signature here as it does there. Two do not reach it:
 `run_spatial` leaves `fast-mdct=off` and `joc-domain=` out of the config it builds, so the JOC

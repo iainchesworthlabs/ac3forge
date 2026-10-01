@@ -243,7 +243,7 @@ Dialog {
                             hasValue: programmeCard.modelData.hasLoudness
                             value: programmeCard.modelData.integratedLkfs
                             // A band preset draws its tolerance band; a ceiling preset
-                            // (loudnessIsCeiling - see iclforge::meta::QcLoudnessLimit) states
+                            // (loudnessIsCeiling - see iclforge::ac3::meta::QcLoudnessLimit) states
                             // only a level not to exceed, so it draws the same ceiling
                             // line the true peak meter below uses. Drawing its zero-width
                             // tolerance as a band would read as "hit this exactly", which

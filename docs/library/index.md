@@ -234,10 +234,10 @@ re-synced by hand and can drift. Each page's "Full program" link is the canonica
 - [Development status](development-status.md) — at-a-glance status across every codec and bitstream feature.
 - [Application coverage](application-coverage.md) — which applications expose each broad capability.
 - [Example programs](examples.md) — every `examples/` program, what it shows, and which page discusses it.
-- [Encoding AC-3](encoding-ac3.md) — `iclforge::FrameEncoder` and `EncoderConfig`.
-- [Encoding E-AC-3](encoding-eac3.md) — `iclforge::eac3::FrameEncoder` and wide layouts via `iclforge::eac3::AccessUnitEncoder`.
-- [Decoding](decoding.md) — scanning a stream with `iclforge::io::scan` and decoding it.
-- [Spatial & Atmos objects](spatial-and-atmos.md) — the plain-AC-3 object layer and `iclforge::oba::AtmosEncoder`.
+- [Encoding AC-3](encoding-ac3.md) — `iclforge::ac3::FrameEncoder` and `EncoderConfig`.
+- [Encoding E-AC-3](encoding-eac3.md) — `iclforge::ac3::eac3::FrameEncoder` and wide layouts via `iclforge::ac3::eac3::AccessUnitEncoder`.
+- [Decoding](decoding.md) — scanning a stream with `iclforge::ac3::io::scan` and decoding it.
+- [Spatial & Atmos objects](spatial-and-atmos.md) — the plain-AC-3 object layer and `iclforge::ac3::oba::AtmosEncoder`.
 - [A worked scene — station broadcast](station-broadcast.md) — a complete 115-second authored Atmos scene built on the object APIs.
 - [Channel plans & routing](channel-plans-and-routing.md) — custom channel selections and multi-source assignment.
 - [Metadata](metadata.md) — loudness, DRC and downmix metadata.
@@ -250,14 +250,14 @@ re-synced by hand and can drift. Each page's "Full program" link is the canonica
 - [ADM / BW64 reading](adm.md) — `iclforge::adm`, a standalone BW64/RF64 + Audio Definition Model
   parser (opt-in, `-DICLFORGE_BUILD_ADM=ON`).
 - [ADM → Atmos bridging](adm-bridge.md) — `iclforge::admbridge`, mapping the parsed ADM graph onto
-  `iclforge::oba::AtmosEncoder` (same opt-in flag).
+  `iclforge::ac3::oba::AtmosEncoder` (same opt-in flag).
 - [IAMF writing](iamf.md) — `iclforge::iamf`, a standalone writer re-wrapping a decoded 7.1.4
   programme as a channel-based IAMF Audio Element in IAMF's own ISO-BMFF encapsulation (on by
   default).
 - [AC-4](ac4.md) — `iclforge::ac4dec`, `iclforge::ac4enc` and the inspector both work through,
   `iclforge::ac4`: the decoder's controls, the choice of presentation and what the decoder reports; the
   encoder's configuration, substreams and presentations; and linking (on by default).
-- [Measuring quality](quality.md) — `iclforge::quality`, the decoded-domain distortion measure and the
+- [Measuring quality](quality.md) — `iclforge::ac3::quality`, the decoded-domain distortion measure and the
   tonality/masking model the encoder's decision search is judged on.
 - [Object signing](signing.md) — `iclforge::signing`, the EMDF protection tag.
 - [Header map](header-map.md) — the headers a caller normally reaches for, and what lives in each.
@@ -268,7 +268,7 @@ re-synced by hand and can drift. Each page's "Full program" link is the canonica
 - [Rust bindings](rust-api.md) — `iclforge-sys` (raw, `bindgen`-generated) plus the safe
   `iclforge` crate, both over the C API.
 - [Python bindings](python-api.md) — the `iclforge` PyPI package, pybind11-direct over
-  `iclforge::FrameEncoder`/`FrameDecoder`/`Eac3Decoder`/`oba::AtmosEncoder`,
+  `iclforge::ac3::FrameEncoder`/`FrameDecoder`/`Eac3Decoder`/`oba::AtmosEncoder`,
   `eac3::FrameEncoder`/`AccessUnitEncoder` and, in a build from this tree, `iclforge::ac4::Decoder` and
   `iclforge::ac4::Encoder`.
 - [WebAssembly](../platforms/wasm.md) — the `iclforge-wasm-decoder` package, built
@@ -284,7 +284,7 @@ These hold across the whole API.
 `FrameError` covers encoding, `DecodeError` decoding, `ScanError` scanning, `WavError` file
 I/O, `MuxError` muxing. All five have a `describe()` returning a `std::string_view`. The AC-4
 libraries do the same with `iclforge::ac4::Error`, `iclforge::ac4::DecodeError` and `iclforge::ac4::EncodeError`, which are not
-`iclforge::DecodeError` and `iclforge::FrameError` under other names ([AC-4](ac4.md#errors)).
+`iclforge::ac3::DecodeError` and `iclforge::ac3::FrameError` under other names ([AC-4](ac4.md#errors)).
 
 **Namespaces follow the libraries only in part.** Everything is under `iclforge::`. The
 containers, the readers and the AC-4 libraries each have a namespace named for them
@@ -301,8 +301,8 @@ plans to nest the AC-3 codec under `iclforge::ac3`, and the rule of
 holds for the libraries meanwhile.
 
 Within the AC-3 codec, AC-3 is the base case and lives in the bare namespace; E-AC-3 additions and
-overrides live in `iclforge::eac3`, nested rather than parallel. `iclforge::FrameEncoder` (AC-3) and
-`iclforge::eac3::FrameEncoder` (E-AC-3) sharing a class name across that boundary is this rule applied
+overrides live in `iclforge::ac3::eac3`, nested rather than parallel. `iclforge::ac3::FrameEncoder` (AC-3) and
+`iclforge::ac3::eac3::FrameEncoder` (E-AC-3) sharing a class name across that boundary is this rule applied
 consistently — the same split the Python bindings mirror by putting the E-AC-3
 encoder in a real `eac3` submodule rather than a same-module name that would collide.
 
@@ -316,8 +316,8 @@ outlive the call. Build the outer vector once and refill the buffers underneath 
 vector of spans per frame is a pure waste.
 
 **Channel order is A/52 Table 5.8, not WAV order.** That is `L, C, R, SL, SR` with LFE last,
-against WAVE_FORMAT_EXTENSIBLE's `FL, FR, FC, LFE, BL, BR`. `iclforge::io::ac3_layout_for` and
-`iclforge::io::wav_channel_order` give you the permutation both ways; use them rather than writing
+against WAVE_FORMAT_EXTENSIBLE's `FL, FR, FC, LFE, BL, BR`. `iclforge::ac3::io::ac3_layout_for` and
+`iclforge::ac3::io::wav_channel_order` give you the permutation both ways; use them rather than writing
 it out again. AC-4 uses neither: `iclforge::ac4::Decoder` writes `L, R, C, LFE, Ls, Rs` and then the
 layout's remaining pairs, each channel named in `DecodedFrame::speakers`, and `iclforge::ac4::Encoder` takes
 the same order.
@@ -330,7 +330,7 @@ instance — the headers note that per-frame scratch and history members are reu
 calls — but separate instances share nothing and are independent.
 
 **Each `encode_frame` call takes exactly one frame of PCM per channel.** For AC-3 that is always
-`iclforge::kSamplesPerFrame` (1536); for E-AC-3 it is `FrameEncoder::samples_per_frame()`, which is
+`iclforge::ac3::kSamplesPerFrame` (1536); for E-AC-3 it is `FrameEncoder::samples_per_frame()`, which is
 1536 unless `FrameConfig::numblkscod` shortens the syncframe (256, 512 or 768 — see
 [Encoding E-AC-3](encoding-eac3.md)). Short-changing it is a programming error, not a runtime
 one.

@@ -151,10 +151,10 @@ IRAM_ATTR bool on_sent(i2s_chan_handle_t /*handle*/, i2s_event_data_t* /*event*/
 // so I2S_LL_SLOT_FRAME_BIT_MAX/8 bytes serves both, four times sink/i2s's
 // buffer at this part's 512-bit frame.
 union LineBuffer {
-    std::array<std::int32_t, iclforge::kSamplesPerBlock * (I2S_LL_SLOT_FRAME_BIT_MAX / 32)> wide;
-    std::array<std::int16_t, iclforge::kSamplesPerBlock * (I2S_LL_SLOT_FRAME_BIT_MAX / 16)> narrow;
+    std::array<std::int32_t, iclforge::ac3::kSamplesPerBlock * (I2S_LL_SLOT_FRAME_BIT_MAX / 32)> wide;
+    std::array<std::int16_t, iclforge::ac3::kSamplesPerBlock * (I2S_LL_SLOT_FRAME_BIT_MAX / 16)> narrow;
 };
-static_assert(sizeof(LineBuffer) == iclforge::kSamplesPerBlock * (I2S_LL_SLOT_FRAME_BIT_MAX / 8),
+static_assert(sizeof(LineBuffer) == iclforge::ac3::kSamplesPerBlock * (I2S_LL_SLOT_FRAME_BIT_MAX / 8),
               "a line's block is I2S_LL_SLOT_FRAME_BIT_MAX/8 bytes a frame at either slot width");
 LineBuffer g_buffer{};
 
@@ -166,7 +166,7 @@ constexpr int kDmaFrames = CONFIG_ICLFORGE_EXAMPLE_I2S_DMA_FRAMES;
 // every write).
 constexpr std::size_t kLineBytesPerFrame = I2S_LL_SLOT_FRAME_BIT_MAX / 8;
 const DmaPlan g_dma_plan =
-    dma_plan(kDmaDescriptors, kDmaFrames, kLineBytesPerFrame, iclforge::kSamplesPerBlock);
+    dma_plan(kDmaDescriptors, kDmaFrames, kLineBytesPerFrame, iclforge::ac3::kSamplesPerBlock);
 
 void restart_clock(std::uint32_t sample_rate) {
     g_ring.reset();
@@ -391,8 +391,8 @@ void sink_write(std::span<const std::span<const float>> channels) {
         return;
     }
     std::size_t frames = channels[0].size();
-    if (frames > iclforge::kSamplesPerBlock) {
-        frames = iclforge::kSamplesPerBlock;
+    if (frames > iclforge::ac3::kSamplesPerBlock) {
+        frames = iclforge::ac3::kSamplesPerBlock;
     }
 
     g_model.arriving(esp_timer_get_time());
@@ -411,7 +411,7 @@ std::optional<iclforge::PlayoutWrite> sink_write_timed(std::span<const std::span
         return std::nullopt;
     }
     sink_write(channels);
-    const auto buffers = static_cast<std::uint32_t>(iclforge::kSamplesPerBlock / static_cast<std::size_t>(g_dma_plan.frames));
+    const auto buffers = static_cast<std::uint32_t>(iclforge::ac3::kSamplesPerBlock / static_cast<std::size_t>(g_dma_plan.frames));
     const std::optional<iclforge::DmaClock::Taken> taken = g_clock.took(g_ring, esp_timer_get_time(), buffers);
     if (!taken) {
         return std::nullopt;

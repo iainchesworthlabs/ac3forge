@@ -26,16 +26,16 @@
 // why this is bounded mutation, not continuous fuzzing).
 extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size) {
     const std::span<const std::byte> bytes{reinterpret_cast<const std::byte*>(data), size};
-    const auto frames = iclforge::split_frames(bytes);
+    const auto frames = iclforge::ac3::split_frames(bytes);
     if (!frames || frames->empty()) {
         return 0;
     }
 
-    iclforge::FrameDecoder decoder;
+    iclforge::ac3::FrameDecoder decoder;
     std::vector<std::vector<float>> pcm;
-    iclforge::Acmod acmod = iclforge::Acmod::k2_0;
+    iclforge::ac3::Acmod acmod = iclforge::ac3::Acmod::k2_0;
     bool lfe = false;
-    iclforge::SampleRate sample_rate = iclforge::SampleRate::k48000;
+    iclforge::ac3::SampleRate sample_rate = iclforge::ac3::SampleRate::k48000;
     bool have_first = false;
 
     for (const auto& frame : *frames) {
@@ -65,10 +65,10 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     }
 
     // Same channel-order convention forge's own `decode` writes a WAV with
-    // (apps/cli/main.cpp: run_decode) - see iclforge::io::wav_channel_order's own
+    // (apps/cli/main.cpp: run_decode) - see iclforge::ac3::io::wav_channel_order's own
     // doc comment.
-    const auto map = iclforge::io::wav_channel_order(acmod, lfe);
-    iclforge::fuzzdiff::run_differential("ac3", bytes, ".ac3", pcm, iclforge::sample_rate_hz(sample_rate),
+    const auto map = iclforge::ac3::io::wav_channel_order(acmod, lfe);
+    iclforge::fuzzdiff::run_differential("ac3", bytes, ".ac3", pcm, iclforge::ac3::sample_rate_hz(sample_rate),
                                           map);
     return 0;
 }

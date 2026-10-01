@@ -195,8 +195,8 @@ TEST_CASE("chunks: send_ahead saturates at both ends", "[sendspin][chunks]") {
 
 TEST_CASE("chunks: an AC-3 burst chunk carries wrap_frame's Pc, Pd and frame",
           "[sendspin][chunks]") {
-    const auto frame = iclforge::build_silent_stereo_frame(
-        {.sample_rate = iclforge::SampleRate::k48000, .bitrate_kbps = 192, .dialnorm = 31, .pad441 = false});
+    const auto frame = iclforge::ac3::build_silent_stereo_frame(
+        {.sample_rate = iclforge::ac3::SampleRate::k48000, .bitrate_kbps = 192, .dialnorm = 31, .pad441 = false});
     REQUIRE(frame.has_value());
     const auto burst = iclforge::iec61937::wrap_frame(*frame);
     REQUIRE(burst.has_value());
@@ -265,7 +265,7 @@ TEST_CASE("chunks: an E-AC-3 burst chunk carries Eac3BurstPacker's six blocks",
 TEST_CASE("chunks: a burst chunk for the first syncframe of tests/golden's AC-3 5.1 fixture",
           "[sendspin][chunks]") {
     const std::vector<std::byte> stream = read_file(ICLFORGE_GOLDEN_EXTERNAL_BASELINE_DIR "/ac3-51-448/ffmpeg.ac3");
-    const auto frames = iclforge::split_frames(stream);
+    const auto frames = iclforge::ac3::split_frames(stream);
     REQUIRE(frames.has_value());
     REQUIRE_FALSE(frames->empty());
     const std::span<const std::byte> frame = frames->front();
@@ -290,8 +290,8 @@ TEST_CASE("chunks: a burst chunk for the first syncframe of tests/golden's AC-3 
 }
 
 TEST_CASE("chunks: a burst chunk for the encoder's E-AC-3 syncframes of two blocks", "[sendspin][chunks]") {
-    iclforge::eac3::FrameConfig config{.bitrate_kbps = 192, .numblkscod = 1};
-    const auto frame = iclforge::eac3::build_silent_frame(config);
+    iclforge::ac3::eac3::FrameConfig config{.bitrate_kbps = 192, .numblkscod = 1};
+    const auto frame = iclforge::ac3::eac3::build_silent_frame(config);
     REQUIRE(frame.has_value());
     iclforge::iec61937::Eac3BurstPacker packer;
     std::vector<std::byte> payload;

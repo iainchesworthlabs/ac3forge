@@ -32,7 +32,7 @@ constexpr std::size_t kFrames = 1536;  // six blocks
 // first positioned slot and on each bed slot, encoded into one E-AC-3
 // access unit per frame with the encoder's 5.1 bed alongside.
 struct Encoded {
-    std::unique_ptr<iclforge::oba::AtmosEncoder> encoder;
+    std::unique_ptr<iclforge::ac3::oba::AtmosEncoder> encoder;
     std::vector<std::vector<float>> objects;
     std::vector<std::span<const float>> views;
     std::vector<iclforge::oba::ObjectPlacement> placements;
@@ -41,11 +41,11 @@ struct Encoded {
     double phase = 0.0;
 
     Encoded() {
-        iclforge::oba::AtmosConfig atmos;
+        iclforge::ac3::oba::AtmosConfig atmos;
         atmos.numblkscod = 3;
         atmos.bitrate_kbps = 448;
         atmos.emit_object_metadata = false;  // no key: 5.1 bed only, as the app does
-        encoder = std::make_unique<iclforge::oba::AtmosEncoder>(atmos, kObjectSlots);
+        encoder = std::make_unique<iclforge::ac3::oba::AtmosEncoder>(atmos, kObjectSlots);
         objects.assign(kObjectSlots, std::vector<float>(kFrames, 0.0F));
         views.resize(kObjectSlots);
         placements.resize(kObjectSlots);

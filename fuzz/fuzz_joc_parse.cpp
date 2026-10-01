@@ -4,7 +4,7 @@
 
 #include "iclforge/ac3/oba/joc.hpp"
 
-// iclforge::oba::joc::parse_payload (src/ac3/src/oba/joc.cpp) - the joc() payload of
+// iclforge::ac3::oba::joc::parse_payload (src/ac3/src/oba/joc.cpp) - the joc() payload of
 // TS 103 420 §6, as recovered from an EMDF payload with id 14.
 //
 // The widest of the three metadata parsers by a distance, and the only one
@@ -20,6 +20,6 @@
 // path end to end.
 extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size) {
     const std::span<const std::byte> bytes{reinterpret_cast<const std::byte*>(data), size};
-    (void)iclforge::oba::joc::parse_payload(bytes);
+    (void)iclforge::ac3::oba::joc::parse_payload(bytes);
     return 0;
 }

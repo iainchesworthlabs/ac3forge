@@ -39,7 +39,7 @@ constexpr char kLogTag[] = "iclforge.shield";
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_iclforge_shield_NativeBridge_nativeVersionString(JNIEnv* env, jclass /*clazz*/) {
-    const std::string version(iclforge::version_full);
+    const std::string version(iclforge::ac3::version_full);
     __android_log_print(ANDROID_LOG_INFO, kLogTag, "iclforge::ac3 %s linked into iclforge_jni.so",
                         version.c_str());
     return env->NewStringUTF(version.c_str());

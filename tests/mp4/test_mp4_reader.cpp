@@ -112,7 +112,7 @@ std::vector<Bytes> read_in_chunks(std::span<const std::byte> file, std::size_t c
     return got;
 }
 
-// A dec3 payload matching what iclforge::io::build_codec_config_box writes for a
+// A dec3 payload matching what iclforge::ac3::io::build_codec_config_box writes for a
 // 5.1 JOC stream: data_rate 448, one independent substream, fscod 0, bsid 16,
 // acmod 7, lfeon, and TS 103 420's Atmos extension with complexity index 16.
 // Hand-packed here rather than built with the writer, for the same reason the

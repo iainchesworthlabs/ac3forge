@@ -39,7 +39,7 @@ namespace iclforge::ac4::detail {
 // src/ac4core's kernels are explicitly instantiated at, resolved by
 // ICLFORGE_DECODE_SCALAR (double or float): one concrete type per build,
 // used directly here rather than as a template parameter, the way
-// iclforge::ac3's own decode path uses iclforge::internal::decode_scalar_t (that
+// iclforge::ac3's own decode path uses iclforge::ac3::internal::decode_scalar_t (that
 // header's own comment explains the distinction). pcm/'s classes and free
 // functions are not C++ templates - they call the same one Real every other
 // pcm/ file resolves, since a build never needs two at once - so this second

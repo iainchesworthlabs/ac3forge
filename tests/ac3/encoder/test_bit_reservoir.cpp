@@ -6,15 +6,15 @@
 
 #include "bit_reservoir.hpp"
 
-// iclforge::internal::BitReservoir is the accounting behind E-AC-3's average-rate
+// iclforge::ac3::internal::BitReservoir is the accounting behind E-AC-3's average-rate
 // mode: what one frame does not spend is what the next one may. The encoder
 // tests (tests/ac3/encoder/test_eac3.cpp's [abr] cases) prove the rate it
 // delivers on real frames; these prove the arithmetic underneath, where the
 // awkward cases - an exhausted window, an overspend, a window of one - are
 // reachable directly instead of having to be provoked through content.
 
-using iclforge::internal::AbrController;
-using iclforge::internal::BitReservoir;
+using iclforge::ac3::internal::AbrController;
+using iclforge::ac3::internal::BitReservoir;
 
 TEST_CASE("bit reservoir starts at one frame's share, not the window's", "[abr][reservoir]") {
     // A window that began empty would let the very first frame spend the

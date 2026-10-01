@@ -45,7 +45,7 @@ namespace iclforge::dsp {
                                                            std::uint32_t output_rate);
 
 // Convenience over resample(): resamples every channel of a planar
-// multi-channel buffer independently - the same shape iclforge::io::WavData::
+// multi-channel buffer independently - the same shape iclforge::ac3::io::WavData::
 // channels uses (one std::vector<float> per channel, not interleaved).
 // Each output channel is exactly what calling resample() on that channel
 // alone would produce; channels never influence one another (no shared

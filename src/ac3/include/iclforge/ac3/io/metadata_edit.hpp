@@ -27,7 +27,7 @@
 // CRC - recompute over the covered region and store it. crc1 is not: A/52
 // §7.10.1 puts it BEFORE the region it protects and requires the register to
 // read zero once the first 5/8 of the syncframe has been shifted through, so
-// it has to be SOLVED rather than computed. iclforge::solve_leading_crc
+// it has to be SOLVED rather than computed. iclforge::ac3::solve_leading_crc
 // (ac3/core/crc16.hpp) does that with a GF(2) polynomial inverse, and is the
 // same function the encoder itself uses - see its own comment.
 //
@@ -46,7 +46,7 @@
 //     the wire and are still skipped correctly; they are simply not a compr
 //     word, so this refuses to write one into them.
 //   * strmtyp 2 (a "convertible" substream, §E2.3.1.1) is refused outright,
-//     matching iclforge::plan::validate's own stance - its bsi carries an extra
+//     matching iclforge::ac3::plan::validate's own stance - its bsi carries an extra
 //     blkid/frmsizecod branch nothing in this project produces or consumes.
 
 namespace iclforge::ac3::io {
@@ -68,7 +68,7 @@ enum class EditError : std::uint8_t {
 //
 // Read, not applied: this exists so a transcode can carry a DD+ stream's
 // downmix intent across to the two coarse levels AC-3 has room for. See
-// iclforge::meta (ac3/meta/mixing.hpp) for what the values mean.
+// iclforge::ac3::meta (ac3/meta/mixing.hpp) for what the values mean.
 // Every member below carries an explicit `= std::nullopt`, even though
 // std::optional's own default constructor already produces one: a caller
 // naming only some of these in a designated initializer trips GCC's

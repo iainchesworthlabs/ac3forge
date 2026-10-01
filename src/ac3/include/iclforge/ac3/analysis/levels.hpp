@@ -153,8 +153,8 @@ class ICLFORGE_AC3_EXPORT LevelMeter {
 
     // Every private data member - acmod/lfe/sample rate, the ballistics
     // config, the level/summary vectors, all of it - lives behind this one
-    // pimpl, following the same pattern as iclforge::io::WavStreamReader/Writer
-    // and iclforge::FrameEncoder. Impl is defined in levels.cpp.
+    // pimpl, following the same pattern as iclforge::ac3::io::WavStreamReader/Writer
+    // and iclforge::ac3::FrameEncoder. Impl is defined in levels.cpp.
     struct Impl;
     std::unique_ptr<Impl> impl_;
 };

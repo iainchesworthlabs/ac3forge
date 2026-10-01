@@ -178,7 +178,7 @@ TEST_CASE("the encoder's presentations and DEE's substreams, made for the race",
                                 presentation(std::nullopt, {2}, 12)};
         std::vector<std::vector<float>> input;
         for (const char* source : {race.music_source, race.dialogue_source, race.associated_source}) {
-            const auto wav = iclforge::io::read_wav((gold / "sources" / (std::string{source} + ".wav")).string());
+            const auto wav = iclforge::ac3::io::read_wav((gold / "sources" / (std::string{source} + ".wav")).string());
             REQUIRE(wav.has_value());
             REQUIRE(wav->sample_rate == 48000);
             REQUIRE(wav->channels.size() == 2);

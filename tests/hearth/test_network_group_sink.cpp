@@ -112,12 +112,12 @@ std::unique_ptr<testsink::Sink> start_sink(const fs::path& directory, std::strin
 
 // One real, valid AC-3 access unit: a quiet stereo tone, 48 kHz.
 std::vector<std::byte> ac3_unit() {
-    iclforge::EncoderConfig config;
-    config.sample_rate = iclforge::SampleRate::k48000;
+    iclforge::ac3::EncoderConfig config;
+    config.sample_rate = iclforge::ac3::SampleRate::k48000;
     config.bitrate_kbps = 192;
-    config.acmod = iclforge::Acmod::k2_0;
-    iclforge::FrameEncoder encoder{config};
-    std::vector<float> samples(iclforge::kSamplesPerFrame);
+    config.acmod = iclforge::ac3::Acmod::k2_0;
+    iclforge::ac3::FrameEncoder encoder{config};
+    std::vector<float> samples(iclforge::ac3::kSamplesPerFrame);
     for (std::size_t n = 0; n < samples.size(); ++n) {
         samples[n] = 0.1F * std::sin(static_cast<float>(n) * 0.1F);
     }
@@ -256,8 +256,8 @@ TEST_CASE("network group sink: PCM and a burst reach real sinks through the wrap
     std::int64_t next_frame = 0;
     const auto burst_deadline = std::chrono::steady_clock::now() + 30s;
     while (played_burst() < 1 && std::chrono::steady_clock::now() < burst_deadline) {
-        if (sink->submit_burst(pc, pd, unit, next_frame, iclforge::kSamplesPerFrame)) {
-            next_frame += iclforge::kSamplesPerFrame;
+        if (sink->submit_burst(pc, pd, unit, next_frame, iclforge::ac3::kSamplesPerFrame)) {
+            next_frame += iclforge::ac3::kSamplesPerFrame;
         }
         std::this_thread::sleep_for(32ms);
     }
@@ -269,7 +269,7 @@ TEST_CASE("network group sink: PCM and a burst reach real sinks through the wrap
     CHECK(played_pcm() == kFrames);
     CHECK(played_burst() >= 1);
     CHECK(burst_sink->totals().burst_frames >=
-          static_cast<std::uint64_t>(iclforge::kSamplesPerFrame));
+          static_cast<std::uint64_t>(iclforge::ac3::kSamplesPerFrame));
     // The group's timeline runs through it within its lead (a sink may count
     // a chunk as it arrives, before its time).
     {
@@ -294,11 +294,11 @@ TEST_CASE("network group sink: PCM and a burst reach real sinks through the wrap
     // stream/end and the host's going only set off: a read straight after can
     // find the header still saying no frames (Linux GCC in CI, 2026-09-25).
     const std::string wav_path = (scratch / "pcm" / "out" / "stream-1-1.wav").string();
-    auto wav = iclforge::io::read_wav(wav_path);
+    auto wav = iclforge::ac3::io::read_wav(wav_path);
     const auto wav_deadline = std::chrono::steady_clock::now() + 10s;
     while ((!wav || wav->frame_count() != kFrames) && std::chrono::steady_clock::now() < wav_deadline) {
         std::this_thread::sleep_for(20ms);
-        wav = iclforge::io::read_wav(wav_path);
+        wav = iclforge::ac3::io::read_wav(wav_path);
     }
     REQUIRE(wav.has_value());
     REQUIRE(wav->frame_count() == kFrames);

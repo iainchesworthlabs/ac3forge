@@ -23,8 +23,8 @@
 
 namespace {
 
-void record(const iclforge::Diagnostic& diagnostic, void* context) {
-    static_cast<std::vector<iclforge::Diagnostic>*>(context)->push_back(diagnostic);
+void record(const iclforge::ac3::Diagnostic& diagnostic, void* context) {
+    static_cast<std::vector<iclforge::ac3::Diagnostic>*>(context)->push_back(diagnostic);
 }
 
 std::vector<std::vector<float>> tones(std::span<const double> hz, int samples,
@@ -45,14 +45,14 @@ std::vector<std::vector<float>> tones(std::span<const double> hz, int samples,
 // touching its sync word or declared size - the shape real transport
 // corruption takes, and what split_frames still finds the boundary of.
 std::vector<std::vector<std::byte>> encode_damaged_ac3() {
-    iclforge::EncoderConfig config;
-    config.acmod = iclforge::Acmod::k2_0;
+    iclforge::ac3::EncoderConfig config;
+    config.acmod = iclforge::ac3::Acmod::k2_0;
     config.bitrate_kbps = 192;
-    iclforge::FrameEncoder encoder{config};
+    iclforge::ac3::FrameEncoder encoder{config};
     const std::array<double, 2> hz = {440.0, 660.0};
     std::vector<std::vector<std::byte>> out;
     for (int f = 0; f < 5; ++f) {
-        const auto pcm = tones(hz, iclforge::kSamplesPerFrame);
+        const auto pcm = tones(hz, iclforge::ac3::kSamplesPerFrame);
         std::vector<std::span<const float>> views;
         for (const auto& channel : pcm) {
             views.emplace_back(channel);
@@ -70,21 +70,21 @@ std::vector<std::vector<std::byte>> encode_damaged_ac3() {
 
 TEST_CASE("a CRC mismatch reaches the diagnostic sink", "[decoder][diagnostics]") {
     auto frames = encode_damaged_ac3();
-    std::vector<iclforge::Diagnostic> events;
-    iclforge::FrameDecoder decoder{{.diagnostics = &record, .diagnostics_context = &events}};
+    std::vector<iclforge::ac3::Diagnostic> events;
+    iclforge::ac3::FrameDecoder decoder{{.diagnostics = &record, .diagnostics_context = &events}};
 
     for (std::size_t i = 0; i < frames.size(); ++i) {
         const auto decoded = decoder.decode_frame(frames[i]);
         if (i == 2) {
             REQUIRE_FALSE(decoded.has_value());
-            CHECK(decoded.error() == iclforge::DecodeError::kBadCrc);
+            CHECK(decoded.error() == iclforge::ac3::DecodeError::kBadCrc);
         } else {
             REQUIRE(decoded.has_value());
         }
     }
 
     REQUIRE(events.size() == 1);
-    CHECK(events[0].event == iclforge::DiagnosticEvent::kCrcMismatch);
+    CHECK(events[0].event == iclforge::ac3::DiagnosticEvent::kCrcMismatch);
 }
 
 TEST_CASE("a CRC mismatch reaches the sink even when concealment hides the error return",
@@ -93,8 +93,8 @@ TEST_CASE("a CRC mismatch reaches the sink even when concealment hides the error
     // return value alone no longer says a CRC failure happened at all - see
     // DecodedFrame::concealed, which a caller must poll every frame to find.
     auto frames = encode_damaged_ac3();
-    std::vector<iclforge::Diagnostic> events;
-    iclforge::FrameDecoder decoder{{.concealment = iclforge::ConcealmentPolicy::kRepeatFade,
+    std::vector<iclforge::ac3::Diagnostic> events;
+    iclforge::ac3::FrameDecoder decoder{{.concealment = iclforge::ac3::ConcealmentPolicy::kRepeatFade,
                               .diagnostics = &record,
                               .diagnostics_context = &events}};
 
@@ -105,14 +105,14 @@ TEST_CASE("a CRC mismatch reaches the sink even when concealment hides the error
     }
 
     REQUIRE(events.size() == 1);
-    CHECK(events[0].event == iclforge::DiagnosticEvent::kCrcMismatch);
+    CHECK(events[0].event == iclforge::ac3::DiagnosticEvent::kCrcMismatch);
 }
 
 TEST_CASE("a null diagnostics sink changes nothing", "[decoder][diagnostics]") {
     // The default DecoderConfig - proving the facility is genuinely opt-in,
     // the same guarantee trace/syntax/concealment already give.
     auto frames = encode_damaged_ac3();
-    iclforge::FrameDecoder decoder;
+    iclforge::ac3::FrameDecoder decoder;
     for (std::size_t i = 0; i < frames.size(); ++i) {
         const auto decoded = decoder.decode_frame(frames[i]);
         CHECK(decoded.has_value() == (i != 2));
@@ -120,23 +120,23 @@ TEST_CASE("a null diagnostics sink changes nothing", "[decoder][diagnostics]") {
 }
 
 TEST_CASE("an E-AC-3 CRC mismatch reaches the diagnostic sink", "[eac3][decoder][diagnostics]") {
-    iclforge::eac3::FrameEncoder encoder{{.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0}};
+    iclforge::ac3::eac3::FrameEncoder encoder{{.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k2_0}};
     const auto nchans = static_cast<std::size_t>(encoder.channel_count());
-    const std::vector<float> silence(iclforge::kSamplesPerFrame, 0.0f);
+    const std::vector<float> silence(iclforge::ac3::kSamplesPerFrame, 0.0f);
     const std::vector<std::span<const float>> views(nchans, silence);
     auto frame = encoder.encode_frame(views);
     REQUIRE(frame.has_value());
     REQUIRE(frame->size() > 40);
     (*frame)[frame->size() / 2] ^= std::byte{0xFF};
 
-    std::vector<iclforge::Diagnostic> events;
-    iclforge::Eac3Decoder decoder{{.diagnostics = &record, .diagnostics_context = &events}};
+    std::vector<iclforge::ac3::Diagnostic> events;
+    iclforge::ac3::Eac3Decoder decoder{{.diagnostics = &record, .diagnostics_context = &events}};
     const auto decoded = decoder.decode_substream(*frame);
     REQUIRE_FALSE(decoded.has_value());
-    CHECK(decoded.error() == iclforge::DecodeError::kBadCrc);
+    CHECK(decoded.error() == iclforge::ac3::DecodeError::kBadCrc);
 
     REQUIRE(events.size() == 1);
-    CHECK(events[0].event == iclforge::DiagnosticEvent::kCrcMismatch);
+    CHECK(events[0].event == iclforge::ac3::DiagnosticEvent::kCrcMismatch);
 }
 
 TEST_CASE("an unrecognised EMDF payload id reaches the diagnostic sink",
@@ -150,20 +150,20 @@ TEST_CASE("an unrecognised EMDF payload id reaches the diagnostic sink",
     const std::vector<iclforge::emdf::Payload> payloads = {{.id = 5, .bytes = payload_bytes}};
     const auto container = iclforge::emdf::build_container(payloads);
 
-    iclforge::eac3::FrameEncoder encoder{{.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0}};
+    iclforge::ac3::eac3::FrameEncoder encoder{{.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k2_0}};
     const auto nchans = static_cast<std::size_t>(encoder.channel_count());
-    const std::vector<float> silence(iclforge::kSamplesPerFrame, 0.0f);
+    const std::vector<float> silence(iclforge::ac3::kSamplesPerFrame, 0.0f);
     const std::vector<std::span<const float>> views(nchans, silence);
     auto frame = encoder.encode_frame(views, container);
     REQUIRE(frame.has_value());
 
-    std::vector<iclforge::Diagnostic> events;
-    iclforge::Eac3Decoder decoder{{.diagnostics = &record, .diagnostics_context = &events}};
+    std::vector<iclforge::ac3::Diagnostic> events;
+    iclforge::ac3::Eac3Decoder decoder{{.diagnostics = &record, .diagnostics_context = &events}};
     const auto decoded = decoder.decode_substream(*frame);
     REQUIRE(decoded.has_value());  // EMDF never fails the surrounding frame
 
     REQUIRE(events.size() == 1);
-    CHECK(events[0].event == iclforge::DiagnosticEvent::kUnknownEmdfPayload);
+    CHECK(events[0].event == iclforge::ac3::DiagnosticEvent::kUnknownEmdfPayload);
     CHECK(events[0].emdf_payload_id == 5);
 }
 
@@ -174,15 +174,15 @@ TEST_CASE("a recognised EMDF payload id (OAMD/JOC) does not reach the sink",
         {.id = iclforge::emdf::kPayloadIdOamd, .bytes = payload_bytes}};
     const auto container = iclforge::emdf::build_container(payloads);
 
-    iclforge::eac3::FrameEncoder encoder{{.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0}};
+    iclforge::ac3::eac3::FrameEncoder encoder{{.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k2_0}};
     const auto nchans = static_cast<std::size_t>(encoder.channel_count());
-    const std::vector<float> silence(iclforge::kSamplesPerFrame, 0.0f);
+    const std::vector<float> silence(iclforge::ac3::kSamplesPerFrame, 0.0f);
     const std::vector<std::span<const float>> views(nchans, silence);
     auto frame = encoder.encode_frame(views, container);
     REQUIRE(frame.has_value());
 
-    std::vector<iclforge::Diagnostic> events;
-    iclforge::Eac3Decoder decoder{{.diagnostics = &record, .diagnostics_context = &events}};
+    std::vector<iclforge::ac3::Diagnostic> events;
+    iclforge::ac3::Eac3Decoder decoder{{.diagnostics = &record, .diagnostics_context = &events}};
     const auto decoded = decoder.decode_substream(*frame);
     REQUIRE(decoded.has_value());
 
@@ -190,8 +190,8 @@ TEST_CASE("a recognised EMDF payload id (OAMD/JOC) does not reach the sink",
 }
 
 TEST_CASE("describe() names every diagnostic event distinctly", "[decoder][diagnostics]") {
-    const auto crc = iclforge::describe(iclforge::DiagnosticEvent::kCrcMismatch);
-    const auto emdf = iclforge::describe(iclforge::DiagnosticEvent::kUnknownEmdfPayload);
+    const auto crc = iclforge::ac3::describe(iclforge::ac3::DiagnosticEvent::kCrcMismatch);
+    const auto emdf = iclforge::ac3::describe(iclforge::ac3::DiagnosticEvent::kUnknownEmdfPayload);
     CHECK_FALSE(crc.empty());
     CHECK_FALSE(emdf.empty());
     CHECK(crc != emdf);

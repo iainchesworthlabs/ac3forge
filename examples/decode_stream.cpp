@@ -1,6 +1,6 @@
 // Read an elementary stream back: work out what it is, then decode it.
 //
-// iclforge::io::scan does the first half without committing to a generation — it
+// iclforge::ac3::io::scan does the first half without committing to a generation — it
 // finds the access-unit boundaries and reports what the stream renders, which
 // is what a muxer needs and what tells you which decoder to reach for.
 
@@ -22,11 +22,11 @@ namespace {
 std::vector<std::byte> make_stream() {
     // Heap-allocated: FrameEncoder carries several KB of MDCT scratch/history
     // state (PREfast's C6262).
-    auto encoder = std::make_unique<iclforge::FrameEncoder>(
-        iclforge::EncoderConfig{.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0});
-    std::vector<std::vector<float>> pcm(2, std::vector<float>(iclforge::kSamplesPerFrame));
+    auto encoder = std::make_unique<iclforge::ac3::FrameEncoder>(
+        iclforge::ac3::EncoderConfig{.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k2_0});
+    std::vector<std::vector<float>> pcm(2, std::vector<float>(iclforge::ac3::kSamplesPerFrame));
     for (std::size_t ch = 0; ch < pcm.size(); ++ch) {
-        for (int n = 0; n < iclforge::kSamplesPerFrame; ++n) {
+        for (int n = 0; n < iclforge::ac3::kSamplesPerFrame; ++n) {
             pcm[ch][static_cast<std::size_t>(n)] = 0.25F * static_cast<float>((n % 97) - 48) / 48.0F;
         }
     }
@@ -49,28 +49,28 @@ int main() {
     const std::vector<std::byte> stream = make_stream();
 
     // Spans in the result point into `stream`, so it has to outlive them.
-    const auto scanned = iclforge::io::scan(stream);
+    const auto scanned = iclforge::ac3::io::scan(stream);
     if (!scanned) {
         fmt::printf("scan failed: %.*s\n",
-                    static_cast<int>(iclforge::io::describe(scanned.error()).size()),
-                    iclforge::io::describe(scanned.error()).data());
+                    static_cast<int>(iclforge::ac3::io::describe(scanned.error()).size()),
+                    iclforge::ac3::io::describe(scanned.error()).data());
         return 1;
     }
     fmt::printf("%s, %u Hz, %d channels, %zu access units\n",
-                scanned->kind == iclforge::io::StreamKind::kAc3 ? "AC-3" : "E-AC-3",
-                iclforge::sample_rate_hz(scanned->sample_rate), scanned->channels,
+                scanned->kind == iclforge::ac3::io::StreamKind::kAc3 ? "AC-3" : "E-AC-3",
+                iclforge::ac3::sample_rate_hz(scanned->sample_rate), scanned->channels,
                 scanned->access_units.size());
 
-    // AC-3: one syncframe per access unit. For E-AC-3 use iclforge::Eac3Decoder and
+    // AC-3: one syncframe per access unit. For E-AC-3 use iclforge::ac3::Eac3Decoder and
     // decode_access_unit, which applies the §E3.8.2 render across substreams.
-    iclforge::FrameDecoder decoder;
+    iclforge::ac3::FrameDecoder decoder;
     std::size_t samples = 0;
     for (const auto unit : scanned->access_units) {
         const auto decoded = decoder.decode_frame(unit);
         if (!decoded) {
             fmt::printf("decode failed: %.*s\n",
-                        static_cast<int>(iclforge::describe(decoded.error()).size()),
-                        iclforge::describe(decoded.error()).data());
+                        static_cast<int>(iclforge::ac3::describe(decoded.error()).size()),
+                        iclforge::ac3::describe(decoded.error()).data());
             return 1;
         }
         samples += decoded->channels.front().size();

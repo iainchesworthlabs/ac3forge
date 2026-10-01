@@ -28,7 +28,7 @@
 
 namespace {
 
-using iclforge::eac3::chanmap::Location;
+using iclforge::ac3::eac3::chanmap::Location;
 
 constexpr double kAmplitude = 0.4;
 
@@ -39,14 +39,14 @@ struct Speaker {
 
 struct LayoutCase {
     std::string_view name;
-    iclforge::eac3::AccessUnitConfig config;
+    iclforge::ac3::eac3::AccessUnitConfig config;
     std::vector<double> tones;      // one per CODED channel, transmission order
     std::vector<Speaker> speakers;  // one per RENDERED channel, Table E2.5 order
 };
 
 // The bed every layout wider than stereo builds on: L C R Ls Rs LFE.
-iclforge::eac3::FrameConfig bed(std::uint32_t kbps) {
-    return {.bitrate_kbps = kbps, .acmod = iclforge::Acmod::k3_2, .lfe = true};
+iclforge::ac3::eac3::FrameConfig bed(std::uint32_t kbps) {
+    return {.bitrate_kbps = kbps, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true};
 }
 
 // The same layouts and tones the CLI emits (see eac3_layout in apps/cli).
@@ -54,13 +54,13 @@ iclforge::eac3::FrameConfig bed(std::uint32_t kbps) {
 // ones could not tell §E3.8.2's overwrite happening apart from the dependent
 // being ignored altogether.
 std::vector<LayoutCase> layout_cases() {
-    using iclforge::Acmod;
-    namespace cm = iclforge::eac3::chanmap;
-    const iclforge::eac3::FrameConfig rear{
+    using iclforge::ac3::Acmod;
+    namespace cm = iclforge::ac3::eac3::chanmap;
+    const iclforge::ac3::eac3::FrameConfig rear{
         .bitrate_kbps = 320, .acmod = Acmod::k2_2, .chanmap = cm::k71Rear};
-    const iclforge::eac3::FrameConfig top{
+    const iclforge::ac3::eac3::FrameConfig top{
         .bitrate_kbps = 320, .acmod = Acmod::k2_2, .chanmap = cm::kTopQuad};
-    const iclforge::eac3::FrameConfig height{
+    const iclforge::ac3::eac3::FrameConfig height{
         .bitrate_kbps = 320, .acmod = Acmod::k2_0, .chanmap = cm::k512Height};
 
     const std::vector<double> bed_tones = {1000.0, 800.0, 1200.0, 600.0, 1400.0, 60.0};
@@ -147,7 +147,7 @@ std::vector<LayoutCase> layout_cases() {
 }
 
 struct RoundTrip {
-    iclforge::eac3::chanmap::Layout layout;
+    iclforge::ac3::eac3::chanmap::Layout layout;
     std::vector<std::vector<float>> rendered;  // per rendered channel, full length
     std::vector<std::vector<float>> source;    // per CODED channel, full length
     int substreams = 0;
@@ -157,20 +157,20 @@ struct RoundTrip {
 // split_access_units and the decoder - so the framing is exercised too, not
 // just the frames the encoder happened to hand over.
 RoundTrip round_trip(const LayoutCase& layout, int frames) {
-    iclforge::eac3::AccessUnitEncoder encoder{layout.config};
+    iclforge::ac3::eac3::AccessUnitEncoder encoder{layout.config};
     const auto nchans = static_cast<std::size_t>(encoder.channel_count());
     REQUIRE(layout.tones.size() == nchans);
 
     RoundTrip rt;
     rt.source.resize(nchans);
     std::vector<std::vector<float>> block(nchans,
-                                          std::vector<float>(iclforge::kSamplesPerFrame));
+                                          std::vector<float>(iclforge::ac3::kSamplesPerFrame));
     std::vector<std::span<const float>> views(nchans);
     std::vector<std::byte> stream;
     std::uint64_t n0 = 0;
     for (int f = 0; f < frames; ++f) {
         for (std::size_t ch = 0; ch < nchans; ++ch) {
-            for (int i = 0; i < iclforge::kSamplesPerFrame; ++i) {
+            for (int i = 0; i < iclforge::ac3::kSamplesPerFrame; ++i) {
                 block[ch][static_cast<std::size_t>(i)] = static_cast<float>(
                     kAmplitude * std::sin(2.0 * std::numbers::pi * layout.tones[ch] *
                                           static_cast<double>(n0 + static_cast<std::uint64_t>(i)) /
@@ -179,17 +179,17 @@ RoundTrip round_trip(const LayoutCase& layout, int frames) {
             views[ch] = block[ch];
             rt.source[ch].insert(rt.source[ch].end(), block[ch].begin(), block[ch].end());
         }
-        n0 += iclforge::kSamplesPerFrame;
+        n0 += iclforge::ac3::kSamplesPerFrame;
         const auto unit = encoder.encode_access_unit(views);
         REQUIRE(unit.has_value());
         stream.insert(stream.end(), unit->bytes.begin(), unit->bytes.end());
     }
 
-    const auto units = iclforge::split_access_units(stream);
+    const auto units = iclforge::ac3::split_access_units(stream);
     REQUIRE(units.has_value());
     REQUIRE(units->size() == static_cast<std::size_t>(frames));
 
-    iclforge::Eac3Decoder decoder;
+    iclforge::ac3::Eac3Decoder decoder;
     for (const auto& unit : *units) {
         const auto decoded = decoder.decode_access_unit(unit);
         REQUIRE(decoded.has_value());
@@ -273,7 +273,7 @@ void patch_bits(std::vector<std::byte>& frame, std::size_t offset, int count,
     }
     const auto bytes = frame.size();
     const std::uint16_t crc2 =
-        iclforge::crc16(std::span<const std::byte>{frame}.subspan(2, bytes - 4));
+        iclforge::ac3::crc16(std::span<const std::byte>{frame}.subspan(2, bytes - 4));
     frame[bytes - 2] = static_cast<std::byte>(crc2 >> 8);
     frame[bytes - 1] = static_cast<std::byte>(crc2 & 0xFF);
 }
@@ -288,7 +288,7 @@ TEST_CASE("every E-AC-3 layout renders each tone into its own speaker", "[eac3][
         REQUIRE(rt.layout.count == static_cast<int>(layout.speakers.size()));
         REQUIRE(rt.substreams == static_cast<int>(layout.config.dependents.size()) + 1);
         for (std::size_t ch = 0; ch < layout.speakers.size(); ++ch) {
-            CAPTURE(ch, iclforge::eac3::chanmap::name(layout.speakers[ch].location));
+            CAPTURE(ch, iclforge::ac3::eac3::chanmap::name(layout.speakers[ch].location));
             // The rendered order is Table E2.5's bit order, so a layout that
             // decodes the right audio into the wrong slots still fails here.
             CHECK(rt.layout[static_cast<int>(ch)] == layout.speakers[ch].location);
@@ -314,7 +314,7 @@ TEST_CASE("7.1.4 decodes to twelve channels with the ceiling quad in place",
     for (const auto ceiling : {Location::kVhl, Location::kVhr, Location::kLts, Location::kRts,
                                Location::kLrs, Location::kRrs}) {
         const int slot = rt.layout.index_of(ceiling);
-        CAPTURE(iclforge::eac3::chanmap::name(ceiling), slot);
+        CAPTURE(iclforge::ac3::eac3::chanmap::name(ceiling), slot);
         REQUIRE(slot >= 0);
         double peak = 0.0;
         for (const auto sample : rt.rendered[static_cast<std::size_t>(slot)]) {
@@ -325,8 +325,8 @@ TEST_CASE("7.1.4 decodes to twelve channels with the ceiling quad in place",
 }
 
 TEST_CASE("a programme can carry LFE and LFE2 as two distinct channels", "[eac3][decoder]") {
-    using iclforge::Acmod;
-    namespace cm = iclforge::eac3::chanmap;
+    using iclforge::ac3::Acmod;
+    namespace cm = iclforge::ac3::eac3::chanmap;
     // LFE2 needs a full-bandwidth companion in its own substream (acmod
     // always contributes at least one full-bandwidth channel - see
     // chanmap::allocate/acmod_for_chanmap); Vhc plays that role here. The
@@ -357,7 +357,7 @@ TEST_CASE("a programme can carry LFE and LFE2 as two distinct channels", "[eac3]
     REQUIRE(rt.layout.count == static_cast<int>(layout.speakers.size()));
     REQUIRE(rt.substreams == 2);
     for (std::size_t ch = 0; ch < layout.speakers.size(); ++ch) {
-        CAPTURE(ch, iclforge::eac3::chanmap::name(layout.speakers[ch].location));
+        CAPTURE(ch, iclforge::ac3::eac3::chanmap::name(layout.speakers[ch].location));
         // Rendered order is Table E2.5's bit order (LFE2 at bit 14, before
         // LFE at bit 15), so this also proves LFE2 is not silently aliased
         // onto the bed's own LFE slot.
@@ -368,8 +368,8 @@ TEST_CASE("a programme can carry LFE and LFE2 as two distinct channels", "[eac3]
 
 TEST_CASE("two dependents that claim the same location: the later one wins",
           "[eac3][decoder]") {
-    using iclforge::Acmod;
-    namespace cm = iclforge::eac3::chanmap;
+    using iclforge::ac3::Acmod;
+    namespace cm = iclforge::ac3::eac3::chanmap;
     // Nothing stops two dependents from naming the same Table E2.5 location -
     // the per-substream chanmap check (E2.3.1.8) never looks at siblings, and
     // build_silent_access_unit accepts it outright (see the encoder-side test
@@ -398,7 +398,7 @@ TEST_CASE("two dependents that claim the same location: the later one wins",
     REQUIRE(rt.layout.count == static_cast<int>(layout.speakers.size()));
     REQUIRE(rt.substreams == 3);
     for (std::size_t ch = 0; ch < layout.speakers.size(); ++ch) {
-        CAPTURE(ch, iclforge::eac3::chanmap::name(layout.speakers[ch].location));
+        CAPTURE(ch, iclforge::ac3::eac3::chanmap::name(layout.speakers[ch].location));
         CHECK(rt.layout[static_cast<int>(ch)] == layout.speakers[ch].location);
         CHECK(std::abs(dominant_freq_hz(rt.rendered[ch]) - layout.speakers[ch].tone_hz) < 10.0);
     }
@@ -406,8 +406,8 @@ TEST_CASE("two dependents that claim the same location: the later one wins",
 
 TEST_CASE("two substreams claiming primary LFE: the later one wins, not both",
           "[eac3][decoder]") {
-    using iclforge::Acmod;
-    namespace cm = iclforge::eac3::chanmap;
+    using iclforge::ac3::Acmod;
+    namespace cm = iclforge::ac3::eac3::chanmap;
     // The bed's own lfeon and a dependent's chanmap can each independently
     // claim bit 15 (primary LFE): nothing stops a dependent's chanmap from
     // relabelling its lfe-type coded slot as LFE instead of LFE2, the same
@@ -439,7 +439,7 @@ TEST_CASE("two substreams claiming primary LFE: the later one wins, not both",
     REQUIRE(rt.layout.count == static_cast<int>(layout.speakers.size()));
     REQUIRE(rt.substreams == 2);
     for (std::size_t ch = 0; ch < layout.speakers.size(); ++ch) {
-        CAPTURE(ch, iclforge::eac3::chanmap::name(layout.speakers[ch].location));
+        CAPTURE(ch, iclforge::ac3::eac3::chanmap::name(layout.speakers[ch].location));
         CHECK(rt.layout[static_cast<int>(ch)] == layout.speakers[ch].location);
         CHECK(std::abs(dominant_freq_hz(rt.rendered[ch]) - layout.speakers[ch].tone_hz) < 10.0);
     }
@@ -460,10 +460,10 @@ TEST_CASE("E-AC-3 round trips are near-transparent in every channel", "[eac3][de
             std::size_t source = 0;
             bool found = false;
             std::size_t taken = 0;
-            const auto find_in = [&](const iclforge::eac3::FrameConfig& sub) {
+            const auto find_in = [&](const iclforge::ac3::eac3::FrameConfig& sub) {
                 const auto locations =
-                    iclforge::eac3::chanmap::expand(sub.chanmap ? *sub.chanmap
-                                                          : iclforge::eac3::chanmap::acmod_map(
+                    iclforge::ac3::eac3::chanmap::expand(sub.chanmap ? *sub.chanmap
+                                                          : iclforge::ac3::eac3::chanmap::acmod_map(
                                                                 sub.acmod, sub.lfe));
                 for (int i = 0; i < locations.count; ++i) {
                     if (locations[i] == layout.speakers[ch].location) {
@@ -478,7 +478,7 @@ TEST_CASE("E-AC-3 round trips are near-transparent in every channel", "[eac3][de
                 find_in(dep);
             }
             REQUIRE(found);
-            CAPTURE(ch, source, iclforge::eac3::chanmap::name(layout.speakers[ch].location));
+            CAPTURE(ch, source, iclforge::ac3::eac3::chanmap::name(layout.speakers[ch].location));
             // Six channels share the bed's 640 kbps at full bandwidth; the
             // worst measured channel sits around 38 dB on this metric.
             CHECK(snr_db(rt.source[source], rt.rendered[ch]) > 33.0);
@@ -488,7 +488,7 @@ TEST_CASE("E-AC-3 round trips are near-transparent in every channel", "[eac3][de
 
 TEST_CASE("E-AC-3 dual mono codes two independent programmes, never one into the other",
          "[eac3][decoder][dual-mono]") {
-    using iclforge::Acmod;
+    using iclforge::ac3::Acmod;
     // Same shape as the AC-3 version of this test: Ch1 loud, Ch2 silent, so
     // any cross-talk - coupling switched on by mistake, a shared downmix
     // measurement, Ch1 and Ch2 swapped - shows up directly rather than
@@ -496,23 +496,23 @@ TEST_CASE("E-AC-3 dual mono codes two independent programmes, never one into the
     // heavy2 is set explicitly alongside heavy - compre2 is Ch2's own flag,
     // not inherited from Ch1's, so leaving it unset here would (correctly)
     // silence compr2 and defeat the compr2.has_value() check below.
-    const iclforge::eac3::AccessUnitConfig config{
+    const iclforge::ac3::eac3::AccessUnitConfig config{
         .independent = {.bitrate_kbps = 192,
                         .acmod = Acmod::kDualMono,
                         .dialnorm = 27,
                         .dialnorm2 = 18,
-                        .drc = iclforge::meta::profile(iclforge::meta::ProfileId::kFilmStandard),
-                        .heavy = iclforge::meta::HeavyConfig{},
-                        .heavy2 = iclforge::meta::HeavyConfig{}}};
-    iclforge::eac3::AccessUnitEncoder encoder{config};
+                        .drc = iclforge::ac3::meta::profile(iclforge::ac3::meta::ProfileId::kFilmStandard),
+                        .heavy = iclforge::ac3::meta::HeavyConfig{},
+                        .heavy2 = iclforge::ac3::meta::HeavyConfig{}}};
+    iclforge::ac3::eac3::AccessUnitEncoder encoder{config};
     REQUIRE(encoder.channel_count() == 2);
 
-    std::vector<std::vector<float>> block(2, std::vector<float>(iclforge::kSamplesPerFrame));
+    std::vector<std::vector<float>> block(2, std::vector<float>(iclforge::ac3::kSamplesPerFrame));
     std::vector<std::span<const float>> views(2);
     std::vector<std::byte> stream;
     std::uint64_t n0 = 0;
     for (int f = 0; f < 3; ++f) {
-        for (int i = 0; i < iclforge::kSamplesPerFrame; ++i) {
+        for (int i = 0; i < iclforge::ac3::kSamplesPerFrame; ++i) {
             const double t = static_cast<double>(n0 + static_cast<std::uint64_t>(i)) / 48000.0;
             block[0][static_cast<std::size_t>(i)] =
                 static_cast<float>(0.8 * std::sin(2.0 * std::numbers::pi * 1200.0 * t));
@@ -520,20 +520,20 @@ TEST_CASE("E-AC-3 dual mono codes two independent programmes, never one into the
         }
         views[0] = block[0];
         views[1] = block[1];
-        n0 += iclforge::kSamplesPerFrame;
+        n0 += iclforge::ac3::kSamplesPerFrame;
         auto unit = encoder.encode_access_unit(views);
         REQUIRE(unit.has_value());
         stream.insert(stream.end(), unit->bytes.begin(), unit->bytes.end());
     }
 
-    const auto units = iclforge::split_access_units(stream);
+    const auto units = iclforge::ac3::split_access_units(stream);
     REQUIRE(units.has_value());
     REQUIRE(units->size() == 3);  // no dependents, so one substream per frame
 
-    iclforge::Eac3Decoder substream_decoder;
-    iclforge::DecodedSubstream last_substream{};
+    iclforge::ac3::Eac3Decoder substream_decoder;
+    iclforge::ac3::DecodedSubstream last_substream{};
     for (const auto& unit : *units) {
-        const auto frames = iclforge::split_frames(unit);
+        const auto frames = iclforge::ac3::split_frames(unit);
         REQUIRE(frames.has_value());
         REQUIRE(frames->size() == 1);
         const auto decoded = substream_decoder.decode_substream(frames->front());
@@ -562,7 +562,7 @@ TEST_CASE("E-AC-3 dual mono codes two independent programmes, never one into the
     // decode_access_unit must not invent a spatial layout for 1+1 - a fresh
     // decoder, so its overlap-add state cannot be confused with the loop
     // above's per-substream one.
-    iclforge::Eac3Decoder unit_decoder;
+    iclforge::ac3::Eac3Decoder unit_decoder;
     const auto au = unit_decoder.decode_access_unit(units->back());
     REQUIRE(au.has_value());
     REQUIRE(au->has_value());
@@ -583,7 +583,7 @@ TEST_CASE("E-AC-3 dual mono codes two independent programmes, never one into the
     // decode_access_unit is the one fact both callers' own tests cannot
     // otherwise pin (forge-gui's live session and forge's run_live both need a
     // real audio device Quick Test's offscreen CI has none of).
-    const auto order = iclforge::plan::monitor_order(
+    const auto order = iclforge::ac3::plan::monitor_order(
         std::span{(*au)->layout.items}.first(static_cast<std::size_t>((*au)->layout.count)),
         (*au)->channels.size());
     REQUIRE(order.size() == 2);
@@ -593,7 +593,7 @@ TEST_CASE("E-AC-3 dual mono codes two independent programmes, never one into the
 
 TEST_CASE("E-AC-3 dual mono's output-stage dialnorm normalisation levels Ch2 by its own dialnorm2",
           "[eac3][decoder][output][dual-mono]") {
-    using iclforge::Acmod;
+    using iclforge::ac3::Acmod;
     // Same claim as the AC-3 version of this test
     // (tests/ac3/decoder/test_decoder.cpp): §5.4.2.16's dialnorm2 is Ch2's OWN
     // reference, and Eac3Decoder::apply_output - the only place
@@ -603,23 +603,23 @@ TEST_CASE("E-AC-3 dual mono's output-stage dialnorm normalisation levels Ch2 by 
     // between their normalised peaks is attributable only to
     // dialnorm/dialnorm2, never to the two programmes carrying different
     // signal levels of their own.
-    const iclforge::eac3::AccessUnitConfig config{.independent = {.bitrate_kbps = 192,
+    const iclforge::ac3::eac3::AccessUnitConfig config{.independent = {.bitrate_kbps = 192,
                                                              .acmod = Acmod::kDualMono,
                                                              .dialnorm = 27,
                                                              .dialnorm2 = 18}};
-    iclforge::eac3::AccessUnitEncoder encoder{config};
+    iclforge::ac3::eac3::AccessUnitEncoder encoder{config};
     REQUIRE(encoder.channel_count() == 2);
 
-    std::vector<float> tone(iclforge::kSamplesPerFrame);
+    std::vector<float> tone(iclforge::ac3::kSamplesPerFrame);
     std::uint64_t n0 = 0;
     std::vector<std::byte> last_unit;
     for (int f = 0; f < 3; ++f) {
-        for (int i = 0; i < iclforge::kSamplesPerFrame; ++i) {
+        for (int i = 0; i < iclforge::ac3::kSamplesPerFrame; ++i) {
             const auto n = static_cast<double>(n0 + static_cast<std::uint64_t>(i));
             tone[static_cast<std::size_t>(i)] =
                 static_cast<float>(0.5 * std::sin(2.0 * std::numbers::pi * 900.0 * n / 48000.0));
         }
-        n0 += static_cast<std::uint64_t>(iclforge::kSamplesPerFrame);
+        n0 += static_cast<std::uint64_t>(iclforge::ac3::kSamplesPerFrame);
         // Ch1 and Ch2 both get the SAME tone/amplitude - see the comment above.
         const std::vector<std::span<const float>> views{tone, tone};
         auto unit = encoder.encode_access_unit(views);
@@ -630,13 +630,13 @@ TEST_CASE("E-AC-3 dual mono's output-stage dialnorm normalisation levels Ch2 by 
     // Two fresh decoders over the SAME unit bytes: with no prior state to
     // differ on, their pre-dialnorm PCM is identical, so `leveled`/`raw` at
     // any one sample IS the gain apply_output actually applied there.
-    iclforge::Eac3Decoder raw;
+    iclforge::ac3::Eac3Decoder raw;
     const auto uncoded = raw.decode_access_unit(last_unit);
     REQUIRE(uncoded.has_value());
     REQUIRE(uncoded->has_value());
     REQUIRE((*uncoded)->channels.size() == 2);
 
-    iclforge::Eac3Decoder normalised{{.output = {.apply_dialnorm = true}}};
+    iclforge::ac3::Eac3Decoder normalised{{.output = {.apply_dialnorm = true}}};
     const auto leveled = normalised.decode_access_unit(last_unit);
     REQUIRE(leveled.has_value());
     REQUIRE(leveled->has_value());
@@ -657,14 +657,14 @@ TEST_CASE("E-AC-3 dual mono's output-stage dialnorm normalisation levels Ch2 by 
         return static_cast<double>(out[peak]) / static_cast<double>(coded[peak]);
     };
     CHECK(gain_at_peak((*uncoded)->channels[0], (*leveled)->channels[0]) ==
-          Catch::Approx(iclforge::meta::dialnorm_gain(27)).margin(1e-4));
+          Catch::Approx(iclforge::ac3::meta::dialnorm_gain(27)).margin(1e-4));
     CHECK(gain_at_peak((*uncoded)->channels[1], (*leveled)->channels[1]) ==
-          Catch::Approx(iclforge::meta::dialnorm_gain(18)).margin(1e-4));
+          Catch::Approx(iclforge::ac3::meta::dialnorm_gain(18)).margin(1e-4));
 }
 
 TEST_CASE("E-AC-3 dual mono: Ch2's own heavy compression is not Ch1's, and is not assumed",
           "[eac3][decoder][dual-mono]") {
-    using iclforge::Acmod;
+    using iclforge::ac3::Acmod;
     // This decoder is default-constructed, so it never applies compr/compr2
     // to the reconstructed audio regardless of the words it reports (see
     // Eac3Decoder's DecoderConfig-driven gain; tests/ac3/meta/test_drc.cpp exercises
@@ -683,39 +683,39 @@ TEST_CASE("E-AC-3 dual mono: Ch2's own heavy compression is not Ch1's, and is no
     constexpr double kTightCeiling = -6.0;
 
     auto encode_and_get_compr2 = [](double heavy2_ceiling) -> std::uint8_t {
-        const iclforge::eac3::AccessUnitConfig config{
+        const iclforge::ac3::eac3::AccessUnitConfig config{
             .independent = {
                 .bitrate_kbps = 192,
                 .acmod = Acmod::kDualMono,
                 .dialnorm = 24,
                 .dialnorm2 = 24,
-                .heavy = iclforge::meta::HeavyConfig{.peak_ceiling_dbfs = kLooseCeiling},
-                .heavy2 = iclforge::meta::HeavyConfig{.peak_ceiling_dbfs = heavy2_ceiling}}};
-        iclforge::eac3::AccessUnitEncoder encoder{config};
+                .heavy = iclforge::ac3::meta::HeavyConfig{.peak_ceiling_dbfs = kLooseCeiling},
+                .heavy2 = iclforge::ac3::meta::HeavyConfig{.peak_ceiling_dbfs = heavy2_ceiling}}};
+        iclforge::ac3::eac3::AccessUnitEncoder encoder{config};
         REQUIRE(encoder.channel_count() == 2);
 
-        std::vector<float> loud(iclforge::kSamplesPerFrame);
+        std::vector<float> loud(iclforge::ac3::kSamplesPerFrame);
         std::uint64_t n0 = 0;
         std::vector<std::byte> stream;
         for (int f = 0; f < 4; ++f) {
-            for (int i = 0; i < iclforge::kSamplesPerFrame; ++i) {
+            for (int i = 0; i < iclforge::ac3::kSamplesPerFrame; ++i) {
                 const double t = static_cast<double>(n0 + static_cast<std::uint64_t>(i)) / 48000.0;
                 loud[static_cast<std::size_t>(i)] =
                     static_cast<float>(0.95 * std::sin(2.0 * std::numbers::pi * 1200.0 * t));
             }
-            n0 += iclforge::kSamplesPerFrame;
+            n0 += iclforge::ac3::kSamplesPerFrame;
             const std::vector<std::span<const float>> views{loud, loud};
             auto unit = encoder.encode_access_unit(views);
             REQUIRE(unit.has_value());
             stream.insert(stream.end(), unit->bytes.begin(), unit->bytes.end());
         }
 
-        const auto units = iclforge::split_access_units(stream);
+        const auto units = iclforge::ac3::split_access_units(stream);
         REQUIRE(units.has_value());
-        iclforge::Eac3Decoder decoder;
-        iclforge::DecodedSubstream last_substream{};
+        iclforge::ac3::Eac3Decoder decoder;
+        iclforge::ac3::DecodedSubstream last_substream{};
         for (const auto& unit : *units) {
-            const auto frames = iclforge::split_frames(unit);
+            const auto frames = iclforge::ac3::split_frames(unit);
             REQUIRE(frames.has_value());
             const auto decoded = decoder.decode_substream(frames->front());
             REQUIRE(decoded.has_value());
@@ -728,41 +728,41 @@ TEST_CASE("E-AC-3 dual mono: Ch2's own heavy compression is not Ch1's, and is no
 
     const auto loose_word = encode_and_get_compr2(kLooseCeiling);
     const auto tight_word = encode_and_get_compr2(kTightCeiling);
-    const double loose_db = 20.0 * std::log10(iclforge::meta::compr_gain(loose_word));
-    const double tight_db = 20.0 * std::log10(iclforge::meta::compr_gain(tight_word));
+    const double loose_db = 20.0 * std::log10(iclforge::ac3::meta::compr_gain(loose_word));
+    const double tight_db = 20.0 * std::log10(iclforge::ac3::meta::compr_gain(tight_word));
     // The same loud signal, on the same programme 2 channel, needs
     // meaningfully more gain reduction under the tighter ceiling.
     CHECK(loose_db > tight_db + 3.0);
 
     // And the literal regression: heavy alone (no heavy2) must not carry
     // Ch1's compr as Ch2's compr2 too.
-    const iclforge::eac3::AccessUnitConfig heavy_only_config{
+    const iclforge::ac3::eac3::AccessUnitConfig heavy_only_config{
         .independent = {.bitrate_kbps = 192,
                         .acmod = Acmod::kDualMono,
                         .dialnorm = 24,
                         .dialnorm2 = 24,
-                        .heavy = iclforge::meta::HeavyConfig{.peak_ceiling_dbfs = kLooseCeiling}}};
-    iclforge::eac3::AccessUnitEncoder heavy_only_encoder{heavy_only_config};
-    std::vector<float> loud(iclforge::kSamplesPerFrame);
+                        .heavy = iclforge::ac3::meta::HeavyConfig{.peak_ceiling_dbfs = kLooseCeiling}}};
+    iclforge::ac3::eac3::AccessUnitEncoder heavy_only_encoder{heavy_only_config};
+    std::vector<float> loud(iclforge::ac3::kSamplesPerFrame);
     std::uint64_t n0 = 0;
     std::vector<std::byte> heavy_only_stream;
     for (int f = 0; f < 4; ++f) {
-        for (int i = 0; i < iclforge::kSamplesPerFrame; ++i) {
+        for (int i = 0; i < iclforge::ac3::kSamplesPerFrame; ++i) {
             const double t = static_cast<double>(n0 + static_cast<std::uint64_t>(i)) / 48000.0;
             loud[static_cast<std::size_t>(i)] =
                 static_cast<float>(0.95 * std::sin(2.0 * std::numbers::pi * 1200.0 * t));
         }
-        n0 += iclforge::kSamplesPerFrame;
+        n0 += iclforge::ac3::kSamplesPerFrame;
         const std::vector<std::span<const float>> views{loud, loud};
         auto unit = heavy_only_encoder.encode_access_unit(views);
         REQUIRE(unit.has_value());
         heavy_only_stream.insert(heavy_only_stream.end(), unit->bytes.begin(), unit->bytes.end());
     }
-    const auto heavy_only_units = iclforge::split_access_units(heavy_only_stream);
+    const auto heavy_only_units = iclforge::ac3::split_access_units(heavy_only_stream);
     REQUIRE(heavy_only_units.has_value());
-    iclforge::Eac3Decoder heavy_only_decoder;
+    iclforge::ac3::Eac3Decoder heavy_only_decoder;
     for (const auto& unit : *heavy_only_units) {
-        const auto frames = iclforge::split_frames(unit);
+        const auto frames = iclforge::ac3::split_frames(unit);
         REQUIRE(frames.has_value());
         const auto decoded = heavy_only_decoder.decode_substream(frames->front());
         REQUIRE(decoded.has_value());
@@ -772,26 +772,26 @@ TEST_CASE("E-AC-3 dual mono: Ch2's own heavy compression is not Ch1's, and is no
 }
 
 TEST_CASE("bsid at bit 40 picks the framing", "[eac3][decoder]") {
-    const auto unit = iclforge::eac3::build_silent_access_unit(
-        {.independent = {.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true},
+    const auto unit = iclforge::ac3::eac3::build_silent_access_unit(
+        {.independent = {.bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true},
          .dependents = {{.bitrate_kbps = 224,
-                         .acmod = iclforge::Acmod::k2_2,
-                         .chanmap = iclforge::eac3::chanmap::k71Rear}}});
+                         .acmod = iclforge::ac3::Acmod::k2_2,
+                         .chanmap = iclforge::ac3::eac3::chanmap::k71Rear}}});
     REQUIRE(unit.has_value());
     std::vector<std::byte> stream;
     for (int i = 0; i < 3; ++i) {
         stream.insert(stream.end(), unit->bytes.begin(), unit->bytes.end());
     }
 
-    CHECK(*iclforge::stream_bsid(stream) == iclforge::eac3::kBsid);
+    CHECK(*iclforge::ac3::stream_bsid(stream) == iclforge::ac3::eac3::kBsid);
     // E-AC-3 sizes come from frmsiz, not from Table 5.18: the old
     // frmsizecod > 37 test would have rejected this outright.
-    const auto frames = iclforge::split_frames(stream);
+    const auto frames = iclforge::ac3::split_frames(stream);
     REQUIRE(frames.has_value());
     CHECK(frames->size() == 6);
     // Access units are delimited rather than framed - a new one starts
     // wherever an independent substream does.
-    const auto units = iclforge::split_access_units(stream);
+    const auto units = iclforge::ac3::split_access_units(stream);
     REQUIRE(units.has_value());
     CHECK(units->size() == 3);
     for (const auto& one : *units) {
@@ -799,30 +799,30 @@ TEST_CASE("bsid at bit 40 picks the framing", "[eac3][decoder]") {
     }
     // An AC-3 frame decoder must refuse a bsid-16 frame rather than
     // misinterpret its header.
-    iclforge::FrameDecoder ac3_decoder;
+    iclforge::ac3::FrameDecoder ac3_decoder;
     CHECK(ac3_decoder.decode_frame(unit->substream(0)).error() ==
-          iclforge::DecodeError::kUnsupported);
+          iclforge::ac3::DecodeError::kUnsupported);
 }
 
 TEST_CASE("the dependent substream's own fields survive the round trip",
           "[eac3][decoder]") {
-    const auto unit = iclforge::eac3::build_silent_access_unit(
-        {.independent = {.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true},
+    const auto unit = iclforge::ac3::eac3::build_silent_access_unit(
+        {.independent = {.bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true},
          .dependents = {{.bitrate_kbps = 224,
-                         .acmod = iclforge::Acmod::k2_2,
-                         .chanmap = iclforge::eac3::chanmap::k71Rear},
+                         .acmod = iclforge::ac3::Acmod::k2_2,
+                         .chanmap = iclforge::ac3::eac3::chanmap::k71Rear},
                         {.bitrate_kbps = 224,
-                         .acmod = iclforge::Acmod::k2_2,
-                         .chanmap = iclforge::eac3::chanmap::kTopQuad}}});
+                         .acmod = iclforge::ac3::Acmod::k2_2,
+                         .chanmap = iclforge::ac3::eac3::chanmap::kTopQuad}}});
     REQUIRE(unit.has_value());
-    iclforge::Eac3Decoder decoder;
+    iclforge::ac3::Eac3Decoder decoder;
 
     const auto lead = decoder.decode_substream(unit->substream(0));
     REQUIRE(lead.has_value());
     REQUIRE(lead->has_value());
-    CHECK((*lead)->strmtyp == iclforge::eac3::StreamType::kIndependent);
+    CHECK((*lead)->strmtyp == iclforge::ac3::eac3::StreamType::kIndependent);
     CHECK((*lead)->substreamid == 0);
-    CHECK((*lead)->acmod == iclforge::Acmod::k3_2);
+    CHECK((*lead)->acmod == iclforge::ac3::Acmod::k3_2);
     CHECK((*lead)->lfe);
     CHECK(!(*lead)->chanmap.has_value());
     CHECK((*lead)->channels.size() == 6);
@@ -830,10 +830,10 @@ TEST_CASE("the dependent substream's own fields survive the round trip",
     const auto first = decoder.decode_substream(unit->substream(1));
     REQUIRE(first.has_value());
     REQUIRE(first->has_value());
-    CHECK((*first)->strmtyp == iclforge::eac3::StreamType::kDependent);
+    CHECK((*first)->strmtyp == iclforge::ac3::eac3::StreamType::kDependent);
     // §E2.3.1.2: a dependent's id starts again at 0 in its own numbering space.
     CHECK((*first)->substreamid == 0);
-    CHECK((*first)->chanmap == iclforge::eac3::chanmap::k71Rear);
+    CHECK((*first)->chanmap == iclforge::ac3::eac3::chanmap::k71Rear);
     CHECK((*first)->channels.size() == 4);
     // §E3.8.5: compre marks the LAST dependent of the program, so the first of
     // two must not carry it.
@@ -843,7 +843,7 @@ TEST_CASE("the dependent substream's own fields survive the round trip",
     REQUIRE(second.has_value());
     REQUIRE(second->has_value());
     CHECK((*second)->substreamid == 1);
-    CHECK((*second)->chanmap == iclforge::eac3::chanmap::kTopQuad);
+    CHECK((*second)->chanmap == iclforge::ac3::eac3::chanmap::kTopQuad);
     CHECK((*second)->last_dependent);
 }
 
@@ -855,10 +855,10 @@ namespace {
 // different sizes - the thing CBR never had to prove the decoder handles.
 std::vector<std::vector<float>> busy_or_quiet_frame(bool busy, std::uint64_t start) {
     std::vector<std::vector<float>> pcm(
-        2, std::vector<float>(static_cast<std::size_t>(iclforge::kSamplesPerFrame)));
+        2, std::vector<float>(static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame)));
     const double tones[4] = {310.0, 2200.0, 6800.0, 13500.0};
     for (std::size_t ch = 0; ch < pcm.size(); ++ch) {
-        for (int i = 0; i < iclforge::kSamplesPerFrame; ++i) {
+        for (int i = 0; i < iclforge::ac3::kSamplesPerFrame; ++i) {
             const auto n = static_cast<double>(start + static_cast<std::uint64_t>(i));
             double value = 0.0;
             if (busy) {
@@ -879,8 +879,8 @@ std::vector<std::vector<float>> busy_or_quiet_frame(bool busy, std::uint64_t sta
 
 TEST_CASE("VBR access units of differing size still decode correctly",
           "[eac3][decoder][vbr]") {
-    iclforge::eac3::AccessUnitEncoder encoder{
-        {.independent = {.bitrate_kbps = 192, .vbr = iclforge::eac3::VbrConfig{.quality = 0.3}}}};
+    iclforge::ac3::eac3::AccessUnitEncoder encoder{
+        {.independent = {.bitrate_kbps = 192, .vbr = iclforge::ac3::eac3::VbrConfig{.quality = 0.3}}}};
     REQUIRE(encoder.channel_count() == 2);
 
     std::vector<std::byte> stream;
@@ -891,7 +891,7 @@ TEST_CASE("VBR access units of differing size still decode correctly",
     const std::vector<bool> busy{true, false, true, false, true};
     for (const bool b : busy) {
         auto pcm = busy_or_quiet_frame(b, n);
-        n += iclforge::kSamplesPerFrame;
+        n += iclforge::ac3::kSamplesPerFrame;
         want_l.insert(want_l.end(), pcm[0].begin(), pcm[0].end());
         want_r.insert(want_r.end(), pcm[1].begin(), pcm[1].end());
         std::vector<std::span<const float>> views{pcm[0], pcm[1]};
@@ -907,11 +907,11 @@ TEST_CASE("VBR access units of differing size still decode correctly",
     // exercises that because CBR never produces it.
     CHECK(unit_bytes[1] != unit_bytes[0]);
 
-    const auto units = iclforge::split_access_units(stream);
+    const auto units = iclforge::ac3::split_access_units(stream);
     REQUIRE(units.has_value());
     REQUIRE(units->size() == busy.size());
 
-    iclforge::Eac3Decoder decoder;
+    iclforge::ac3::Eac3Decoder decoder;
     std::vector<float> rendered_l;
     std::vector<float> rendered_r;
     for (const auto& access_unit : *units) {
@@ -935,8 +935,8 @@ TEST_CASE("E-AC-3 coupling round-trips are near-transparent", "[eac3][decoder][c
     // coupled and the LFE riding alongside uncoupled, and an explicit
     // cplbegf pin (rather than the encoder's auto choice) to exercise a
     // different §7.5.2 rematrix-band count and coupling geometry.
-    using iclforge::Acmod;
-    auto cpl_stereo = iclforge::eac3::FrameConfig{.bitrate_kbps = 192, .coupling = true};
+    using iclforge::ac3::Acmod;
+    auto cpl_stereo = iclforge::ac3::eac3::FrameConfig{.bitrate_kbps = 192, .coupling = true};
     auto cpl_bed = bed(192);
     cpl_bed.coupling = true;
     auto cpl_bed_pinned = bed(192);
@@ -969,7 +969,7 @@ TEST_CASE("E-AC-3 coupling round-trips are near-transparent", "[eac3][decoder][c
         const auto rt = round_trip(layout, 5);
         REQUIRE(rt.rendered.size() == layout.speakers.size());
         for (std::size_t ch = 0; ch < layout.speakers.size(); ++ch) {
-            CAPTURE(ch, iclforge::eac3::chanmap::name(layout.speakers[ch].location));
+            CAPTURE(ch, iclforge::ac3::eac3::chanmap::name(layout.speakers[ch].location));
             CHECK(snr_db(rt.source[ch], rt.rendered[ch]) > 20.0);
         }
     }
@@ -1014,15 +1014,15 @@ TEST_CASE("E-AC-3 delta bit allocation rides alongside coupling", "[eac3][decode
     // actually rewards, so this drives the same golden `reference_stereo.wav`
     // other coupling tests already trust, looped to give the low real hit
     // rate enough tries to land at least once.
-    const auto fixture = iclforge::io::read_wav(std::string{ICLFORGE_GOLDEN_AUDIO_DIR} +
+    const auto fixture = iclforge::ac3::io::read_wav(std::string{ICLFORGE_GOLDEN_AUDIO_DIR} +
                                            "/reference_stereo.wav");
     REQUIRE(fixture.has_value());
     const auto& source = fixture->channels;
     REQUIRE(source.size() == 2);
     const auto source_samples = source[0].size();
-    REQUIRE(source_samples >= static_cast<std::size_t>(iclforge::kSamplesPerFrame));
+    REQUIRE(source_samples >= static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame));
 
-    iclforge::Eac3Decoder decoder;
+    iclforge::ac3::Eac3Decoder decoder;
     int coupled_frames = 0;
     int coupled_frames_with_delta = 0;
 
@@ -1033,22 +1033,22 @@ TEST_CASE("E-AC-3 delta bit allocation rides alongside coupling", "[eac3][decode
     // one of them.
     for (const std::uint32_t kbps : {96u, 128u, 192u}) {
         CAPTURE(kbps);
-        iclforge::eac3::AccessUnitEncoder encoder{
+        iclforge::ac3::eac3::AccessUnitEncoder encoder{
             {.independent = {
-                 .bitrate_kbps = kbps, .acmod = iclforge::Acmod::k2_0, .coupling = true}}};
+                 .bitrate_kbps = kbps, .acmod = iclforge::ac3::Acmod::k2_0, .coupling = true}}};
         REQUIRE(encoder.channel_count() == 2);
 
         std::size_t cursor = 0;
         for (int f = 0; f < 400; ++f) {
             std::vector<std::vector<float>> pcm(
-                2, std::vector<float>(static_cast<std::size_t>(iclforge::kSamplesPerFrame)));
-            for (int i = 0; i < iclforge::kSamplesPerFrame; ++i) {
+                2, std::vector<float>(static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame)));
+            for (int i = 0; i < iclforge::ac3::kSamplesPerFrame; ++i) {
                 const auto idx = (cursor + static_cast<std::size_t>(i)) % source_samples;
                 pcm[0][static_cast<std::size_t>(i)] = source[0][idx];
                 pcm[1][static_cast<std::size_t>(i)] = source[1][idx];
             }
             cursor =
-                (cursor + static_cast<std::size_t>(iclforge::kSamplesPerFrame)) % source_samples;
+                (cursor + static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame)) % source_samples;
             std::vector<std::span<const float>> views{pcm[0], pcm[1]};
             const auto unit = encoder.encode_access_unit(views);
             REQUIRE(unit.has_value());
@@ -1109,13 +1109,13 @@ TEST_CASE("E-AC-3 enhanced coupling angle interpolation round-trips",
     constexpr int kCplbegf = 6;
     constexpr std::size_t kAngleIntrpBit = 135;
 
-    iclforge::eac3::AccessUnitEncoder encoder{{.independent = {.bitrate_kbps = 192,
-                                                          .acmod = iclforge::Acmod::k2_0,
+    iclforge::ac3::eac3::AccessUnitEncoder encoder{{.independent = {.bitrate_kbps = 192,
+                                                          .acmod = iclforge::ac3::Acmod::k2_0,
                                                           .coupling = true,
                                                           .cplbegf = kCplbegf,
                                                           .enhanced = true}}};
     REQUIRE(encoder.channel_count() == 2);
-    iclforge::Eac3Decoder decoder;
+    iclforge::ac3::Eac3Decoder decoder;
 
     // Several tones spread across the enhanced coupling region (bin 85,
     // ~8.0 kHz, to bin 253, ~23.7 kHz at cplbegf 6) plus broadband noise
@@ -1130,8 +1130,8 @@ TEST_CASE("E-AC-3 enhanced coupling angle interpolation round-trips",
     std::uint64_t n = 0;
     for (int f = 0; f < 20; ++f) {
         std::vector<std::vector<float>> pcm(
-            2, std::vector<float>(static_cast<std::size_t>(iclforge::kSamplesPerFrame)));
-        for (int i = 0; i < iclforge::kSamplesPerFrame; ++i) {
+            2, std::vector<float>(static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame)));
+        for (int i = 0; i < iclforge::ac3::kSamplesPerFrame; ++i) {
             rng = rng * 1664525u + 1013904223u;
             const double noise =
                 static_cast<double>(static_cast<std::int32_t>(rng >> 8)) / 8388608.0 - 1.0;
@@ -1146,7 +1146,7 @@ TEST_CASE("E-AC-3 enhanced coupling angle interpolation round-trips",
                 pcm[ch][static_cast<std::size_t>(i)] = static_cast<float>(value);
             }
         }
-        n += iclforge::kSamplesPerFrame;
+        n += iclforge::ac3::kSamplesPerFrame;
         std::vector<std::span<const float>> views{pcm[0], pcm[1]};
         const auto unit = encoder.encode_access_unit(views);
         REQUIRE(unit.has_value());
@@ -1179,9 +1179,9 @@ TEST_CASE("E-AC-3 enhanced coupling round-trips are near-transparent",
           "[eac3][decoder][coupling][enhanced_coupling]") {
     // Same shapes as standard coupling's own round-trip test above, with
     // .enhanced = true selecting §E3.5 instead of §7.4/§E3.3.
-    using iclforge::Acmod;
+    using iclforge::ac3::Acmod;
     auto cpl_stereo =
-        iclforge::eac3::FrameConfig{.bitrate_kbps = 192, .coupling = true, .enhanced = true};
+        iclforge::ac3::eac3::FrameConfig{.bitrate_kbps = 192, .coupling = true, .enhanced = true};
     auto cpl_bed = bed(192);
     cpl_bed.coupling = true;
     cpl_bed.enhanced = true;
@@ -1216,7 +1216,7 @@ TEST_CASE("E-AC-3 enhanced coupling round-trips are near-transparent",
         const auto rt = round_trip(layout, 5);
         REQUIRE(rt.rendered.size() == layout.speakers.size());
         for (std::size_t ch = 0; ch < layout.speakers.size(); ++ch) {
-            CAPTURE(ch, iclforge::eac3::chanmap::name(layout.speakers[ch].location));
+            CAPTURE(ch, iclforge::ac3::eac3::chanmap::name(layout.speakers[ch].location));
             CHECK(snr_db(rt.source[ch], rt.rendered[ch]) > 20.0);
         }
     }
@@ -1260,7 +1260,7 @@ TEST_CASE("E-AC-3 enhanced coupling degrades gracefully when two channels share 
     const auto rt = round_trip(layout, 5);
     REQUIRE(rt.rendered.size() == layout.speakers.size());
     for (std::size_t ch = 0; ch < layout.speakers.size(); ++ch) {
-        CAPTURE(ch, iclforge::eac3::chanmap::name(layout.speakers[ch].location));
+        CAPTURE(ch, iclforge::ac3::eac3::chanmap::name(layout.speakers[ch].location));
         // L, C, Ls and LFE's tones sit below bin 13 (uncoupled at this
         // pin), so those stay near-transparent; only R and Rs share the
         // narrow band described above.
@@ -1279,8 +1279,8 @@ TEST_CASE("E-AC-3 spectral extension round-trips are near-transparent",
     // cplendf derived from spxbegf rather than transmitted). spx_atten
     // defaults on in FrameConfig, so every case here also exercises the
     // seam notch for real, not just the copy/blend/scale path.
-    using iclforge::Acmod;
-    auto spx_stereo = iclforge::eac3::FrameConfig{.bitrate_kbps = 192, .spx = true};
+    using iclforge::ac3::Acmod;
+    auto spx_stereo = iclforge::ac3::eac3::FrameConfig{.bitrate_kbps = 192, .spx = true};
     auto spx_bed = bed(192);
     spx_bed.spx = true;
     auto spx_bed_pinned = bed(192);
@@ -1320,7 +1320,7 @@ TEST_CASE("E-AC-3 spectral extension round-trips are near-transparent",
         const auto rt = round_trip(layout, 5);
         REQUIRE(rt.rendered.size() == layout.speakers.size());
         for (std::size_t ch = 0; ch < layout.speakers.size(); ++ch) {
-            CAPTURE(ch, iclforge::eac3::chanmap::name(layout.speakers[ch].location));
+            CAPTURE(ch, iclforge::ac3::eac3::chanmap::name(layout.speakers[ch].location));
             CHECK(snr_db(rt.source[ch], rt.rendered[ch]) > 20.0);
         }
     }
@@ -1338,7 +1338,7 @@ TEST_CASE("E-AC-3 AHT round-trips are near-transparent", "[eac3][decoder][aht]")
     // initiative was aimed at, short only of a 7.1.4 layout here, which
     // round_trip's own real-decode-only helper already exercises for the
     // wider layouts elsewhere in this file).
-    using iclforge::Acmod;
+    using iclforge::ac3::Acmod;
     auto aht_bed = bed(192);
     aht_bed.aht = true;
     auto aht_bed_gaqmod0 = bed(192);
@@ -1382,7 +1382,7 @@ TEST_CASE("E-AC-3 AHT round-trips are near-transparent", "[eac3][decoder][aht]")
         const auto rt = round_trip(layout, 5);
         REQUIRE(rt.rendered.size() == layout.speakers.size());
         for (std::size_t ch = 0; ch < layout.speakers.size(); ++ch) {
-            CAPTURE(ch, iclforge::eac3::chanmap::name(layout.speakers[ch].location));
+            CAPTURE(ch, iclforge::ac3::eac3::chanmap::name(layout.speakers[ch].location));
             CHECK(snr_db(rt.source[ch], rt.rendered[ch]) > 30.0);
         }
     }
@@ -1399,17 +1399,17 @@ TEST_CASE("the E-AC-3 decoder rejects a truncated AHT stream", "[eac3][decoder][
     // existing overflowed() check once per block, so this proves that guard
     // still holds for the new per-bin AHT loop rather than re-deriving a
     // byte-for-byte bit layout to corrupt a single field within it.
-    iclforge::eac3::AccessUnitEncoder encoder{
+    iclforge::ac3::eac3::AccessUnitEncoder encoder{
         {.independent = {.bitrate_kbps = 448,
-                         .acmod = iclforge::Acmod::k3_2,
+                         .acmod = iclforge::ac3::Acmod::k3_2,
                          .lfe = true,
                          .aht = true}}};
     REQUIRE(encoder.channel_count() == 6);
     std::vector<std::vector<float>> pcm(
-        6, std::vector<float>(static_cast<std::size_t>(iclforge::kSamplesPerFrame)));
+        6, std::vector<float>(static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame)));
     const double tones[6] = {1000.0, 800.0, 1200.0, 600.0, 1400.0, 60.0};
     for (std::size_t ch = 0; ch < pcm.size(); ++ch) {
-        for (int i = 0; i < iclforge::kSamplesPerFrame; ++i) {
+        for (int i = 0; i < iclforge::ac3::kSamplesPerFrame; ++i) {
             pcm[ch][static_cast<std::size_t>(i)] = static_cast<float>(
                 kAmplitude * std::sin(2.0 * std::numbers::pi * tones[ch] * i / 48000.0));
         }
@@ -1417,9 +1417,9 @@ TEST_CASE("the E-AC-3 decoder rejects a truncated AHT stream", "[eac3][decoder][
     std::vector<std::span<const float>> views{pcm[0], pcm[1], pcm[2], pcm[3], pcm[4], pcm[5]};
     const auto unit = encoder.encode_access_unit(views);
     REQUIRE(unit.has_value());
-    iclforge::Eac3Decoder decoder;
+    iclforge::ac3::Eac3Decoder decoder;
     CHECK(decoder.decode_access_unit(std::span{unit->bytes}.first(unit->bytes.size() - 2))
-              .error() == iclforge::DecodeError::kTruncated);
+              .error() == iclforge::ac3::DecodeError::kTruncated);
 }
 
 TEST_CASE("the E-AC-3 decoder rejects malformed spectral extension streams",
@@ -1432,18 +1432,18 @@ TEST_CASE("the E-AC-3 decoder rejects malformed spectral extension streams",
     // when some block actually couples, and none does here) + block 0's
     // dithflag(5)/dynrnge(1) prefix (6 bits) puts spxinu at bit 145,
     // followed by chinspx[0..4] (5), spxstrtf (2), spxbegf (3), spxendf (3).
-    iclforge::eac3::AccessUnitEncoder encoder{
+    iclforge::ac3::eac3::AccessUnitEncoder encoder{
         {.independent = {.bitrate_kbps = 448,
-                         .acmod = iclforge::Acmod::k3_2,
+                         .acmod = iclforge::ac3::Acmod::k3_2,
                          .lfe = true,
                          .spx = true,
                          .spx_atten = false}}};
     REQUIRE(encoder.channel_count() == 6);
     std::vector<std::vector<float>> pcm(
-        6, std::vector<float>(static_cast<std::size_t>(iclforge::kSamplesPerFrame)));
+        6, std::vector<float>(static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame)));
     const double tones[6] = {1000.0, 800.0, 1200.0, 600.0, 1400.0, 60.0};
     for (std::size_t ch = 0; ch < pcm.size(); ++ch) {
-        for (int i = 0; i < iclforge::kSamplesPerFrame; ++i) {
+        for (int i = 0; i < iclforge::ac3::kSamplesPerFrame; ++i) {
             pcm[ch][static_cast<std::size_t>(i)] = static_cast<float>(
                 kAmplitude * std::sin(2.0 * std::numbers::pi * tones[ch] * i / 48000.0));
         }
@@ -1455,13 +1455,13 @@ TEST_CASE("the E-AC-3 decoder rejects malformed spectral extension streams",
     constexpr std::size_t kSpxinuBit = 145;
     constexpr std::size_t kSpxbegfBit = kSpxinuBit + 1 + 5 + 2;  // chinspx x5, spxstrtf
     constexpr std::size_t kSpxendfBit = kSpxbegfBit + 3;
-    iclforge::Eac3Decoder decoder;
+    iclforge::ac3::Eac3Decoder decoder;
 
     SECTION("spxbegf past spxendf collapses the extension region to nothing") {
         auto broken = whole;
         patch_bits(broken, kSpxbegfBit, 3, 7);  // begin_subbnd = 11
         patch_bits(broken, kSpxendfBit, 3, 0);  // end_subbnd = 5
-        CHECK(decoder.decode_access_unit(broken).error() == iclforge::DecodeError::kInvalidStream);
+        CHECK(decoder.decode_access_unit(broken).error() == iclforge::ac3::DecodeError::kInvalidStream);
     }
 }
 
@@ -1476,17 +1476,17 @@ TEST_CASE("the E-AC-3 decoder rejects malformed coupling streams",
     // by chincpl[0..4] (5), cplbegf (4), cplendf (4), then cplbndstrce at
     // bit 165. A silent frame never turns cplinu on (build_silent_frame
     // says so explicitly), so this needs a real, encoded tone.
-    iclforge::eac3::AccessUnitEncoder encoder{
+    iclforge::ac3::eac3::AccessUnitEncoder encoder{
         {.independent = {.bitrate_kbps = 448,
-                         .acmod = iclforge::Acmod::k3_2,
+                         .acmod = iclforge::ac3::Acmod::k3_2,
                          .lfe = true,
                          .coupling = true}}};
     REQUIRE(encoder.channel_count() == 6);
     std::vector<std::vector<float>> pcm(
-        6, std::vector<float>(static_cast<std::size_t>(iclforge::kSamplesPerFrame)));
+        6, std::vector<float>(static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame)));
     const double tones[6] = {1000.0, 800.0, 1200.0, 600.0, 1400.0, 60.0};
     for (std::size_t ch = 0; ch < pcm.size(); ++ch) {
-        for (int i = 0; i < iclforge::kSamplesPerFrame; ++i) {
+        for (int i = 0; i < iclforge::ac3::kSamplesPerFrame; ++i) {
             pcm[ch][static_cast<std::size_t>(i)] = static_cast<float>(
                 kAmplitude * std::sin(2.0 * std::numbers::pi * tones[ch] * i / 48000.0));
         }
@@ -1499,7 +1499,7 @@ TEST_CASE("the E-AC-3 decoder rejects malformed coupling streams",
     constexpr std::size_t kCplbegfBit = kEcplinuBit + 1 + 5;  // past ecplinu, chincpl x5
     constexpr std::size_t kCplendfBit = kCplbegfBit + 4;
     constexpr std::size_t kCplbndstrceBit = kCplendfBit + 4;
-    iclforge::Eac3Decoder decoder;
+    iclforge::ac3::Eac3Decoder decoder;
 
     SECTION("ecplinu set on an otherwise-standard-coupling stream fails rather than misdecodes") {
         // The decoder now actually implements enhanced coupling (§E3.5)
@@ -1532,40 +1532,40 @@ TEST_CASE("the E-AC-3 decoder rejects malformed coupling streams",
         // fixtures, not a hand-patched one from this project's own encoder.
         auto broken = whole;
         patch_bits(broken, kCplbndstrceBit, 1, 0);
-        CHECK(decoder.decode_access_unit(broken).error() == iclforge::DecodeError::kInvalidStream);
+        CHECK(decoder.decode_access_unit(broken).error() == iclforge::ac3::DecodeError::kInvalidStream);
     }
     SECTION("cplbegf past cplendf collapses the coupled region to nothing") {
         auto broken = whole;
         patch_bits(broken, kCplbegfBit, 4, 15);
         patch_bits(broken, kCplendfBit, 4, 0);
-        CHECK(decoder.decode_access_unit(broken).error() == iclforge::DecodeError::kInvalidStream);
+        CHECK(decoder.decode_access_unit(broken).error() == iclforge::ac3::DecodeError::kInvalidStream);
     }
 }
 
 TEST_CASE("the E-AC-3 decoder rejects malformed streams", "[eac3][decoder]") {
-    const auto unit = iclforge::eac3::build_silent_access_unit(
-        {.independent = {.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true},
+    const auto unit = iclforge::ac3::eac3::build_silent_access_unit(
+        {.independent = {.bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true},
          .dependents = {{.bitrate_kbps = 224,
-                         .acmod = iclforge::Acmod::k2_2,
-                         .chanmap = iclforge::eac3::chanmap::k71Rear}}});
+                         .acmod = iclforge::ac3::Acmod::k2_2,
+                         .chanmap = iclforge::ac3::eac3::chanmap::k71Rear}}});
     REQUIRE(unit.has_value());
     const std::vector<std::byte> whole = unit->bytes;
     const auto lead_bytes = unit->substream_bytes[0];
-    iclforge::Eac3Decoder decoder;
+    iclforge::ac3::Eac3Decoder decoder;
 
     SECTION("bad sync word") {
         auto broken = whole;
         broken[0] = std::byte{0x0C};
-        CHECK(decoder.decode_access_unit(broken).error() == iclforge::DecodeError::kBadSyncWord);
+        CHECK(decoder.decode_access_unit(broken).error() == iclforge::ac3::DecodeError::kBadSyncWord);
     }
     SECTION("flipped payload bit fails crc2") {
         auto broken = whole;
         broken[100] ^= std::byte{0x10};
-        CHECK(decoder.decode_access_unit(broken).error() == iclforge::DecodeError::kBadCrc);
+        CHECK(decoder.decode_access_unit(broken).error() == iclforge::ac3::DecodeError::kBadCrc);
     }
     SECTION("truncated") {
         CHECK(decoder.decode_access_unit(std::span{whole}.first(whole.size() - 2)).error() ==
-              iclforge::DecodeError::kTruncated);
+              iclforge::ac3::DecodeError::kTruncated);
     }
     SECTION("a frmsiz too small to cover its own header") {
         // frmsiz is an arbitrary 11-bit word count with no table to sanity
@@ -1575,13 +1575,13 @@ TEST_CASE("the E-AC-3 decoder rejects malformed streams", "[eac3][decoder]") {
         auto broken = whole;
         broken[2] = static_cast<std::byte>(std::to_integer<std::uint8_t>(broken[2]) & 0xF8);
         broken[3] = std::byte{0x00};  // frmsiz 0: one word, two bytes
-        CHECK(iclforge::split_frames(broken).error() == iclforge::DecodeError::kInvalidStream);
+        CHECK(iclforge::ac3::split_frames(broken).error() == iclforge::ac3::DecodeError::kInvalidStream);
     }
     SECTION("a dependent substream with no parent") {
         std::vector<std::byte> orphan{whole.begin() + lead_bytes, whole.end()};
-        CHECK(iclforge::split_access_units(orphan).error() ==
-              iclforge::DecodeError::kInvalidStream);
-        CHECK(decoder.decode_access_unit(orphan).error() == iclforge::DecodeError::kInvalidStream);
+        CHECK(iclforge::ac3::split_access_units(orphan).error() ==
+              iclforge::ac3::DecodeError::kInvalidStream);
+        CHECK(decoder.decode_access_unit(orphan).error() == iclforge::ac3::DecodeError::kInvalidStream);
     }
     SECTION("a chanmap that does not account for the coded channels") {
         // §E2.3.1.8: the locations a chanmap names must equal the channels
@@ -1593,19 +1593,19 @@ TEST_CASE("the E-AC-3 decoder rejects malformed streams", "[eac3][decoder]") {
         // fscod(2) numblkscod(2) acmod(3) lfeon(1) bsid(5) dialnorm(5)
         // compre(1) compr(8) chanmape(1).
         constexpr std::size_t kChanmapBit = 16 + 2 + 3 + 11 + 2 + 2 + 3 + 1 + 5 + 5 + 1 + 8 + 1;
-        patch_bits(dependent, kChanmapBit, 16, iclforge::eac3::chanmap::kLrsRrsBit);  // 2, not 4
+        patch_bits(dependent, kChanmapBit, 16, iclforge::ac3::eac3::chanmap::kLrsRrsBit);  // 2, not 4
         CHECK(decoder.decode_substream(dependent).error() ==
-              iclforge::DecodeError::kInvalidStream);
+              iclforge::ac3::DecodeError::kInvalidStream);
     }
 }
 
 TEST_CASE("a real transient triggers block switching and decodes without pre-echo",
          "[eac3][decoder][block-switching]") {
-    iclforge::eac3::FrameEncoder encoder{{.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0}};
-    iclforge::Eac3Decoder decoder;
+    iclforge::ac3::eac3::FrameEncoder encoder{{.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k2_0}};
+    iclforge::ac3::Eac3Decoder decoder;
     const auto nchans = static_cast<std::size_t>(encoder.channel_count());
 
-    const std::vector<float> silence(iclforge::kSamplesPerFrame, 0.0f);
+    const std::vector<float> silence(iclforge::ac3::kSamplesPerFrame, 0.0f);
     std::vector<std::span<const float>> silence_views(nchans, silence);
     // Two silent frames: the first primes history_, the second clears the
     // transient detector's own first-pass guard.
@@ -1616,8 +1616,8 @@ TEST_CASE("a real transient triggers block switching and decodes without pre-ech
     }
 
     constexpr int kOnset = 960;
-    std::vector<float> transient(static_cast<std::size_t>(iclforge::kSamplesPerFrame), 0.0f);
-    for (int n = kOnset; n < iclforge::kSamplesPerFrame; ++n) {
+    std::vector<float> transient(static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame), 0.0f);
+    for (int n = kOnset; n < iclforge::ac3::kSamplesPerFrame; ++n) {
         transient[static_cast<std::size_t>(n)] = static_cast<float>(
             0.9 * std::sin(2.0 * std::numbers::pi * 1000.0 * static_cast<double>(n) / 48000.0));
     }
@@ -1654,12 +1654,12 @@ TEST_CASE("transient pre-noise processing holds a frame back then releases it co
     // encoder's own heuristic (see FrameConfig::transient_prenoise's doc
     // comment) signals a correction exactly where blksw also fires, so the
     // same onset exercises both.
-    iclforge::eac3::FrameEncoder encoder{
-        {.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0, .transient_prenoise = true}};
-    iclforge::Eac3Decoder decoder;
+    iclforge::ac3::eac3::FrameEncoder encoder{
+        {.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k2_0, .transient_prenoise = true}};
+    iclforge::ac3::Eac3Decoder decoder;
     const auto nchans = static_cast<std::size_t>(encoder.channel_count());
 
-    const std::vector<float> silence(iclforge::kSamplesPerFrame, 0.0f);
+    const std::vector<float> silence(iclforge::ac3::kSamplesPerFrame, 0.0f);
     std::vector<std::span<const float>> silence_views(nchans, silence);
     for (int f = 0; f < 2; ++f) {
         const auto frame = encoder.encode_frame(silence_views);
@@ -1673,8 +1673,8 @@ TEST_CASE("transient pre-noise processing holds a frame back then releases it co
     }
 
     constexpr int kOnset = 960;
-    std::vector<float> transient(static_cast<std::size_t>(iclforge::kSamplesPerFrame), 0.0f);
-    for (int n = kOnset; n < iclforge::kSamplesPerFrame; ++n) {
+    std::vector<float> transient(static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame), 0.0f);
+    for (int n = kOnset; n < iclforge::ac3::kSamplesPerFrame; ++n) {
         transient[static_cast<std::size_t>(n)] = static_cast<float>(
             0.9 * std::sin(2.0 * std::numbers::pi * 1000.0 * static_cast<double>(n) / 48000.0));
     }
@@ -1728,18 +1728,18 @@ TEST_CASE("decode_access_unit queues a substream that keeps releasing while its 
     // would corrupt: the dependent's still-unconsumed release from the call
     // that triggered the hold-back must survive until the independent catches
     // up, not get replaced by the dependent's NEXT release.
-    const iclforge::eac3::AccessUnitConfig cfg{
+    const iclforge::ac3::eac3::AccessUnitConfig cfg{
         .independent = {.bitrate_kbps = 192,
-                        .acmod = iclforge::Acmod::k2_0,
+                        .acmod = iclforge::ac3::Acmod::k2_0,
                         .transient_prenoise = true},
         .dependents = {{.bitrate_kbps = 96,
-                        .acmod = iclforge::Acmod::k2_0,
-                        .chanmap = iclforge::eac3::chanmap::k512Height}}};
-    iclforge::eac3::AccessUnitEncoder encoder{cfg};
+                        .acmod = iclforge::ac3::Acmod::k2_0,
+                        .chanmap = iclforge::ac3::eac3::chanmap::k512Height}}};
+    iclforge::ac3::eac3::AccessUnitEncoder encoder{cfg};
     REQUIRE(encoder.channel_count() == 4);
-    iclforge::Eac3Decoder decoder;
+    iclforge::ac3::Eac3Decoder decoder;
 
-    const std::vector<float> silence(iclforge::kSamplesPerFrame, 0.0f);
+    const std::vector<float> silence(iclforge::ac3::kSamplesPerFrame, 0.0f);
     std::vector<std::span<const float>> silent_views(4, silence);
 
     // Silence never triggers the tool, so both substreams release every call
@@ -1754,8 +1754,8 @@ TEST_CASE("decode_access_unit queues a substream that keeps releasing while its 
     }
 
     constexpr int kOnset = 960;
-    std::vector<float> transient(static_cast<std::size_t>(iclforge::kSamplesPerFrame), 0.0f);
-    for (int n = kOnset; n < iclforge::kSamplesPerFrame; ++n) {
+    std::vector<float> transient(static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame), 0.0f);
+    for (int n = kOnset; n < iclforge::ac3::kSamplesPerFrame; ++n) {
         transient[static_cast<std::size_t>(n)] = static_cast<float>(
             0.9 * std::sin(2.0 * std::numbers::pi * 1000.0 * static_cast<double>(n) / 48000.0));
     }
@@ -1799,7 +1799,7 @@ TEST_CASE("decode_access_unit queues a substream that keeps releasing while its 
             const double v = static_cast<double>(channel[static_cast<std::size_t>(n)]);
             pre_energy += v * v;
         }
-        for (int n = kOnset; n < iclforge::kSamplesPerFrame; ++n) {
+        for (int n = kOnset; n < iclforge::ac3::kSamplesPerFrame; ++n) {
             const double v = static_cast<double>(channel[static_cast<std::size_t>(n)]);
             post_energy += v * v;
         }
@@ -1830,9 +1830,9 @@ namespace {
 std::vector<std::vector<float>> fscod2_tone_pair(double rate_hz, std::uint64_t start) {
     constexpr double kFscod2Amplitude = 0.35;
     constexpr std::array<double, 2> kTones = {300.0, 700.0};  // well under any fscod2 Nyquist
-    std::vector<std::vector<float>> pcm(2, std::vector<float>(iclforge::kSamplesPerFrame));
+    std::vector<std::vector<float>> pcm(2, std::vector<float>(iclforge::ac3::kSamplesPerFrame));
     for (std::size_t ch = 0; ch < pcm.size(); ++ch) {
-        for (int i = 0; i < iclforge::kSamplesPerFrame; ++i) {
+        for (int i = 0; i < iclforge::ac3::kSamplesPerFrame; ++i) {
             const auto n = static_cast<double>(start + static_cast<std::uint64_t>(i));
             pcm[ch][static_cast<std::size_t>(i)] = static_cast<float>(
                 kFscod2Amplitude * std::sin(2.0 * std::numbers::pi * kTones[ch] * n / rate_hz));
@@ -1878,22 +1878,22 @@ double fscod2_dominant_freq_hz(const std::vector<float>& x, double rate_hz) {
 TEST_CASE("E-AC-3 encodes and decodes real audio at fscod2 half rates",
           "[eac3][decoder]") {
     struct Case {
-        iclforge::SampleRate rate;
+        iclforge::ac3::SampleRate rate;
         std::uint32_t hz;
     };
-    const std::array<Case, 3> cases = {{{iclforge::SampleRate::k24000, 24000},
-                                        {iclforge::SampleRate::k22050, 22050},
-                                        {iclforge::SampleRate::k16000, 16000}}};
+    const std::array<Case, 3> cases = {{{iclforge::ac3::SampleRate::k24000, 24000},
+                                        {iclforge::ac3::SampleRate::k22050, 22050},
+                                        {iclforge::ac3::SampleRate::k16000, 16000}}};
     for (const auto& c : cases) {
         CAPTURE(c.hz);
-        iclforge::eac3::AccessUnitEncoder encoder{
+        iclforge::ac3::eac3::AccessUnitEncoder encoder{
             {.independent = {.sample_rate = c.rate, .bitrate_kbps = 192}}};
-        iclforge::Eac3Decoder decoder;
+        iclforge::ac3::Eac3Decoder decoder;
         std::vector<std::vector<float>> rendered(2);
         std::uint64_t n = 0;
         for (int f = 0; f < 4; ++f) {
             auto pcm = fscod2_tone_pair(static_cast<double>(c.hz), n);
-            n += iclforge::kSamplesPerFrame;
+            n += iclforge::ac3::kSamplesPerFrame;
             const std::vector<std::span<const float>> views{pcm[0], pcm[1]};
             const auto unit = encoder.encode_access_unit(views);
             REQUIRE(unit.has_value());
@@ -1940,9 +1940,9 @@ TEST_CASE("dithflag=1 substitutes dither at zero-bap bins instead of silence (E-
     // substitute into. Measured on this exact frame, dithered channel-0
     // energy falls smoothly with the band - 3.4e-11 at chbwcod 60, 1.2e-11
     // at 40, 1.5e-12 at 30 - and reaches exactly zero at 25 and below.
-    iclforge::eac3::FrameEncoder encoder{
+    iclforge::ac3::eac3::FrameEncoder encoder{
         {.bitrate_kbps = 192, .chbwcod = 60}};  // acmod k2_0, no LFE
-    const std::vector<float> silence(iclforge::kSamplesPerFrame, 0.0f);
+    const std::vector<float> silence(iclforge::ac3::kSamplesPerFrame, 0.0f);
     const std::vector<std::span<const float>> views(2, silence);
     auto frame = encoder.encode_frame(views);
     REQUIRE(frame.has_value());
@@ -1956,7 +1956,7 @@ TEST_CASE("dithflag=1 substitutes dither at zero-bap bins instead of silence (E-
     constexpr std::size_t kDithflagBit0 = 103;
 
     {
-        iclforge::Eac3Decoder decoder;
+        iclforge::ac3::Eac3Decoder decoder;
         const auto decoded = decoder.decode_substream(*frame);
         REQUIRE(decoded.has_value());
         REQUIRE(decoded->has_value());
@@ -1974,11 +1974,11 @@ TEST_CASE("dithflag=1 substitutes dither at zero-bap bins instead of silence (E-
 
     // Determinism: two independent decoders on the same patched frame
     // produce bit-identical PCM.
-    iclforge::Eac3Decoder decoder_a;
+    iclforge::ac3::Eac3Decoder decoder_a;
     const auto decoded_a = decoder_a.decode_substream(patched);
     REQUIRE(decoded_a.has_value());
     REQUIRE(decoded_a->has_value());
-    iclforge::Eac3Decoder decoder_b;
+    iclforge::ac3::Eac3Decoder decoder_b;
     const auto decoded_b = decoder_b.decode_substream(patched);
     REQUIRE(decoded_b.has_value());
     REQUIRE(decoded_b->has_value());
@@ -2006,11 +2006,11 @@ TEST_CASE("dithflag=1 on a coupled E-AC-3 channel dithers independently of its s
     // dither same as anything else and prove nothing about §7.3.4 - the
     // interaction under test only shows up once the coordinate that
     // multiplies the dithered sample is itself nonzero.
-    iclforge::eac3::FrameEncoder encoder{
+    iclforge::ac3::eac3::FrameEncoder encoder{
         {.bitrate_kbps = 96, .coupling = true, .cplbegf = 4}};
-    std::vector<float> tone0(static_cast<std::size_t>(iclforge::kSamplesPerFrame));
-    std::vector<float> tone1(static_cast<std::size_t>(iclforge::kSamplesPerFrame));
-    for (int i = 0; i < iclforge::kSamplesPerFrame; ++i) {
+    std::vector<float> tone0(static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame));
+    std::vector<float> tone1(static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame));
+    for (int i = 0; i < iclforge::ac3::kSamplesPerFrame; ++i) {
         tone0[static_cast<std::size_t>(i)] = static_cast<float>(
             0.5 * std::sin(2.0 * std::numbers::pi * 5000.0 * i / 48000.0));
         tone1[static_cast<std::size_t>(i)] = static_cast<float>(
@@ -2032,7 +2032,7 @@ TEST_CASE("dithflag=1 on a coupled E-AC-3 channel dithers independently of its s
     auto cleared = *frame;
     patch_bits(cleared, kDithflagBit0, 2, 0b00);
 
-    iclforge::Eac3Decoder baseline_decoder;
+    iclforge::ac3::Eac3Decoder baseline_decoder;
     const auto baseline = baseline_decoder.decode_substream(cleared);
     REQUIRE(baseline.has_value());
     REQUIRE(baseline->has_value());
@@ -2040,7 +2040,7 @@ TEST_CASE("dithflag=1 on a coupled E-AC-3 channel dithers independently of its s
     auto patched = cleared;
     patch_bits(patched, kDithflagBit0, 2, 0b11);  // dithflag[0] = dithflag[1] = 1
 
-    iclforge::Eac3Decoder decoder;
+    iclforge::ac3::Eac3Decoder decoder;
     const auto decoded = decoder.decode_substream(patched);
     REQUIRE(decoded.has_value());
     REQUIRE(decoded->has_value());
@@ -2076,31 +2076,31 @@ TEST_CASE("decode_access_unit_into writes the identical program into caller span
           "[eac3][decoder]") {
     // Independent 2/0 plus a height-pair dependent, so the span form is
     // exercised across the §E3.8.2 layout union, not just a lone substream.
-    const iclforge::eac3::AccessUnitConfig cfg{
-        .independent = {.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0},
+    const iclforge::ac3::eac3::AccessUnitConfig cfg{
+        .independent = {.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k2_0},
         .dependents = {{.bitrate_kbps = 96,
-                        .acmod = iclforge::Acmod::k2_0,
-                        .chanmap = iclforge::eac3::chanmap::k512Height}}};
-    iclforge::eac3::AccessUnitEncoder encoder{cfg};
+                        .acmod = iclforge::ac3::Acmod::k2_0,
+                        .chanmap = iclforge::ac3::eac3::chanmap::k512Height}}};
+    iclforge::ac3::eac3::AccessUnitEncoder encoder{cfg};
     REQUIRE(encoder.channel_count() == 4);
 
     // Two decoders over the same bytes: overlap-add state is per decoder,
     // so the value form and the span form must be fed identically to be
     // comparable sample for sample.
-    iclforge::Eac3Decoder value_decoder;
-    iclforge::Eac3Decoder into_decoder;
+    iclforge::ac3::Eac3Decoder value_decoder;
+    iclforge::ac3::Eac3Decoder into_decoder;
 
-    std::vector<std::vector<float>> block(4, std::vector<float>(iclforge::kSamplesPerFrame));
+    std::vector<std::vector<float>> block(4, std::vector<float>(iclforge::ac3::kSamplesPerFrame));
     std::vector<std::span<const float>> views(4);
     std::vector<std::vector<float>> storage(16,
-                                            std::vector<float>(iclforge::kSamplesPerFrame));
+                                            std::vector<float>(iclforge::ac3::kSamplesPerFrame));
     std::vector<std::span<float>> spans(storage.begin(), storage.end());
 
     constexpr std::array<double, 4> tones = {440.0, 660.0, 880.0, 1320.0};
     std::uint64_t n0 = 0;
     for (int f = 0; f < 3; ++f) {
         for (std::size_t ch = 0; ch < 4; ++ch) {
-            for (int i = 0; i < iclforge::kSamplesPerFrame; ++i) {
+            for (int i = 0; i < iclforge::ac3::kSamplesPerFrame; ++i) {
                 block[ch][static_cast<std::size_t>(i)] = static_cast<float>(
                     0.3 * std::sin(2.0 * std::numbers::pi * tones[ch] *
                                    static_cast<double>(n0 + static_cast<std::uint64_t>(i)) /
@@ -2108,7 +2108,7 @@ TEST_CASE("decode_access_unit_into writes the identical program into caller span
             }
             views[ch] = block[ch];
         }
-        n0 += iclforge::kSamplesPerFrame;
+        n0 += iclforge::ac3::kSamplesPerFrame;
         const auto unit = encoder.encode_access_unit(views);
         REQUIRE(unit.has_value());
 
@@ -2145,25 +2145,25 @@ TEST_CASE("decode_access_unit_by_block hands over the identical program a block 
     // §E3.8.2 layout union, where each slot is a view onto a different
     // substream's vector. Nothing is copied on the way out, so the check is
     // that the views are the value form's samples, block by block, in order.
-    const iclforge::eac3::AccessUnitConfig cfg{
-        .independent = {.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0},
+    const iclforge::ac3::eac3::AccessUnitConfig cfg{
+        .independent = {.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k2_0},
         .dependents = {{.bitrate_kbps = 96,
-                        .acmod = iclforge::Acmod::k2_0,
-                        .chanmap = iclforge::eac3::chanmap::k512Height}}};
-    iclforge::eac3::AccessUnitEncoder encoder{cfg};
+                        .acmod = iclforge::ac3::Acmod::k2_0,
+                        .chanmap = iclforge::ac3::eac3::chanmap::k512Height}}};
+    iclforge::ac3::eac3::AccessUnitEncoder encoder{cfg};
     REQUIRE(encoder.channel_count() == 4);
 
-    iclforge::Eac3Decoder value_decoder;
-    iclforge::Eac3Decoder block_decoder;
+    iclforge::ac3::Eac3Decoder value_decoder;
+    iclforge::ac3::Eac3Decoder block_decoder;
 
-    std::vector<std::vector<float>> block(4, std::vector<float>(iclforge::kSamplesPerFrame));
+    std::vector<std::vector<float>> block(4, std::vector<float>(iclforge::ac3::kSamplesPerFrame));
     std::vector<std::span<const float>> views(4);
 
     constexpr std::array<double, 4> tones = {440.0, 660.0, 880.0, 1320.0};
     std::uint64_t n0 = 0;
     for (int f = 0; f < 3; ++f) {
         for (std::size_t ch = 0; ch < 4; ++ch) {
-            for (int i = 0; i < iclforge::kSamplesPerFrame; ++i) {
+            for (int i = 0; i < iclforge::ac3::kSamplesPerFrame; ++i) {
                 block[ch][static_cast<std::size_t>(i)] = static_cast<float>(
                     0.3 * std::sin(2.0 * std::numbers::pi * tones[ch] *
                                    static_cast<double>(n0 + static_cast<std::uint64_t>(i)) /
@@ -2171,7 +2171,7 @@ TEST_CASE("decode_access_unit_by_block hands over the identical program a block 
             }
             views[ch] = block[ch];
         }
-        n0 += iclforge::kSamplesPerFrame;
+        n0 += iclforge::ac3::kSamplesPerFrame;
         const auto unit = encoder.encode_access_unit(views);
         REQUIRE(unit.has_value());
 
@@ -2184,15 +2184,15 @@ TEST_CASE("decode_access_unit_by_block hands over the identical program a block 
         std::vector<std::vector<float>> delivered;
         int expected_index = 0;
         int blocks_seen = 0;
-        const auto sink = [&](const iclforge::PcmBlock& pcm) {
+        const auto sink = [&](const iclforge::ac3::PcmBlock& pcm) {
             CHECK(pcm.index == expected_index);
-            CHECK(pcm.blocks == iclforge::kBlocksPerFrame);
+            CHECK(pcm.blocks == iclforge::ac3::kBlocksPerFrame);
             ++expected_index;
             ++blocks_seen;
             delivered.resize(pcm.channels.size());
             for (std::size_t slot = 0; slot < pcm.channels.size(); ++slot) {
                 CHECK(pcm.channels[slot].size() ==
-                      static_cast<std::size_t>(iclforge::kSamplesPerBlock));
+                      static_cast<std::size_t>(iclforge::ac3::kSamplesPerBlock));
                 delivered[slot].insert(delivered[slot].end(), pcm.channels[slot].begin(),
                                        pcm.channels[slot].end());
             }
@@ -2200,7 +2200,7 @@ TEST_CASE("decode_access_unit_by_block hands over the identical program a block 
         const auto by_block = block_decoder.decode_access_unit_by_block(unit->bytes, sink);
         REQUIRE(by_block.has_value());
         REQUIRE(by_block->has_value());
-        CHECK(blocks_seen == iclforge::kBlocksPerFrame);
+        CHECK(blocks_seen == iclforge::ac3::kBlocksPerFrame);
 
         CHECK((*by_block)->channels.empty());
         CHECK((*by_block)->layout.count == (*value)->layout.count);
@@ -2227,17 +2227,17 @@ TEST_CASE("decode_access_unit_into leaves the spans untouched across a hold-back
     // through both forms in lockstep: the held call must not touch the
     // caller's storage at all, and the release call must hand the span form
     // exactly the PCM the value form assembles.
-    const iclforge::eac3::AccessUnitConfig cfg{
+    const iclforge::ac3::eac3::AccessUnitConfig cfg{
         .independent = {
-            .bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0, .transient_prenoise = true}};
-    iclforge::eac3::AccessUnitEncoder encoder{cfg};
-    iclforge::Eac3Decoder value_decoder;
-    iclforge::Eac3Decoder into_decoder;
+            .bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k2_0, .transient_prenoise = true}};
+    iclforge::ac3::eac3::AccessUnitEncoder encoder{cfg};
+    iclforge::ac3::Eac3Decoder value_decoder;
+    iclforge::ac3::Eac3Decoder into_decoder;
 
-    const std::vector<float> silence(iclforge::kSamplesPerFrame, 0.0f);
+    const std::vector<float> silence(iclforge::ac3::kSamplesPerFrame, 0.0f);
     std::vector<std::span<const float>> silent_views(2, silence);
     std::vector<std::vector<float>> storage(16,
-                                            std::vector<float>(iclforge::kSamplesPerFrame));
+                                            std::vector<float>(iclforge::ac3::kSamplesPerFrame));
     std::vector<std::span<float>> spans(storage.begin(), storage.end());
 
     for (int f = 0; f < 2; ++f) {
@@ -2248,8 +2248,8 @@ TEST_CASE("decode_access_unit_into leaves the spans untouched across a hold-back
     }
 
     constexpr int kOnset = 960;
-    std::vector<float> transient(static_cast<std::size_t>(iclforge::kSamplesPerFrame), 0.0f);
-    for (int n = kOnset; n < iclforge::kSamplesPerFrame; ++n) {
+    std::vector<float> transient(static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame), 0.0f);
+    for (int n = kOnset; n < iclforge::ac3::kSamplesPerFrame; ++n) {
         transient[static_cast<std::size_t>(n)] = static_cast<float>(
             0.9 * std::sin(2.0 * std::numbers::pi * 1000.0 * static_cast<double>(n) / 48000.0));
     }
@@ -2299,15 +2299,15 @@ TEST_CASE("decode_access_unit_into passes dual mono through in coded order",
           "[eac3][decoder][dual-mono]") {
     // dialnorm2 is Ch2's own word and dual mono requires it - see the
     // "codes two independent programmes" test's identical config note.
-    iclforge::eac3::AccessUnitEncoder encoder{{.independent = {.bitrate_kbps = 192,
-                                                          .acmod = iclforge::Acmod::kDualMono,
+    iclforge::ac3::eac3::AccessUnitEncoder encoder{{.independent = {.bitrate_kbps = 192,
+                                                          .acmod = iclforge::ac3::Acmod::kDualMono,
                                                           .dialnorm = 27,
                                                           .dialnorm2 = 18}}};
-    iclforge::Eac3Decoder value_decoder;
-    iclforge::Eac3Decoder into_decoder;
+    iclforge::ac3::Eac3Decoder value_decoder;
+    iclforge::ac3::Eac3Decoder into_decoder;
 
-    std::vector<std::vector<float>> block(2, std::vector<float>(iclforge::kSamplesPerFrame));
-    for (int i = 0; i < iclforge::kSamplesPerFrame; ++i) {
+    std::vector<std::vector<float>> block(2, std::vector<float>(iclforge::ac3::kSamplesPerFrame));
+    for (int i = 0; i < iclforge::ac3::kSamplesPerFrame; ++i) {
         block[0][static_cast<std::size_t>(i)] = static_cast<float>(
             0.3 * std::sin(2.0 * std::numbers::pi * 440.0 * i / 48000.0));
         block[1][static_cast<std::size_t>(i)] = static_cast<float>(
@@ -2317,7 +2317,7 @@ TEST_CASE("decode_access_unit_into passes dual mono through in coded order",
     const auto unit = encoder.encode_access_unit(views);
     REQUIRE(unit.has_value());
 
-    std::vector<std::vector<float>> storage(2, std::vector<float>(iclforge::kSamplesPerFrame));
+    std::vector<std::vector<float>> storage(2, std::vector<float>(iclforge::ac3::kSamplesPerFrame));
     std::vector<std::span<float>> spans(storage.begin(), storage.end());
     const auto value = value_decoder.decode_access_unit(unit->bytes);
     REQUIRE(value.has_value());
@@ -2350,13 +2350,13 @@ TEST_CASE("decode_access_unit_into passes dual mono through in coded order",
 // the 5.1 bed, immediately followed by an Annex E DEPENDENT substream whose
 // chanmap extends it - here to 7.1, the layout that sample actually uses.
 TEST_CASE("an AC-3 core plus an E-AC-3 dependent decodes to 7.1", "[eac3][decoder]") {
-    using iclforge::Acmod;
-    namespace cm = iclforge::eac3::chanmap;
+    using iclforge::ac3::Acmod;
+    namespace cm = iclforge::ac3::eac3::chanmap;
 
-    iclforge::FrameEncoder core{{.bitrate_kbps = 448, .acmod = Acmod::k3_2, .lfe = true}};
-    iclforge::eac3::FrameEncoder rear{{.bitrate_kbps = 320,
+    iclforge::ac3::FrameEncoder core{{.bitrate_kbps = 448, .acmod = Acmod::k3_2, .lfe = true}};
+    iclforge::ac3::eac3::FrameEncoder rear{{.bitrate_kbps = 320,
                                   .acmod = Acmod::k2_2,
-                                  .strmtyp = iclforge::eac3::StreamType::kDependent,
+                                  .strmtyp = iclforge::ac3::eac3::StreamType::kDependent,
                                   .substreamid = 0,
                                   .chanmap = cm::k71Rear,
                                   .last_dependent = true}};
@@ -2378,10 +2378,10 @@ TEST_CASE("an AC-3 core plus an E-AC-3 dependent decodes to 7.1", "[eac3][decode
     std::uint64_t n0 = 0;
     for (int f = 0; f < kFrames; ++f) {
         std::vector<std::vector<float>> bed_block(6,
-                                                  std::vector<float>(iclforge::kSamplesPerFrame));
+                                                  std::vector<float>(iclforge::ac3::kSamplesPerFrame));
         std::vector<std::vector<float>> rear_block(4,
-                                                   std::vector<float>(iclforge::kSamplesPerFrame));
-        for (int i = 0; i < iclforge::kSamplesPerFrame; ++i) {
+                                                   std::vector<float>(iclforge::ac3::kSamplesPerFrame));
+        for (int i = 0; i < iclforge::ac3::kSamplesPerFrame; ++i) {
             const double t = static_cast<double>(n0 + static_cast<std::uint64_t>(i)) / 48000.0;
             for (std::size_t ch = 0; ch < 6; ++ch) {
                 bed_block[ch][static_cast<std::size_t>(i)] = static_cast<float>(
@@ -2392,7 +2392,7 @@ TEST_CASE("an AC-3 core plus an E-AC-3 dependent decodes to 7.1", "[eac3][decode
                     kAmplitude * std::sin(2.0 * std::numbers::pi * rear_tones[ch] * t));
             }
         }
-        n0 += iclforge::kSamplesPerFrame;
+        n0 += iclforge::ac3::kSamplesPerFrame;
 
         const std::vector<std::span<const float>> bed_views(bed_block.begin(), bed_block.end());
         const auto core_frame = core.encode_frame(bed_views);
@@ -2409,13 +2409,13 @@ TEST_CASE("an AC-3 core plus an E-AC-3 dependent decodes to 7.1", "[eac3][decode
     // The scanner recognises the arrangement (tests/ac3/io/test_elementary.cpp
     // covers that claim directly); here the point is that split_access_units
     // groups each core with its dependent, and Eac3Decoder renders the pair.
-    const auto units = iclforge::split_access_units(stream);
+    const auto units = iclforge::ac3::split_access_units(stream);
     REQUIRE(units.has_value());
     REQUIRE(units->size() == static_cast<std::size_t>(kFrames));
 
-    iclforge::Eac3Decoder decoder;
+    iclforge::ac3::Eac3Decoder decoder;
     std::vector<std::vector<float>> rendered;
-    iclforge::eac3::chanmap::Layout layout;
+    iclforge::ac3::eac3::chanmap::Layout layout;
     int substreams = 0;
     for (const auto& unit : *units) {
         const auto decoded = decoder.decode_access_unit(unit);
@@ -2437,7 +2437,7 @@ TEST_CASE("an AC-3 core plus an E-AC-3 dependent decodes to 7.1", "[eac3][decode
     REQUIRE(layout.count == static_cast<int>(speakers.size()));
     REQUIRE(rendered.size() == speakers.size());
     for (std::size_t ch = 0; ch < speakers.size(); ++ch) {
-        CAPTURE(ch, iclforge::eac3::chanmap::name(speakers[ch].location));
+        CAPTURE(ch, iclforge::ac3::eac3::chanmap::name(speakers[ch].location));
         CHECK(layout[static_cast<int>(ch)] == speakers[ch].location);
         CHECK(std::abs(dominant_freq_hz(rendered[ch]) - speakers[ch].tone_hz) < 10.0);
     }
@@ -2454,15 +2454,15 @@ TEST_CASE("an AC-3 core plus an E-AC-3 dependent decodes to 7.1", "[eac3][decode
 TEST_CASE(
     "OperatingMode::kLine gives a legacy core plus dependent one gain, not the core's channels two",
     "[eac3][decoder]") {
-    using iclforge::Acmod;
-    namespace cm = iclforge::eac3::chanmap;
+    using iclforge::ac3::Acmod;
+    namespace cm = iclforge::ac3::eac3::chanmap;
 
     constexpr int kDialnorm = 24;
-    iclforge::FrameEncoder core{
+    iclforge::ac3::FrameEncoder core{
         {.bitrate_kbps = 448, .dialnorm = kDialnorm, .acmod = Acmod::k3_2, .lfe = true}};
-    iclforge::eac3::FrameEncoder rear{{.bitrate_kbps = 320,
+    iclforge::ac3::eac3::FrameEncoder rear{{.bitrate_kbps = 320,
                                   .acmod = Acmod::k2_2,
-                                  .strmtyp = iclforge::eac3::StreamType::kDependent,
+                                  .strmtyp = iclforge::ac3::eac3::StreamType::kDependent,
                                   .substreamid = 0,
                                   .chanmap = cm::k71Rear,
                                   .last_dependent = true}};
@@ -2478,10 +2478,10 @@ TEST_CASE(
     std::uint64_t n0 = 0;
     for (int f = 0; f < kFrames; ++f) {
         std::vector<std::vector<float>> bed_block(6,
-                                                  std::vector<float>(iclforge::kSamplesPerFrame));
+                                                  std::vector<float>(iclforge::ac3::kSamplesPerFrame));
         std::vector<std::vector<float>> rear_block(4,
-                                                   std::vector<float>(iclforge::kSamplesPerFrame));
-        for (int i = 0; i < iclforge::kSamplesPerFrame; ++i) {
+                                                   std::vector<float>(iclforge::ac3::kSamplesPerFrame));
+        for (int i = 0; i < iclforge::ac3::kSamplesPerFrame; ++i) {
             const double t = static_cast<double>(n0 + static_cast<std::uint64_t>(i)) / 48000.0;
             for (std::size_t ch = 0; ch < 6; ++ch) {
                 bed_block[ch][static_cast<std::size_t>(i)] = static_cast<float>(
@@ -2492,7 +2492,7 @@ TEST_CASE(
                     kAmplitude * std::sin(2.0 * std::numbers::pi * rear_tones[ch] * t));
             }
         }
-        n0 += iclforge::kSamplesPerFrame;
+        n0 += iclforge::ac3::kSamplesPerFrame;
 
         const std::vector<std::span<const float>> bed_views(bed_block.begin(), bed_block.end());
         const auto core_frame = core.encode_frame(bed_views);
@@ -2506,7 +2506,7 @@ TEST_CASE(
         stream.insert(stream.end(), dep_frame->begin(), dep_frame->end());
     }
 
-    const auto units = iclforge::split_access_units(stream);
+    const auto units = iclforge::ac3::split_access_units(stream);
     REQUIRE(units.has_value());
     REQUIRE(units->size() == static_cast<std::size_t>(kFrames));
 
@@ -2516,11 +2516,11 @@ TEST_CASE(
     // drc_scale=1.0 - the ONLY gain either decoder below ever applies is
     // this one, which is exactly what makes "a plain decode scaled by this
     // constant" the correct expectation for every channel.
-    const double expected_gain = iclforge::meta::dialnorm_gain(kDialnorm);
+    const double expected_gain = iclforge::ac3::meta::dialnorm_gain(kDialnorm);
     REQUIRE(expected_gain < 1.0);
 
-    iclforge::Eac3Decoder plain;
-    iclforge::Eac3Decoder line{{.output = {.mode = iclforge::OperatingMode::kLine}}};
+    iclforge::ac3::Eac3Decoder plain;
+    iclforge::ac3::Eac3Decoder line{{.output = {.mode = iclforge::ac3::OperatingMode::kLine}}};
     std::vector<std::vector<float>> reference(8);
     std::vector<std::vector<float>> rendered(8);
     for (const auto& unit : *units) {
@@ -2574,20 +2574,20 @@ TEST_CASE(
 // some, since the core folds on every frame.
 TEST_CASE("a legacy core plus dependent still folds to Lo/Ro instead of refusing the unit",
           "[eac3][decoder]") {
-    using iclforge::Acmod;
-    namespace cm = iclforge::eac3::chanmap;
+    using iclforge::ac3::Acmod;
+    namespace cm = iclforge::ac3::eac3::chanmap;
 
-    iclforge::FrameEncoder core{{.bitrate_kbps = 448, .acmod = Acmod::k3_2, .lfe = true}};
-    iclforge::eac3::FrameEncoder rear{{.bitrate_kbps = 320,
+    iclforge::ac3::FrameEncoder core{{.bitrate_kbps = 448, .acmod = Acmod::k3_2, .lfe = true}};
+    iclforge::ac3::eac3::FrameEncoder rear{{.bitrate_kbps = 320,
                                   .acmod = Acmod::k2_2,
-                                  .strmtyp = iclforge::eac3::StreamType::kDependent,
+                                  .strmtyp = iclforge::ac3::eac3::StreamType::kDependent,
                                   .substreamid = 0,
                                   .chanmap = cm::k71Rear,
                                   .last_dependent = true}};
 
-    std::vector<std::vector<float>> bed_block(6, std::vector<float>(iclforge::kSamplesPerFrame));
-    std::vector<std::vector<float>> rear_block(4, std::vector<float>(iclforge::kSamplesPerFrame));
-    for (int i = 0; i < iclforge::kSamplesPerFrame; ++i) {
+    std::vector<std::vector<float>> bed_block(6, std::vector<float>(iclforge::ac3::kSamplesPerFrame));
+    std::vector<std::vector<float>> rear_block(4, std::vector<float>(iclforge::ac3::kSamplesPerFrame));
+    for (int i = 0; i < iclforge::ac3::kSamplesPerFrame; ++i) {
         bed_block[0][static_cast<std::size_t>(i)] = static_cast<float>(
             kAmplitude * std::sin(2.0 * std::numbers::pi * 1000.0 * i / 48000.0));
         rear_block[0][static_cast<std::size_t>(i)] = static_cast<float>(
@@ -2607,11 +2607,11 @@ TEST_CASE("a legacy core plus dependent still folds to Lo/Ro instead of refusing
         stream.insert(stream.end(), dep_frame->begin(), dep_frame->end());
     }
 
-    const auto units = iclforge::split_access_units(stream);
+    const auto units = iclforge::ac3::split_access_units(stream);
     REQUIRE(units.has_value());
     REQUIRE(units->size() == static_cast<std::size_t>(kFrames));
 
-    iclforge::Eac3Decoder decoder{{.output = {.target = iclforge::DownmixTarget::kLoRo}}};
+    iclforge::ac3::Eac3Decoder decoder{{.output = {.target = iclforge::ac3::DownmixTarget::kLoRo}}};
     for (const auto& unit : *units) {
         const auto decoded = decoder.decode_access_unit(unit);
         REQUIRE(decoded.has_value());
@@ -2626,22 +2626,22 @@ TEST_CASE("a legacy core plus dependent still folds to Lo/Ro instead of refusing
 // and apply_output()/flush() folded it with §7.8's AC-3 DEFAULTS (-4.5 dB
 // centre, -6 dB surround) regardless of what the core's own bsi said. Fixed
 // by carrying cmixlev/surmixlev onto both structs and resolving them through
-// the same iclforge::mix_levels() overload FrameDecoder already folds a bare AC-3
+// the same iclforge::ac3::mix_levels() overload FrameDecoder already folds a bare AC-3
 // stream with.
 TEST_CASE("a legacy core's own bsi levels fold the programme, not the AC-3 defaults",
           "[eac3][decoder]") {
-    using iclforge::Acmod;
+    using iclforge::ac3::Acmod;
 
     // -6 dB centre is away from §7.8's -4.5 dB default; silent surround is
     // away from its -6 dB default too - "dropped from the fold entirely" is
     // as far from "-6 dB" as a real Table 5.10 code gets.
-    iclforge::EncoderConfig config;
+    iclforge::ac3::EncoderConfig config;
     config.acmod = Acmod::k3_2;
     config.lfe = true;
     config.bitrate_kbps = 448;
-    config.cmixlev = iclforge::meta::CentreMixLevel::kMinus6dB;
-    config.surmixlev = iclforge::meta::SurroundMixLevel::kSilent;
-    iclforge::FrameEncoder core{config};
+    config.cmixlev = iclforge::ac3::meta::CentreMixLevel::kMinus6dB;
+    config.surmixlev = iclforge::ac3::meta::SurroundMixLevel::kSilent;
+    iclforge::ac3::FrameEncoder core{config};
 
     // One distinct tone per coded channel (L C R Ls Rs LFE) - silence would
     // fold to silence under any gain at all, telling a wrong level apart from
@@ -2651,15 +2651,15 @@ TEST_CASE("a legacy core's own bsi levels fold the programme, not the AC-3 defau
     std::vector<std::vector<std::byte>> frames;
     std::uint64_t n0 = 0;
     for (int f = 0; f < kFrames; ++f) {
-        std::vector<std::vector<float>> block(6, std::vector<float>(iclforge::kSamplesPerFrame));
-        for (int i = 0; i < iclforge::kSamplesPerFrame; ++i) {
+        std::vector<std::vector<float>> block(6, std::vector<float>(iclforge::ac3::kSamplesPerFrame));
+        for (int i = 0; i < iclforge::ac3::kSamplesPerFrame; ++i) {
             const double t = static_cast<double>(n0 + static_cast<std::uint64_t>(i)) / 48000.0;
             for (std::size_t ch = 0; ch < 6; ++ch) {
                 block[ch][static_cast<std::size_t>(i)] = static_cast<float>(
                     kAmplitude * std::sin(2.0 * std::numbers::pi * tones[ch] * t));
             }
         }
-        n0 += iclforge::kSamplesPerFrame;
+        n0 += iclforge::ac3::kSamplesPerFrame;
         const std::vector<std::span<const float>> views(block.begin(), block.end());
         const auto frame = core.encode_frame(views);
         REQUIRE(frame.has_value());
@@ -2669,14 +2669,14 @@ TEST_CASE("a legacy core's own bsi levels fold the programme, not the AC-3 defau
     for (const auto& frame : frames) {
         stream.insert(stream.end(), frame.begin(), frame.end());
     }
-    const auto units = iclforge::split_access_units(stream);
+    const auto units = iclforge::ac3::split_access_units(stream);
     REQUIRE(units.has_value());
     REQUIRE(units->size() == static_cast<std::size_t>(kFrames));
 
-    for (const auto target : {iclforge::DownmixTarget::kLoRo, iclforge::DownmixTarget::kLtRt}) {
+    for (const auto target : {iclforge::ac3::DownmixTarget::kLoRo, iclforge::ac3::DownmixTarget::kLtRt}) {
         INFO("target " << static_cast<int>(target));
-        iclforge::Eac3Decoder eac3{{.output = {.target = target}}};
-        iclforge::FrameDecoder plain{{.output = {.target = target}}};
+        iclforge::ac3::Eac3Decoder eac3{{.output = {.target = target}}};
+        iclforge::ac3::FrameDecoder plain{{.output = {.target = target}}};
         for (std::size_t f = 0; f < frames.size(); ++f) {
             const auto via_eac3 = eac3.decode_access_unit((*units)[f]);
             REQUIRE(via_eac3.has_value());
@@ -2697,42 +2697,42 @@ TEST_CASE("a legacy core's own bsi levels fold the programme, not the AC-3 defau
 // (PR #691) for the identical bytes decoded on their own.
 TEST_CASE("a bsid-6 legacy core folds with its own xbsi1 levels, not bsi's",
           "[eac3][decoder]") {
-    using iclforge::Acmod;
+    using iclforge::ac3::Acmod;
 
     // bsi's pair - §D4.2.1 requires a bsid-6 encoder to keep sending it for
     // legacy decoders - and xbsi1's own, chosen to disagree with bsi AND with
     // §7.8.2's -3 dB Lt/Rt in every one of the four fields, so a fold taking
     // a level from the wrong place cannot match by coincidence.
-    iclforge::meta::MixMetadata xbsi1;
-    xbsi1.dmixmod = iclforge::meta::DownmixMode::kLoRo;
-    xbsi1.ltrtcmixlev = iclforge::meta::MixLevel::kMinus1_5dB;
-    xbsi1.lorocmixlev = iclforge::meta::MixLevel::kUnity;
-    xbsi1.ltrtsurmixlev = iclforge::meta::MixLevel::kMinus4_5dB;
-    xbsi1.lorosurmixlev = iclforge::meta::MixLevel::kSilent;
+    iclforge::ac3::meta::MixMetadata xbsi1;
+    xbsi1.dmixmod = iclforge::ac3::meta::DownmixMode::kLoRo;
+    xbsi1.ltrtcmixlev = iclforge::ac3::meta::MixLevel::kMinus1_5dB;
+    xbsi1.lorocmixlev = iclforge::ac3::meta::MixLevel::kUnity;
+    xbsi1.ltrtsurmixlev = iclforge::ac3::meta::MixLevel::kMinus4_5dB;
+    xbsi1.lorosurmixlev = iclforge::ac3::meta::MixLevel::kSilent;
 
-    iclforge::EncoderConfig config;
+    iclforge::ac3::EncoderConfig config;
     config.acmod = Acmod::k3_2;
     config.lfe = true;
     config.bitrate_kbps = 448;
-    config.cmixlev = iclforge::meta::CentreMixLevel::kMinus3dB;
-    config.surmixlev = iclforge::meta::SurroundMixLevel::kMinus3dB;
-    config.alternate_bsi = iclforge::meta::AlternateBsi{.mix = xbsi1};
-    iclforge::FrameEncoder core{config};
+    config.cmixlev = iclforge::ac3::meta::CentreMixLevel::kMinus3dB;
+    config.surmixlev = iclforge::ac3::meta::SurroundMixLevel::kMinus3dB;
+    config.alternate_bsi = iclforge::ac3::meta::AlternateBsi{.mix = xbsi1};
+    iclforge::ac3::FrameEncoder core{config};
 
     const std::vector<double> tones = {1000.0, 800.0, 1200.0, 500.0, 1600.0, 60.0};
     constexpr int kFrames = 4;
     std::vector<std::vector<std::byte>> frames;
     std::uint64_t n0 = 0;
     for (int f = 0; f < kFrames; ++f) {
-        std::vector<std::vector<float>> block(6, std::vector<float>(iclforge::kSamplesPerFrame));
-        for (int i = 0; i < iclforge::kSamplesPerFrame; ++i) {
+        std::vector<std::vector<float>> block(6, std::vector<float>(iclforge::ac3::kSamplesPerFrame));
+        for (int i = 0; i < iclforge::ac3::kSamplesPerFrame; ++i) {
             const double t = static_cast<double>(n0 + static_cast<std::uint64_t>(i)) / 48000.0;
             for (std::size_t ch = 0; ch < 6; ++ch) {
                 block[ch][static_cast<std::size_t>(i)] = static_cast<float>(
                     kAmplitude * std::sin(2.0 * std::numbers::pi * tones[ch] * t));
             }
         }
-        n0 += iclforge::kSamplesPerFrame;
+        n0 += iclforge::ac3::kSamplesPerFrame;
         const std::vector<std::span<const float>> views(block.begin(), block.end());
         const auto frame = core.encode_frame(views);
         REQUIRE(frame.has_value());
@@ -2742,14 +2742,14 @@ TEST_CASE("a bsid-6 legacy core folds with its own xbsi1 levels, not bsi's",
     for (const auto& frame : frames) {
         stream.insert(stream.end(), frame.begin(), frame.end());
     }
-    const auto units = iclforge::split_access_units(stream);
+    const auto units = iclforge::ac3::split_access_units(stream);
     REQUIRE(units.has_value());
     REQUIRE(units->size() == static_cast<std::size_t>(kFrames));
 
-    for (const auto target : {iclforge::DownmixTarget::kLoRo, iclforge::DownmixTarget::kLtRt}) {
+    for (const auto target : {iclforge::ac3::DownmixTarget::kLoRo, iclforge::ac3::DownmixTarget::kLtRt}) {
         INFO("target " << static_cast<int>(target));
-        iclforge::Eac3Decoder eac3{{.output = {.target = target}}};
-        iclforge::FrameDecoder plain{{.output = {.target = target}}};
+        iclforge::ac3::Eac3Decoder eac3{{.output = {.target = target}}};
+        iclforge::ac3::FrameDecoder plain{{.output = {.target = target}}};
         for (std::size_t f = 0; f < frames.size(); ++f) {
             const auto via_eac3 = eac3.decode_access_unit((*units)[f]);
             REQUIRE(via_eac3.has_value());
@@ -2768,21 +2768,21 @@ TEST_CASE("split_access_units keeps an AC-3 core and its dependent together",
     // syncframe - the regression this test guards against is reading them as
     // strmtyp regardless of bsid, which would split the core away from its
     // own dependent whenever crc1 happens to look like kIndependent.
-    iclforge::FrameEncoder core{{.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true}};
-    iclforge::eac3::FrameEncoder rear{{.bitrate_kbps = 320,
-                                  .acmod = iclforge::Acmod::k2_2,
-                                  .strmtyp = iclforge::eac3::StreamType::kDependent,
-                                  .chanmap = iclforge::eac3::chanmap::k71Rear,
+    iclforge::ac3::FrameEncoder core{{.bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true}};
+    iclforge::ac3::eac3::FrameEncoder rear{{.bitrate_kbps = 320,
+                                  .acmod = iclforge::ac3::Acmod::k2_2,
+                                  .strmtyp = iclforge::ac3::eac3::StreamType::kDependent,
+                                  .chanmap = iclforge::ac3::eac3::chanmap::k71Rear,
                                   .last_dependent = true}};
-    std::vector<std::vector<float>> block(6, std::vector<float>(iclforge::kSamplesPerFrame));
-    for (int i = 0; i < iclforge::kSamplesPerFrame; ++i) {
+    std::vector<std::vector<float>> block(6, std::vector<float>(iclforge::ac3::kSamplesPerFrame));
+    for (int i = 0; i < iclforge::ac3::kSamplesPerFrame; ++i) {
         block[0][static_cast<std::size_t>(i)] =
             static_cast<float>(0.3 * std::sin(2.0 * std::numbers::pi * 1000.0 * i / 48000.0));
     }
     const std::vector<std::span<const float>> bed_views(block.begin(), block.end());
     const auto core_frame = core.encode_frame(bed_views);
     REQUIRE(core_frame.has_value());
-    std::vector<std::vector<float>> rear_block(4, std::vector<float>(iclforge::kSamplesPerFrame));
+    std::vector<std::vector<float>> rear_block(4, std::vector<float>(iclforge::ac3::kSamplesPerFrame));
     const std::vector<std::span<const float>> rear_views(rear_block.begin(), rear_block.end());
     const auto dep_frame = rear.encode_frame(rear_views);
     REQUIRE(dep_frame.has_value());
@@ -2793,7 +2793,7 @@ TEST_CASE("split_access_units keeps an AC-3 core and its dependent together",
         stream.insert(stream.end(), dep_frame->begin(), dep_frame->end());
     }
 
-    const auto units = iclforge::split_access_units(stream);
+    const auto units = iclforge::ac3::split_access_units(stream);
     REQUIRE(units.has_value());
     REQUIRE(units->size() == 3);
     for (const auto& unit : *units) {

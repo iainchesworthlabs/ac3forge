@@ -49,8 +49,8 @@ std::string to_hex(std::span<const std::byte> b) {
 
 // A short synthetic tone, one frame long, for driving the Atmos encoder.
 std::vector<float> tone(double hz, std::uint64_t start) {
-    std::vector<float> out(static_cast<std::size_t>(iclforge::kSamplesPerFrame));
-    for (int n = 0; n < iclforge::kSamplesPerFrame; ++n) {
+    std::vector<float> out(static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame));
+    for (int n = 0; n < iclforge::ac3::kSamplesPerFrame; ++n) {
         const double t = static_cast<double>(start + static_cast<std::uint64_t>(n)) / 48000.0;
         out[static_cast<std::size_t>(n)] =
             static_cast<float>(0.3 * std::sin(2.0 * std::numbers::pi * hz * t));
@@ -61,7 +61,7 @@ std::vector<float> tone(double hz, std::uint64_t start) {
 // Encodes `frames` one-object Atmos access units into a single contiguous
 // stream, container emitted (or not) per `emit_objects`.
 std::vector<std::byte> encode_atmos_stream(int frames, bool emit_objects) {
-    iclforge::oba::AtmosEncoder encoder{
+    iclforge::ac3::oba::AtmosEncoder encoder{
         {.bitrate_kbps = 448, .num_bands_idx = 4, .emit_object_metadata = emit_objects}, 1};
     const std::array<iclforge::oba::ObjectPlacement, 1> placement{{{}}};
     std::vector<std::span<const float>> views(1);
@@ -69,7 +69,7 @@ std::vector<std::byte> encode_atmos_stream(int frames, bool emit_objects) {
     for (int f = 0; f < frames; ++f) {
         const auto essence =
             tone(440.0, static_cast<std::uint64_t>(f) *
-                            static_cast<std::uint64_t>(iclforge::kSamplesPerFrame));
+                            static_cast<std::uint64_t>(iclforge::ac3::kSamplesPerFrame));
         views[0] = essence;
         auto unit = encoder.encode_frame(views, placement);
         REQUIRE(unit.has_value());

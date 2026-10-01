@@ -26,7 +26,7 @@ namespace iclforge::apps {
 // §E2.3.1.2's legacy-core delivery opens with an AC-3 syncframe and carries
 // Annex E dependents behind it, and FrameDecoder refuses the first dependent
 // it reaches. 'forge decode' makes the same test; see
-// iclforge::has_eac3_extension_substreams.
+// iclforge::ac3::has_eac3_extension_substreams.
 [[nodiscard]] bool reads_as_access_units(std::span<const std::byte> stream);
 
 // Eac3Decoder::flush()'s substreams as one access unit, laid out the way
@@ -61,8 +61,8 @@ namespace iclforge::apps {
 //
 // A flushed dependent with no bed beside it has nothing to extend, and gives
 // std::nullopt.
-[[nodiscard]] std::optional<iclforge::DecodedAccessUnit> held_back_unit(
-    std::vector<iclforge::DecodedSubstream> flushed,
-    const std::optional<iclforge::eac3::chanmap::Layout>& programme, bool folded);
+[[nodiscard]] std::optional<iclforge::ac3::DecodedAccessUnit> held_back_unit(
+    std::vector<iclforge::ac3::DecodedSubstream> flushed,
+    const std::optional<iclforge::ac3::eac3::chanmap::Layout>& programme, bool folded);
 
 }  // namespace iclforge::apps

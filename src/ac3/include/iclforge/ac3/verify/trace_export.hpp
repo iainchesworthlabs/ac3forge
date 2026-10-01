@@ -29,7 +29,7 @@
 //
 // `substream` is always 0 for AC-3 (FrameTrace has no substream layer) and
 // the E-AC-3 access unit's substream POSITION for Eac3AccessUnitTrace -
-// iclforge::verify::Eac3Mismatch::substream's own convention, not the wire
+// iclforge::ac3::verify::Eac3Mismatch::substream's own convention, not the wire
 // strmtyp/substreamid identity. `stream` is the internal numbering
 // StreamTrace/Eac3StreamTrace already document: full-bandwidth channels
 // first, then the LFE, then the coupling channel, when in use.

@@ -1,14 +1,14 @@
 // Embind wrapper around iclforge::ac3's encode path, for the roadmap-UX6
 // browser encode page (apps/wasm/encode/index.html). Three JS-visible
 // classes:
-//   - WasmEncoder: real AC-3 (iclforge::FrameEncoder) or E-AC-3
-//     (iclforge::eac3::FrameEncoder) bed encoding, frame by frame.
+//   - WasmEncoder: real AC-3 (iclforge::ac3::FrameEncoder) or E-AC-3
+//     (iclforge::ac3::eac3::FrameEncoder) bed encoding, frame by frame.
 //   - WasmAtmosBedEncoder: real Atmos/JOC bed encoding
-//     (iclforge::oba::AtmosEncoder) - the class the object-authoring page
+//     (iclforge::ac3::oba::AtmosEncoder) - the class the object-authoring page
 //     (apps/wasm/atmos/) drives, one placement set per frame so a drag on
 //     its room canvas IS the pan.
-//   - WasmQcMeter: iclforge::meta::LoudnessMeter plus a verdict against every
-//     iclforge::meta::QcPresetId - the "browser-side qc... in the page" roadmap
+//   - WasmQcMeter: iclforge::ac3::meta::LoudnessMeter plus a verdict against every
+//     iclforge::ac3::meta::QcPresetId - the "browser-side qc... in the page" roadmap
 //     UX6 asks for, not a separate page.
 //
 // Every class does the real thing: encode_frame() calls the real codec, the
@@ -46,17 +46,17 @@ namespace {
 // already says what it means. A page-error-message translation stays local
 // to this binding rather than becoming ICLFORGE_AC3_EXPORT library API for a
 // message nothing else in the tree needs yet.
-std::string_view describe_frame_error(iclforge::FrameError error) {
+std::string_view describe_frame_error(iclforge::ac3::FrameError error) {
     switch (error) {
-        case iclforge::FrameError::kInvalidBitrate:
+        case iclforge::ac3::FrameError::kInvalidBitrate:
             return "bitrate is not valid for this configuration";
-        case iclforge::FrameError::kInvalidDialnorm: return "dialnorm is out of range (1..31)";
-        case iclforge::FrameError::kInvalidSubstream: return "invalid substream configuration";
-        case iclforge::FrameError::kInvalidChannelMap: return "channel map does not match the coding mode";
-        case iclforge::FrameError::kTooManyChannels: return "too many rendered channel locations";
-        case iclforge::FrameError::kInvalidMixLevel: return "invalid mixing-metadata level";
-        case iclforge::FrameError::kInvalidBsi: return "invalid bit stream information field";
-        case iclforge::FrameError::kInvalidObjectAudio: return "invalid object-audio configuration";
+        case iclforge::ac3::FrameError::kInvalidDialnorm: return "dialnorm is out of range (1..31)";
+        case iclforge::ac3::FrameError::kInvalidSubstream: return "invalid substream configuration";
+        case iclforge::ac3::FrameError::kInvalidChannelMap: return "channel map does not match the coding mode";
+        case iclforge::ac3::FrameError::kTooManyChannels: return "too many rendered channel locations";
+        case iclforge::ac3::FrameError::kInvalidMixLevel: return "invalid mixing-metadata level";
+        case iclforge::ac3::FrameError::kInvalidBsi: return "invalid bit stream information field";
+        case iclforge::ac3::FrameError::kInvalidObjectAudio: return "invalid object-audio configuration";
     }
     return "unknown encode error";
 }
@@ -65,7 +65,7 @@ std::string_view describe_frame_error(iclforge::FrameError error) {
 // layouts a plain FrameEncoder codes; 3-5 are the wide layouts that take an
 // AccessUnitEncoder (a 5.1 bed plus dependent substreams - E-AC-3 only, the
 // same constraint forge's own eac3-encode layouts carry). The WAV-side
-// channel identification mirrors iclforge::plan's generic_wav_layout: 8 channels
+// channel identification mirrors iclforge::ac3::plan's generic_wav_layout: 8 channels
 // reads as 7.1, 10 as 5.1.4, 12 as 7.1.4 (the commoner delivery layout at
 // each ambiguous count), and codedOrderForWav() below hands JS the exact
 // reorder so the mapping logic lives here once, beside the plan code that
@@ -81,36 +81,36 @@ enum class WasmLayout : int {
 
 bool is_wide_layout(int layout) { return layout >= static_cast<int>(WasmLayout::k7_1); }
 
-iclforge::plan::LayoutId layout_id_for(int layout) {
+iclforge::ac3::plan::LayoutId layout_id_for(int layout) {
     switch (static_cast<WasmLayout>(layout)) {
-        case WasmLayout::k7_1: return iclforge::plan::LayoutId::k71;
-        case WasmLayout::k5_1_4: return iclforge::plan::LayoutId::k514;
-        case WasmLayout::k7_1_4: return iclforge::plan::LayoutId::k714;
-        default: return iclforge::plan::LayoutId::k51;
+        case WasmLayout::k7_1: return iclforge::ac3::plan::LayoutId::k71;
+        case WasmLayout::k5_1_4: return iclforge::ac3::plan::LayoutId::k514;
+        case WasmLayout::k7_1_4: return iclforge::ac3::plan::LayoutId::k714;
+        default: return iclforge::ac3::plan::LayoutId::k51;
     }
 }
 
-// Narrow path only - the wide layouts go through iclforge::plan below and never
+// Narrow path only - the wide layouts go through iclforge::ac3::plan below and never
 // consult these.
-iclforge::Acmod acmod_for_layout(int layout) {
+iclforge::ac3::Acmod acmod_for_layout(int layout) {
     switch (static_cast<WasmLayout>(layout)) {
-        case WasmLayout::kMono: return iclforge::Acmod::k1_0;
-        case WasmLayout::kStereo: return iclforge::Acmod::k2_0;
+        case WasmLayout::kMono: return iclforge::ac3::Acmod::k1_0;
+        case WasmLayout::kStereo: return iclforge::ac3::Acmod::k2_0;
         case WasmLayout::k5_1:
         case WasmLayout::k7_1:
         case WasmLayout::k5_1_4:
-        case WasmLayout::k7_1_4: return iclforge::Acmod::k3_2;
+        case WasmLayout::k7_1_4: return iclforge::ac3::Acmod::k3_2;
     }
-    return iclforge::Acmod::k2_0;
+    return iclforge::ac3::Acmod::k2_0;
 }
 
 bool lfe_for_layout(int layout) { return layout >= static_cast<int>(WasmLayout::k5_1); }
 
-iclforge::SampleRate sample_rate_for_hz(int hz) {
+iclforge::ac3::SampleRate sample_rate_for_hz(int hz) {
     switch (hz) {
-        case 44100: return iclforge::SampleRate::k44100;
-        case 32000: return iclforge::SampleRate::k32000;
-        default: return iclforge::SampleRate::k48000;
+        case 44100: return iclforge::ac3::SampleRate::k44100;
+        case 32000: return iclforge::ac3::SampleRate::k32000;
+        default: return iclforge::ac3::SampleRate::k48000;
     }
 }
 
@@ -151,9 +151,9 @@ class WasmEncoder {
     // shipping the unmeasured default 31, which would leave a real decoder's
     // normalisation under-attenuating loud content this page produced.
     //
-    // The wide layouts (7.1/5.1.4/7.1.4) build an iclforge::eac3::
-    // AccessUnitEncoder from iclforge::plan's own config and ROUTE the source
-    // onto it (iclforge::plan::route/render - the same direction-based placement
+    // The wide layouts (7.1/5.1.4/7.1.4) build an iclforge::ac3::eac3::
+    // AccessUnitEncoder from iclforge::ac3::plan's own config and ROUTE the source
+    // onto it (iclforge::ac3::plan::route/render - the same direction-based placement
     // forge itself uses), so encodeFrame() takes the source's channels in
     // plain WAV order at ANY width for those layouts: a stereo source aimed
     // at 7.1.4 is panned onto it, a 12-channel source is carried. The
@@ -163,18 +163,18 @@ class WasmEncoder {
         : acmod_(acmod_for_layout(layout)), lfe_(lfe_for_layout(layout)), is_eac3_(format != 0),
           wide_(is_wide_layout(layout)) {
         if (wide_) {
-            plan_.codec = iclforge::plan::Codec::kEac3;
+            plan_.codec = iclforge::ac3::plan::Codec::kEac3;
             plan_.layout = layout_id_for(layout);
             plan_.sample_rate = sample_rate_for_hz(sample_rate_hz);
             plan_.bitrate_kbps = static_cast<std::uint32_t>(bitrate_kbps);
             plan_.meta.dialnorm = dialnorm;
-            if (const auto invalid = iclforge::plan::validate(plan_)) {
-                ctor_error_ = std::string(iclforge::plan::describe(*invalid));
+            if (const auto invalid = iclforge::ac3::plan::validate(plan_)) {
+                ctor_error_ = std::string(iclforge::ac3::plan::describe(*invalid));
                 return;
             }
-            access_unit_.emplace(iclforge::plan::eac3_config(plan_));
+            access_unit_.emplace(iclforge::ac3::plan::eac3_config(plan_));
         } else if (is_eac3_) {
-            iclforge::eac3::FrameConfig cfg;
+            iclforge::ac3::eac3::FrameConfig cfg;
             cfg.sample_rate = sample_rate_for_hz(sample_rate_hz);
             cfg.bitrate_kbps = static_cast<std::uint32_t>(bitrate_kbps);
             cfg.acmod = acmod_;
@@ -182,7 +182,7 @@ class WasmEncoder {
             cfg.dialnorm = dialnorm;
             eac3_.emplace(cfg);
         } else {
-            iclforge::EncoderConfig cfg;
+            iclforge::ac3::EncoderConfig cfg;
             cfg.sample_rate = sample_rate_for_hz(sample_rate_hz);
             cfg.bitrate_kbps = static_cast<std::uint32_t>(bitrate_kbps);
             cfg.acmod = acmod_;
@@ -192,7 +192,7 @@ class WasmEncoder {
         }
     }
 
-    [[nodiscard]] int samplesPerFrame() const { return iclforge::kSamplesPerFrame; }
+    [[nodiscard]] int samplesPerFrame() const { return iclforge::ac3::kSamplesPerFrame; }
     // The channel count encodeFrame() expects. Narrow: the coded layout's
     // own count, exactly as before. Wide: 0 until the first frame fixes the
     // SOURCE width (any WAV width routes), then that width.
@@ -200,7 +200,7 @@ class WasmEncoder {
         if (wide_) {
             return routing_ ? routing_->source_channels : 0;
         }
-        return iclforge::fullbw_channel_count(acmod_) + (lfe_ ? 1 : 0);
+        return iclforge::ac3::fullbw_channel_count(acmod_) + (lfe_ ? 1 : 0);
     }
     [[nodiscard]] bool hasLfe() const { return lfe_; }
     // Wide path only: whether the source took route()'s exact-match path -
@@ -288,8 +288,8 @@ class WasmEncoder {
                 error_ = "the source's channel count changed mid-stream";
                 return emscripten::val::null();
             }
-            const auto resolved = iclforge::plan::resolve(plan_);
-            auto routing = iclforge::plan::route(resolved, source_channels, plan_.meta.cmixlev,
+            const auto resolved = iclforge::ac3::plan::resolve(plan_);
+            auto routing = iclforge::ac3::plan::route(resolved, source_channels, plan_.meta.cmixlev,
                                             plan_.meta.surmixlev);
             if (!routing) {
                 error_ = "no standard speaker layout has " + std::to_string(source_channels) +
@@ -297,7 +297,7 @@ class WasmEncoder {
                 return emscripten::val::null();
             }
             routing_ = std::move(*routing);
-            rendered_channels_ = static_cast<int>(iclforge::plan::rendered_channel_count(resolved));
+            rendered_channels_ = static_cast<int>(iclforge::ac3::plan::rendered_channel_count(resolved));
             coded_storage_.assign(static_cast<std::size_t>(routing_->coded_channels),
                                   std::vector<float>(static_cast<std::size_t>(samplesPerFrame())));
         }
@@ -307,7 +307,7 @@ class WasmEncoder {
         for (auto& channel : coded_storage_) {
             coded_spans.emplace_back(channel);
         }
-        iclforge::plan::render(*routing_, source_spans, coded_spans,
+        iclforge::ac3::plan::render(*routing_, source_spans, coded_spans,
                           static_cast<std::size_t>(samplesPerFrame()));
 
         const auto coded_views = spans_of(coded_storage_);
@@ -326,15 +326,15 @@ class WasmEncoder {
             last_frame_.size(), reinterpret_cast<const std::uint8_t*>(last_frame_.data())));
     }
 
-    iclforge::Acmod acmod_;
+    iclforge::ac3::Acmod acmod_;
     bool lfe_;
     bool is_eac3_;
     bool wide_ = false;
-    iclforge::plan::Plan plan_{};
-    std::optional<iclforge::FrameEncoder> ac3_;
-    std::optional<iclforge::eac3::FrameEncoder> eac3_;
-    std::optional<iclforge::eac3::AccessUnitEncoder> access_unit_;
-    std::optional<iclforge::plan::Routing> routing_;
+    iclforge::ac3::plan::Plan plan_{};
+    std::optional<iclforge::ac3::FrameEncoder> ac3_;
+    std::optional<iclforge::ac3::eac3::FrameEncoder> eac3_;
+    std::optional<iclforge::ac3::eac3::AccessUnitEncoder> access_unit_;
+    std::optional<iclforge::ac3::plan::Routing> routing_;
     int rendered_channels_ = -1;
     std::vector<std::vector<float>> coded_storage_;
     std::vector<std::byte> last_frame_;
@@ -348,7 +348,7 @@ class WasmAtmosBedEncoder {
         : encoder_(make_config(sample_rate_hz, bitrate_kbps), object_count),
           object_count_(object_count) {}
 
-    [[nodiscard]] int samplesPerFrame() const { return iclforge::kSamplesPerFrame; }
+    [[nodiscard]] int samplesPerFrame() const { return iclforge::ac3::kSamplesPerFrame; }
     [[nodiscard]] int objectCount() const { return object_count_; }
 
     // objects_js: JS Array of objectCount() mono Float32Array (one per
@@ -404,14 +404,14 @@ class WasmAtmosBedEncoder {
     [[nodiscard]] std::string error() const { return error_; }
 
    private:
-    static iclforge::oba::AtmosConfig make_config(int sample_rate_hz, int bitrate_kbps) {
-        iclforge::oba::AtmosConfig cfg;
+    static iclforge::ac3::oba::AtmosConfig make_config(int sample_rate_hz, int bitrate_kbps) {
+        iclforge::ac3::oba::AtmosConfig cfg;
         cfg.sample_rate = sample_rate_for_hz(sample_rate_hz);
         cfg.bitrate_kbps = static_cast<std::uint32_t>(bitrate_kbps);
         return cfg;
     }
 
-    iclforge::oba::AtmosEncoder encoder_;
+    iclforge::ac3::oba::AtmosEncoder encoder_;
     int object_count_;
     std::vector<std::byte> last_frame_;
     std::string error_;
@@ -420,8 +420,8 @@ class WasmAtmosBedEncoder {
 // The rendered Table E2.5 location mask for a wide layout - the bed plus
 // every dependent's additions, the set BS.1770-5's extended algorithm meters.
 std::uint16_t rendered_mask_for(int layout) {
-    const auto plan = iclforge::plan::channel_plan_for(layout_id_for(layout));
-    std::uint16_t mask = iclforge::eac3::chanmap::acmod_map(plan.bed_acmod, plan.bed_lfe);
+    const auto plan = iclforge::ac3::plan::channel_plan_for(layout_id_for(layout));
+    std::uint16_t mask = iclforge::ac3::eac3::chanmap::acmod_map(plan.bed_acmod, plan.bed_lfe);
     for (const auto chanmap : plan.dependents) {
         mask |= chanmap;
     }
@@ -438,10 +438,10 @@ class WasmQcMeter {
     // ordering knowledge stays here rather than restated in JavaScript.
     WasmQcMeter(int layout, int sample_rate_hz)
         : meter_(is_wide_layout(layout)
-                     ? iclforge::meta::LoudnessMeter(sample_rate_for_hz(sample_rate_hz),
-                                                iclforge::eac3::chanmap::expand(
+                     ? iclforge::ac3::meta::LoudnessMeter(sample_rate_for_hz(sample_rate_hz),
+                                                iclforge::ac3::eac3::chanmap::expand(
                                                     rendered_mask_for(layout)))
-                     : iclforge::meta::LoudnessMeter(sample_rate_for_hz(sample_rate_hz),
+                     : iclforge::ac3::meta::LoudnessMeter(sample_rate_for_hz(sample_rate_hz),
                                                 acmod_for_layout(layout),
                                                 lfe_for_layout(layout))) {}
 
@@ -454,12 +454,12 @@ class WasmQcMeter {
         if (!is_wide_layout(layout)) {
             return out;
         }
-        const auto locations = iclforge::eac3::chanmap::expand(rendered_mask_for(layout));
-        const std::span<const iclforge::eac3::chanmap::Location> span{
+        const auto locations = iclforge::ac3::eac3::chanmap::expand(rendered_mask_for(layout));
+        const std::span<const iclforge::ac3::eac3::chanmap::Location> span{
             locations.items.data(), static_cast<std::size_t>(locations.count)};
         // wav_order: for WAV slot w, which index into `locations`. Invert it
         // so meter slot m knows which WAV channel to read.
-        const auto wav_slots = iclforge::plan::wav_order(span);
+        const auto wav_slots = iclforge::ac3::plan::wav_order(span);
         std::vector<int> meter_to_wav(wav_slots.size(), 0);
         for (std::size_t wav_slot = 0; wav_slot < wav_slots.size(); ++wav_slot) {
             meter_to_wav[wav_slots[wav_slot]] = static_cast<int>(wav_slot);
@@ -484,7 +484,7 @@ class WasmQcMeter {
     [[nodiscard]] emscripten::val shortTermLkfs() const { return optional_to_val(meter_.short_term_lkfs()); }
     [[nodiscard]] emscripten::val truePeakDbtp() const { return optional_to_val(meter_.true_peak_dbtp()); }
 
-    // One verdict object per iclforge::meta::kQcPresetIds entry - the delivery-
+    // One verdict object per iclforge::ac3::meta::kQcPresetIds entry - the delivery-
     // preset pass/fail table encode/app.js renders. integrated_lkfs() is a
     // gated, whole-programme measure (std::nullopt until enough of the
     // programme has passed BS.1770's absolute gate), so every verdict here
@@ -493,17 +493,17 @@ class WasmQcMeter {
     // are the live-updating numbers instead.
     [[nodiscard]] emscripten::val verdicts() const {
         emscripten::val out = emscripten::val::array();
-        for (const iclforge::meta::QcPresetId id : iclforge::meta::kQcPresetIds) {
-            const iclforge::meta::QcPreset preset = iclforge::meta::qc_preset(id);
-            const iclforge::meta::QcVerdict verdict =
-                iclforge::meta::evaluate_qc_gate(preset, meter_.integrated_lkfs(), meter_.true_peak_dbtp());
+        for (const iclforge::ac3::meta::QcPresetId id : iclforge::ac3::meta::kQcPresetIds) {
+            const iclforge::ac3::meta::QcPreset preset = iclforge::ac3::meta::qc_preset(id);
+            const iclforge::ac3::meta::QcVerdict verdict =
+                iclforge::ac3::meta::evaluate_qc_gate(preset, meter_.integrated_lkfs(), meter_.true_peak_dbtp());
             emscripten::val row = emscripten::val::object();
-            row.set("preset", std::string(iclforge::meta::qc_preset_name(id)));
+            row.set("preset", std::string(iclforge::ac3::meta::qc_preset_name(id)));
             row.set("source", std::string(preset.source));
             row.set("targetLkfs", preset.target_lkfs);
             row.set("toleranceLu", preset.tolerance_lu);
             row.set("isCeiling",
-                    preset.loudness_limit == iclforge::meta::QcLoudnessLimit::kCeiling);
+                    preset.loudness_limit == iclforge::ac3::meta::QcLoudnessLimit::kCeiling);
             row.set("maxTruePeakDbtp", preset.max_true_peak_dbtp);
             row.set("loudnessDeltaLu", optional_to_val(verdict.loudness_delta_lu));
             row.set("loudnessPass", verdict.loudness_pass);
@@ -516,7 +516,7 @@ class WasmQcMeter {
     }
 
    private:
-    iclforge::meta::LoudnessMeter meter_;
+    iclforge::ac3::meta::LoudnessMeter meter_;
 };
 
 EMSCRIPTEN_BINDINGS(iclforge_wasm_encode) {

@@ -754,7 +754,7 @@ FGAINCOD_WINDOWS = 5
 
 
 def rate_adaptive_fgaincod(kbps, nfchans):
-    """iclforge::rate_adaptive_fgaincod (src/ac3/src/core/bitalloc.cpp), mirrored.
+    """iclforge::ac3::rate_adaptive_fgaincod (src/ac3/src/core/bitalloc.cpp), mirrored.
 
     Deliberately a second copy of the line rather than a number typed per
     row: this mode exists to pin the code the ENCODER would have chosen, so
@@ -1548,7 +1548,7 @@ TREND_LEGS = [
 ]
 
 
-# The encoder's own "header room" refusal (iclforge::eac3's budget check - see
+# The encoder's own "header room" refusal (iclforge::ac3::eac3's budget check - see
 # tools/ci/fuzz_eac3_encoder_space.py's REFUSALS, which names this exact
 # message): a legitimate outcome at the two crossover legs TREND_LEGS' own
 # comment added deliberately, not a defect. eac3-stereo-64's "none" row is

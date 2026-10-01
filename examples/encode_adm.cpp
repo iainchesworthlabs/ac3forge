@@ -4,7 +4,7 @@
 // iclforge::admbridge, src/admbridge). This is a minimal, standalone illustration of the same
 // pipeline forge's 'atmos-adm' command drives for real: iclforge::adm::parse_bw64() reads the
 // container + ADM XML graph, iclforge::admbridge::build() maps it onto
-// iclforge::oba::AtmosEncoder's flat object-list input shape (one bed speaker feed pinned in place,
+// iclforge::ac3::oba::AtmosEncoder's flat object-list input shape (one bed speaker feed pinned in place,
 // one dynamic object panned by its own authored motion), and a plain per-frame loop calls
 // iclforge::oba::evaluate_placements() plus AtmosEncoder::encode_frame() the same way every other
 // Atmos example in this directory does. The CLI command and this example deliberately share nothing
@@ -93,7 +93,7 @@ void append_chunk(Bytes& out, std::string_view id, const Bytes& content) {
     }
 }
 
-constexpr int kFrame = iclforge::kSamplesPerFrame;
+constexpr int kFrame = iclforge::ac3::kSamplesPerFrame;
 constexpr int kHoldFrames = 3;                    // frames per half of the clip
 constexpr int kTotalFrames = 2 * kHoldFrames;      // 6 frames total (~0.192s @ 48kHz)
 
@@ -305,7 +305,7 @@ int main(int argc, char** argv) {
     // pattern forge's own atmos-path/atmos-encode/atmos-adm commands and every other Atmos example
     // in this directory use.
     const auto objects = static_cast<int>(bridged->channel_count());
-    iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, objects};
+    iclforge::ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, objects};
 
     const auto total_samples = bridged->pcm.empty() ? std::size_t{0} : bridged->pcm.front().size();
     const auto total_frames = total_samples / static_cast<std::size_t>(kFrame);

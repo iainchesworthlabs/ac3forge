@@ -11,8 +11,8 @@
 // pre-echo a low-bit-rate transient leaves ahead of it with a synthesized
 // copy of the (clean) audio already decoded just before that pre-echo.
 //
-// This is unrelated to enhanced coupling (iclforge::eac3::ecpl_*) and to block
-// switching (iclforge::TransientDetector) - both are encoder-side or transform-
+// This is unrelated to enhanced coupling (iclforge::ac3::eac3::ecpl_*) and to block
+// switching (iclforge::ac3::TransientDetector) - both are encoder-side or transform-
 // domain tools; this one runs entirely after IMDCT, on the time-domain
 // output, and is signaled per full-bandwidth channel by the decoder's own
 // transproce/chintransproc/transprocloc/transproclen fields.

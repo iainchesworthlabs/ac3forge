@@ -167,8 +167,8 @@ std::array<int, 50> band_psd(std::span<const int> psd, int start, int end) {
     return bndpsd;
 }
 
-// Shared by the exported iclforge::compute_bit_allocation and
-// iclforge::internal::compute_bit_allocation_traced below - the same routine
+// Shared by the exported iclforge::ac3::compute_bit_allocation and
+// iclforge::ac3::internal::compute_bit_allocation_traced below - the same routine
 // either way, `mask_out` null on the public path (see bitalloc_internal.hpp
 // for why that one is not just an added parameter on the public signature).
 namespace {

@@ -22,9 +22,9 @@
 int main() {
     // Heap-allocated: FrameEncoder carries several KB of MDCT scratch/history
     // state (PREfast's C6262).
-    auto encoder = std::make_unique<iclforge::FrameEncoder>(iclforge::EncoderConfig{
+    auto encoder = std::make_unique<iclforge::ac3::FrameEncoder>(iclforge::ac3::EncoderConfig{
         .bitrate_kbps = 448,
-        .acmod = iclforge::Acmod::k3_2,
+        .acmod = iclforge::ac3::Acmod::k3_2,
         .lfe = true,
     });
 
@@ -36,7 +36,7 @@ int main() {
     // rate automation is clocked at; gains ramp linearly within a block, so
     // moving an object does not click.
     std::array<float, iclforge::spatial::kBlockSamples> source{};
-    std::vector<std::vector<float>> bed(6, std::vector<float>(iclforge::kSamplesPerFrame));
+    std::vector<std::vector<float>> bed(6, std::vector<float>(iclforge::ac3::kSamplesPerFrame));
 
     std::vector<std::span<const float>> bed_views;
     for (const auto& channel : bed) {
@@ -46,7 +46,7 @@ int main() {
     std::vector<std::byte> stream;
     long sample_index = 0;
     for (int frame = 0; frame < 62; ++frame) {  // two seconds
-        for (int block = 0; block < iclforge::kBlocksPerFrame; ++block) {
+        for (int block = 0; block < iclforge::ac3::kBlocksPerFrame; ++block) {
             // One full turn every two seconds.
             const double seconds = static_cast<double>(sample_index) / 48000.0;
             renderer.set_target(object, {.azimuth_deg = 180.0 * seconds, .gain = 0.7});

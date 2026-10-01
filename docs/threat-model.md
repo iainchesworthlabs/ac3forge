@@ -19,15 +19,15 @@ this repository that must not crash, read out of bounds, or loop unboundedly on 
 
 | Input | Entry point | Fuzzed |
 |---|---|---|
-| AC-3 elementary streams | `iclforge::split_frames`, `iclforge::FrameDecoder::decode_frame` | yes |
-| E-AC-3 elementary streams, including dependent substreams | `iclforge::split_access_units`, `iclforge::Eac3Decoder::decode_access_unit` | yes |
+| AC-3 elementary streams | `iclforge::ac3::split_frames`, `iclforge::ac3::FrameDecoder::decode_frame` | yes |
+| E-AC-3 elementary streams, including dependent substreams | `iclforge::ac3::split_access_units`, `iclforge::ac3::Eac3Decoder::decode_access_unit` | yes |
 | AC-4 elementary streams: sync frames and the table of contents | `iclforge::ac4::scan`, `iclforge::ac4::SyncFrameSplitter`, `iclforge::ac4::parse_raw_frame` | yes — `fuzz_ac4_parse` |
 | AC-4 substreams: the syntax layer and the reconstruction to PCM | `iclforge::ac4::Decoder::parse`, `iclforge::ac4::Decoder::decode`, `decode_by_block` | yes — `fuzz_ac4_decode` |
-| Format sniffing before any decoder commits | `iclforge::io::scan` | yes |
+| Format sniffing before any decoder commits | `iclforge::ac3::io::scan` | yes |
 | EMDF containers in a skip field (§H.2.2) | `iclforge::emdf::parse_container` | yes — `fuzz_emdf_parse`, plus indirectly through the E-AC-3 harnesses |
 | OAMD object metadata (TS 103 420 §5.5) | `iclforge::oba::parse_payload` | yes — `fuzz_oamd_parse`, plus indirectly through the E-AC-3 harnesses |
-| JOC payloads (TS 103 420 §6) | `iclforge::oba::joc::parse_payload` | yes — `fuzz_joc_parse`, plus indirectly through the E-AC-3 harnesses |
-| WAV / RIFF headers and PCM | `iclforge::io::read_wav`, `iclforge::io::WavStreamReader` | yes |
+| JOC payloads (TS 103 420 §6) | `iclforge::ac3::oba::joc::parse_payload` | yes — `fuzz_joc_parse`, plus indirectly through the E-AC-3 harnesses |
+| WAV / RIFF headers and PCM | `iclforge::ac3::io::read_wav`, `iclforge::ac3::io::WavStreamReader` | yes |
 | IAB (SMPTE ST 2098-2) elementary streams and MXF track files | `iclforge::iab::parse_iabitstream`, `iclforge::iab::parse_mxf_iab`, `iclforge::iab::parse_iaframe` | yes — `fuzz_iab_parse` |
 | IEC 61937 bursts off an S/PDIF or HDMI capture, AC-4's included, and the AC-4 sync frames the AC-4 packer reads | `iclforge::iec61937::BurstReader`, `iclforge::iec61937::read_ac4_sync_frame` | yes — `fuzz_iec61937_unwrap` |
 | ADM XML + BW64/RF64 (opt-in build) | `iclforge::adm::parse_bw64`, via vendored libadm/libbw64 | **opt-in only** — `fuzz_adm_parse` exists but is built only under `ICLFORGE_BUILD_ADM`; see [ADM](#adm-xml-and-bw64) |
@@ -287,8 +287,8 @@ unbounded. There is no measured worst-case expansion ratio for AC-4.
 
 ### Open gaps
 
-**No cap on stream length, and no streaming split in the CLI.** `iclforge::io::scan`,
-`iclforge::split_frames`, `iclforge::split_access_units` and `iclforge::ac4::scan` take the whole elementary stream as
+**No cap on stream length, and no streaming split in the CLI.** `iclforge::ac3::io::scan`,
+`iclforge::ac3::split_frames`, `iclforge::ac3::split_access_units` and `iclforge::ac4::scan` take the whole elementary stream as
 one `std::span` and return one span per access unit. Peak memory is therefore *O(input size)* —
 the bytes themselves plus an index entry per access unit — and there is no limit at which the
 library refuses. `forge` inherits this: it reads the encoded input fully into memory (it streams
@@ -303,7 +303,7 @@ mitigation is on the caller:
 - Or drive the per-frame API directly. `FrameDecoder::decode_frame` and
   `Eac3Decoder::decode_substream`/`decode_access_unit` each take one unit at a time, and the
   `_into` forms write into caller-owned storage, so a caller that delimits units itself never
-  needs the whole stream resident. `iclforge::io::AccessUnitAccumulator` (AC-3, E-AC-3) and
+  needs the whole stream resident. `iclforge::ac3::io::AccessUnitAccumulator` (AC-3, E-AC-3) and
   `iclforge::ac4::SyncFrameSplitter` (AC-4) do the delimiting incrementally in storage the caller owns;
   the ESP32 player uses the first, and neither is used by `forge`.
 
@@ -318,8 +318,8 @@ produces 96 KiB of PCM, so the structural upper bound on decoded-bytes-per-input
 short enough to hit it does not carry enough bits to code channels at all, and overflows the bit
 reader into `kTruncated` first. Bound decoded *output*, not input bytes, if this matters.
 
-**A WAV file is read whole.** `iclforge::io::read_wav` reads its entire source into memory before
-parsing, so memory is O(file). `iclforge::io::WavStreamReader` is the block-at-a-time alternative and
+**A WAV file is read whole.** `iclforge::ac3::io::read_wav` reads its entire source into memory before
+parsing, so memory is O(file). `iclforge::ac3::io::WavStreamReader` is the block-at-a-time alternative and
 reads only a fixed header window (a `data` chunk beyond that window is refused rather than
 searched for). A WAV may declare up to 65,535 channels; the per-channel vector overhead that
 implies (~1.5 MB) is not proportional to the file that declared it, though the sample data itself
@@ -500,7 +500,7 @@ starts again at the next burst. The decoder meets the posture above.
 Every decode entry point returns `std::expected<..., DecodeError>`. The AC-3 and E-AC-3
 decoders' error is one of seven values: `kTruncated`, `kBadSyncWord`, `kBadCrc`, `kReservedValue`,
 `kUnsupported` (a bsid this decoder does not read), `kInvalidStream` or `kNoReferenceTransform` (a
-build without the direct-form transform, asked for it). `iclforge::describe()` turns each into a
+build without the direct-form transform, asked for it). `iclforge::ac3::describe()` turns each into a
 sentence. The AC-4 decoder's `iclforge::ac4::DecodeError` has five: `kTruncated`, `kInvalidToc` (the table
 of contents did not parse), `kInvalidStream`, `kUnsupported` (legal AC-4 this decoder does not
 read; `Decoder::refusal_reason()` names it) and `kMissingIFrame` (a frame that needs configuration

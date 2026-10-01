@@ -56,9 +56,9 @@ std::vector<std::byte> unswap_words(std::span<const std::byte> payload) {
 std::vector<std::vector<float>> tone_frame(int channels, std::uint64_t start) {
     std::vector<std::vector<float>> pcm(
         static_cast<std::size_t>(channels),
-        std::vector<float>(static_cast<std::size_t>(iclforge::kSamplesPerFrame)));
+        std::vector<float>(static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame)));
     for (auto& channel : pcm) {
-        for (int i = 0; i < iclforge::kSamplesPerFrame; ++i) {
+        for (int i = 0; i < iclforge::ac3::kSamplesPerFrame; ++i) {
             const auto n = static_cast<double>(start + static_cast<std::uint64_t>(i));
             channel[static_cast<std::size_t>(i)] =
                 static_cast<float>(0.5 * std::sin(2.0 * std::numbers::pi * 1000.0 * n / 48000.0));
@@ -102,7 +102,7 @@ TEST_CASE("burst sizes match IEC 61937 exactly: AC-3 6144, E-AC-3 24576 (4x)",
 // --- AC-3 (wrap_frame) ------------------------------------------------------
 
 TEST_CASE("wrap_frame: preamble and burst size", "[iec61937][ac3]") {
-    const auto frame = iclforge::build_silent_stereo_frame({.bitrate_kbps = 192});
+    const auto frame = iclforge::ac3::build_silent_stereo_frame({.bitrate_kbps = 192});
     REQUIRE(frame.has_value());
     const auto burst = iclforge::iec61937::wrap_frame(*frame);
     REQUIRE(burst.has_value());
@@ -119,7 +119,7 @@ TEST_CASE("wrap_frame: preamble and burst size", "[iec61937][ac3]") {
 }
 
 TEST_CASE("wrap_frame: payload is word-swapped and zero-padded", "[iec61937][ac3]") {
-    const auto frame = iclforge::build_silent_stereo_frame({.bitrate_kbps = 192});
+    const auto frame = iclforge::ac3::build_silent_stereo_frame({.bitrate_kbps = 192});
     REQUIRE(frame.has_value());
     const auto burst = iclforge::iec61937::wrap_frame(*frame);
     REQUIRE(burst.has_value());
@@ -134,12 +134,12 @@ TEST_CASE("wrap_frame: payload is word-swapped and zero-padded", "[iec61937][ac3
 }
 
 TEST_CASE("wrap_frame: round-trips through split_frames", "[iec61937][ac3]") {
-    iclforge::FrameEncoder encoder{{.bitrate_kbps = 192}};
+    iclforge::ac3::FrameEncoder encoder{{.bitrate_kbps = 192}};
     std::uint64_t n = 0;
     std::vector<std::byte> last;
     for (int f = 0; f < 3; ++f) {
         auto pcm = tone_frame(2, n);
-        n += iclforge::kSamplesPerFrame;
+        n += iclforge::ac3::kSamplesPerFrame;
         const std::vector<std::span<const float>> views{pcm[0], pcm[1]};
         const auto frame = encoder.encode_frame(views);
         REQUIRE(frame.has_value());
@@ -149,7 +149,7 @@ TEST_CASE("wrap_frame: round-trips through split_frames", "[iec61937][ac3]") {
     const auto burst = iclforge::iec61937::wrap_frame(last);
     REQUIRE(burst.has_value());
     const auto recovered = unswap_words(std::span{*burst}.subspan(8, last.size()));
-    const auto frames = iclforge::split_frames(recovered);
+    const auto frames = iclforge::ac3::split_frames(recovered);
     REQUIRE(frames.has_value());
     REQUIRE(frames->size() == 1);
     CHECK(std::equal((*frames)[0].begin(), (*frames)[0].end(), last.begin(), last.end()));
@@ -174,12 +174,12 @@ TEST_CASE("Eac3BurstPacker: real audio, numblkscod 3 bursts every access unit",
     // This project's own encoder always writes numblkscod 3 (six blocks per
     // syncframe - see eac3_frame.cpp), so a real access unit already spans
     // one whole burst period and needs no accumulation.
-    iclforge::eac3::AccessUnitEncoder encoder{{.independent = {.bitrate_kbps = 192}}};
+    iclforge::ac3::eac3::AccessUnitEncoder encoder{{.independent = {.bitrate_kbps = 192}}};
     iclforge::iec61937::Eac3BurstPacker packer;
     std::uint64_t n = 0;
     for (int f = 0; f < 3; ++f) {
         auto pcm = tone_frame(2, n);
-        n += iclforge::kSamplesPerFrame;
+        n += iclforge::ac3::kSamplesPerFrame;
         const std::vector<std::span<const float>> views{pcm[0], pcm[1]};
         const auto unit = encoder.encode_access_unit(views);
         REQUIRE(unit.has_value());
@@ -207,7 +207,7 @@ TEST_CASE("Eac3BurstPacker: real audio, numblkscod 3 bursts every access unit",
         // The payload is still a decodable access unit, not merely
         // byte-identical - confirms wrapping did not corrupt anything a
         // decoder actually reads.
-        iclforge::Eac3Decoder decoder;
+        iclforge::ac3::Eac3Decoder decoder;
         const auto decoded = decoder.decode_access_unit(recovered);
         REQUIRE(decoded.has_value());
         REQUIRE(decoded->has_value());
@@ -323,12 +323,12 @@ constexpr std::size_t kWavHeaderBytes = 44;
 
 TEST_CASE("wrap_stream: AC-3 frames become a byte-exact PCM16 WAV",
          "[iec61937][spdif]") {
-    iclforge::FrameEncoder encoder{{.bitrate_kbps = 192}};
+    iclforge::ac3::FrameEncoder encoder{{.bitrate_kbps = 192}};
     std::uint64_t n = 0;
     std::vector<std::vector<std::byte>> frames;
     for (int f = 0; f < 3; ++f) {
         auto pcm = tone_frame(2, n);
-        n += iclforge::kSamplesPerFrame;
+        n += iclforge::ac3::kSamplesPerFrame;
         const std::vector<std::span<const float>> views{pcm[0], pcm[1]};
         auto frame = encoder.encode_frame(views);
         REQUIRE(frame.has_value());
@@ -346,7 +346,7 @@ TEST_CASE("wrap_stream: AC-3 frames become a byte-exact PCM16 WAV",
     CHECK(payload->size() == frames.size() * iclforge::iec61937::kBurstBytes);
 
     const auto path = scratch_dir() / "spdif_ac3.wav";
-    const auto written = iclforge::io::write_wav_pcm16_raw(path.string(), *payload, 48000, 2);
+    const auto written = iclforge::ac3::io::write_wav_pcm16_raw(path.string(), *payload, 48000, 2);
     REQUIRE(written.has_value());
 
     std::ifstream in{path, std::ios::binary};
@@ -371,12 +371,12 @@ TEST_CASE("wrap_stream: AC-3 frames become a byte-exact PCM16 WAV",
 
 TEST_CASE("wrap_stream: E-AC-3 access units become a decodable PCM16 WAV at 4x carrier rate",
          "[iec61937][spdif]") {
-    iclforge::eac3::AccessUnitEncoder encoder{{.independent = {.bitrate_kbps = 192}}};
+    iclforge::ac3::eac3::AccessUnitEncoder encoder{{.independent = {.bitrate_kbps = 192}}};
     std::uint64_t n = 0;
     std::vector<std::vector<std::byte>> units_owned;
     for (int f = 0; f < 3; ++f) {
         auto pcm = tone_frame(2, n);
-        n += iclforge::kSamplesPerFrame;
+        n += iclforge::ac3::kSamplesPerFrame;
         const std::vector<std::span<const float>> views{pcm[0], pcm[1]};
         auto unit = encoder.encode_access_unit(views);
         REQUIRE(unit.has_value());
@@ -397,7 +397,7 @@ TEST_CASE("wrap_stream: E-AC-3 access units become a decodable PCM16 WAV at 4x c
     constexpr std::uint32_t kContentRate = 48000;
     const auto path = scratch_dir() / "spdif_eac3.wav";
     const auto written =
-        iclforge::io::write_wav_pcm16_raw(path.string(), *payload, kContentRate * 4, 2);
+        iclforge::ac3::io::write_wav_pcm16_raw(path.string(), *payload, kContentRate * 4, 2);
     REQUIRE(written.has_value());
 
     std::ifstream in{path, std::ios::binary};
@@ -431,7 +431,7 @@ TEST_CASE("wrap_stream: E-AC-3 access units become a decodable PCM16 WAV at 4x c
     const auto recovered =
         unswap_words(std::span{data}.first(iclforge::iec61937::kEac3BurstBytes)
                          .subspan(8, units_owned[0].size()));
-    iclforge::Eac3Decoder decoder;
+    iclforge::ac3::Eac3Decoder decoder;
     const auto decoded = decoder.decode_access_unit(recovered);
     REQUIRE(decoded.has_value());
     REQUIRE(decoded->has_value());

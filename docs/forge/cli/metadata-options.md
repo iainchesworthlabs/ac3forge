@@ -196,7 +196,7 @@ for no make-up. Both apply to
 E-AC-3 decode too, matching the legacy AC-3 decoder — `.ec3` input no longer accepts and silently
 ignores them. `fast-imdct=off` and `mode=` select the inverse transform's evaluation and apply to
 both codecs' decode alike. `monitor` and `spatial` take the same four: all three commands build
-one `iclforge::DecoderConfig` from these options and hand it to the same decoder. AC-4 has neither
+one `iclforge::ac3::DecoderConfig` from these options and hand it to the same decoder. AC-4 has neither
 `drc=` nor `heavy`: its decoder takes an `output-level=` and its own `drcmode=` names (see
 [AC-4 options](#ac-4-options)), and `decode` given `drc=` or `heavy` with an AC-4 stream names
 them in a warning and ignores them.
@@ -996,7 +996,7 @@ which describe AC-3 and E-AC-3 metadata AC-4 has no counterpart for.
 `compr=`/`compr2=` round **down** to the nearest representable word, not to nearest: §7.7.2
 exists to give "an assured upper limit of instantaneous peak reproduced signal level", and a
 ceiling exceeded by half a step is not assured. That is the same rule
-`iclforge::meta::encode_compr_at_most` applies on the encode side.
+`iclforge::ac3::meta::encode_compr_at_most` applies on the encode side.
 
 `compr=` is a different thing from the `heavy`/`ceiling=`/`dialogue=` group above. Those ask an
 *encoder* to derive a compression word from the signal it is coding; `compr=` names the word
@@ -1035,7 +1035,7 @@ qc options (qc; any order, after the positional arguments):
 `preset=<name>` checks `qc`'s BS.1770-4 measurement against one named delivery-loudness gate instead of just
 reporting it; `preset=all` checks every one below in a single run. Each preset states a target integrated
 loudness, a symmetric tolerance around it (in LU) and a true-peak ceiling (a one-sided limit, never exceeded —
-not a tolerance band). The numbers are defined in `iclforge::meta::qc_preset()`
+not a tolerance band). The numbers are defined in `iclforge::ac3::meta::qc_preset()`
 ([`iclforge/ac3/meta/qc.hpp`](https://github.com/iainchesworthlabs/iclforge/blob/main/src/ac3/include/iclforge/ac3/meta/qc.hpp)), each
 read directly from its own primary source rather than recalled from memory:
 
@@ -1142,7 +1142,7 @@ then meter *that* through Annexes 1/3 — and to report which configuration and 
 rendering, since two reasonable choices can legitimately disagree by several LU (Annex 4's own worked example,
 its Table 6, does exactly that across renderers and layouts). `objects=<layout>` is that: it re-renders each
 dynamic object by its own OAMD position — including height — onto the named layout (`51`, `71`, `512`, `514`
-or `714`) via `iclforge::spatial`'s direction-based panner (the same height-aware geometry `iclforge::plan`'s
+or `714`) via `iclforge::spatial`'s direction-based panner (the same height-aware geometry `iclforge::ac3::plan`'s
 layout-to-layout channel renderer uses internally), then meters the result through the Annex 3 algorithm
 `layout=rendered` already implements:
 
@@ -1344,7 +1344,7 @@ Optional positional arguments, when omitted:
   [Atmos & JOC](../../concepts/atmos-joc.md#which-domain-the-matrix-lives-in). Note that the two
   domains do not have the same latency, so a `decode` writing objects with `objects_dir=` gets
   them 576 samples behind the bed under `qmf` and 256 behind under `mdct`.
-- **`verify`**: `eac3-encode` only. Runs the encoder/decoder mirror self-check (`iclforge::verify`,
+- **`verify`**: `eac3-encode` only. Runs the encoder/decoder mirror self-check (`iclforge::ac3::verify`,
   see [Validation](../../verification.md#six-independent-checks)) over every access unit the command
   emits: each one is decoded with this project's own decoder as soon as it is encoded, and the
   decoder's model of it — per-substream, per-block bit offsets, decoded exponents, `bap`, delta
@@ -1366,7 +1366,7 @@ Optional positional arguments, when omitted:
   no external decoder to check against at all — see
   [Validation → where the oracles don't reach](../../verification.md#where-the-oracles-dont-reach).
   `encode` (AC-3) has no equivalent token yet; its half of the same facility is library-only
-  (`iclforge::verify::MirrorEncoder`).
+  (`iclforge::ac3::verify::MirrorEncoder`).
 - **`keep-partial`**: `encode`, `eac3-encode` and `atmos-encode` refuse a frame that cannot fit the
   configuration mid-run just as they always have, but with `keep-partial` given, whatever frames
   were already encoded before that point are written to `<name>.partial.<ext>` (`out.ec3` →

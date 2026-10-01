@@ -99,8 +99,8 @@ void write_oamd_stream(const fs::path& path, const iclforge::oba::Program& progr
         {.id = iclforge::emdf::kPayloadIdOamd, .bytes = payload}};
     const auto container = iclforge::emdf::build_container(payloads);
 
-    iclforge::eac3::FrameEncoder encoder{
-        {.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true}};
+    iclforge::ac3::eac3::FrameEncoder encoder{
+        {.bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true}};
     const std::vector<float> silence(static_cast<std::size_t>(encoder.samples_per_frame()), 0.0F);
     const std::vector<std::span<const float>> channels(
         static_cast<std::size_t>(encoder.channel_count()), silence);
@@ -131,19 +131,19 @@ void write_legacy_core_oamd_stream(const fs::path& path, const iclforge::oba::Pr
         {.id = iclforge::emdf::kPayloadIdOamd, .bytes = payload}};
     const auto container = iclforge::emdf::build_container(payloads);
 
-    iclforge::FrameEncoder core{{.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true}};
-    iclforge::eac3::FrameEncoder dependent{{.bitrate_kbps = 192,
-                                       .acmod = iclforge::Acmod::k2_2,
-                                       .strmtyp = iclforge::eac3::StreamType::kDependent,
+    iclforge::ac3::FrameEncoder core{{.bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true}};
+    iclforge::ac3::eac3::FrameEncoder dependent{{.bitrate_kbps = 192,
+                                       .acmod = iclforge::ac3::Acmod::k2_2,
+                                       .strmtyp = iclforge::ac3::eac3::StreamType::kDependent,
                                        .substreamid = 0,
-                                       .chanmap = iclforge::eac3::chanmap::k71Rear,
+                                       .chanmap = iclforge::ac3::eac3::chanmap::k71Rear,
                                        .last_dependent = true}};
 
-    const std::vector<float> core_silence(static_cast<std::size_t>(iclforge::kSamplesPerFrame),
+    const std::vector<float> core_silence(static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame),
                                           0.0F);
     const std::vector<std::span<const float>> core_channels(
         static_cast<std::size_t>(core.channel_count()), core_silence);
-    const std::vector<float> dep_silence(static_cast<std::size_t>(iclforge::kSamplesPerFrame),
+    const std::vector<float> dep_silence(static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame),
                                          0.0F);
     const std::vector<std::span<const float>> dep_channels(
         static_cast<std::size_t>(dependent.channel_count()), dep_silence);
@@ -210,7 +210,7 @@ void patch_bits(std::vector<std::byte>& frame, std::size_t offset, int count,
     }
     const auto bytes = frame.size();
     const std::uint16_t crc2 =
-        iclforge::crc16(std::span<const std::byte>{frame}.subspan(2, bytes - 4));
+        iclforge::ac3::crc16(std::span<const std::byte>{frame}.subspan(2, bytes - 4));
     frame[bytes - 2] = static_cast<std::byte>(crc2 >> 8);
     frame[bytes - 1] = static_cast<std::byte>(crc2 & 0xFF);
 }
@@ -695,7 +695,7 @@ TEST_CASE("monitor reports a decode failure by name, distinct from a device refu
           "[cli][audio-io]") {
     // A semantically invalid but framing-correct, CRC-correct E-AC-3 access
     // unit - spxbegf placed past spxendf, collapsing the spectral extension
-    // region to nothing (see iclforge::describe(DecodeError::kInvalidStream)) -
+    // region to nothing (see iclforge::ac3::describe(DecodeError::kInvalidStream)) -
     // the exact vector tests/ac3/decoder/test_eac3_decoder.cpp's "the E-AC-3
     // decoder rejects malformed spectral extension streams" test already
     // validates bit-for-bit at the library level, reused here through the
@@ -703,17 +703,17 @@ TEST_CASE("monitor reports a decode failure by name, distinct from a device refu
     // MonitorSink::start() (that only happens once a decode actually
     // succeeds), so unlike every other 'monitor' case in this file, this one
     // never depends on what render hardware is present.
-    iclforge::eac3::AccessUnitEncoder encoder{{.independent = {.bitrate_kbps = 448,
-                                                          .acmod = iclforge::Acmod::k3_2,
+    iclforge::ac3::eac3::AccessUnitEncoder encoder{{.independent = {.bitrate_kbps = 448,
+                                                          .acmod = iclforge::ac3::Acmod::k3_2,
                                                           .lfe = true,
                                                           .spx = true,
                                                           .spx_atten = false}}};
     REQUIRE(encoder.channel_count() == 6);
     std::vector<std::vector<float>> pcm(
-        6, std::vector<float>(static_cast<std::size_t>(iclforge::kSamplesPerFrame)));
+        6, std::vector<float>(static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame)));
     const double tones[6] = {1000.0, 800.0, 1200.0, 600.0, 1400.0, 60.0};
     for (std::size_t ch = 0; ch < pcm.size(); ++ch) {
-        for (int i = 0; i < iclforge::kSamplesPerFrame; ++i) {
+        for (int i = 0; i < iclforge::ac3::kSamplesPerFrame; ++i) {
             pcm[ch][static_cast<std::size_t>(i)] = static_cast<float>(
                 0.3 * std::sin(2.0 * std::numbers::pi * tones[ch] * static_cast<double>(i) /
                               48000.0));

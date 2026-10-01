@@ -37,7 +37,7 @@ namespace {
 }
 
 // The first syncframe's bitstream information - an AC-3 frame's, a legacy
-// core's, or an E-AC-3 independent substream's - parsed as iclforge::io::probe
+// core's, or an E-AC-3 independent substream's - parsed as iclforge::ac3::io::probe
 // parses it, with the transform left out. Dependent substreams extend the
 // programme's channels, not its bitstream information.
 [[nodiscard]] std::optional<MediaBitstream> read_bitstream(std::span<const std::byte> unit) {
@@ -230,7 +230,7 @@ void write_container(JsonSink& json, const apps::ContainerFacts& facts) {
             // iclforge::mpegts::parse_service_descriptor's own comment). Showing one
             // label anyway would sometimes just be wrong; a caller that has
             // the elementary stream can label service_bsmod itself with the
-            // acmod iclforge::io::scan() actually read.
+            // acmod iclforge::ac3::io::scan() actually read.
             member_or_null(json, "full_service", facts.service_full_service);
             json.member("bsid", static_cast<std::int64_t>(facts.service_bsid));
             member_or_null(json, "mainid", facts.service_mainid);

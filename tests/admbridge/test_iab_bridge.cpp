@@ -27,7 +27,7 @@
 // approach test_adm_bridge.cpp already uses for its own non-flagship cases. The one flagship test
 // at the bottom goes through a REAL byte-level IABitstream fixture and
 // iclforge::iab::parse_iabitstream() end to end, then through a real
-// iclforge::oba::AtmosEncoder/iclforge::Eac3Decoder round trip, per this project's own standard for
+// iclforge::ac3::oba::AtmosEncoder/iclforge::ac3::Eac3Decoder round trip, per this project's own standard for
 // codec-adjacent behaviour.
 
 namespace {
@@ -554,12 +554,12 @@ TEST_CASE(
     CHECK_FALSE(result->is_bed[1]);
     CHECK(result->sample_rate == 48000);
 
-    iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 448},
+    iclforge::ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448},
                                    static_cast<int>(result->channel_count())};
-    iclforge::Eac3Decoder decoder;
+    iclforge::ac3::Eac3Decoder decoder;
     std::vector<std::span<const float>> views(result->channel_count());
 
-    constexpr int kFrame = iclforge::kSamplesPerFrame;
+    constexpr int kFrame = iclforge::ac3::kSamplesPerFrame;
     const auto total_samples = result->pcm.front().size();
     const auto total_ac3_frames = total_samples / static_cast<std::size_t>(kFrame);
     REQUIRE(total_ac3_frames >= 3);  // real content, more than one AC-3 frame - CONTRIBUTING's rule

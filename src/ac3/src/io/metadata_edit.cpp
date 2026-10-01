@@ -300,7 +300,7 @@ std::expected<Parsed, EditError> parse(std::span<const std::byte> frame) {
     if (frame.size() < 6) {
         return std::unexpected(EditError::kTruncated);
     }
-    // bsid at bit 40 in both generations - the same probe iclforge::io::scan uses.
+    // bsid at bit 40 in both generations - the same probe iclforge::ac3::io::scan uses.
     BitReader probe{frame};
     probe.skip(40);
     const auto bsid = static_cast<int>(probe.read(5));

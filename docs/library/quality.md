@@ -1,4 +1,4 @@
-# Measuring quality: `iclforge::quality`
+# Measuring quality: `iclforge::ac3::quality`
 
 `iclforge/ac3/quality/distortion.hpp` and `iclforge/ac3/quality/perceptual.hpp` are the encoder's measuring
 instruments. They answer two questions an encoder has to be able to answer before it can choose
@@ -35,11 +35,11 @@ decoder's), and the bit allocation pointers — and produces signal and noise po
 decode is involved: §7.3's quantizers are deterministic functions of those three.
 
 ```cpp
-iclforge::quality::BandNoise measured;
-for (int block = 0; block < iclforge::kBlocksPerFrame; ++block) {
-    iclforge::quality::accumulate_block(fixed, exponents, bap, start, end, measured);
+iclforge::ac3::quality::BandNoise measured;
+for (int block = 0; block < iclforge::ac3::kBlocksPerFrame; ++block) {
+    iclforge::ac3::quality::accumulate_block(fixed, exponents, bap, start, end, measured);
 }
-const double snr = iclforge::quality::snr_db(measured);
+const double snr = iclforge::ac3::quality::snr_db(measured);
 ```
 
 The banding is A/52 Table 7.13's own 50 bands, not a separate critical-band partition, so a
@@ -87,11 +87,11 @@ model 2:
 6. **Perceptual entropy** per block — an estimate of the bits needed to code it transparently.
 
 ```cpp
-iclforge::quality::PerceptualModel model(iclforge::SampleRate::k48000, channels);
-iclforge::quality::BlockAnalysis analysis;
+iclforge::ac3::quality::PerceptualModel model(iclforge::ac3::SampleRate::k48000, channels);
+iclforge::ac3::quality::BlockAnalysis analysis;
 model.analyse(channel, coefficients, endmant, analysis);   // once per block, in block order
 
-const auto nmr = iclforge::quality::noise_to_mask(measured, threshold);
+const auto nmr = iclforge::ac3::quality::noise_to_mask(measured, threshold);
 // nmr.mean_db > 0 means the reconstruction noise is above what the signal can hide.
 ```
 

@@ -120,7 +120,7 @@ inline constexpr std::size_t kSplitterRecommendedBuffer = 65536 + 16;
 // is in. The same framing as scan(), applied incrementally: each frame comes
 // out once all of it has arrived, and a partial frame is held between reads.
 // It owns no memory and allocates none; the caller's storage holds the frame
-// being assembled, in the pattern of iclforge::io::AccessUnitAccumulator:
+// being assembled, in the pattern of iclforge::ac3::io::AccessUnitAccumulator:
 //
 //     std::vector<std::byte> storage(iclforge::ac4::kSplitterRecommendedBuffer);
 //     iclforge::ac4::SyncFrameSplitter splitter{storage};

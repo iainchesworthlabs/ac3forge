@@ -101,7 +101,7 @@ constexpr int kFrames = 8;
 // only renderer's own regression test for this same class of bug) both place their own marker: past
 // every encoder's/decoder's own priming, early enough that reconstruction_delay(kQmf)'s 576 samples
 // still leave it well inside an 8-frame stream.
-constexpr int kPulseAt = 3 * iclforge::kSamplesPerFrame + 512;
+constexpr int kPulseAt = 3 * iclforge::ac3::kSamplesPerFrame + 512;
 
 // The object's whole-clip audio: a decaying tone burst riding a quiet noise floor. The floor is not
 // decoration - JOC's reconstruction matrix is solved per frame from the object's own energy that frame
@@ -175,8 +175,8 @@ TEST_CASE("decode's ADM master lines the bed's LFE up with the object it was pul
 
     const auto wav_path = dir / "decode_adm_in.wav";
     const std::vector<std::vector<float>> channels{
-        object_pulse_with_floor(kFrames * iclforge::kSamplesPerFrame, kPulseAt)};
-    REQUIRE(iclforge::io::write_wav_f32(wav_path.string(), channels, 48000).has_value());
+        object_pulse_with_floor(kFrames * iclforge::ac3::kSamplesPerFrame, kPulseAt)};
+    REQUIRE(iclforge::ac3::io::write_wav_f32(wav_path.string(), channels, 48000).has_value());
 
     // One static keyframe (ac3/oba/scene.hpp: "a single keyframe holds its placement everywhere")
     // sending the object entirely to the LFE - run_atmos_encode's own default placement is
@@ -241,8 +241,8 @@ TEST_CASE("decode's ADM master lines the bed's LFE up with the object it was pul
     REQUIRE(peak(object_pcm) > 0.05F);
     REQUIRE(peak(lfe_pcm) > 0.05F);
 
-    const int lag = best_lag(lfe_pcm, object_pcm, -2 * iclforge::kSamplesPerFrame,
-                             2 * iclforge::kSamplesPerFrame);
+    const int lag = best_lag(lfe_pcm, object_pcm, -2 * iclforge::ac3::kSamplesPerFrame,
+                             2 * iclforge::ac3::kSamplesPerFrame);
     CAPTURE(lag);
     // Before this fix: the LFE channel was written straight from the decoded bed, undelayed, while
     // the object channel is JOC-reconstructed and so already reconstruction_delay(kQmf) samples (576)

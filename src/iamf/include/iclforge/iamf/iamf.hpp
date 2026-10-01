@@ -25,8 +25,8 @@
 // iclforge::iab already are: it links nothing from iclforge::ac3 and knows nothing about AC-3,
 // E-AC-3 or JOC (see CONTRIBUTING.md's repository-layout section on what a bare `include/iamf/`
 // prefix, with no `ac3/`, means). A caller decoding a natively-7.1.4-coded E-AC-3 stream
-// (iclforge::plan::LayoutId::k714 - independent substream plus two E-AC-3 dependents) already gets
-// the 12 discrete channels straight off iclforge::Eac3Decoder::decode_access_unit's
+// (iclforge::ac3::plan::LayoutId::k714 - independent substream plus two E-AC-3 dependents) already gets
+// the 12 discrete channels straight off iclforge::ac3::Eac3Decoder::decode_access_unit's
 // DecodedAccessUnit - this module just needs them permuted into the channel order below and handed
 // over as PCM; see examples/mux_iamf.cpp for the full round trip.
 //
@@ -60,7 +60,7 @@ enum class MuxError : std::uint8_t {
 // One Temporal Unit's worth of PCM (IAMF §2.3.2.2/§2.4): samples_per_frame samples of each of
 // the 12 channels, already ordered the way this module's Audio Element OBU declares them (IAMF
 // §3.6.2, loudspeaker_layout = 7, "7.1.4ch"): L, C, R, Lss, Rss, Lrs, Rrs, Ltf, Rtf, Ltb, Rtb,
-// LFE. Planar, matching iclforge::DecodedAccessUnit::channels' own storage - see
+// LFE. Planar, matching iclforge::ac3::DecodedAccessUnit::channels' own storage - see
 // examples/mux_iamf.cpp for how a caller permutes a decoded access unit's Table E2.5 bit order
 // into this one. Every frame SHALL carry exactly AudioTrack::samples_per_frame samples per
 // channel (mux() rejects anything else with kFrameSizeMismatch) - this writer never trims, so it

@@ -5,7 +5,7 @@
 #include "iclforge/ac3/core/tables.hpp"
 #include "iclforge/ac3/decoder/transient_prenoise.hpp"
 
-// The decoder's own way into iclforge::apply_transient_prenoise: the same
+// The decoder's own way into iclforge::ac3::apply_transient_prenoise: the same
 // correction, with the synthesis buffer supplied by the caller instead of
 // allocated per call, so a stream whose transients the decoder corrects a few
 // times a second does not allocate for each of them.
@@ -17,7 +17,7 @@ namespace iclforge::ac3::internal {
 inline constexpr int kTransientPrenoiseMaxSynthesis =
     2 * kTransientPrenoiseTC1 + 2 * kSamplesPerBlock - 4;  // 1020
 
-// iclforge::apply_transient_prenoise, same contract, with `synthesis` holding at
+// iclforge::ac3::apply_transient_prenoise, same contract, with `synthesis` holding at
 // least kTransientPrenoiseMaxSynthesis samples of scratch.
 void apply_transient_prenoise(std::span<float> pcm, int transloc, int translen,
                               std::span<float> synthesis);

@@ -8,7 +8,7 @@
 // works and is not how anything real gets its audio. This one never has the
 // whole stream in memory: a fetch task reads it in blocks from wherever it is,
 // a ring buffer holds what has arrived, and a decode task on the other core
-// frames it with iclforge::io::AccessUnitAccumulator, decodes whatever complete
+// frames it with iclforge::ac3::io::AccessUnitAccumulator, decodes whatever complete
 // access units come out a block at a time, renders each block onto the
 // configured layout and writes it to the sink.
 //
@@ -101,9 +101,9 @@ constexpr std::uint32_t kMaxLaps = CONFIG_ICLFORGE_EXAMPLE_MAX_LAPS;
 constexpr std::uint64_t kReportEveryFrames = CONFIG_ICLFORGE_EXAMPLE_REPORT_EVERY_FRAMES;
 constexpr std::uint16_t kControlPort = CONFIG_ICLFORGE_EXAMPLE_CONTROL_PORT;
 constexpr const char* kLayoutText = CONFIG_ICLFORGE_EXAMPLE_LAYOUT;
-constexpr iclforge::DownmixTarget kStereoFold = CONFIG_ICLFORGE_EXAMPLE_STEREO_FOLD != 0
-                                               ? iclforge::DownmixTarget::kLtRt
-                                               : iclforge::DownmixTarget::kLoRo;
+constexpr iclforge::ac3::DownmixTarget kStereoFold = CONFIG_ICLFORGE_EXAMPLE_STEREO_FOLD != 0
+                                               ? iclforge::ac3::DownmixTarget::kLtRt
+                                               : iclforge::ac3::DownmixTarget::kLoRo;
 constexpr iclforge::PlayerConfig::Objects kObjects =
     CONFIG_ICLFORGE_EXAMPLE_OBJECTS == 1   ? iclforge::PlayerConfig::Objects::kNever
     : CONFIG_ICLFORGE_EXAMPLE_OBJECTS == 2 ? iclforge::PlayerConfig::Objects::kAlways
@@ -111,9 +111,9 @@ constexpr iclforge::PlayerConfig::Objects kObjects =
 constexpr iclforge::oba::joc::Domain kJocDomain = CONFIG_ICLFORGE_EXAMPLE_JOC_DOMAIN != 0
                                                  ? iclforge::oba::joc::Domain::kMdctBand
                                                  : iclforge::oba::joc::Domain::kQmf;
-constexpr iclforge::OperatingMode kMode = CONFIG_ICLFORGE_EXAMPLE_DRC_MODE == 1   ? iclforge::OperatingMode::kRf
-                                     : CONFIG_ICLFORGE_EXAMPLE_DRC_MODE == 2 ? iclforge::OperatingMode::kCustom
-                                                                             : iclforge::OperatingMode::kLine;
+constexpr iclforge::ac3::OperatingMode kMode = CONFIG_ICLFORGE_EXAMPLE_DRC_MODE == 1   ? iclforge::ac3::OperatingMode::kRf
+                                     : CONFIG_ICLFORGE_EXAMPLE_DRC_MODE == 2 ? iclforge::ac3::OperatingMode::kCustom
+                                                                             : iclforge::ac3::OperatingMode::kLine;
 
 BaseType_t core_from_kconfig(int value) { return value < 0 ? tskNO_AFFINITY : value; }
 

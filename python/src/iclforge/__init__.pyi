@@ -196,7 +196,7 @@ def split_frames(stream: bytes) -> list[bytes]: ...
 def split_access_units(stream: bytes) -> list[bytes]: ...
 def stream_bsid(frame: bytes) -> int: ...
 
-# scan() and friends - Python bindings completeness, iclforge::io/elementary.hpp.
+# scan() and friends - Python bindings completeness, iclforge::ac3::io/elementary.hpp.
 def read_frame_header(at: bytes) -> FrameHeader: ...
 def scan(stream: bytes) -> ScannedStream: ...
 def access_unit_timing(stream: ScannedStream, index: int) -> AccessUnitTiming | None: ...
@@ -558,7 +558,7 @@ class Eac3Decoder:
     @property
     def latency_samples(self) -> int: ...
 
-# iclforge::verify - the encoder/decoder mirror trace and its research export. A real
+# iclforge::ac3::verify - the encoder/decoder mirror trace and its research export. A real
 # submodule (m.def_submodule) at runtime, stubbed as a nested-class namespace here for the same
 # reason `eac3` below is. Pass a FrameTrace/Eac3AccessUnitTrace to DecoderConfig(trace=...)/
 # (eac3_trace=...), decode, then read it back out with trace_to_csv/trace_to_json_lines.
@@ -604,7 +604,7 @@ class AtmosEncoder:
     @property
     def bed_latency(self) -> LatencyBudget: ...
 
-# iclforge::eac3::FrameEncoder/AccessUnitEncoder. A real submodule (m.def_submodule) at
+# iclforge::ac3::eac3::FrameEncoder/AccessUnitEncoder. A real submodule (m.def_submodule) at
 # runtime, stubbed as a nested-class namespace here rather than a separate eac3.pyi, the way
 # pybind11-stubgen represents one too - `iclforge.eac3.FrameConfig` resolves through this class the
 # same way it resolves through the runtime module.
@@ -716,7 +716,7 @@ class eac3:
 
 def build_codec_config_box(stream: bytes) -> bytes: ...
 
-# iclforge::meta - loudness metering and QC. A real submodule at runtime, stubbed as a
+# iclforge::ac3::meta - loudness metering and QC. A real submodule at runtime, stubbed as a
 # nested-class namespace exactly like `eac3` above.
 class meta:
     class LoudnessMeter:

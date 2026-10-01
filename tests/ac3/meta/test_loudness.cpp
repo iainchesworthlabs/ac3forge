@@ -25,7 +25,7 @@
 // cascaded gate and an oversampled peak are all defined over real programme
 // material, not frame 0 or digital silence.
 
-using iclforge::meta::LoudnessMeter;
+using iclforge::ac3::meta::LoudnessMeter;
 
 namespace {
 
@@ -52,7 +52,7 @@ double dbfs(double amplitude) { return 20.0 * std::log10(amplitude); }
 
 TEST_CASE("momentary and short-term loudness are undefined before their window elapses",
           "[loudness]") {
-    LoudnessMeter meter{iclforge::SampleRate::k48000, iclforge::Acmod::k2_0, false};
+    LoudnessMeter meter{iclforge::ac3::SampleRate::k48000, iclforge::ac3::Acmod::k2_0, false};
 
     // 200 ms: neither the 400 ms momentary window nor the 3 s short-term one
     // has elapsed yet.
@@ -79,7 +79,7 @@ TEST_CASE("momentary and short-term loudness hit the same BS.1770 calibration po
     // signal with no dynamics at all, the un-gated 400 ms and 3 s windows
     // should read the same thing the whole-programme gated measurement does
     // - there is nothing for gating or windowing to disagree about.
-    LoudnessMeter meter{iclforge::SampleRate::k48000, iclforge::Acmod::k2_0, false};
+    LoudnessMeter meter{iclforge::ac3::SampleRate::k48000, iclforge::ac3::Acmod::k2_0, false};
     const auto tone = make_tone(10.0, 1000.0, 0.1);
     const std::array<std::span<const float>, 2> channels = {tone, tone};
     meter.push(channels);
@@ -104,7 +104,7 @@ TEST_CASE("momentary loudness tracks a level step within one window, short-term 
     // must sit measurably ABOVE momentary - if short_term_lkfs() were
     // accidentally wired to the same 4-step window as momentary, this
     // difference would vanish.
-    LoudnessMeter meter{iclforge::SampleRate::k48000, iclforge::Acmod::k2_0, false};
+    LoudnessMeter meter{iclforge::ac3::SampleRate::k48000, iclforge::ac3::Acmod::k2_0, false};
     const auto loud = make_tone(2.0, 1000.0, 0.1);     // -20 dBFS
     const auto quiet = make_tone(2.0, 1000.0, 0.01);   // -40 dBFS
     const std::array<std::span<const float>, 2> loud_channels = {loud, loud};
@@ -144,7 +144,7 @@ TEST_CASE("Loudness Range matches EBU Tech 3342 Table 1's own minimum-requiremen
     // outside a -10 LU one (so a mis-gated implementation drops it and
     // collapses LRA toward 0) - confirmed by reintroducing that exact typo
     // and watching this test fail before reverting it.
-    LoudnessMeter meter{iclforge::SampleRate::k48000, iclforge::Acmod::k2_0, false};
+    LoudnessMeter meter{iclforge::ac3::SampleRate::k48000, iclforge::ac3::Acmod::k2_0, false};
     const auto quiet = make_tone(20.0, 1000.0, 0.01);          // -40.0 dBFS peak
     const auto loud = make_tone(20.0, 1000.0, 0.1);            // -20.0 dBFS peak
     const std::array<std::span<const float>, 2> quiet_channels = {quiet, quiet};
@@ -159,7 +159,7 @@ TEST_CASE("Loudness Range matches EBU Tech 3342 Table 1's own minimum-requiremen
 
 TEST_CASE("Loudness Range is undefined for a programme with no short-term history yet",
           "[loudness]") {
-    LoudnessMeter meter{iclforge::SampleRate::k48000, iclforge::Acmod::k2_0, false};
+    LoudnessMeter meter{iclforge::ac3::SampleRate::k48000, iclforge::ac3::Acmod::k2_0, false};
     const auto tone = make_tone(1.0, 1000.0, 0.1);  // well under the 3 s short-term window
     const std::array<std::span<const float>, 2> channels = {tone, tone};
     meter.push(channels);
@@ -176,7 +176,7 @@ TEST_CASE("true peak matches sample peak within a fraction of a dB for a slow, "
     // oversampling should find essentially nothing extra here. This is the
     // control for the inter-sample-peak test below: it proves the
     // oversampler does not just unconditionally read high.
-    LoudnessMeter meter{iclforge::SampleRate::k48000, iclforge::Acmod::k2_0, false};
+    LoudnessMeter meter{iclforge::ac3::SampleRate::k48000, iclforge::ac3::Acmod::k2_0, false};
     const auto tone = make_tone(1.0, 100.0, 0.5);
     const std::array<std::span<const float>, 2> channels = {tone, tone};
     meter.push(channels);
@@ -213,7 +213,7 @@ TEST_CASE("true peak finds the inter-sample peak a sample-peak reading misses",
     // Confirms the construction: every sample sits at 1/sqrt(2), not 1.0.
     REQUIRE(max_sample == Catch::Approx(1.0 / std::numbers::sqrt2).margin(1e-9));
 
-    LoudnessMeter meter{iclforge::SampleRate::k48000, iclforge::Acmod::k2_0, false};
+    LoudnessMeter meter{iclforge::ac3::SampleRate::k48000, iclforge::ac3::Acmod::k2_0, false};
     const std::array<std::span<const float>, 2> channels = {tone, tone};
     meter.push(channels);
 
@@ -244,7 +244,7 @@ TEST_CASE("true peak includes the LFE channel that integrated loudness excludes"
     // 3/2 + LFE coded order is L, C, R, Ls, Rs, LFE.
     const std::array<std::span<const float>, 6> lfe_only = {silence, silence, silence,
                                                               silence, silence, tone};
-    LoudnessMeter meter{iclforge::SampleRate::k48000, iclforge::Acmod::k3_2, true};
+    LoudnessMeter meter{iclforge::ac3::SampleRate::k48000, iclforge::ac3::Acmod::k3_2, true};
     meter.push(lfe_only);
 
     CHECK_FALSE(meter.integrated_lkfs().has_value());  // unchanged existing behaviour
@@ -254,7 +254,7 @@ TEST_CASE("true peak includes the LFE channel that integrated loudness excludes"
 }
 
 TEST_CASE("true peak is undefined before any sample is pushed", "[loudness][true-peak]") {
-    LoudnessMeter meter{iclforge::SampleRate::k48000, iclforge::Acmod::k2_0, false};
+    LoudnessMeter meter{iclforge::ac3::SampleRate::k48000, iclforge::ac3::Acmod::k2_0, false};
     CHECK_FALSE(meter.true_peak_dbtp().has_value());
 }
 
@@ -263,13 +263,13 @@ TEST_CASE("true peak is undefined before any sample is pushed", "[loudness][true
 
 namespace {
 
-namespace chanmap = iclforge::eac3::chanmap;
+namespace chanmap = iclforge::ac3::eac3::chanmap;
 using Location = chanmap::Location;
 
 // The layouts a Table 5.8 acmod cannot name on its own. Each is the 5.1 bed
 // plus whichever Table E2.5 pair bits a dependent substream would carry, which
 // is exactly how the encoder allocates them (chanmap::allocate).
-constexpr std::uint16_t k51 = chanmap::acmod_map(iclforge::Acmod::k3_2, true);
+constexpr std::uint16_t k51 = chanmap::acmod_map(iclforge::ac3::Acmod::k3_2, true);
 constexpr std::uint16_t k71 = k51 | chanmap::kLrsRrsBit;
 constexpr std::uint16_t k512 = k51 | chanmap::kVhlVhrBit;
 constexpr std::uint16_t k514 = k51 | chanmap::kTopQuad;
@@ -329,7 +329,7 @@ TEST_CASE("position_weight reproduces BS.1770-5 Annex 3 Table 5 for every Table 
         const auto location = every[i];
         CAPTURE(chanmap::name(location));
         const double expected = expected_weight(location);
-        const auto actual = iclforge::meta::position_weight(location);
+        const auto actual = iclforge::ac3::meta::position_weight(location);
         if (expected == 0.0) {
             // Annex 3 weights "each channel except the LFE channels" - an
             // absent term, which is not the same as a zero-weight one.
@@ -350,15 +350,15 @@ TEST_CASE("only the 60..120 degree sector is surround-weighted, whatever it is c
     // M±135 is past the sector's 120-degree edge. Every height channel is
     // likewise unweighted - Table 4's |phi| < 30 row simply does not cover
     // the upper layer, so no azimuth can bring one back in.
-    CHECK(*iclforge::meta::position_weight(Location::kLrs) == Catch::Approx(1.0));
-    CHECK(*iclforge::meta::position_weight(Location::kRrs) == Catch::Approx(1.0));
-    CHECK(*iclforge::meta::position_weight(Location::kVhl) == Catch::Approx(1.0));
-    CHECK(*iclforge::meta::position_weight(Location::kLts) == Catch::Approx(1.0));
-    CHECK(*iclforge::meta::position_weight(Location::kTs) == Catch::Approx(1.0));
+    CHECK(*iclforge::ac3::meta::position_weight(Location::kLrs) == Catch::Approx(1.0));
+    CHECK(*iclforge::ac3::meta::position_weight(Location::kRrs) == Catch::Approx(1.0));
+    CHECK(*iclforge::ac3::meta::position_weight(Location::kVhl) == Catch::Approx(1.0));
+    CHECK(*iclforge::ac3::meta::position_weight(Location::kLts) == Catch::Approx(1.0));
+    CHECK(*iclforge::ac3::meta::position_weight(Location::kTs) == Catch::Approx(1.0));
     // While the wides ARE weighted, sitting exactly on the sector's inclusive
     // 60-degree edge, and Table 5's M±060 row says 1.41 outright.
-    CHECK(*iclforge::meta::position_weight(Location::kLw) == Catch::Approx(1.41));
-    CHECK(*iclforge::meta::position_weight(Location::kRw) == Catch::Approx(1.41));
+    CHECK(*iclforge::ac3::meta::position_weight(Location::kLw) == Catch::Approx(1.41));
+    CHECK(*iclforge::ac3::meta::position_weight(Location::kRw) == Catch::Approx(1.41));
 }
 
 TEST_CASE("the meter weights each channel of a wide layout by its own position",
@@ -388,7 +388,7 @@ TEST_CASE("the meter weights each channel of a wide layout by its own position",
                                                       silence);
         channels[static_cast<std::size_t>(probe)] = tone;
 
-        iclforge::meta::LoudnessMeter meter{iclforge::SampleRate::k48000, layout};
+        iclforge::ac3::meta::LoudnessMeter meter{iclforge::ac3::SampleRate::k48000, layout};
         CHECK(meter.channel_count() == layout.count);
         meter.push(channels);
 
@@ -429,8 +429,8 @@ TEST_CASE("a 5.1 layout measures identically through Annex 1 and Annex 3",
     const std::array<std::span<const float>, 6> channels = {tone,    quieter, tone,
                                                              quieter, tone,    quieter};
 
-    iclforge::meta::LoudnessMeter annex1{iclforge::SampleRate::k48000, iclforge::Acmod::k3_2, true};
-    iclforge::meta::LoudnessMeter annex3{iclforge::SampleRate::k48000, layout};
+    iclforge::ac3::meta::LoudnessMeter annex1{iclforge::ac3::SampleRate::k48000, iclforge::ac3::Acmod::k3_2, true};
+    iclforge::ac3::meta::LoudnessMeter annex3{iclforge::ac3::SampleRate::k48000, layout};
     annex1.push(channels);
     annex3.push(channels);
 
@@ -450,7 +450,7 @@ TEST_CASE("the two algorithms disagree only about the lone surround of 2/1 and 3
     // puts at unity. Both are faithful to their own algorithm - the point of
     // the test is that the difference is exactly the one weight, and is not
     // silently zero (which would mean layout= was not reaching the meter).
-    const auto layout = chanmap::expand(chanmap::acmod_map(iclforge::Acmod::k2_1, false));
+    const auto layout = chanmap::expand(chanmap::acmod_map(iclforge::ac3::Acmod::k2_1, false));
     REQUIRE(layout.count == 3);
     REQUIRE(layout[2] == Location::kCs);
 
@@ -462,9 +462,9 @@ TEST_CASE("the two algorithms disagree only about the lone surround of 2/1 and 3
     // channel's weighted contribution.
     const std::array<std::span<const float>, 3> channels = {silence, silence, tone};
 
-    iclforge::meta::LoudnessMeter annex1{iclforge::SampleRate::k48000, iclforge::Acmod::k2_1,
+    iclforge::ac3::meta::LoudnessMeter annex1{iclforge::ac3::SampleRate::k48000, iclforge::ac3::Acmod::k2_1,
                                          false};
-    iclforge::meta::LoudnessMeter annex3{iclforge::SampleRate::k48000, layout};
+    iclforge::ac3::meta::LoudnessMeter annex3{iclforge::ac3::SampleRate::k48000, layout};
     annex1.push(channels);
     annex3.push(channels);
 
@@ -498,12 +498,12 @@ TEST_CASE("widening 5.1 to 7.1.4 adds channels the meter counts but does not sur
     // Bed: L, C, R at unity and Ls, Rs at 1.41, LFE excluded.
     std::vector<std::span<const float>> bed_channels(6, tone);
     bed_channels[5] = silence;  // keep the LFE out of true peak comparisons too
-    iclforge::meta::LoudnessMeter bed_meter{iclforge::SampleRate::k48000, bed};
+    iclforge::ac3::meta::LoudnessMeter bed_meter{iclforge::ac3::SampleRate::k48000, bed};
     bed_meter.push(bed_channels);
 
     std::vector<std::span<const float>> wide_channels(12, tone);
     wide_channels[static_cast<std::size_t>(wide.index_of(Location::kLfe))] = silence;
-    iclforge::meta::LoudnessMeter wide_meter{iclforge::SampleRate::k48000, wide};
+    iclforge::ac3::meta::LoudnessMeter wide_meter{iclforge::ac3::SampleRate::k48000, wide};
     wide_meter.push(wide_channels);
 
     const auto bed_lkfs = bed_meter.integrated_lkfs();

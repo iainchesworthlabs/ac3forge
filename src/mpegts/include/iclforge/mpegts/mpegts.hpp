@@ -68,7 +68,7 @@
 // this module maps them onto whichever registry's tables the chosen profile
 // uses. That mapping - EN 300 468 Tables D.1-D.5, A/52 Tables A4.2-A4.6 and
 // G.2-G.4 - is descriptor syntax, which is this module's job; reading those
-// values off the bitstream is iclforge::io::scan's, which is why ServiceInfo is
+// values off the bitstream is iclforge::ac3::io::scan's, which is why ServiceInfo is
 // plain integers and this module still has no dependency on iclforge::ac3.
 
 namespace iclforge::mpegts {
@@ -119,7 +119,7 @@ struct SubstreamService {
     bool substream_priority = false;
 };
 
-// A/52 bitstream field values, exactly as iclforge::io::scan reads them off the
+// A/52 bitstream field values, exactly as iclforge::ac3::io::scan reads them off the
 // elementary stream, plus the handful of identification values that are an
 // authoring decision rather than anything the bitstream carries. Every
 // optional descriptor field either derives from one of these or is omitted;
@@ -170,7 +170,7 @@ struct ServiceInfo {
     // A/52 Annex G §3.5 / EN 300 468 D.5 mixinfoexists. E-AC-3 only.
     bool mix_metadata = false;
     // Bit n set when independent substream n is present (§E2.3.1.2),
-    // as iclforge::io::ScannedStream::independent_substreams reports it. This is
+    // as iclforge::ac3::io::ScannedStream::independent_substreams reports it. This is
     // what answers EN 300 468 Table D.5's "elementary stream contains
     // multiple programmes carried in independent substreams", which no
     // single substream's own description can.
@@ -230,7 +230,7 @@ struct ServiceInfo {
 //     a range, not one value), so guessing a specific acmod back out of it
 //     would invent a channel layout the descriptor never actually claimed.
 //     A caller that has the elementary stream already has the exact values
-//     from iclforge::io::scan() - the same source mux()'s own caller used.
+//     from iclforge::ac3::io::scan() - the same source mux()'s own caller used.
 [[nodiscard]] ICLFORGE_MPEGTS_EXPORT std::optional<ServiceInfo> parse_service_descriptor(
     std::uint8_t tag, std::span<const std::byte> body);
 

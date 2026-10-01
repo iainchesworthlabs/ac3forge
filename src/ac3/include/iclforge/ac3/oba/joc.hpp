@@ -354,14 +354,14 @@ struct ReconstructionState {
     std::array<recon_scalar_t, 512> time_scratch{};
     // Four windowed blocks, not one (batched MDCT (four blocks)): the bed
     // analysis batches four CHANNELS' forward transforms into one
-    // iclforge::mdct512_forward_batch4 call, which needs all four windowed
+    // iclforge::ac3::mdct512_forward_batch4 call, which needs all four windowed
     // blocks to coexist. kNumChannels5X is 5, so a block runs one batch of
     // four plus one ordinary call; lane 0 doubles as the scalar path's own
     // buffer, so this costs 3 x 512 scalars over the previous single one.
     std::array<std::array<recon_scalar_t, 512>, 4> windowed_scratch{};
     // Per-object (batched SIMD kernels): every present
     // object's spectrum/synthesis output now coexists, so the imdct pass
-    // can batch four objects at a time (iclforge::imdct512_windowed_batch4)
+    // can batch four objects at a time (iclforge::ac3::imdct512_windowed_batch4)
     // instead of running strictly one object at a time - see
     // reconstruct_mdct_band's own object loop (joc.cpp).
     //

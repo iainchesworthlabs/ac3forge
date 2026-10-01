@@ -207,7 +207,7 @@ int run_ac4_encode_objects(std::string_view in_path, std::string_view out_path,
     const Options::Ac4Encode& opts = meta.ac4enc;
     auto wav = read_wav_arg(in_path);
     if (!wav.has_value()) {
-        fmt::println(stderr, "error: {}: {}", in_path, iclforge::io::describe(wav.error()));
+        fmt::println(stderr, "error: {}: {}", in_path, iclforge::ac3::io::describe(wav.error()));
         return kExitInput;
     }
     const std::optional<Scene> scene = read_scene(meta.ac4_objects_path, wav->channels.size());

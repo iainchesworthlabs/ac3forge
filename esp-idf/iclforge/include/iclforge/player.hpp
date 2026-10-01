@@ -27,7 +27,7 @@
 //
 // The shape, and the reason for it. A fetch task on one core reads the source
 // into a ring; a decode task on the other drains the ring through
-// iclforge::io::AccessUnitAccumulator, decodes each access unit a block at a time
+// iclforge::ac3::io::AccessUnitAccumulator, decodes each access unit a block at a time
 // (decode_access_unit_by_block: 256 samples of every channel, and the objects
 // beside them when there are any), renders each block onto the configured
 // speaker layout (ac3/render/render.hpp) and writes it to the sink. The sink
@@ -77,7 +77,7 @@ class ByteSource {
 
 // Where decoded audio goes. One BLOCK per call: one planar span of float per
 // slot of the configured iclforge::render::OutputLayout, in slot order, each
-// iclforge::kSamplesPerBlock samples long or fewer, nominally in [-1, 1). Called from the decode
+// iclforge::ac3::kSamplesPerBlock samples long or fewer, nominally in [-1, 1). Called from the decode
 // task only, six times per frame at 48 kHz.
 //
 // Planar float rather than interleaved integers because the sample format is
@@ -100,7 +100,7 @@ struct PlayerConfig {
     // Which §7.8 fold a two-speaker layout gets: kLoRo, or kLtRt for a Dolby
     // Surround decoder downstream. A one-speaker layout folds to mono; every
     // other layout is rendered as coded (see `objects`) and this is unused.
-    iclforge::DownmixTarget stereo_fold = iclforge::DownmixTarget::kLoRo;
+    iclforge::ac3::DownmixTarget stereo_fold = iclforge::ac3::DownmixTarget::kLoRo;
     // Whether to reconstruct a stream's object layer and place the objects on
     // the speakers by their own positions, or play the bed (the objects' 5.1
     // fold, which is the complete mix for a stereo or 5.1 room). Costs this
@@ -109,14 +109,14 @@ struct PlayerConfig {
     // (ac3/decoder/serving.hpp): kAuto reconstructs exactly when the layout has
     // height speakers, kAlways for any rendered layout, kNever plays the bed,
     // and a layout that folds never reconstructs.
-    using Objects = iclforge::render::ObjectsPolicy;
+    using Objects = iclforge::ac3::render::ObjectsPolicy;
     Objects objects = Objects::kAuto;
 
     // The decoder's own knobs: operating mode, DRC, the JOC domain, the
     // programme. Its `output.target` and `skip_object_reconstruction` are
     // decided by the player from `layout` and `objects` above, whatever is set
     // here.
-    iclforge::DecoderConfig decoder{.output = {.mode = iclforge::OperatingMode::kLine}};
+    iclforge::ac3::DecoderConfig decoder{.output = {.mode = iclforge::ac3::OperatingMode::kLine}};
 
     // The ring between fetch and decode, in bytes of bitstream. 32 KB is
     // 0.57 s at 448 kbit/s. Preferably in PSRAM where the part has it - a

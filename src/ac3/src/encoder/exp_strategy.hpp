@@ -14,7 +14,7 @@
 // (AC-3's encoder.cpp and E-AC-3's eac3_frame.cpp).
 //
 // The strategy a chosen span earns under Table E2.10 is a spec rule and lives
-// with the rest of the exponent pipeline (iclforge::strategy_for_span,
+// with the rest of the exponent pipeline (iclforge::ac3::strategy_for_span,
 // core/exponents.hpp). What follows is the other half of the plan - WHERE the
 // spans end - and that is a judgement about cost rather than anything the
 // standard states, which is why it sits here in the encoder's own headers.

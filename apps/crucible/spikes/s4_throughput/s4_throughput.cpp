@@ -54,13 +54,13 @@ struct Result {
 };
 
 Result run(int numblkscod, unsigned bitrate_kbps, int seconds) {
-    iclforge::oba::AtmosConfig config;
+    iclforge::ac3::oba::AtmosConfig config;
     config.numblkscod = numblkscod;
     config.bitrate_kbps = bitrate_kbps;
-    iclforge::oba::AtmosEncoder encoder(config, kObjects);
+    iclforge::ac3::oba::AtmosEncoder encoder(config, kObjects);
 
     const int blocks = numblkscod == 0 ? 1 : numblkscod == 1 ? 2 : numblkscod == 2 ? 3 : 6;
-    const auto frames_per = static_cast<std::size_t>(blocks * iclforge::kSamplesPerBlock);
+    const auto frames_per = static_cast<std::size_t>(blocks * iclforge::ac3::kSamplesPerBlock);
     const double rate = 48000.0;
     const double budget_ms = 1000.0 * static_cast<double>(frames_per) / rate;
 
@@ -128,7 +128,7 @@ Result run(int numblkscod, unsigned bitrate_kbps, int seconds) {
         if (!unit) {
             std::printf("  encode_frame refused at frame %d: FrameError %d (%s)\n", f,
                         static_cast<int>(std::to_underlying(unit.error())),
-                        std::string(iclforge::describe(unit.error())).c_str());
+                        std::string(iclforge::ac3::describe(unit.error())).c_str());
             return {0, 0, 0, budget_ms, 0};
         }
         bytes += unit->bytes.size();

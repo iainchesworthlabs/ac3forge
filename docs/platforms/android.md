@@ -172,7 +172,7 @@ streams that already-encoded E-AC-3 file through the same `PassthroughSink`
 `AudioTrack` passthrough configuration right" from "is this project's own Atmos output right":
 a known-good commercial Dolby stream either lights the receiver's Atmos indicator through this
 code path or it does not. It groups access units by each frame's `bsid` rather than by
-`iclforge::split_access_units`, for the reason the file's header gives, and it ends after five seconds
+`iclforge::ac3::split_access_units`, for the reason the file's header gives, and it ends after five seconds
 in which the sink accepts nothing.
 
 ### Partial `AudioTrack` writes are resumed from, not restarted
@@ -454,7 +454,7 @@ without the per-frame cost.
 ## OBJECTS OFF: taking the object layer away, live
 
 **X** on a controller, **MENU** on a remote, runs every access unit through
-`iclforge::io::strip_objects()` before it is wrapped — live, with nothing else about the stream
+`iclforge::ac3::io::strip_objects()` before it is wrapped — live, with nothing else about the stream
 changing. The bed is the same coded bed either way, so what a licensed decoder sees is an object
 programme becoming a plain DD+ one and back again, on a keypress, with the object layer's per-frame
 byte cost (`StrippedStream::bytes_removed`) on screen next to it.
@@ -572,13 +572,13 @@ three separately-tuned screens):
   is — both axes share the same normalized `[0,1]` scale, so a non-square plot would stretch one
   axis relative to the other and turn the (circular) guide into a misleading ellipse.
 - **The soundfield arrow** (top-down panel, drawn from the listener marker) —
-  `iclforge::analysis::energy_vector()` over the metered bed, a tapered triangle whose length and opacity
+  `iclforge::ac3::analysis::energy_vector()` over the metered bed, a tapered triangle whose length and opacity
   track the vector's magnitude. The room panels plot where the demo *asked* the object to go; this
   shows where a 5.1 decoder's own speakers will actually put the energy. Watching the two agree is
   what shows the panning is real rather than asserted, and it is computed from `AtmosEncoder::bed()`
   — the literal encoded audio — not from the room-position maths that drew the dot.
 - **Measured loudness** (elevation panel header, previously empty) — a BS.1770
-  `iclforge::meta::LoudnessMeter` over the same bed, reporting integrated LKFS and the dialnorm it
+  `iclforge::ac3::meta::LoudnessMeter` over the same bed, reporting integrated LKFS and the dialnorm it
   implies. Blank until the meter's first gated 400ms block has passed, which is the correct thing to
   show for silence rather than a fabricated number. `loudness_range()` is never called on the encode
   thread; it allocates and sorts on every call.
@@ -589,7 +589,7 @@ three separately-tuned screens):
   position math), with a bottom-to-top color ramp and a slowly-decaying peak-hold line, the same
   "catch the loudest recent moment" behavior a real hardware VU meter has.
 
-    The levels behind those bars come from `iclforge::analysis::LevelMeter` — dB-scaled through
+    The levels behind those bars come from `iclforge::ac3::analysis::LevelMeter` — dB-scaled through
     `meter_fraction`, with PPM ballistics and a peak hold — rather than the `rms * 4.0` clamp
     that used to drive them, whose only justification was that the meter would otherwise barely
     move. `rms_integration_ms` is dropped to 80ms from the 300ms default deliberately: 300ms is

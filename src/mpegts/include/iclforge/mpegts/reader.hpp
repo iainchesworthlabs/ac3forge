@@ -29,7 +29,7 @@
 // unbounded PES_packet_length broadcast uses - a run of them ending only
 // when the next one starts. So this reader hands back PES PAYLOADS, and what
 // they concatenate to is the elementary stream. That is exactly what
-// iclforge::io::scan wants, and re-framing them into access units is its job, not
+// iclforge::ac3::io::scan wants, and re-framing them into access units is its job, not
 // this module's: doing it here would mean knowing what an AC-3 syncframe is.
 //
 // BOTH SIGNALLING PROFILES, unlike the writer. mux() implements DVB
@@ -109,7 +109,7 @@ struct ReadStream {
     // fields cannot be recovered exactly from these bytes (see
     // iclforge::mpegts::parse_service_descriptor's own comment) and are left at their
     // ServiceInfo default rather than approximated; acmod/channels/lfe/
-    // dsurmod in particular are better read from iclforge::io::scan() on the
+    // dsurmod in particular are better read from iclforge::ac3::io::scan() on the
     // elementary stream itself, the same source mux()'s caller used to fill
     // this in the first place.
     std::optional<ServiceInfo> service = std::nullopt;

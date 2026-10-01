@@ -57,10 +57,10 @@ int main() {
     }
     const auto& scene = *built;
 
-    iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, kObjects};
+    iclforge::ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, kObjects};
 
     std::vector<std::vector<float>> sources(kObjects,
-                                            std::vector<float>(iclforge::kSamplesPerFrame));
+                                            std::vector<float>(iclforge::ac3::kSamplesPerFrame));
     std::vector<std::span<const float>> views;
     for (const auto& source : sources) {
         views.emplace_back(source);
@@ -73,14 +73,14 @@ int main() {
     std::vector<std::byte> stream;
     for (int frame = 0; frame < 93; ++frame) {  // three seconds
         for (std::size_t obj = 0; obj < kObjects; ++obj) {
-            for (int n = 0; n < iclforge::kSamplesPerFrame; ++n) {
-                const double t = (frame * iclforge::kSamplesPerFrame + n) / 48000.0;
+            for (int n = 0; n < iclforge::ac3::kSamplesPerFrame; ++n) {
+                const double t = (frame * iclforge::ac3::kSamplesPerFrame + n) / 48000.0;
                 sources[obj][static_cast<std::size_t>(n)] =
                     static_cast<float>(0.3 * std::sin(2.0 * std::numbers::pi * tones[obj] * t));
             }
         }
 
-        const double seconds = frame * iclforge::kSamplesPerFrame / 48000.0;
+        const double seconds = frame * iclforge::ac3::kSamplesPerFrame / 48000.0;
         scene.evaluate_into(seconds, placement);
 
         const auto unit = encoder.encode_frame(views, placement);

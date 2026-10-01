@@ -98,12 +98,12 @@ double energy(const std::vector<float>& x) {
 }
 
 // Decodes `in` with `options` into a WAV and reads it back.
-iclforge::io::WavData decode(const fs::path& in, const std::string& options, const fs::path& log) {
+iclforge::ac3::io::WavData decode(const fs::path& in, const std::string& options, const fs::path& log) {
     const auto wav = scratch_dir() / "ac4_option.wav";
     fs::remove(wav);
     INFO(options);
     REQUIRE(run_cli("decode " + quoted(in) + " " + quoted(wav) + " " + options, log) == 0);
-    auto decoded = iclforge::io::read_wav(wav.string());
+    auto decoded = iclforge::ac3::io::read_wav(wav.string());
     REQUIRE(decoded.has_value());
     return std::move(*decoded);
 }
@@ -238,7 +238,7 @@ TEST_CASE("decode folds AC-4 by each downmix with the LFE and without it", "[cli
             0.3 * std::sin(2.0 * std::numbers::pi * 60.0 * static_cast<double>(n) / 48000.0));
     }
     const auto wav_in = dir / "ac4_lfe_in.wav";
-    REQUIRE(iclforge::io::write_wav_f32(wav_in.string(), input, 48000).has_value());
+    REQUIRE(iclforge::ac3::io::write_wav_f32(wav_in.string(), input, 48000).has_value());
     const auto lfe_stream = dir / "ac4_lfe.ac4";
     REQUIRE(run_cli("ac4-encode " + quoted(wav_in) + " " + quoted(lfe_stream) + " 384 lfemix=-4.5",
                     log) == 0);

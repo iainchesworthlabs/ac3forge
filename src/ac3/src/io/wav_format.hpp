@@ -18,7 +18,7 @@
 // (8/24/32), to WAVE_FORMAT_EXTENSIBLE wrapping any of them, and to RF64/
 // BW64's 64-bit sizes turns that duplication into two chances to disagree
 // about what a file says, so the parse lives here once instead. Private to
-// src/io/ - not installed, not part of iclforge::io's public surface (see
+// src/io/ - not installed, not part of iclforge::ac3::io's public surface (see
 // ac3/io/wav.hpp for that).
 
 namespace iclforge::ac3::io::detail {

@@ -56,9 +56,9 @@ void corrupt_third(std::span<std::byte> frame) {
 
 TEST_CASE("restamp_syncframe_crcs makes a corrupted AC-3 frame pass the CRC check again",
           "[crc16][fuzz]") {
-    iclforge::FrameEncoder encoder{{.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0}};
-    const auto left = tone(iclforge::kSamplesPerFrame);
-    const auto right = tone(iclforge::kSamplesPerFrame);
+    iclforge::ac3::FrameEncoder encoder{{.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k2_0}};
+    const auto left = tone(iclforge::ac3::kSamplesPerFrame);
+    const auto right = tone(iclforge::ac3::kSamplesPerFrame);
     const std::array<std::span<const float>, 2> channels{left, right};
     const auto encoded = encoder.encode_frame(channels);
     REQUIRE(encoded.has_value());
@@ -66,28 +66,28 @@ TEST_CASE("restamp_syncframe_crcs makes a corrupted AC-3 frame pass the CRC chec
     std::vector<std::byte> frame = *encoded;
     corrupt_third(frame);
 
-    iclforge::FrameDecoder before;
+    iclforge::ac3::FrameDecoder before;
     const auto rejected = before.decode_frame(frame);
     REQUIRE_FALSE(rejected.has_value());
-    CHECK(rejected.error() == iclforge::DecodeError::kBadCrc);
+    CHECK(rejected.error() == iclforge::ac3::DecodeError::kBadCrc);
 
     iclforge_fuzz::restamp_syncframe_crcs(frame);
 
     // Same corrupted payload, only the two CRC words rewritten - so whatever
     // the decoder makes of the frame now, it is no longer refusing it at the
     // checksum, which is the whole point.
-    iclforge::FrameDecoder after;
+    iclforge::ac3::FrameDecoder after;
     const auto result = after.decode_frame(frame);
     if (!result.has_value()) {
-        CHECK(result.error() != iclforge::DecodeError::kBadCrc);
+        CHECK(result.error() != iclforge::ac3::DecodeError::kBadCrc);
     }
 }
 
 TEST_CASE("restamp_syncframe_crcs makes a corrupted E-AC-3 frame pass the CRC check again",
           "[crc16][fuzz]") {
-    iclforge::eac3::FrameEncoder encoder{{.bitrate_kbps = 192}};
-    const auto left = tone(iclforge::kSamplesPerFrame);
-    const auto right = tone(iclforge::kSamplesPerFrame);
+    iclforge::ac3::eac3::FrameEncoder encoder{{.bitrate_kbps = 192}};
+    const auto left = tone(iclforge::ac3::kSamplesPerFrame);
+    const auto right = tone(iclforge::ac3::kSamplesPerFrame);
     const std::array<std::span<const float>, 2> channels{left, right};
     const auto encoded = encoder.encode_frame(channels);
     REQUIRE(encoded.has_value());
@@ -95,17 +95,17 @@ TEST_CASE("restamp_syncframe_crcs makes a corrupted E-AC-3 frame pass the CRC ch
     std::vector<std::byte> frame = *encoded;
     corrupt_third(frame);
 
-    iclforge::Eac3Decoder before;
+    iclforge::ac3::Eac3Decoder before;
     const auto rejected = before.decode_access_unit(frame);
     REQUIRE_FALSE(rejected.has_value());
-    CHECK(rejected.error() == iclforge::DecodeError::kBadCrc);
+    CHECK(rejected.error() == iclforge::ac3::DecodeError::kBadCrc);
 
     iclforge_fuzz::restamp_syncframe_crcs(frame);
 
-    iclforge::Eac3Decoder after;
+    iclforge::ac3::Eac3Decoder after;
     const auto result = after.decode_access_unit(frame);
     if (!result.has_value()) {
-        CHECK(result.error() != iclforge::DecodeError::kBadCrc);
+        CHECK(result.error() != iclforge::ac3::DecodeError::kBadCrc);
     }
 }
 
@@ -119,7 +119,7 @@ TEST_CASE("restamp_syncframe_crcs leaves bytes that are not a syncframe alone", 
     CHECK(junk == before);
 
     // ... and a frame whose declared size runs past the buffer is left alone
-    // too, for the same reason (iclforge::split_frames calls this kTruncated).
+    // too, for the same reason (iclforge::ac3::split_frames calls this kTruncated).
     std::vector<std::byte> truncated{std::byte{0x0B}, std::byte{0x77}, std::byte{0x00},
                                      std::byte{0x20}, std::byte{0x00}, std::byte{0x58}};
     const std::vector<std::byte> truncated_before = truncated;

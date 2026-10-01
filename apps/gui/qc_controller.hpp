@@ -80,9 +80,9 @@ struct RawResult {
 // the property a bolted-on second concern risks breaking first. QcController
 // mirrors `forge qc` (apps/cli/main.cpp's run_qc/measure_qc_ac3/
 // measure_qc_eac3) instead: reads a file, decodes it with the same
-// iclforge::FrameDecoder/iclforge::Eac3Decoder EncoderController's own monitor path
-// already uses, measures it with iclforge::meta::LoudnessMeter (the same meter
-// `dialnorm=auto` uses) and reports it against iclforge::meta::qc's three named
+// iclforge::ac3::FrameDecoder/iclforge::ac3::Eac3Decoder EncoderController's own monitor path
+// already uses, measures it with iclforge::ac3::meta::LoudnessMeter (the same meter
+// `dialnorm=auto` uses) and reports it against iclforge::ac3::meta::qc's three named
 // delivery presets. See docs/forge/gui/qc.md for where this surfaces in the
 // window and why.
 class QcController : public QObject {
@@ -119,7 +119,7 @@ class QcController : public QObject {
     // preset=<name>|all split, see presetIndex's own comment.
     Q_PROPERTY(QVariantList programmes READ programmes NOTIFY resultChanged)
     // "All presets", then every named delivery gate in
-    // iclforge::meta::kQcPresetIds order - index 0 is the "preset=all" concept and
+    // iclforge::ac3::meta::kQcPresetIds order - index 0 is the "preset=all" concept and
     // 1..kQcPresetIds.size() select one, so this list grows with that table
     // rather than with a count repeated here.
     Q_PROPERTY(QStringList presetNames READ presetNames CONSTANT)

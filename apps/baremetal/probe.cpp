@@ -444,19 +444,19 @@ void report_timing(const char* codec, const Churn& churn) {
 // them, and a per-fixture copy of this loop would only give three places for a
 // check to be dropped from.
 int decode_ac3(const char* codec, std::span<const std::uint8_t> bytes,
-               std::span<const std::int32_t> expected, const iclforge::OutputConfig& output) {
+               std::span<const std::int32_t> expected, const iclforge::ac3::OutputConfig& output) {
     const std::span<const std::byte> stream{
         reinterpret_cast<const std::byte*>(bytes.data()), bytes.size()};
-    const auto frames = iclforge::split_frames(stream);
+    const auto frames = iclforge::ac3::split_frames(stream);
     if (!frames) {
         std::printf("check=%s.split status=fail error=%d\n", codec,
                     static_cast<int>(frames.error()));
         return 1;
     }
 
-    iclforge::DecoderConfig config;
+    iclforge::ac3::DecoderConfig config;
     config.output = output;
-    iclforge::FrameDecoder decoder{config};
+    iclforge::ac3::FrameDecoder decoder{config};
     LevelAccumulator levels;
     PcmHash hash;
     Churn churn;
@@ -474,7 +474,7 @@ int decode_ac3(const char* codec, std::span<const std::uint8_t> bytes,
         // decoder's cost rather than the probe's.
         std::uint64_t sink_us = 0;
         int delivered = 0;
-        const auto sink = [&](const iclforge::PcmBlock& block) {
+        const auto sink = [&](const iclforge::ac3::PcmBlock& block) {
             const std::uint64_t entered_us = iclforge_probe::now_us();
             for (std::size_t ch = 0; ch < block.channels.size() && ch < kMaxChannels; ++ch) {
                 levels.add(ch, block.channels[ch]);
@@ -531,21 +531,21 @@ int decode_ac3(const char* codec, std::span<const std::uint8_t> bytes,
 // timing stay separable in the output the runner scripts gate on.
 int decode_eac3(const char* codec, std::span<const std::uint8_t> bytes,
                 std::span<const std::int32_t> expected, bool bed_only,
-                iclforge::oba::joc::Domain domain, const iclforge::OutputConfig& output) {
+                iclforge::oba::joc::Domain domain, const iclforge::ac3::OutputConfig& output) {
     const std::span<const std::byte> stream{
         reinterpret_cast<const std::byte*>(bytes.data()), bytes.size()};
-    const auto units = iclforge::split_access_units(stream);
+    const auto units = iclforge::ac3::split_access_units(stream);
     if (!units) {
         std::printf("check=%s.split status=fail error=%d\n", codec,
                     static_cast<int>(units.error()));
         return 1;
     }
 
-    iclforge::DecoderConfig config;
+    iclforge::ac3::DecoderConfig config;
     config.output = output;
     config.joc_domain = domain;
     config.skip_object_reconstruction = bed_only;
-    iclforge::Eac3Decoder decoder{config};
+    iclforge::ac3::Eac3Decoder decoder{config};
     LevelAccumulator levels;
     PcmHash hash;
     Churn churn;
@@ -560,7 +560,7 @@ int decode_eac3(const char* codec, std::span<const std::uint8_t> bytes,
         // substream vectors, no PCM held here, the sink's time taken back out.
         std::uint64_t sink_us = 0;
         int delivered = 0;
-        const auto sink = [&](const iclforge::PcmBlock& block) {
+        const auto sink = [&](const iclforge::ac3::PcmBlock& block) {
             const std::uint64_t entered_us = iclforge_probe::now_us();
             for (std::size_t ch = 0; ch < block.channels.size() && ch < kMaxChannels; ++ch) {
                 levels.add(ch, block.channels[ch]);
@@ -650,10 +650,10 @@ std::array<std::array<double, kRenderSlots>, kMaxObjects> g_render_gains{};
 
 int render_eac3(const char* codec, std::span<const std::uint8_t> bytes,
                 std::span<const std::int32_t> expected, iclforge::oba::joc::Domain domain) {
-    using iclforge::eac3::chanmap::Location;
+    using iclforge::ac3::eac3::chanmap::Location;
     const std::span<const std::byte> stream{
         reinterpret_cast<const std::byte*>(bytes.data()), bytes.size()};
-    const auto units = iclforge::split_access_units(stream);
+    const auto units = iclforge::ac3::split_access_units(stream);
     if (!units) {
         std::printf("check=%s.split status=fail error=%d\n", codec,
                     static_cast<int>(units.error()));
@@ -663,9 +663,9 @@ int render_eac3(const char* codec, std::span<const std::uint8_t> bytes,
     // 7.1.4 in Table E2.5 order. pan_targets drops the LFE from the panned
     // set; it is carried as the last slot below.
     constexpr auto kTargetMap = static_cast<std::uint16_t>(
-        iclforge::eac3::chanmap::acmod_map(iclforge::Acmod::k3_2, true) |
-        iclforge::eac3::chanmap::k71Rear | iclforge::eac3::chanmap::kTopQuad);
-    constexpr auto kTargetLayout = iclforge::eac3::chanmap::expand(kTargetMap);
+        iclforge::ac3::eac3::chanmap::acmod_map(iclforge::ac3::Acmod::k3_2, true) |
+        iclforge::ac3::eac3::chanmap::k71Rear | iclforge::ac3::eac3::chanmap::kTopQuad);
+    constexpr auto kTargetLayout = iclforge::ac3::eac3::chanmap::expand(kTargetMap);
     std::array<Location, kRenderSlots> target_locations{};
     std::size_t target_count = 0;
     for (const Location location : kTargetLayout) {
@@ -681,16 +681,16 @@ int render_eac3(const char* codec, std::span<const std::uint8_t> bytes,
         return 1;
     }
 
-    iclforge::DecoderConfig config;
+    iclforge::ac3::DecoderConfig config;
     config.joc_domain = domain;
-    iclforge::Eac3Decoder decoder{config};
+    iclforge::ac3::Eac3Decoder decoder{config};
     LevelAccumulator levels;
     PcmHash hash;
     // The bed's own slots, so the LFE can be picked out of them once the
     // layout is known - the block carries the samples in the layout's order
     // but not the layout, which the call returns afterwards.
     LevelAccumulator bed_levels;
-    iclforge::eac3::chanmap::Layout layout{};
+    iclforge::ac3::eac3::chanmap::Layout layout{};
     Churn churn;
     churn.frames = static_cast<int>(units->size());
     g_fixture_peak_bytes = g_live_bytes;
@@ -705,7 +705,7 @@ int render_eac3(const char* codec, std::span<const std::uint8_t> bytes,
         std::uint64_t sink_us = 0;
         std::uint64_t levels_us = 0;
         bool delivered = false;
-        const auto sink = [&](const iclforge::PcmBlock& block) {
+        const auto sink = [&](const iclforge::ac3::PcmBlock& block) {
             const std::uint64_t entered_us = iclforge_probe::now_us();
             if (block.index == 0) {
                 // Each object's gains onto the panned targets, once per unit.
@@ -840,7 +840,7 @@ struct Ac3Fixture {
     std::size_t peak_bytes;
     // DecoderConfig::output. As coded for every row but the fold, which is
     // the §7.8 stage a stereo player runs every frame.
-    iclforge::OutputConfig output{};
+    iclforge::ac3::OutputConfig output{};
 };
 
 constexpr std::array<Ac3Fixture, 4> kAc3Fixtures{{
@@ -851,7 +851,7 @@ constexpr std::array<Ac3Fixture, 4> kAc3Fixtures{{
     // Levels are forge's for the same options (tools/generators/
     // gen_baremetal_fixture.py's decode-variant rows), two channels.
     {"ac3_fold", iclforge_probe::kAc3Stream, iclforge_probe::kAc3FoldRms, 58733,
-     {.target = iclforge::DownmixTarget::kLoRo, .mode = iclforge::OperatingMode::kLine}},
+     {.target = iclforge::ac3::DownmixTarget::kLoRo, .mode = iclforge::ac3::OperatingMode::kLine}},
     // 2/0. §7.5.4 rematrixing lives in this layout alone, and it is a different
     // code path from the eac3_stereo row's - Annex E carries its own
     // rematrixing syntax - so that fixture does not stand in for this one.
@@ -884,7 +884,7 @@ struct Eac3Fixture {
     // DecoderConfig::joc_domain. Only the object row sets it; see there.
     iclforge::oba::joc::Domain joc_domain = iclforge::oba::joc::Domain::kQmf;
     // DecoderConfig::output. As coded for every row but the fold.
-    iclforge::OutputConfig output{};
+    iclforge::ac3::OutputConfig output{};
     // Render the objects onto 7.1.4 (render_eac3) instead of accumulating
     // the decoded channels' levels. Only the render row sets it.
     bool render = false;
@@ -948,7 +948,7 @@ constexpr std::array<Eac3Fixture, 10> kEac3Fixtures{
          182030,
          false,
          iclforge::oba::joc::Domain::kQmf,
-         {.target = iclforge::DownmixTarget::kLoRo, .mode = iclforge::OperatingMode::kLine}},
+         {.target = iclforge::ac3::DownmixTarget::kLoRo, .mode = iclforge::ac3::OperatingMode::kLine}},
         // The 7.1.4 stream folded the same way: a stereo player's frame at the
         // widest programme the encoder makes, and the output stage's layout form
         // at its widest - twelve locations seated into §7.8's six before the fold
@@ -960,7 +960,7 @@ constexpr std::array<Eac3Fixture, 10> kEac3Fixtures{
          244502,
          false,
          iclforge::oba::joc::Domain::kQmf,
-         {.target = iclforge::DownmixTarget::kLoRo, .mode = iclforge::OperatingMode::kLine}},
+         {.target = iclforge::ac3::DownmixTarget::kLoRo, .mode = iclforge::ac3::OperatingMode::kLine}},
         // Line mode's own work, apart from any fold: a 5.1 stream encoded with
         // dynrng words and dialnorm 24, decoded as coded in line mode - §7.7.1's
         // gain on every channel's coefficients each block and §5.4.2.8's
@@ -972,7 +972,7 @@ constexpr std::array<Eac3Fixture, 10> kEac3Fixtures{
          175750,
          false,
          iclforge::oba::joc::Domain::kQmf,
-         {.mode = iclforge::OperatingMode::kLine}},
+         {.mode = iclforge::ac3::OperatingMode::kLine}},
         // Objects reconstructed (kMdctBand, as the objects row) and then PLACED
         // onto 7.1.4 by their own positions - see render_eac3, and
         // render_fixture.hpp for what the levels are worth. Its own stream: the
@@ -1023,17 +1023,17 @@ void check_reference_transform_refused() {
     const std::span<const std::byte> stream{
         reinterpret_cast<const std::byte*>(iclforge_probe::kAc3Stream.data()),
         iclforge_probe::kAc3Stream.size()};
-    const auto frames = iclforge::split_frames(stream);
+    const auto frames = iclforge::ac3::split_frames(stream);
     if (!frames || frames->empty()) {
         fail("reference.setup", 0, 1);
         return;
     }
-    iclforge::FrameDecoder decoder{{.fast_imdct = false}};
+    iclforge::ac3::FrameDecoder decoder{{.fast_imdct = false}};
     // The sink is never reached: the refusal is what is being checked.
-    const auto discard = [](const iclforge::PcmBlock&) {};
+    const auto discard = [](const iclforge::ac3::PcmBlock&) {};
     const auto decoded = decoder.decode_frame_by_block(frames->front(), discard);
     const bool refused =
-        !decoded && decoded.error() == iclforge::DecodeError::kNoReferenceTransform;
+        !decoded && decoded.error() == iclforge::ac3::DecodeError::kNoReferenceTransform;
     std::printf("check=reference_transform_refused status=%s\n", refused ? "pass" : "fail");
     if (!refused) {
         g_failed = true;
@@ -1055,8 +1055,8 @@ int iclforge_probe::run() {
     std::printf("static.pcm_bytes=%lu static.frame_decoder_bytes=%lu "
                 "static.eac3_decoder_bytes=%lu\n",
                 static_cast<unsigned long>(0),
-                static_cast<unsigned long>(sizeof(iclforge::FrameDecoder)),
-                static_cast<unsigned long>(sizeof(iclforge::Eac3Decoder)));
+                static_cast<unsigned long>(sizeof(iclforge::ac3::FrameDecoder)),
+                static_cast<unsigned long>(sizeof(iclforge::ac3::Eac3Decoder)));
 
     // Measured before any fixture so it cannot be confused with one, and
     // printed either way: a reader of the log then knows whether the
@@ -1098,7 +1098,7 @@ int iclforge_probe::run() {
         // Every fixture, not just the coupled one: nothing outside the
         // decoder can tell which streams used which tools, and this costs a
         // null check where the scratch was never built.
-        iclforge::eac3::release_ecpl_scratch();
+        iclforge::ac3::eac3::release_ecpl_scratch();
     }
     check_reference_transform_refused();
 

@@ -50,7 +50,7 @@ int iclforge_latency_total_samples(const iclforge_latency_t* latency) {
     if (latency == nullptr) {
         return 0;
     }
-    // Summed here rather than by calling through iclforge::LatencyBudget: the
+    // Summed here rather than by calling through iclforge::ac3::LatencyBudget: the
     // caller may have filled this struct in by hand (it is plain data, and
     // nothing stops an integrator writing their own terms into it to price a
     // configuration they have not built an encoder for).
@@ -59,21 +59,21 @@ int iclforge_latency_total_samples(const iclforge_latency_t* latency) {
 }
 
 double iclforge_latency_ms(int samples, iclforge_sample_rate_t sample_rate) {
-    return iclforge::latency_ms(samples, iclforge_c::to_cpp(sample_rate));
+    return iclforge::ac3::latency_ms(samples, iclforge_c::to_cpp(sample_rate));
 }
 
 iclforge_version_t iclforge_version(void) {
-    return iclforge_version_t{.major = iclforge::version_major,
-                               .minor = iclforge::version_minor,
-                               .patch = iclforge::version_patch,
-                               .full = iclforge::version_full.data()};
+    return iclforge_version_t{.major = iclforge::ac3::version_major,
+                               .minor = iclforge::ac3::version_minor,
+                               .patch = iclforge::ac3::version_patch,
+                               .full = iclforge::ac3::version_full.data()};
 }
 
 void iclforge_heavy_config_init(iclforge_heavy_config_t* config) {
     if (config == nullptr) {
         return;
     }
-    const iclforge::meta::HeavyConfig defaults{};
+    const iclforge::ac3::meta::HeavyConfig defaults{};
     *config = iclforge_heavy_config_t{.dialogue_target_dbfs = defaults.dialogue_target_dbfs,
                                        .peak_ceiling_dbfs = defaults.peak_ceiling_dbfs,
                                        .release_db_per_second = defaults.release_db_per_second};

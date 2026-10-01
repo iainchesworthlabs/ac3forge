@@ -56,7 +56,7 @@ namespace py = pybind11;
 // anonymous-namespace helpers are per-translation-unit in this extension by
 // design (binding_support.hpp's own header comment), and containers/signing
 // never needed a copy because neither moves PCM. iclforge::ac4::Encoder::encode() takes
-// "any length" input (unlike iclforge::FrameEncoder's fixed SAMPLES_PER_FRAME), so
+// "any length" input (unlike iclforge::ac3::FrameEncoder's fixed SAMPLES_PER_FRAME), so
 // there is no expected_len to check here - a channel-count/length mismatch is
 // iclforge::ac4::EncodeError::kInvalidInput, which the caller below turns into a
 // ValueError.

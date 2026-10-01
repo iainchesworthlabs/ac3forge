@@ -173,8 +173,8 @@ class ICLFORGE_AC3_EXPORT LoudnessMeter {
 
     // Every private data member - the K-weighting filter state, the
     // loudness/true-peak accumulators, all of it - lives behind this one
-    // pimpl, following the same pattern as iclforge::io::WavStreamReader/Writer
-    // and iclforge::FrameEncoder. Impl is defined in loudness.cpp.
+    // pimpl, following the same pattern as iclforge::ac3::io::WavStreamReader/Writer
+    // and iclforge::ac3::FrameEncoder. Impl is defined in loudness.cpp.
     struct Impl;
     std::unique_ptr<Impl> impl_;
 };

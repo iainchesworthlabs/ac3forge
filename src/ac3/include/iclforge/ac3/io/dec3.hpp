@@ -13,7 +13,7 @@
 // extension TS 103 420 §8.3.1/§8.3.2.2 defines for the bitstream's own addbsi
 // and this box is documented to echo verbatim.
 //
-// Built here, in iclforge::io beside the scanner that already reads every one of
+// Built here, in iclforge::ac3::io beside the scanner that already reads every one of
 // these values off the bitstream, rather than by a container muxer: fscod,
 // bsid, bsmod, acmod, lfeon and the object-audio marker are all AC-3 syntax,
 // not container concepts, and a general-purpose ISOBMFF writer (iclforge::mp4) has

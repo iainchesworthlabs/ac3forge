@@ -6,7 +6,7 @@ import ForgeGui
 
 // About — reachable from Main.qml's control row, beside Preferences.
 // appVersionDetails is a context property main.cpp sets once at startup
-// from iclforge::version_details() (build-time-immutable text: version, git
+// from iclforge::ac3::version_details() (build-time-immutable text: version, git
 // commit/branch/dirty state, build target) - no C++ round trip needed here
 // for something that never changes at runtime. Modelled directly on
 // PreferencesDialog.qml's shape (modal, centered, squared border) rather

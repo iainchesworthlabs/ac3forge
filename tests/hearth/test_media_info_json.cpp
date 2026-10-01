@@ -25,7 +25,7 @@ using iclforge::hearth::MediaBitstream;
 using iclforge::hearth::MediaCodec;
 using iclforge::hearth::MediaInfo;
 namespace json = iclforge::sendspin::json;
-namespace meta = iclforge::meta;
+namespace meta = iclforge::ac3::meta;
 
 struct Parsed {
     std::string text;
@@ -54,7 +54,7 @@ meta::MixMetadata full_mix() {
     mix.extpgmscl = std::nullopt;
     mix.pan = meta::PanInfo{.panmean = 20, .paninfo = 3};
     mix.pan2 = std::nullopt;
-    std::array<std::optional<int>, iclforge::kBlocksPerFrame> words{};
+    std::array<std::optional<int>, iclforge::ac3::kBlocksPerFrame> words{};
     words[0] = 7;
     mix.blkmixcfginfo = words;
     return mix;
@@ -68,7 +68,7 @@ TEST_CASE("media info json: AC-3 time codes and Annex D's alternate bitstream in
     info.path = "annex-d.ac3";
     info.codec = MediaCodec::kAc3WithEac3;
     MediaBitstream bits;
-    bits.acmod = iclforge::Acmod::k3_2;
+    bits.acmod = iclforge::ac3::Acmod::k3_2;
     meta::BsiInfo bsi;
     bsi.timecod1 = meta::TimeCodeCoarse{.hours = 1, .minutes = 2, .eight_seconds = 3};
     bsi.timecod2 = meta::TimeCodeFine{.seconds = 4, .frames = 5, .sixty_fourths = 6};
@@ -102,7 +102,7 @@ TEST_CASE("media info json: AC-3 time codes and Annex D's alternate bitstream in
     CHECK(xbsi1["pan"]["degrees"].as_double() == Catch::Approx(20 * meta::kPanMeanDegreesPerStep).margin(0.05));
     CHECK(xbsi1["pan"]["paninfo"].as_int() == 3);
     CHECK(xbsi1["pan2"].is_null());
-    REQUIRE(xbsi1["blkmixcfginfo"].size() == static_cast<std::size_t>(iclforge::kBlocksPerFrame));
+    REQUIRE(xbsi1["blkmixcfginfo"].size() == static_cast<std::size_t>(iclforge::ac3::kBlocksPerFrame));
     CHECK(xbsi1["blkmixcfginfo"].at(0)["code"].as_int() == 7);
     CHECK(xbsi1["blkmixcfginfo"].at(1).is_null());
     CHECK(xbsi1["mixdef"]["label"].equals("none"));

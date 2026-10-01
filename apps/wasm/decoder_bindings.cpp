@@ -4,22 +4,22 @@
 // convenience helper the demo actually calls).
 //
 // Two entry points:
-//   - scanStream(bytes): a thin wrapper over iclforge::io::scan, so a caller can
+//   - scanStream(bytes): a thin wrapper over iclforge::ac3::io::scan, so a caller can
 //     slice a whole elementary-stream blob into the access units
 //     PushDecoder::pushAccessUnit expects without re-walking syncframes
 //     itself.
-//   - PushDecoder: one iclforge::Eac3Decoder per instance, decoding one access
+//   - PushDecoder: one iclforge::ac3::Eac3Decoder per instance, decoding one access
 //     unit per call through decode_access_unit_into's caller-buffer form -
 //     the PCM buffers are allocated ONCE at construction and reused for
 //     every call (apps/baremetal/probe.cpp established the same
 //     caller-buffer pattern for the bare-metal PF7 profile), so the hot path
 //     never allocates on the C++ side. Eac3Decoder alone is enough for every
-//     iclforge::io::StreamKind - decode_access_unit's own doc comment: a plain
+//     iclforge::ac3::io::StreamKind - decode_access_unit's own doc comment: a plain
 //     AC-3 syncframe "comes back as substream (kIndependent, 0)" - so
 //     scanStream's `kind` is informational only; PushDecoder does not branch
 //     on it.
 //
-// The optional §7.8 fold (DC1's iclforge::OutputStage, never a hand-rolled one) is
+// The optional §7.8 fold (DC1's iclforge::ac3::OutputStage, never a hand-rolled one) is
 // applied separately from the main decode, over a small reused COPY of the
 // just-decoded channels - see PushDecoder::apply_fold's own comment for why
 // it can't be done in place.
@@ -54,17 +54,17 @@ constexpr std::size_t kPositionStride = 7;
 // layout at all (DecodedAccessUnit's own comment), and OutputStage already
 // treats it as two unrelated programmes rather than a soundfield - so the
 // only label fallback needed here is Ch1/Ch2.
-std::vector<std::string> channel_labels(const iclforge::eac3::chanmap::Layout& layout,
-                                        iclforge::Acmod acmod) {
+std::vector<std::string> channel_labels(const iclforge::ac3::eac3::chanmap::Layout& layout,
+                                        iclforge::ac3::Acmod acmod) {
     if (layout.count > 0) {
         std::vector<std::string> labels;
         labels.reserve(static_cast<std::size_t>(layout.count));
         for (const auto location : layout) {
-            labels.emplace_back(iclforge::eac3::chanmap::name(location));
+            labels.emplace_back(iclforge::ac3::eac3::chanmap::name(location));
         }
         return labels;
     }
-    if (acmod == iclforge::Acmod::kDualMono) {
+    if (acmod == iclforge::ac3::Acmod::kDualMono) {
         return {"Ch1", "Ch2"};
     }
     return {};
@@ -92,31 +92,31 @@ emscripten::val make_error(const std::string& message) {
 // whole-file convenience helper (js/src/decode-file.ts) and available to any
 // consumer that already has a complete file rather than a live push feed
 // (an hls.js/MSE bridge instead slices its own container samples and never
-// needs this). Reuses iclforge::io::scan rather than re-walking syncframes here.
+// needs this). Reuses iclforge::ac3::io::scan rather than re-walking syncframes here.
 emscripten::val scanStream(const emscripten::val& js_bytes) {
     const std::vector<std::uint8_t> raw = emscripten::vecFromJSArray<std::uint8_t>(js_bytes);
     const std::span<const std::byte> bytes(reinterpret_cast<const std::byte*>(raw.data()),
                                             raw.size());
 
-    const auto scanned = iclforge::io::scan(bytes);
+    const auto scanned = iclforge::ac3::io::scan(bytes);
     if (!scanned) {
-        return make_error(std::string(iclforge::io::describe(scanned.error())));
+        return make_error(std::string(iclforge::ac3::io::describe(scanned.error())));
     }
 
     auto result = emscripten::val::object();
     result.set("ok", true);
     switch (scanned->kind) {
-        case iclforge::io::StreamKind::kAc3:
+        case iclforge::ac3::io::StreamKind::kAc3:
             result.set("kind", std::string("AC-3"));
             break;
-        case iclforge::io::StreamKind::kEac3:
+        case iclforge::ac3::io::StreamKind::kEac3:
             result.set("kind", std::string("E-AC-3"));
             break;
-        case iclforge::io::StreamKind::kAc3CoreEac3Extension:
+        case iclforge::ac3::io::StreamKind::kAc3CoreEac3Extension:
             result.set("kind", std::string("AC-3 core + E-AC-3 extension"));
             break;
     }
-    result.set("sampleRate", static_cast<int>(iclforge::sample_rate_hz(scanned->sample_rate)));
+    result.set("sampleRate", static_cast<int>(iclforge::ac3::sample_rate_hz(scanned->sample_rate)));
 
     auto units = emscripten::val::array();
     for (std::size_t i = 0; i < scanned->access_units.size(); ++i) {
@@ -133,21 +133,21 @@ emscripten::val scanStream(const emscripten::val& js_bytes) {
 
 class PushDecoder {
    public:
-    // foldTarget: iclforge::DownmixTarget's own numeric order (0=as-coded,
+    // foldTarget: iclforge::ac3::DownmixTarget's own numeric order (0=as-coded,
     // 1=Lo/Ro, 2=Lt/Rt, 3=mono) - kept as a plain int rather than an enum
     // binding for one constructor argument. 0/false/false (the default a
     // caller gets by passing target=asCoded) means "no fold": foldPcm/
     // foldChannelCount then always report nothing, and apply_fold's copy is
     // skipped entirely.
     PushDecoder(int fold_target, bool fold_apply_dialnorm, bool fold_mix_lfe)
-        : fold_(iclforge::OutputConfig{.target = static_cast<iclforge::DownmixTarget>(fold_target),
+        : fold_(iclforge::ac3::OutputConfig{.target = static_cast<iclforge::ac3::DownmixTarget>(fold_target),
                                   .apply_dialnorm = fold_apply_dialnorm,
                                   .mix_lfe = fold_mix_lfe}) {
         for (auto& channel : pcm_) {
-            channel.resize(iclforge::kSamplesPerFrame);
+            channel.resize(iclforge::ac3::kSamplesPerFrame);
         }
         for (auto& channel : fold_scratch_) {
-            channel.resize(iclforge::kSamplesPerFrame);
+            channel.resize(iclforge::ac3::kSamplesPerFrame);
         }
         spans_.reserve(pcm_.size());
         for (auto& channel : pcm_) {
@@ -167,7 +167,7 @@ class PushDecoder {
         try {
             auto decoded = decoder_.decode_access_unit_into(bytes, spans_);
             if (!decoded) {
-                return make_error(std::string(iclforge::describe(decoded.error())));
+                return make_error(std::string(iclforge::ac3::describe(decoded.error())));
             }
             if (!decoded->has_value()) {
                 auto result = emscripten::val::object();
@@ -200,15 +200,15 @@ class PushDecoder {
         auto out = emscripten::val::array();
         for (std::size_t i = 0; i < flushed_.size(); ++i) {
             const auto& sub = flushed_[i];
-            const auto layout = iclforge::eac3::chanmap::expand(sub.location_map());
+            const auto layout = iclforge::ac3::eac3::chanmap::expand(sub.location_map());
             const auto labels = channel_labels(layout, sub.acmod);
 
             auto entry = emscripten::val::object();
             entry.set("ok", true);
             entry.set("holdBack", false);
-            entry.set("sampleRate", static_cast<int>(iclforge::sample_rate_hz(sub.sample_rate)));
-            entry.set("frameSamples", iclforge::eac3::blocks_per_syncframe(sub.numblkscod) *
-                                          iclforge::kSamplesPerBlock);
+            entry.set("sampleRate", static_cast<int>(iclforge::ac3::sample_rate_hz(sub.sample_rate)));
+            entry.set("frameSamples", iclforge::ac3::eac3::blocks_per_syncframe(sub.numblkscod) *
+                                          iclforge::ac3::kSamplesPerBlock);
             entry.set("dialnorm", sub.dialnorm);
             entry.set("channelCount", static_cast<int>(labels.size()));
             entry.set("channelLabels", make_string_array(labels));
@@ -290,11 +290,11 @@ class PushDecoder {
     }
 
    private:
-    emscripten::val describe_unit(iclforge::DecodedAccessUnit& unit) {
+    emscripten::val describe_unit(iclforge::ac3::DecodedAccessUnit& unit) {
         last_channel_count_ = static_cast<std::size_t>(
             unit.layout.count > 0 ? unit.layout.count
-                                   : (unit.acmod == iclforge::Acmod::kDualMono ? 2 : 0));
-        last_frame_samples_ = iclforge::eac3::blocks_per_syncframe(unit.numblkscod) * iclforge::kSamplesPerBlock;
+                                   : (unit.acmod == iclforge::ac3::Acmod::kDualMono ? 2 : 0));
+        last_frame_samples_ = iclforge::ac3::eac3::blocks_per_syncframe(unit.numblkscod) * iclforge::ac3::kSamplesPerBlock;
 
         const auto labels = channel_labels(unit.layout, unit.acmod);
 
@@ -336,7 +336,7 @@ class PushDecoder {
         auto result = emscripten::val::object();
         result.set("ok", true);
         result.set("holdBack", false);
-        result.set("sampleRate", static_cast<int>(iclforge::sample_rate_hz(unit.sample_rate)));
+        result.set("sampleRate", static_cast<int>(iclforge::ac3::sample_rate_hz(unit.sample_rate)));
         result.set("frameSamples", last_frame_samples_);
         result.set("dialnorm", unit.dialnorm);
         result.set("channelCount", static_cast<int>(labels.size()));
@@ -347,7 +347,7 @@ class PushDecoder {
         return result;
     }
 
-    // The fold can't be done in place on pcm_: iclforge::OutputStage's span form
+    // The fold can't be done in place on pcm_: iclforge::ac3::OutputStage's span form
     // writes its result into the first output_channel_count() slots of
     // whatever it's given, using the REST of that same array as its input -
     // so folding pcm_ directly would overwrite the coded channel 0/1 data a
@@ -355,8 +355,8 @@ class PushDecoder {
     // demo's case). Copying into fold_scratch_ first - a bounded, allocation-
     // free copy, both buffers sized once at construction - keeps both
     // outputs available from one decode.
-    void apply_fold(const iclforge::DecodedAccessUnit& unit) {
-        if (fold_.config().target == iclforge::DownmixTarget::kAsCoded) {
+    void apply_fold(const iclforge::ac3::DecodedAccessUnit& unit) {
+        if (fold_.config().target == iclforge::ac3::DownmixTarget::kAsCoded) {
             return;
         }
         fold_views_.clear();
@@ -367,9 +367,9 @@ class PushDecoder {
             fold_views_.emplace_back(fold_scratch_[ch].data(),
                                      static_cast<std::size_t>(last_frame_samples_));
         }
-        const auto levels = iclforge::mix_levels(unit.mixing);
+        const auto levels = iclforge::ac3::mix_levels(unit.mixing);
         const bool has_lfe = unit.layout.count > 0 &&
-                             unit.layout.index_of(iclforge::eac3::chanmap::Location::kLfe) >= 0;
+                             unit.layout.index_of(iclforge::ac3::eac3::chanmap::Location::kLfe) >= 0;
         if (unit.layout.count > 0) {
             fold_.apply(fold_views_, unit.layout, unit.acmod, has_lfe, levels, unit.dialnorm,
                        unit.dialnorm2);
@@ -377,11 +377,11 @@ class PushDecoder {
             fold_.apply(fold_views_, unit.acmod, has_lfe, levels, unit.dialnorm, unit.dialnorm2);
         }
         fold_channel_count_ =
-            static_cast<int>(iclforge::output_channel_count(fold_.config(), unit.acmod, has_lfe));
+            static_cast<int>(iclforge::ac3::output_channel_count(fold_.config(), unit.acmod, has_lfe));
     }
 
-    iclforge::Eac3Decoder decoder_;  // Default DecoderConfig: always raw/coded output.
-    iclforge::OutputStage fold_;     // The optional side fold - see apply_fold's own comment.
+    iclforge::ac3::Eac3Decoder decoder_;  // Default DecoderConfig: always raw/coded output.
+    iclforge::ac3::OutputStage fold_;     // The optional side fold - see apply_fold's own comment.
 
     std::array<std::vector<float>, kMaxChannels> pcm_;
     std::vector<std::span<float>> spans_;
@@ -398,7 +398,7 @@ class PushDecoder {
     std::vector<std::vector<float>> object_audio_;
     std::vector<std::string> object_labels_;
 
-    std::vector<iclforge::DecodedSubstream> flushed_;
+    std::vector<iclforge::ac3::DecodedSubstream> flushed_;
 };
 
 EMSCRIPTEN_BINDINGS(iclforge_wasm_push_decode) {

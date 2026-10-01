@@ -3,7 +3,7 @@
 ## Muxing: `iclforge::matroska::mux`
 
 `iclforge/matroska/matroska.hpp`, library `iclforge::matroska`. It links nothing from `iclforge::ac3` and
-takes frames as opaque bytes. Pairing it with `iclforge::io::scan` is what keeps the track header
+takes frames as opaque bytes. Pairing it with `iclforge::ac3::io::scan` is what keeps the track header
 accurate.
 
 ```cpp
@@ -16,12 +16,12 @@ for (const auto unit : scanned->access_units) {
 }
 
 const iclforge::matroska::AudioTrack track{
-    .codec_id = std::string{scanned->kind == iclforge::io::StreamKind::kAc3
+    .codec_id = std::string{scanned->kind == iclforge::ac3::io::StreamKind::kAc3
                                 ? iclforge::matroska::kCodecAc3
                                 : iclforge::matroska::kCodecEac3},
-    .sample_rate = iclforge::sample_rate_hz(scanned->sample_rate),
+    .sample_rate = iclforge::ac3::sample_rate_hz(scanned->sample_rate),
     .channels = scanned->channels,
-    .samples_per_frame = iclforge::kSamplesPerFrame,
+    .samples_per_frame = iclforge::ac3::kSamplesPerFrame,
 };
 
 const auto file = iclforge::matroska::mux(track, frames);
@@ -58,7 +58,7 @@ place it names a codec is auto-selection, which takes the first audio `TrackEntr
 and accepts whatever `CodecID` it carries.
 
 Two shapes, mirroring the write side. `demux` is the batch one, and it is zero-copy — the frames
-it returns are spans into the buffer you passed it, the way `iclforge::io::scan` already hands back
+it returns are spans into the buffer you passed it, the way `iclforge::ac3::io::scan` already hands back
 access units:
 
 ```cpp
@@ -68,7 +68,7 @@ if (!out) {
     return 1;
 }
 // out->frames are views into file_bytes, which must outlive them.
-const auto scanned = iclforge::io::scan(/* the elementary stream you write them to */);
+const auto scanned = iclforge::ac3::io::scan(/* the elementary stream you write them to */);
 ```
 
 `Reader` is the incremental one — `iclforge::matroska::Writer`'s mirror image, for a file too big to hold.
@@ -108,8 +108,8 @@ points with arbitrary bytes under ASan/UBSan.
 `iclforge::ac3` and takes frames as opaque bytes. The one place MP4 needs codec-specific bytes that
 Matroska's plain CodecID string does not is the sample entry's `dac3`/`dec3` configuration box
 (ETSI TS 102 366 Annex F) — so `iclforge::mp4::AudioTrack::codec_config` carries that box's payload as
-opaque bytes too, built by `iclforge::io::build_codec_config_box` (`iclforge/ac3/io/dec3.hpp`) straight off
-whatever `iclforge::io::scan` read out of the bitstream, fscod/bsid/bsmod/acmod/lfeon and, when the
+opaque bytes too, built by `iclforge::ac3::io::build_codec_config_box` (`iclforge/ac3/io/dec3.hpp`) straight off
+whatever `iclforge::ac3::io::scan` read out of the bitstream, fscod/bsid/bsmod/acmod/lfeon and, when the
 stream carries Dolby Atmos objects, the `flag_ec3_extension_type_a`/`complexity_index_type_a`
 extension (TS 103 420 §8.3.1/§8.3.2.2) alike.
 
@@ -141,15 +141,15 @@ for (const auto unit : scanned->access_units) {
 }
 
 const iclforge::mp4::AudioTrack track{
-    .codec_id = std::string{scanned->kind == iclforge::io::StreamKind::kAc3 ? iclforge::mp4::kCodecAc3
+    .codec_id = std::string{scanned->kind == iclforge::ac3::io::StreamKind::kAc3 ? iclforge::mp4::kCodecAc3
                                                                         : iclforge::mp4::kCodecEac3},
-    .sample_rate = iclforge::sample_rate_hz(scanned->sample_rate),
+    .sample_rate = iclforge::ac3::sample_rate_hz(scanned->sample_rate),
     .channels = scanned->channels,
-    .samples_per_frame = iclforge::kSamplesPerFrame,
+    .samples_per_frame = iclforge::ac3::kSamplesPerFrame,
     // The dac3/dec3 sample-entry box, built from the same scan result -
-    // see iclforge/ac3/io/dec3.hpp for why this lives in iclforge::io rather than in
+    // see iclforge/ac3/io/dec3.hpp for why this lives in iclforge::ac3::io rather than in
     // iclforge::mp4 itself.
-    .codec_config = iclforge::io::build_codec_config_box(*scanned),
+    .codec_config = iclforge::ac3::io::build_codec_config_box(*scanned),
 };
 
 const auto file = iclforge::mp4::mux(track, frames);
@@ -172,7 +172,7 @@ Getting the `dec3`/`dac3` box right from the spec is the point: FFmpeg's MKV→M
 to silently drop or mis-signal the Atmos extension
 ([jellyfin-ffmpeg#584](https://github.com/jellyfin/jellyfin-ffmpeg/issues/584), upstream
 [FFmpeg trac #9996](https://trac.ffmpeg.org/ticket/9996), since fixed) — building it from
-`iclforge::io::scan`'s own read of the bitstream, rather than by copying another tool's output, is
+`iclforge::ac3::io::scan`'s own read of the bitstream, rather than by copying another tool's output, is
 what this module avoided that bug by construction rather than by patching it after the fact, and
 still does for any FFmpeg build older than the fix.
 
@@ -197,7 +197,7 @@ file for "faststart"; `mux()` and `fragment()` both write `moov` first, as does 
 file.
 
 **The `dec3`/`dac3` box comes back parsed.** `ReadTrack::codec_config` is a `CodecConfig`, the read
-twin of [`iclforge::io::build_codec_config_box`](#muxing-iclforgemp4mux): `fscod`, `bsid`, `bsmod`, `acmod`,
+twin of [`iclforge::ac3::io::build_codec_config_box`](#muxing-iclforgemp4mux): `fscod`, `bsid`, `bsmod`, `acmod`,
 `lfeon`, `bit_rate_code` or `data_rate_kbps`, `num_ind_sub`/`num_dep_sub`/`chan_loc`, and —
 crucially — TS 103 420's `flag_ec3_extension_type_a`/`complexity_index_type_a` as an
 `optional<int>`. That last field is the Atmos/JOC marker an FFmpeg remux is known to drop, and
@@ -248,13 +248,13 @@ for (const auto unit : scanned->access_units) {
 }
 
 const iclforge::mpegts::AudioTrack track{
-    .codec = scanned->kind == iclforge::io::StreamKind::kAc3 ? iclforge::mpegts::AudioCodec::kAc3
+    .codec = scanned->kind == iclforge::ac3::io::StreamKind::kAc3 ? iclforge::mpegts::AudioCodec::kAc3
                                                          : iclforge::mpegts::AudioCodec::kEac3,
-    .sample_rate = iclforge::sample_rate_hz(scanned->sample_rate),
+    .sample_rate = iclforge::ac3::sample_rate_hz(scanned->sample_rate),
     .channels = scanned->channels,
-    .samples_per_frame = iclforge::kSamplesPerFrame,
+    .samples_per_frame = iclforge::ac3::kSamplesPerFrame,
     // What the PMT descriptor says about the service. Every field is a plain
-    // A/52 value iclforge::io::scan already read off the bitstream.
+    // A/52 value iclforge::ac3::io::scan already read off the bitstream.
     .service = {.bsmod = scanned->bsmod,
                 .bsmod_present = scanned->bsmod_present,
                 .acmod = static_cast<int>(scanned->acmod),
@@ -297,10 +297,10 @@ Both descriptors describe the same service in different bit layouts, so a caller
 underlying A/52 field values once, as `iclforge::mpegts::ServiceInfo`, and the module maps them onto
 whichever registry's tables the profile calls for — EN 300 468 Tables D.1–D.8, A/52 Tables
 A4.2–A4.6 and G.2–G.6. That mapping is descriptor syntax, which is this module's job; reading
-those values off the bitstream is `iclforge::io::scan`'s, which is why `ServiceInfo` is plain
+those values off the bitstream is `iclforge::ac3::io::scan`'s, which is why `ServiceInfo` is plain
 integers and `iclforge::mpegts` still links nothing from `iclforge::ac3`.
 
-`iclforge::io::ScannedStream` supplies every one of them: `bsmod` (with `bsmod_present`, since
+`iclforge::ac3::io::ScannedStream` supplies every one of them: `bsmod` (with `bsmod_present`, since
 Annex E only carries it inside `infomdate`), `acmod`, `lfe`, the rendered `channels`, `bsid`,
 `dsurmod`, `bit_rate_code`, `mix_metadata` for `mixinfoexists`, and `independent_substreams`
 with `associated_substreams` for the `substream1`–`3` fields. Two values are *not* in any
@@ -311,7 +311,7 @@ raw bitmask directly as `asvc=0x05`). An unset optional field is omitted rather 
 zero-filled: a receiver already handles an absent one, where an invented main-service number
 links the wrong services. What *is* checked is consistency with the stream's own `bsmod`:
 `asvc=` on a stream Table 5.7 calls a main service, or `mainid=` on one it calls an associated
-service, is a usage error (`iclforge::meta::is_associated_service` is the predicate, shared with the
+service, is a usage error (`iclforge::ac3::meta::is_associated_service` is the predicate, shared with the
 `dec3`/`EC3SpecificBox` writer's own `asvc` bit) — the wire fields exist either way, but which
 one describes *this* stream is not the operator's to override.
 
@@ -342,10 +342,10 @@ std::vector<std::byte> elementary_stream;
 for (const auto& payload : out->payloads) {
     elementary_stream.insert(elementary_stream.end(), payload.begin(), payload.end());
 }
-const auto scanned = iclforge::io::scan(elementary_stream);
+const auto scanned = iclforge::ac3::io::scan(elementary_stream);
 ```
 
-This is exactly what `iclforge::io::scan` wants, and re-framing PES payloads into access units is its
+This is exactly what `iclforge::ac3::io::scan` wants, and re-framing PES payloads into access units is its
 job, not this module's — doing it here would mean this container-blind module knowing what an
 AC-3 syncframe is.
 
@@ -359,7 +359,7 @@ round trip, because the wire format itself cannot express it: `acmod`/`channels`
 stay at `ServiceInfo`'s own defaults rather than reconstructed, since `channel_flags()` is a
 many-to-one summary forward (Table D.5/G.3/A4.5's "more than 5.1 channels" row covers a range,
 not one value) with no exact acmod to recover backward — a caller that has the elementary stream
-already has those exact values from `iclforge::io::scan()`, the same source `mux`'s own caller used.
+already has those exact values from `iclforge::ac3::io::scan()`, the same source `mux`'s own caller used.
 
 **Four signalling forms.** For AC-3 and E-AC-3, `mux` chooses between DVB and ATSC through
 `MuxOptions::profile` (see above), and commits to one of them wholly. A reader has no such luxury:
@@ -469,7 +469,7 @@ Devices](https://developer.apple.com/documentation/http-live-streaming/hls-autho
 shows. AC-4's string is the dotted one `iclforge::ac4::rfc6381_codec_string()` gives (`ac-4.02.01.00`),
 which the caller puts in `AudioTrack::rfc6381`. Dolby Digital Plus with Atmos objects additionally needs `CHANNELS="<N>/JOC"` on the HLS
 media rendition instead of a plain channel count, where N is the decodable object count
-(`iclforge::io::ScannedStream::oba_complexity_index`, TS 103 420 §8.3.2's `complexity_index_type_a`)
+(`iclforge::ac3::io::ScannedStream::oba_complexity_index`, TS 103 420 §8.3.2's `complexity_index_type_a`)
 — reiterated, with a worked example (`CHANNELS="12/JOC"`), by [Dolby's own Online Delivery Kit
 documentation](https://ott.dolby.com/OnDelKits/DDP/Dolby_Digital_Plus_Online_Delivery_Kit_v1.5/Documentation/Content_Creation/SDM/help_files/topics/hls_c_hls_signal_atmos_ddp.html)
 and shown verbatim in a real manifest (`CODECS="avc1.64001f,ec-3"` / `CHANNELS="12/JOC"`) by
@@ -483,7 +483,7 @@ already has `oba_complexity_index` (it read it to build the `dec3` box) and supp
 be accompanied by an equivalent 5.1 bitstream carrying `CHANNELS="6"` *in the same
 `#EXT-X-MEDIA` group*, so a client that cannot render the object layer selects the bed rather
 than the asset failing to play. Because JOC's bed already *is* the full mix, that companion
-needs no re-encode: [`iclforge::io::strip_objects`](decoding.md#object-layer-strip) removes the
+needs no re-encode: [`iclforge::ac3::io::strip_objects`](decoding.md#object-layer-strip) removes the
 object layer from the same stream and leaves bit-identical bed audio. `forge fmp4 …
 fallback-51` writes both — the Atmos rendition where it always was, the stripped one under
 `bed51/`, and one master playlist listing both.
@@ -517,7 +517,7 @@ The same §5.3.2 offers two AudioChannelConfiguration schemes for E-AC-3. With
 `urn:mpeg:mpegB:cicp:ChannelConfiguration` with the track's channel count — what TS 103 420
 §D.2.3's own example MPD writes. Set it to the four hex digits TS 102 366 clause I.1.2.1 defines
 (the 16-bit channel-assignment word, left channel in the most significant bit, so 5.1 is `F801`)
-and it carries the Dolby scheme instead. `iclforge::io::dash_channel_configuration` is the one place
+and it carries the Dolby scheme instead. `iclforge::ac3::io::dash_channel_configuration` is the one place
 that word is derived, beside `build_codec_config_box` and for the same reason: which locations a
 stream carries is `acmod`/`lfeon`/`chanmap` syntax, and a manifest writer has no business
 re-deriving AC-3 semantics. `forge fmp4`, the GUI and the live paths all supply it.
@@ -875,7 +875,7 @@ in flight when it returns; do the minimum there and never stop the watcher from 
 has no such API and the posix/android backends have no audio backend at all, so those three
 refuse `start()` with `kNoBackend`.
 
-## Metering: `iclforge::analysis`
+## Metering: `iclforge::ac3::analysis`
 
 `iclforge/ac3/analysis/levels.hpp`. Peak/RMS metering with console ballistics, plus the Gerzon energy
 vector computed over the BS.775 ring — the metering `forge` and the GUI share so their two
@@ -884,7 +884,7 @@ moving display (`levels()`, ballistic) and the exact end-of-run report (`summary
 unweighted), fed by the same pass over the samples.
 
 ```cpp
-iclforge::analysis::LevelMeter meter{acmod, lfe, 48000};
+iclforge::ac3::analysis::LevelMeter meter{acmod, lfe, 48000};
 meter.process(decoded_views);   // once per frame, planar A/52 order
 ```
 
@@ -892,7 +892,7 @@ meter.process(decoded_views);   // once per frame, planar A/52 order
 const auto& stats = meter.summary()[static_cast<std::size_t>(ch)];  // exact, not ballistic
 fmt::printf("peak %.1f dBFS  rms %.1f dBFS\n", stats.peak_db(), stats.rms_db());
 
-const auto energy = iclforge::analysis::energy_vector(meter.levels(), acmod);
+const auto energy = iclforge::ac3::analysis::energy_vector(meter.levels(), acmod);
 ```
 
 Full program: [`examples/level_metering.cpp`](https://github.com/iainchesworthlabs/iclforge/blob/main/examples/level_metering.cpp)
@@ -900,13 +900,13 @@ Full program: [`examples/level_metering.cpp`](https://github.com/iainchesworthla
 vector.
 
 This is a separate concern from the BS.1770 integrated-loudness measurement in
-`iclforge::meta::LoudnessMeter` (see [Metadata](metadata.md)): one is instantaneous display
+`iclforge::ac3::meta::LoudnessMeter` (see [Metadata](metadata.md)): one is instantaneous display
 metering, the other the gated whole-programme measurement `dialnorm` is derived from.
 `energy_vector` is computed from the integrated RMS of the full-bandwidth channels only — the
 LFE has no direction to contribute, and a subwoofer's level would otherwise swamp the sum.
 
 ---
 
-See also: [Decoding](decoding.md) — `iclforge::io::scan` is what feeds both `iclforge::matroska::mux` and the
+See also: [Decoding](decoding.md) — `iclforge::ac3::io::scan` is what feeds both `iclforge::matroska::mux` and the
 sinks above their access units; [Header map](header-map.md) — every header referenced on this
 page in one table.

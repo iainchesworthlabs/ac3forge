@@ -50,7 +50,7 @@ Once a file has been measured, the dialog fills with:
       `forge qc` prints under "dialnorm check", plus `compr` (§5.4.2.9/§7.7.2) when the stream
       carries one.
     - **A verdict row per delivery preset** — EBU R 128 s2, ATSC A/85, ATSC A/85 streaming,
-      Netflix and Apple Music Atmos (the same five `iclforge::meta::kQcPresetIds` names, each preset's
+      Netflix and Apple Music Atmos (the same five `iclforge::ac3::meta::kQcPresetIds` names, each preset's
       target/tolerance/ceiling cited from its own primary source — see `qc.hpp`'s own comment for
       the exact clauses), each showing its own loudness PASS/FAIL, true-peak PASS/FAIL and an
       overall chip. `QcController::programmes()` iterates the whole table, so this list grows with

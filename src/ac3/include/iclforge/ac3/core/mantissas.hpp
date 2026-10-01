@@ -45,7 +45,7 @@ inline constexpr std::array<int, 6> kSymmetricLevels = {0, 3, 5, 7, 11, 15};
 
 // The same reconstruction in the caller's own scalar. dequantize_mantissa()
 // above is this at double, and the decoders call this at whichever type
-// their coefficient store is (iclforge::internal::decode_scalar_t - float on the
+// their coefficient store is (iclforge::ac3::internal::decode_scalar_t - float on the
 // minimum-footprint profile), because on a single-precision FPU every double
 // operation is a software routine: measured on an ESP32-S3, the dequantise
 // below and the exponent scale after it were costing more than the inverse

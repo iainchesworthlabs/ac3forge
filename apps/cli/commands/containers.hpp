@@ -8,7 +8,7 @@
 // The container-wrapping commands: mkv/mp4/fmp4/ts each take an already-encoded AC-3 or E-AC-3
 // elementary stream and wrap it for a specific downstream consumption method, reading everything
 // the container needs to declare (format, access-unit boundaries, sample rate, channel count)
-// straight off the bitstream via iclforge::io::scan rather than from a caller-supplied layout that
+// straight off the bitstream via iclforge::ac3::io::scan rather than from a caller-supplied layout that
 // could disagree with what the file actually contains. Split out of main.cpp as part of the
 // repo-structure review's H4 monolith split - see support.hpp's own top comment for the overall
 // plan; this is the first commands/ group, the four physically-contiguous container commands
@@ -18,9 +18,9 @@ namespace forge_cli::commands {
 
 int run_mkv(std::string_view in_path, std::string_view out_path);
 
-// Same shape as run_mkv, wrapping iclforge::mp4::mux() instead: iclforge::io::scan() still supplies
+// Same shape as run_mkv, wrapping iclforge::mp4::mux() instead: iclforge::ac3::io::scan() still supplies
 // everything the container needs to declare, and additionally - via
-// iclforge::io::build_codec_config_box() - the exact dac3/dec3 sample-entry payload straight off
+// iclforge::ac3::io::build_codec_config_box() - the exact dac3/dec3 sample-entry payload straight off
 // the bitstream.
 int run_mp4(std::string_view in_path, std::string_view out_path);
 
@@ -30,7 +30,7 @@ int run_mp4(std::string_view in_path, std::string_view out_path);
 // meta.hls_fallback_51 additionally writes the object-stripped 5.1 companion rendition into a
 // bed51/ subdirectory and lists it in the same #EXT-X-MEDIA group as the JOC one, which is what
 // Apple's HLS Authoring Specification asks for alongside CHANNELS="<N>/JOC" - see
-// iclforge::io::strip_objects. Ignored for a stream with no object layer.
+// iclforge::ac3::io::strip_objects. Ignored for a stream with no object layer.
 int run_fmp4(std::string_view in_path, std::string_view out_dir, std::uint32_t frames_per_fragment,
              const Options& meta);
 
@@ -38,7 +38,7 @@ int run_fmp4(std::string_view in_path, std::string_view out_dir, std::uint32_t f
 // identifies the stream in the PMT - "dvb" (the default: stream_type 0x06 plus ETSI EN 300 468
 // Annex D's AC3_descriptor/enhanced_AC-3_descriptor) or "atsc" (stream_type 0x81/0x87 plus
 // A/52:2018 Annex A/Annex G's own descriptors). Everything either descriptor says about the
-// service is read off the bitstream by iclforge::io::scan, except the service associations meta
+// service is read off the bitstream by iclforge::ac3::io::scan, except the service associations meta
 // carries (mainid=, asvc=).
 int run_ts(std::string_view in_path, std::string_view out_path, std::string_view profile,
            const Options& meta);

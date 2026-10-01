@@ -56,7 +56,7 @@ async function loadModule() {
 }
 
 // The §7.8 Lo/Ro fold the decoder produced, ready to play. The matrix, the
-// levels and the normalisation are all the library's (iclforge::OutputStage) -
+// levels and the normalisation are all the library's (iclforge::ac3::OutputStage) -
 // this page has no downmix of its own, which is the point: what a visitor
 // hears here is what 'forge decode channels=2' writes.
 //
@@ -420,7 +420,7 @@ async function handleDecoded(bytes, label) {
     setStatus(`Decoding ${label}...`, false);
     try {
         const moduleInstance = await loadModule();
-        // The real §7.8 Lo/Ro fold (iclforge::OutputStage/DC1) - never a hand-rolled
+        // The real §7.8 Lo/Ro fold (iclforge::ac3::OutputStage/DC1) - never a hand-rolled
         // one - plus dialnorm normalisation, exactly what the old bespoke
         // whole-file decode did, now produced by the package's decodeFile()
         // built on the same push-frame primitive the realtime section below

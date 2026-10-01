@@ -67,7 +67,7 @@ struct AtmosConfig {
     // never both - which is why turning this off also drops TS 103 420 §8.3.1's
     // addbsi object marker (flag_ec3_extension_type_a and §8.3.2.2's complexity
     // index): that marker is what every reader keys an object layer off
-    // (iclforge::io::scan, the dec3 box's Atmos extension, an HLS CHANNELS=.../JOC
+    // (iclforge::ac3::io::scan, the dec3 box's Atmos extension, an HLS CHANNELS=.../JOC
     // attribute, FFmpeg's "Dolby Digital Plus + Dolby Atmos" profile), and a
     // stream with no container has no object layer to advertise. The 5.1 MIX is
     // the same either way (the same float bed is encoded); the decoded samples
@@ -230,7 +230,7 @@ class ICLFORGE_AC3_EXPORT AtmosEncoder {
     // Every private data member - config, the bed encoder, the per-object
     // gain ramps, the QMF analysis filterbanks, all of it - lives behind
     // this one pimpl, following the same pattern as
-    // iclforge::io::WavStreamReader/Writer and iclforge::FrameEncoder. Impl is defined
+    // iclforge::ac3::io::WavStreamReader/Writer and iclforge::ac3::FrameEncoder. Impl is defined
     // in atmos.cpp.
     struct Impl;
     std::unique_ptr<Impl> impl_;

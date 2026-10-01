@@ -15,9 +15,9 @@
 namespace iclforge::signing {
 namespace {
 
-// Where the frame's fields are is iclforge::emdf::walk_frame's job (see
+// Where the frame's fields are is iclforge::ac3::emdf::walk_frame's job (see
 // ac3/emdf/frame_layout.hpp): one bit-accurate walk of the syncframe, shared
-// with the object-layer strip in iclforge::io, so the two cannot drift apart. What
+// with the object-layer strip in iclforge::ac3::io, so the two cannot drift apart. What
 // is left here is the part that is actually about signing - which of those
 // regions are excluded from the authenticated message, and what is hashed
 // over the rest.

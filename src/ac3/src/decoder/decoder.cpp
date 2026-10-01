@@ -234,7 +234,7 @@ std::expected<std::vector<std::span<const std::byte>>, DecodeError> split_access
 }
 
 // Every private data member, following the same pimpl pattern as
-// iclforge::io::WavStreamReader/Writer and iclforge::FrameEncoder.
+// iclforge::ac3::io::WavStreamReader/Writer and iclforge::ac3::FrameEncoder.
 struct FrameDecoder::Impl {
     DecoderConfig config_{};
     std::array<std::array<internal::decode_scalar_t, 256>, 6> delay_{};  // overlap-add state
@@ -655,7 +655,7 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
     const auto acmod = static_cast<Acmod>(acmod_value);
     // §5.4.2.4/§5.4.2.5. Both fields are conditional on acmod, so "absent"
     // and "present and says the default" stay distinguishable on the result -
-    // which is what lets iclforge::mix_levels() apply §7.8's own fallbacks rather
+    // which is what lets iclforge::ac3::mix_levels() apply §7.8's own fallbacks rather
     // than inventing values here. Code '11' is reserved for cmixlev and
     // §5.4.2.4 says to read it as the intermediate -4.5 dB, which is what
     // leaving it std::nullopt already produces.
@@ -746,7 +746,7 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
             mix.lorocmixlev = static_cast<meta::MixLevel>(r.read(3));
             mix.lorosurmixlev = read_surround_mix_level(r);
             // Annex D has no LFE mix level at all, so lfemixlevcod stays
-            // std::nullopt. iclforge::mix_levels() does not read that as E-AC-3's
+            // std::nullopt. iclforge::ac3::mix_levels() does not read that as E-AC-3's
             // "LFE mixing disabled" (§E2.3.1.10): an AC-3 fold keeps §7.8's
             // +10 dB ideal whichever bsid carried it.
             alternate.mix = mix;

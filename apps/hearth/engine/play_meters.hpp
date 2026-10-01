@@ -13,8 +13,8 @@
 
 // Meters on what the output plays (planning/hearth-reference-player.md,
 // Monitor): a level meter per output slot - peak, hold, RMS and a clip latch,
-// iclforge::analysis::LevelMeter's - and the programme's loudness from
-// iclforge::meta::LoudnessMeter, measured as the blocks are rendered and released
+// iclforge::ac3::analysis::LevelMeter's - and the programme's loudness from
+// iclforge::ac3::meta::LoudnessMeter, measured as the blocks are rendered and released
 // only when the device's clock reaches them.
 //
 // The GUI's stream player meters each chunk as it is queued, so its meters run

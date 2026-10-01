@@ -132,7 +132,7 @@ can't happen. Until then, the sequencing is:
 **Deferred, deliberately not introduced now.** An inline namespace (`namespace ac3 { inline
 namespace v1 { ... } }`) is the standard way to let two ABI-incompatible major versions of a
 library coexist in one process without a linker collision — ELF/COFF spell the versioned symbol
-as `iclforge::v1::FrameEncoder`, and a consumer's ordinary `iclforge::FrameEncoder` resolves through the
+as `iclforge::v1::FrameEncoder`, and a consumer's ordinary `iclforge::ac3::FrameEncoder` resolves through the
 `inline` transparently. Introducing it now, before there is a `v1` to distinguish from anything,
 would touch every symbol in the tree for a distinction that does not exist yet and cannot be
 tested (there is no `iclforge::v2` to link against it). The plan is to introduce `inline namespace v1`

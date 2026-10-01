@@ -61,7 +61,7 @@
 // --- WHAT A WRITE IS ---------------------------------------------------------
 //
 // One BLOCK: one span per output slot of the player's layout, each
-// iclforge::kSamplesPerBlock (256) samples or fewer, six times a frame. A block
+// iclforge::ac3::kSamplesPerBlock (256) samples or fewer, six times a frame. A block
 // rather than a frame because that is what the decoder's block form hands
 // over and what keeps a sixteen-slot layout's storage at 16 KB rather than
 // 96 KB - see esp-idf/iclforge/include/iclforge/player.hpp.
@@ -170,12 +170,12 @@ namespace player {
 // samples from zero, and sink/null/ has nothing to restart.
 void sink_begin_play();
 
-// One block: one span per slot, each up to iclforge::kSamplesPerBlock samples,
+// One block: one span per slot, each up to iclforge::ac3::kSamplesPerBlock samples,
 // nominally in [-1, 1). Blocks until the sink has taken it, which for I2S is
 // the back-pressure that paces the whole player at real time.
 void sink_write(std::span<const std::span<const float>> channels);
 
-// One block of exactly iclforge::kSamplesPerBlock samples a slot, as sink_write,
+// One block of exactly iclforge::ac3::kSamplesPerBlock samples a slot, as sink_write,
 // for a player that times its output (the Sendspin player,
 // iclforge/playout.hpp): when the block's first sample leaves the audio port,
 // by the sink's own clock, whether the block was written too late to play

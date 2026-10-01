@@ -13,11 +13,11 @@
 // is meant to keep catching.
 extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size) {
     const std::span<const std::byte> bytes{reinterpret_cast<const std::byte*>(data), size};
-    const auto frames = iclforge::split_frames(bytes);
+    const auto frames = iclforge::ac3::split_frames(bytes);
     if (!frames) {
         return 0;
     }
-    iclforge::FrameDecoder decoder;
+    iclforge::ac3::FrameDecoder decoder;
     for (const auto& frame : *frames) {
         (void)decoder.decode_frame(frame);
     }

@@ -14,7 +14,7 @@
 // MDCT and §7.9.4.2 step 3's inverse sums need. See the header for the
 // per-table byte counts and how they were measured.
 //
-// None of these bodies can run. iclforge::internal::kReferenceTransformAvailable
+// None of these bodies can run. iclforge::ac3::internal::kReferenceTransformAvailable
 // is false in this profile, every call site checks it before dispatching, and
 // the public API refuses the configuration that would need the direct form
 // (DecoderConfig::fast_imdct == false yields DecodeError::kNoReferenceTransform) rather

@@ -113,7 +113,7 @@ constexpr int kTsSyncRuns = 5;
 constexpr std::size_t kContainerSniffBytes = 64 * 1024;
 
 // One demuxed track/programme's frames, concatenated into a single owned
-// buffer - iclforge::split_frames/split_access_units need one contiguous stream,
+// buffer - iclforge::ac3::split_frames/split_access_units need one contiguous stream,
 // but a container's frames are views scattered across the source file (or,
 // for mpegts, across its own reassembly buffer), never contiguous with each
 // other.
@@ -309,10 +309,10 @@ ContainerKind sniff_container(std::span<const std::byte> head) {
     // steady or otherwise low-entropy signal encodes near-identical frames,
     // so "0x47 recurs every 192 bytes" is something a perfectly ordinary
     // elementary stream can produce on its own, not just an MPEG-TS capture.
-    // iclforge::io::read_frame_header validates the sync word and the whole of
+    // iclforge::ac3::io::read_frame_header validates the sync word and the whole of
     // bsi, which no accidental byte pattern satisfies by chance the way a
     // single recurring byte can.
-    if (iclforge::io::read_frame_header(sniffed).has_value()) {
+    if (iclforge::ac3::io::read_frame_header(sniffed).has_value()) {
         return ContainerKind::kUnknown;
     }
     // A WAV likewise, by its magic - see has_riff_wave_magic.

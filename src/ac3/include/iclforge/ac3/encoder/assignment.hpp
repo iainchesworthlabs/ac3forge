@@ -74,7 +74,7 @@ struct Destination {
 
 // A loaded source's shape, independent of where its samples come from - a
 // WAV file and a capture device both reduce to this. Deliberately not
-// iclforge::io::WavData: assignment has no file-I/O dependency.
+// iclforge::ac3::io::WavData: assignment has no file-I/O dependency.
 struct SourceShape {
     std::size_t channels = 0;
     std::string label;  // "orbit51.wav" / "Scarlett 18i20" - error text only

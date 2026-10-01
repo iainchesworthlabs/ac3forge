@@ -43,9 +43,9 @@ std::uint8_t u8(std::span<const std::byte> bytes, std::size_t index) {
 std::vector<std::vector<float>> tone_frame(int channels, std::uint64_t start) {
     std::vector<std::vector<float>> pcm(
         static_cast<std::size_t>(channels),
-        std::vector<float>(static_cast<std::size_t>(iclforge::kSamplesPerFrame)));
+        std::vector<float>(static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame)));
     for (auto& channel : pcm) {
-        for (int i = 0; i < iclforge::kSamplesPerFrame; ++i) {
+        for (int i = 0; i < iclforge::ac3::kSamplesPerFrame; ++i) {
             const auto n = static_cast<double>(start + static_cast<std::uint64_t>(i));
             channel[static_cast<std::size_t>(i)] =
                 static_cast<float>(0.5 * std::sin(2.0 * std::numbers::pi * 1000.0 * n / 48000.0));
@@ -57,12 +57,12 @@ std::vector<std::vector<float>> tone_frame(int channels, std::uint64_t start) {
 // A handful of real AC-3 frames of a tone - not silence, whose all-zero
 // mantissas would round-trip through almost any bug in the word swap.
 std::vector<std::vector<std::byte>> encode_ac3(int count) {
-    iclforge::FrameEncoder encoder{{.bitrate_kbps = 192}};
+    iclforge::ac3::FrameEncoder encoder{{.bitrate_kbps = 192}};
     std::vector<std::vector<std::byte>> frames;
     std::uint64_t n = 0;
     for (int f = 0; f < count; ++f) {
         auto pcm = tone_frame(2, n);
-        n += iclforge::kSamplesPerFrame;
+        n += iclforge::ac3::kSamplesPerFrame;
         const std::vector<std::span<const float>> views{pcm[0], pcm[1]};
         auto frame = encoder.encode_frame(views);
         REQUIRE(frame.has_value());
@@ -72,12 +72,12 @@ std::vector<std::vector<std::byte>> encode_ac3(int count) {
 }
 
 std::vector<std::vector<std::byte>> encode_eac3(int count) {
-    iclforge::eac3::AccessUnitEncoder encoder{{.independent = {.bitrate_kbps = 192}}};
+    iclforge::ac3::eac3::AccessUnitEncoder encoder{{.independent = {.bitrate_kbps = 192}}};
     std::vector<std::vector<std::byte>> units;
     std::uint64_t n = 0;
     for (int f = 0; f < count; ++f) {
         auto pcm = tone_frame(2, n);
-        n += iclforge::kSamplesPerFrame;
+        n += iclforge::ac3::kSamplesPerFrame;
         const std::vector<std::span<const float>> views{pcm[0], pcm[1]};
         auto unit = encoder.encode_access_unit(views);
         REQUIRE(unit.has_value());
@@ -147,7 +147,7 @@ TEST_CASE("unwrap_stream: AC-3 bursts round-trip back to the exact frames", "[ie
 
     // And the recovered bytes are a stream in their own right, not just a
     // byte match: split_frames finds every frame back.
-    const auto split = iclforge::split_frames(*recovered);
+    const auto split = iclforge::ac3::split_frames(*recovered);
     REQUIRE(split.has_value());
     CHECK(split->size() == frames.size());
 }
@@ -164,8 +164,8 @@ TEST_CASE("unwrap_stream: E-AC-3 bursts round-trip back to the exact access unit
     CHECK(std::equal(recovered->begin(), recovered->end(), expected.begin(), expected.end()));
 
     // Decodes as real audio, which no amount of byte-shuffling would survive.
-    iclforge::Eac3Decoder decoder;
-    const auto split = iclforge::split_access_units(*recovered);
+    iclforge::ac3::Eac3Decoder decoder;
+    const auto split = iclforge::ac3::split_access_units(*recovered);
     REQUIRE(split.has_value());
     REQUIRE(split->size() == units.size());
     const auto decoded = decoder.decode_access_unit((*split)[0]);
@@ -227,7 +227,7 @@ TEST_CASE("unwrap_stream: a burst carrying six one-block syncframes comes back w
 }
 
 TEST_CASE("unwrap_stream: reads the burst header back, bsmod included", "[iec61937][unwrap]") {
-    const auto frame = iclforge::build_silent_stereo_frame({.bitrate_kbps = 192});
+    const auto frame = iclforge::ac3::build_silent_stereo_frame({.bitrate_kbps = 192});
     REQUIRE(frame.has_value());
     const auto burst = iclforge::iec61937::wrap_frame(*frame);
     REQUIRE(burst.has_value());

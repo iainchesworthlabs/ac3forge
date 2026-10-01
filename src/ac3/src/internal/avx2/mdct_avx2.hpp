@@ -78,7 +78,7 @@ void imdct256_post_twiddle(std::span<const double> cos2, std::span<const double>
                            std::span<double> y1_re, std::span<double> y1_im,
                            std::span<double> y2_re, std::span<double> y2_im);
 
-// batched SIMD kernels (iclforge::imdct512_windowed_batch4's own
+// batched SIMD kernels (iclforge::ac3::imdct512_windowed_batch4's own
 // AVX2 body, see mdct.hpp): runs the SAME steps 2-5 imdct512_windowed's
 // fast branch does - pre-twiddle, in-place FFT, negate-copy, post-twiddle,
 // windowing/de-interleave - but with one f64x4 per BIN holding all four
@@ -109,7 +109,7 @@ void imdct256_post_twiddle(std::span<const double> cos2, std::span<const double>
 // cheap; git history holds both earlier designs and their numbers.
 //
 // coeffs0..3 and x0..3 are the same 256/512-long spans
-// iclforge::imdct512_windowed itself takes; cos1/sin1 are imdct512_windowed's
+// iclforge::ac3::imdct512_windowed itself takes; cos1/sin1 are imdct512_windowed's
 // own twiddle table (kQuarter = 128 long); fft is the P = 128 FFT table
 // the long transform's own fast fold already shares
 // (fast_mdct_tables<512>().fft) - passed in rather than looked up here
@@ -122,7 +122,7 @@ void imdct512_windowed_batch4(std::span<const double> coeffs0, std::span<const d
                               const iclforge::internal::FftTables<128>& fft, std::span<double> x0,
                               std::span<double> x1, std::span<double> x2, std::span<double> x3);
 
-// iclforge::mdct512_forward_batch4's AVX2 body (mdct.hpp): the forward twin of
+// iclforge::ac3::mdct512_forward_batch4's AVX2 body (mdct.hpp): the forward twin of
 // imdct512_windowed_batch4 above, and the same three-part shape - transpose
 // the four windowed blocks in at the boundary, run every interior step as
 // f64x4-per-index arithmetic, transpose the coefficients back out - for the

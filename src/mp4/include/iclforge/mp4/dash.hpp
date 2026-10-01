@@ -36,7 +36,7 @@ struct DashOptions {
     std::string representation_id{"audio"};
     // TS 103 420 §8.3.2's complexity_index_type_a for a stream carrying that
     // spec's backward-compatible object audio (Dolby Atmos in Dolby Digital
-    // Plus) - this project's own iclforge::io::ScannedStream::oba_complexity_index.
+    // Plus) - this project's own iclforge::ac3::io::ScannedStream::oba_complexity_index.
     // Set, it adds the two SupplementalProperty descriptors DASH-IF IOP Part
     // 8 v5.0.0 §5.3.2 names for E-AC-3 with JOC, "as specified in ETSI TS
     // 103 420 clause D.2":

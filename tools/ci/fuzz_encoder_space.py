@@ -95,7 +95,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent.parent
 
 # A/52 Table 5.18's nominal rates - the only ones AC-3's frmsizcod can index
-# (iclforge::is_valid_bitrate, src/ac3/include/iclforge/ac3/core/tables.hpp).
+# (iclforge::ac3::is_valid_bitrate, src/ac3/include/iclforge/ac3/core/tables.hpp).
 LEGAL_RATES = [32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320,
                384, 448, 512, 576, 640]
 
@@ -162,7 +162,7 @@ MIN_STREAM_BYTES = 16384
 
 # Where each layout's usable rate range starts, measured against this build
 # rather than derived from the spec. The refusal is not a table lookup but
-# iclforge::FrameEncoder's own budget check (encoder.cpp, "the chosen configuration
+# iclforge::ac3::FrameEncoder's own budget check (encoder.cpp, "the chosen configuration
 # cannot fit its own headers at this rate"), and its cost moves with how many
 # streams the layout codes, with coupling and DRC, and - through the exponent
 # strategy and the delta bit allocation - with the AUDIO. So there is no one
@@ -212,7 +212,7 @@ SURMIXLEV = ["-3", "-6", "off"]
 # gate. The run summary breaks refusals down by reason so a shift in the mix
 # is visible rather than buried in one total.
 REFUSALS = {
-    # iclforge::FrameEncoder's budget check (encoder.cpp: "the chosen configuration
+    # iclforge::ac3::FrameEncoder's budget check (encoder.cpp: "the chosen configuration
     # cannot fit its own headers at this rate"). Reachable between a layout's
     # `min` and `robust` rates because the side-information cost moves with
     # coupling, DRC and the audio itself - see LAYOUTS.
@@ -535,7 +535,7 @@ def generate_pcm(rng, channels, blocks, rate, profile, correlation):
 
 
 def write_wav(path, data, rate, pcm16):
-    """A real WAV on disk - PCM16 or float32, the two iclforge::io::read_wav
+    """A real WAV on disk - PCM16 or float32, the two iclforge::ac3::io::read_wav
     accepts (src/ac3/src/io/wav.cpp). Both are exercised: the float path
     carries exact +/-1.0 full scale, which PCM16's asymmetric range cannot."""
     channels = len(data)

@@ -78,7 +78,7 @@ struct StreamTrace {
     // an encoder's rate-control search). Zero on an encoder-only trace.
     //
     // §7.2.2.1's composite SNR offset in force for this stream this block -
-    // iclforge::snr_offset(csnroffst, fsnroffst), already resolved from the
+    // iclforge::ac3::snr_offset(csnroffst, fsnroffst), already resolved from the
     // transmitted codes rather than left for a reader to recompute.
     int snr_offset = 0;
     // §7.2.2.5's masking curve, the value bap is actually derived from -

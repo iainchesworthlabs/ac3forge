@@ -94,7 +94,7 @@ class LayoutRenderer {
     static constexpr std::size_t kMaxObjects = 16;
     static constexpr std::size_t kMaxCoded = 16;
     // The standard AVR bass-management crossover - not §7.8's LFE handling
-    // (iclforge::OutputConfig::mix_lfe) or bundle C's ~120 Hz LFE-channel
+    // (iclforge::ac3::OutputConfig::mix_lfe) or bundle C's ~120 Hz LFE-channel
     // low-pass (iclforge::dsp::LfeLowpass), both different questions.
     static constexpr double kDefaultCrossoverHz = 80.0;
     // What set_crossover_hz() accepts: the span an AVR's speaker setup offers
@@ -166,7 +166,7 @@ class LayoutRenderer {
     }
 
     // The domain the decoder reconstructs the objects in
-    // (iclforge::DecoderConfig::joc_domain), which is what decides how far they
+    // (iclforge::ac3::DecoderConfig::joc_domain), which is what decides how far they
     // trail their bed: object_lag() becomes oba::joc::reconstruction_delay()
     // of it. kQmf, the decoder's default, until this says otherwise. A change
     // empties the LFE's delay line, so the LFE is silent for the new lag
@@ -422,7 +422,7 @@ class LayoutRenderer {
 
     // Drops the crossover filters' delay-line state (not their
     // coefficients) and silences the LFE's delay line, for reuse across
-    // streams - the same reasoning iclforge::OutputStage::reset() has for its own
+    // streams - the same reasoning iclforge::ac3::OutputStage::reset() has for its own
     // Lt/Rt phase-shift history. A no-op when nothing is small and no object
     // has been placed.
     void reset() {

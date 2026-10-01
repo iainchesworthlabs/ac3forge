@@ -27,8 +27,8 @@ namespace {
 void fill_tones(std::vector<std::vector<float>>& pcm, std::span<const double> tones,
                 int frame, double rate) {
     for (std::size_t ch = 0; ch < pcm.size(); ++ch) {
-        for (int n = 0; n < iclforge::kSamplesPerFrame; ++n) {
-            const double t = (frame * iclforge::kSamplesPerFrame + n) / rate;
+        for (int n = 0; n < iclforge::ac3::kSamplesPerFrame; ++n) {
+            const double t = (frame * iclforge::ac3::kSamplesPerFrame + n) / rate;
             pcm[ch][static_cast<std::size_t>(n)] = static_cast<float>(
                 0.4 * std::sin(2.0 * std::numbers::pi * tones[ch] * t));
         }
@@ -48,12 +48,12 @@ std::vector<std::span<const float>> views_of(const std::vector<std::vector<float
 int encode_stereo() {
     // Heap-allocated: FrameEncoder carries several KB of MDCT scratch/history
     // state (PREfast's C6262).
-    auto encoder = std::make_unique<iclforge::eac3::FrameEncoder>(iclforge::eac3::FrameConfig{
+    auto encoder = std::make_unique<iclforge::ac3::eac3::FrameEncoder>(iclforge::ac3::eac3::FrameConfig{
         .bitrate_kbps = 192,
-        .acmod = iclforge::Acmod::k2_0,
+        .acmod = iclforge::ac3::Acmod::k2_0,
     });
 
-    std::vector<std::vector<float>> pcm(2, std::vector<float>(iclforge::kSamplesPerFrame));
+    std::vector<std::vector<float>> pcm(2, std::vector<float>(iclforge::ac3::kSamplesPerFrame));
     const auto views = views_of(pcm);
     constexpr std::array<double, 2> tones{440.0, 660.0};
 
@@ -75,10 +75,10 @@ int encode_stereo() {
 int encode_714() {
     // The bed is self-sufficient: a decoder that reads only the independent
     // substream gets a complete 5.1 programme.
-    iclforge::eac3::AccessUnitConfig config;
+    iclforge::ac3::eac3::AccessUnitConfig config;
     config.independent = {
         .bitrate_kbps = 384,
-        .acmod = iclforge::Acmod::k3_2,
+        .acmod = iclforge::ac3::Acmod::k3_2,
         .lfe = true,
     };
     // Each dependent gets its own slice of the rate — substreams share a frame
@@ -87,23 +87,23 @@ int encode_714() {
     // and the rest extend the layout.
     config.dependents.push_back({
         .bitrate_kbps = 192,
-        .acmod = iclforge::Acmod::k2_2,
-        .chanmap = iclforge::eac3::chanmap::k71Rear,  // Ls, Rs, Lrs, Rrs
+        .acmod = iclforge::ac3::Acmod::k2_2,
+        .chanmap = iclforge::ac3::eac3::chanmap::k71Rear,  // Ls, Rs, Lrs, Rrs
     });
     config.dependents.push_back({
         .bitrate_kbps = 192,
-        .acmod = iclforge::Acmod::k2_2,
-        .chanmap = iclforge::eac3::chanmap::kTopQuad,  // Vhl, Vhr, Lts, Rts
+        .acmod = iclforge::ac3::Acmod::k2_2,
+        .chanmap = iclforge::ac3::eac3::chanmap::kTopQuad,  // Vhl, Vhr, Lts, Rts
     });
 
-    iclforge::eac3::AccessUnitEncoder encoder{config};
+    iclforge::ac3::eac3::AccessUnitEncoder encoder{config};
 
     // Channels are grouped by substream in transmission order: the
     // independent's first in Table 5.8 order with LFE last, then each
     // dependent's in the order its chanmap names them.
     const auto channel_count = static_cast<std::size_t>(encoder.channel_count());
     std::vector<std::vector<float>> pcm(channel_count,
-                                        std::vector<float>(iclforge::kSamplesPerFrame));
+                                        std::vector<float>(iclforge::ac3::kSamplesPerFrame));
     const auto views = views_of(pcm);
     const std::vector<double> tones{1000.0, 800.0,  1200.0, 600.0,  1400.0, 60.0,
                                     500.0,  1600.0, 400.0,  1800.0, 2000.0, 2400.0,

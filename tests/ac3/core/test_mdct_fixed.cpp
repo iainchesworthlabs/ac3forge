@@ -40,16 +40,16 @@ Comparison compare(const std::array<double, 256>& wide_coeffs, bool short_block)
     for (std::size_t i = 0; i < 256; ++i) {
         fixed_coeffs[i] = Fixed32{wide_coeffs[i]};
         rounded[i] = static_cast<double>(fixed_coeffs[i]);
-        REQUIRE(std::abs(fixed_coeffs[i].raw) < iclforge::internal::kFixedImdctInputLimit);
+        REQUIRE(std::abs(fixed_coeffs[i].raw) < iclforge::ac3::internal::kFixedImdctInputLimit);
     }
     std::array<double, 512> wide_out{};
     std::array<Fixed32, 512> fixed_out{};
     if (short_block) {
-        iclforge::imdct256_pair_windowed(rounded, wide_out, /*fast=*/true);
-        iclforge::internal::imdct256_pair_windowed_fixed(fixed_coeffs, fixed_out);
+        iclforge::ac3::imdct256_pair_windowed(rounded, wide_out, /*fast=*/true);
+        iclforge::ac3::internal::imdct256_pair_windowed_fixed(fixed_coeffs, fixed_out);
     } else {
-        iclforge::imdct512_windowed(rounded, wide_out, /*fast=*/true);
-        iclforge::internal::imdct512_windowed_fixed(fixed_coeffs, fixed_out);
+        iclforge::ac3::imdct512_windowed(rounded, wide_out, /*fast=*/true);
+        iclforge::ac3::internal::imdct512_windowed_fixed(fixed_coeffs, fixed_out);
     }
     Comparison c;
     double signal = 0.0;
@@ -146,7 +146,7 @@ TEST_CASE("the pair's product is Fixed32's wherever Fixed32's does not saturate"
     // (mdct_fixed.hpp); everywhere Fixed32's product fits, including the
     // rounding edges and a factor of exactly one or minus one, it has to be
     // the same raw value.
-    using iclforge::internal::ImdctValue;
+    using iclforge::ac3::internal::ImdctValue;
     std::mt19937_64 rng(0x7e11);
     int checked = 0;
     int mismatches = 0;
@@ -194,8 +194,8 @@ TEST_CASE("the fixed inverse is linear in the block exponent", "[fixed32]") {
     }
     std::array<Fixed32, 512> out_full{};
     std::array<Fixed32, 512> out_half{};
-    iclforge::internal::imdct512_windowed_fixed(full, out_full);
-    iclforge::internal::imdct512_windowed_fixed(half, out_half);
+    iclforge::ac3::internal::imdct512_windowed_fixed(full, out_full);
+    iclforge::ac3::internal::imdct512_windowed_fixed(half, out_half);
     double worst = 0.0;
     double signal = 0.0;
     double error = 0.0;

@@ -5,76 +5,76 @@
 #include "iclforge/ac3/core/tables.hpp"
 
 TEST_CASE("frame geometry constants", "[tables]") {
-    STATIC_CHECK(iclforge::kSyncWord == 0x0B77);
-    STATIC_CHECK(iclforge::kSamplesPerFrame == 1536);
-    STATIC_CHECK(iclforge::kBlocksPerFrame * iclforge::kSamplesPerBlock ==
-                 iclforge::kSamplesPerFrame);
+    STATIC_CHECK(iclforge::ac3::kSyncWord == 0x0B77);
+    STATIC_CHECK(iclforge::ac3::kSamplesPerFrame == 1536);
+    STATIC_CHECK(iclforge::ac3::kBlocksPerFrame * iclforge::ac3::kSamplesPerBlock ==
+                 iclforge::ac3::kSamplesPerFrame);
 }
 
 TEST_CASE("the 19 legal bit rates, ascending", "[tables]") {
-    STATIC_CHECK(iclforge::kBitratesKbps.size() == 19);
-    STATIC_CHECK(iclforge::kBitratesKbps.front() == 32);
-    STATIC_CHECK(iclforge::kBitratesKbps.back() == 640);
-    CHECK(std::ranges::is_sorted(iclforge::kBitratesKbps));
-    CHECK(iclforge::is_valid_bitrate(448));
-    CHECK_FALSE(iclforge::is_valid_bitrate(100));
+    STATIC_CHECK(iclforge::ac3::kBitratesKbps.size() == 19);
+    STATIC_CHECK(iclforge::ac3::kBitratesKbps.front() == 32);
+    STATIC_CHECK(iclforge::ac3::kBitratesKbps.back() == 640);
+    CHECK(std::ranges::is_sorted(iclforge::ac3::kBitratesKbps));
+    CHECK(iclforge::ac3::is_valid_bitrate(448));
+    CHECK_FALSE(iclforge::ac3::is_valid_bitrate(100));
 }
 
 TEST_CASE("clamp_to_legal_ac3_bitrate reduces to the nearest legal rung at or below",
          "[tables]") {
     // Exactly on a rung: unchanged.
-    CHECK(iclforge::clamp_to_legal_ac3_bitrate(192) == 192);
-    CHECK(iclforge::clamp_to_legal_ac3_bitrate(640) == 640);
-    CHECK(iclforge::clamp_to_legal_ac3_bitrate(32) == 32);
+    CHECK(iclforge::ac3::clamp_to_legal_ac3_bitrate(192) == 192);
+    CHECK(iclforge::ac3::clamp_to_legal_ac3_bitrate(640) == 640);
+    CHECK(iclforge::ac3::clamp_to_legal_ac3_bitrate(32) == 32);
     // Between two rungs: rounds DOWN, never up (never exceed what was asked
     // for).
-    CHECK(iclforge::clamp_to_legal_ac3_bitrate(200) == 192);
-    CHECK(iclforge::clamp_to_legal_ac3_bitrate(639) == 576);
+    CHECK(iclforge::ac3::clamp_to_legal_ac3_bitrate(200) == 192);
+    CHECK(iclforge::ac3::clamp_to_legal_ac3_bitrate(639) == 576);
     // Above the AC-3 ceiling (an E-AC-3-only rung like 768, or a VBR
     // average, or anything else off the table): capped at 640.
-    CHECK(iclforge::clamp_to_legal_ac3_bitrate(768) == 640);
-    CHECK(iclforge::clamp_to_legal_ac3_bitrate(4000) == 640);
+    CHECK(iclforge::ac3::clamp_to_legal_ac3_bitrate(768) == 640);
+    CHECK(iclforge::ac3::clamp_to_legal_ac3_bitrate(4000) == 640);
     // Below the floor: the lowest legal rung, not zero.
-    CHECK(iclforge::clamp_to_legal_ac3_bitrate(0) == 32);
-    CHECK(iclforge::clamp_to_legal_ac3_bitrate(10) == 32);
+    CHECK(iclforge::ac3::clamp_to_legal_ac3_bitrate(0) == 32);
+    CHECK(iclforge::ac3::clamp_to_legal_ac3_bitrate(10) == 32);
     // The result is always itself a legal rung.
     for (const auto requested : {0u, 10u, 33u, 100u, 300u, 500u, 600u, 700u, 10000u}) {
-        CHECK(iclforge::is_valid_bitrate(iclforge::clamp_to_legal_ac3_bitrate(requested)));
+        CHECK(iclforge::ac3::is_valid_bitrate(iclforge::ac3::clamp_to_legal_ac3_bitrate(requested)));
     }
 }
 
 TEST_CASE("sample rate codes (A/52 5.4.1.3)", "[tables]") {
-    STATIC_CHECK(iclforge::sample_rate_hz(iclforge::SampleRate::k48000) == 48000);
-    STATIC_CHECK(iclforge::sample_rate_hz(iclforge::SampleRate::k44100) == 44100);
-    STATIC_CHECK(iclforge::sample_rate_hz(iclforge::SampleRate::k32000) == 32000);
-    STATIC_CHECK(static_cast<int>(iclforge::SampleRate::k48000) == 0);
-    STATIC_CHECK(static_cast<int>(iclforge::SampleRate::k44100) == 1);
-    STATIC_CHECK(static_cast<int>(iclforge::SampleRate::k32000) == 2);
+    STATIC_CHECK(iclforge::ac3::sample_rate_hz(iclforge::ac3::SampleRate::k48000) == 48000);
+    STATIC_CHECK(iclforge::ac3::sample_rate_hz(iclforge::ac3::SampleRate::k44100) == 44100);
+    STATIC_CHECK(iclforge::ac3::sample_rate_hz(iclforge::ac3::SampleRate::k32000) == 32000);
+    STATIC_CHECK(static_cast<int>(iclforge::ac3::SampleRate::k48000) == 0);
+    STATIC_CHECK(static_cast<int>(iclforge::ac3::SampleRate::k44100) == 1);
+    STATIC_CHECK(static_cast<int>(iclforge::ac3::SampleRate::k32000) == 2);
 }
 
 TEST_CASE("acmod channel counts (A/52 5.4.2.3)", "[tables]") {
-    using iclforge::Acmod;
-    STATIC_CHECK(iclforge::fullbw_channel_count(Acmod::kDualMono) == 2);
-    STATIC_CHECK(iclforge::fullbw_channel_count(Acmod::k1_0) == 1);
-    STATIC_CHECK(iclforge::fullbw_channel_count(Acmod::k2_0) == 2);
-    STATIC_CHECK(iclforge::fullbw_channel_count(Acmod::k3_2) == 5);  // 5.1 minus the LFE
+    using iclforge::ac3::Acmod;
+    STATIC_CHECK(iclforge::ac3::fullbw_channel_count(Acmod::kDualMono) == 2);
+    STATIC_CHECK(iclforge::ac3::fullbw_channel_count(Acmod::k1_0) == 1);
+    STATIC_CHECK(iclforge::ac3::fullbw_channel_count(Acmod::k2_0) == 2);
+    STATIC_CHECK(iclforge::ac3::fullbw_channel_count(Acmod::k3_2) == 5);  // 5.1 minus the LFE
 }
 
 TEST_CASE("exact frame sizes at 48 and 32 kHz", "[tables]") {
-    using iclforge::SampleRate;
+    using iclforge::ac3::SampleRate;
     // Verified anchors: 640 kbit/s @ 48 kHz is exactly 2560 bytes per frame.
-    STATIC_CHECK(iclforge::frame_size_bytes(SampleRate::k48000, 640) == 2560u);
-    STATIC_CHECK(iclforge::frame_size_bytes(SampleRate::k48000, 448) == 1792u);
-    STATIC_CHECK(iclforge::frame_size_bytes(SampleRate::k48000, 192) == 768u);
-    STATIC_CHECK(iclforge::frame_size_bytes(SampleRate::k32000, 640) == 3840u);
+    STATIC_CHECK(iclforge::ac3::frame_size_bytes(SampleRate::k48000, 640) == 2560u);
+    STATIC_CHECK(iclforge::ac3::frame_size_bytes(SampleRate::k48000, 448) == 1792u);
+    STATIC_CHECK(iclforge::ac3::frame_size_bytes(SampleRate::k48000, 192) == 768u);
+    STATIC_CHECK(iclforge::ac3::frame_size_bytes(SampleRate::k32000, 640) == 3840u);
 
     // 44.1 kHz comes verbatim from Table 5.18; the odd frmsizecod pads one word.
-    STATIC_CHECK(iclforge::frame_size_bytes(SampleRate::k44100, 448) == 1950u);
-    STATIC_CHECK(iclforge::frame_size_bytes(SampleRate::k44100, 448, true) == 1952u);
-    STATIC_CHECK(iclforge::frame_size_bytes(SampleRate::k44100, 32) == 138u);
+    STATIC_CHECK(iclforge::ac3::frame_size_bytes(SampleRate::k44100, 448) == 1950u);
+    STATIC_CHECK(iclforge::ac3::frame_size_bytes(SampleRate::k44100, 448, true) == 1952u);
+    STATIC_CHECK(iclforge::ac3::frame_size_bytes(SampleRate::k44100, 32) == 138u);
     // The pad flag only changes 44.1 kHz sizes.
-    STATIC_CHECK(iclforge::frame_size_bytes(SampleRate::k48000, 448, true) == 1792u);
+    STATIC_CHECK(iclforge::ac3::frame_size_bytes(SampleRate::k48000, 448, true) == 1792u);
 
     // Illegal bit rates are rejected at any sample rate.
-    STATIC_CHECK(iclforge::frame_size_bytes(SampleRate::k48000, 100) == std::nullopt);
+    STATIC_CHECK(iclforge::ac3::frame_size_bytes(SampleRate::k48000, 100) == std::nullopt);
 }

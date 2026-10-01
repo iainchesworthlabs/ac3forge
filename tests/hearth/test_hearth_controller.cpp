@@ -261,7 +261,7 @@ TEST_CASE("media_bitstream_to_map: Lo/Ro mix levels and the preferred downmix la
 
 TEST_CASE("media_bitstream_to_map: Lt/Rt mix levels (ltrt_clev/ltrt_slev) join the Lo/Ro pair",
           "[hearth][hearth-controller]") {
-    // iclforge::MixLevels carries ltrt_clev/ltrt_slev
+    // iclforge::ac3::MixLevels carries ltrt_clev/ltrt_slev
     // (src/ac3/include/iclforge/ac3/decoder/output.hpp) alongside loro_clev/loro_slev;
     // media_bitstream_to_map() reads both pairs into mixLevels, the Lo/Ro one unlabelled
     // (centreDb/surroundDb, kept as DecoderEac3.qml's own "This stream" card already reads it) and
@@ -293,7 +293,7 @@ TEST_CASE("media_bitstream_to_map: Lt/Rt mix levels (ltrt_clev/ltrt_slev) join t
 
 TEST_CASE("media_probe_to_map: a constant dialnorm carries no dialnormMaxDb; a varying one does",
           "[hearth][hearth-controller]") {
-    iclforge::io::ProbeReport report;
+    iclforge::ac3::io::ProbeReport report;
     report.dialnorm.seen = true;
     report.dialnorm.min = -27;
     report.dialnorm.max = -27;
@@ -314,7 +314,7 @@ TEST_CASE("media_probe_to_map: a constant dialnorm carries no dialnormMaxDb; a v
 
 TEST_CASE("media_probe_to_map: EMDF payload ids and the reconstructed object count are both exposed",
           "[hearth][hearth-controller]") {
-    iclforge::io::ProbeReport report;
+    iclforge::ac3::io::ProbeReport report;
     report.emdf_payload_ids = {2, 6, 118};
     iclforge::oba::Program program{};
     program.dynamic_objects = 5;
@@ -344,7 +344,7 @@ TEST_CASE("media_probe_to_map: compr/dynrng expose their real min/max range, not
     // reports with identical .seen but very different ranges producing
     // different Min/Max readings confirms the real range is carried
     // through, not collapsed to the bare boolean.
-    iclforge::io::ProbeReport narrow;
+    iclforge::ac3::io::ProbeReport narrow;
     narrow.compr.seen = true;
     narrow.compr.min = 0;
     narrow.compr.max = 0;
@@ -352,7 +352,7 @@ TEST_CASE("media_probe_to_map: compr/dynrng expose their real min/max range, not
     narrow.dynrng.min = 0;
     narrow.dynrng.max = 0;
 
-    iclforge::io::ProbeReport wide;
+    iclforge::ac3::io::ProbeReport wide;
     wide.compr.seen = true;
     wide.compr.min = -80;
     wide.compr.max = 80;
@@ -390,7 +390,7 @@ TEST_CASE("media_probe_to_map: compr/dynrng expose their real min/max range, not
 
 TEST_CASE("media_probe_to_map: tool-usage counters and crc/parse failures round trip",
           "[hearth][hearth-controller]") {
-    iclforge::io::ProbeReport report;
+    iclforge::ac3::io::ProbeReport report;
     report.bitrate_kbps = 384.0;
     report.access_units = 900;
     report.syncframes = 900;
@@ -415,7 +415,7 @@ TEST_CASE("media_probe_to_map: tool-usage counters and crc/parse failures round 
 
 TEST_CASE("channel_level_to_map: peak/hold/rms/clipped copy across unchanged",
           "[hearth][hearth-controller]") {
-    iclforge::analysis::ChannelLevel level;
+    iclforge::ac3::analysis::ChannelLevel level;
     level.peak_db = -3.5;
     level.hold_db = -1.0;
     level.rms_db = -12.25;
@@ -469,19 +469,19 @@ TEST_CASE("display_object_to_map: a dynamic object's label is empty", "[hearth][
 
 TEST_CASE("decoder settings: every control round-trips through the map", "[hearth][hearth-controller]") {
     DecoderSettings settings;
-    settings.mode = iclforge::OperatingMode::kRf;
+    settings.mode = iclforge::ac3::OperatingMode::kRf;
     settings.rf_ceiling_db = -18.0;
     settings.drc_cut = 0.3;
     settings.drc_boost = 0.6;
     settings.heavy_compression = true;
     settings.normalise_dialogue = false;
-    settings.stereo_fold = iclforge::DownmixTarget::kLtRt;
+    settings.stereo_fold = iclforge::ac3::DownmixTarget::kLtRt;
     settings.ltrt_phase_shift = false;
     settings.mix_lfe = true;
     settings.dual_mono = iclforge::hearth::DualMonoChoice::kSecond;
-    settings.objects = iclforge::render::ObjectsPolicy::kAlways;
+    settings.objects = iclforge::ac3::render::ObjectsPolicy::kAlways;
     settings.joc_domain = iclforge::oba::joc::Domain::kMdctBand;
-    settings.concealment = iclforge::ConcealmentPolicy::kMute;
+    settings.concealment = iclforge::ac3::ConcealmentPolicy::kMute;
     settings.fast_inverse_transform = false;
 
     const QVariantMap map = iclforge::hearth::ui::decoder_settings_to_map(settings);
@@ -507,7 +507,7 @@ TEST_CASE("decoder settings: every control round-trips through the map", "[heart
 TEST_CASE("decoder_settings_from_map: a key the map does not carry keeps base's value",
           "[hearth][hearth-controller]") {
     DecoderSettings base;
-    base.mode = iclforge::OperatingMode::kCustom;
+    base.mode = iclforge::ac3::OperatingMode::kCustom;
     base.rf_ceiling_db = -9.0;
     base.dual_mono = iclforge::hearth::DualMonoChoice::kFirst;
 
@@ -523,7 +523,7 @@ TEST_CASE("decoder_settings_from_map: a key the map does not carry keeps base's 
     partial[QStringLiteral("rfCeilingDb")] = -3.0;
     const DecoderSettings one_field_changed = iclforge::hearth::ui::decoder_settings_from_map(partial, base);
     CHECK(one_field_changed.rf_ceiling_db == Catch::Approx(-3.0));
-    CHECK(one_field_changed.mode == iclforge::OperatingMode::kCustom);
+    CHECK(one_field_changed.mode == iclforge::ac3::OperatingMode::kCustom);
     CHECK(one_field_changed.dual_mono == iclforge::hearth::DualMonoChoice::kFirst);
 }
 
@@ -533,7 +533,7 @@ TEST_CASE("decoder settings: mode/downmix/dual-mono/objects/joc-domain/concealme
     // SegmentedControl models) - a rename here is a silent breakage there,
     // which is exactly the shape of bug this file exists to catch.
     DecoderSettings settings;
-    for (const auto mode : {iclforge::OperatingMode::kLine, iclforge::OperatingMode::kRf, iclforge::OperatingMode::kCustom}) {
+    for (const auto mode : {iclforge::ac3::OperatingMode::kLine, iclforge::ac3::OperatingMode::kRf, iclforge::ac3::OperatingMode::kCustom}) {
         settings.mode = mode;
         const QString name = iclforge::hearth::ui::decoder_settings_to_map(settings).value(QStringLiteral("mode")).toString();
         const DecoderSettings back = iclforge::hearth::ui::decoder_settings_from_map(
@@ -776,7 +776,7 @@ TEST_CASE("media_info_to_map: path/codec/duration/streamSamples/programmes/neste
     bits.levels.loro_clev = 1.0;
     info.bitstream = bits;
 
-    iclforge::io::ProbeReport probe;
+    iclforge::ac3::io::ProbeReport probe;
     probe.bitrate_kbps = 640.0;
     info.probe = probe;
 

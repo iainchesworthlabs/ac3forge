@@ -28,10 +28,10 @@ audio objects around a room canvas and encode the result as E-AC-3 + JOC, live
 
 Dropping a `.wav` decodes it through the browser's own `AudioContext`, which resamples it to the
 chosen coding rate (32, 44.1 or 48 kHz). The page then makes two passes. The first measures the PCM
-with `iclforge::meta::LoudnessMeter` and derives the stream's dialnorm from the integrated loudness. The
-second encodes it frame by frame through `iclforge::FrameEncoder` (AC-3) or `iclforge::eac3::FrameEncoder`
+with `iclforge::ac3::meta::LoudnessMeter` and derives the stream's dialnorm from the integrated loudness. The
+second encodes it frame by frame through `iclforge::ac3::FrameEncoder` (AC-3) or `iclforge::ac3::eac3::FrameEncoder`
 (E-AC-3), with that dialnorm in every frame. The same measurement is evaluated against
-[`forge qc`](forge/cli/commands.md)'s own five delivery presets (`iclforge::meta::evaluate_qc_gate`): a
+[`forge qc`](forge/cli/commands.md)'s own five delivery presets (`iclforge::ac3::meta::evaluate_qc_gate`): a
 loud file fails every preset, a properly-mastered one passes the presets it meets.
 
 Mono, stereo and 5.1 files encode as either format. The wide layouts, 7.1, 5.1.4 and 7.1.4 (8, 10

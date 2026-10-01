@@ -74,7 +74,7 @@ struct Eac3Stream {
 
 // Phase-continuous tones, one per coded channel, through the C++ E-AC-3
 // encoder - the raw-byte input side of every C-API decode test below.
-Eac3Stream encode_eac3_stream(iclforge::eac3::FrameEncoder& encoder,
+Eac3Stream encode_eac3_stream(iclforge::ac3::eac3::FrameEncoder& encoder,
                               const std::vector<double>& tones, int frames) {
     const auto nchans = static_cast<std::size_t>(encoder.channel_count());
     REQUIRE(tones.size() == nchans);
@@ -225,7 +225,7 @@ TEST_CASE("iclforge_encoder_encode_frame rejects a mismatched channel/sample cou
     iclforge_encoder_destroy(encoder);
 }
 
-TEST_CASE("iclforge_decoder_decode_frame reports the same errors iclforge::FrameDecoder does",
+TEST_CASE("iclforge_decoder_decode_frame reports the same errors iclforge::ac3::FrameDecoder does",
           "[capi]") {
     iclforge_decoder_config_t config;
     iclforge_decoder_config_init(&config);
@@ -362,7 +362,7 @@ TEST_CASE("E-AC-3 substreams round-trip through the C API across the Annex E too
           "[capi][eac3]") {
     struct ToolCombo {
         const char* name;
-        iclforge::eac3::FrameConfig config;
+        iclforge::ac3::eac3::FrameConfig config;
     };
     const ToolCombo combos[] = {
         {"plain", {.bitrate_kbps = 192}},
@@ -375,7 +375,7 @@ TEST_CASE("E-AC-3 substreams round-trip through the C API across the Annex E too
     };
     for (const auto& combo : combos) {
         INFO(combo.name);
-        iclforge::eac3::FrameEncoder encoder{combo.config};
+        iclforge::ac3::eac3::FrameEncoder encoder{combo.config};
         const auto stream = encode_eac3_stream(encoder, {1000.0, 800.0}, 4);
 
         iclforge_decoder_config_t config;
@@ -627,7 +627,7 @@ TEST_CASE("E-AC-3 C encode entry points surface the encoder's own error codes", 
     iclforge_eac3_access_unit_encoder_t* au_encoder = nullptr;
     REQUIRE(iclforge_eac3_access_unit_encoder_create(&independent, &dependent, 1, &au_encoder) ==
             ICLFORGE_OK);
-    // iclforge::eac3::AccessUnitEncoder's own constructor validates eagerly and
+    // iclforge::ac3::eac3::AccessUnitEncoder's own constructor validates eagerly and
     // silently builds no substreams when a config is invalid - channel_count()
     // is 0 rather than the 8 a caller might expect from acmod/lfe alone;
     // encode() below is how the real reason (an invalid channel map) surfaces.
@@ -662,12 +662,12 @@ TEST_CASE("E-AC-3 access units with a dependent substream cross the C API intact
     // 5.1.2: a 3/2+LFE bed plus one dependent substream carrying Vhl/Vhr -
     // the same layout family tests/ac3/decoder/test_eac3_decoder.cpp proves against the
     // C++ decoder; here the C access-unit surface is what walks it.
-    const iclforge::eac3::AccessUnitConfig config{
-        .independent = {.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true},
+    const iclforge::ac3::eac3::AccessUnitConfig config{
+        .independent = {.bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true},
         .dependents = {{.bitrate_kbps = 192,
-                        .acmod = iclforge::Acmod::k2_0,
-                        .chanmap = iclforge::eac3::chanmap::k512Height}}};
-    iclforge::eac3::AccessUnitEncoder encoder{config};
+                        .acmod = iclforge::ac3::Acmod::k2_0,
+                        .chanmap = iclforge::ac3::eac3::chanmap::k512Height}}};
+    iclforge::ac3::eac3::AccessUnitEncoder encoder{config};
     REQUIRE(encoder.channel_count() == 8);
 
     const std::vector<double> tones = {1000.0, 800.0, 1200.0, 600.0, 1400.0, 60.0, 2000.0, 1300.0};
@@ -791,9 +791,9 @@ TEST_CASE("E-AC-3 access units with a dependent substream cross the C API intact
     CHECK(iclforge_decoded_substream_id(dependent) == 0);
     CHECK(iclforge_decoded_substream_acmod(dependent) == ICLFORGE_ACMOD_2_0);
     CHECK(iclforge_decoded_substream_has_chanmap(dependent) == 1);
-    CHECK(iclforge_decoded_substream_chanmap(dependent) == iclforge::eac3::chanmap::k512Height);
+    CHECK(iclforge_decoded_substream_chanmap(dependent) == iclforge::ac3::eac3::chanmap::k512Height);
     CHECK(iclforge_decoded_substream_location_map(dependent) ==
-          iclforge::eac3::chanmap::k512Height);
+          iclforge::ac3::eac3::chanmap::k512Height);
     CHECK(iclforge_decoded_substream_last_dependent(dependent) == 1);
     iclforge_decoded_substream_destroy(dependent);
     iclforge_eac3_decoder_destroy(frame_decoder);
@@ -811,15 +811,15 @@ TEST_CASE("E-AC-3 dual mono metadata crosses the C boundary on both decode surfa
     // and 5 dB for Ch2 (dialnorm 25): past the default -0.5 dBFS ceiling for
     // Ch1, and past the -3 dBFS one Ch2 is given here, so both compressors and
     // both range controllers act rather than idle at unity.
-    iclforge::eac3::FrameEncoder encoder{
+    iclforge::ac3::eac3::FrameEncoder encoder{
         {.bitrate_kbps = 192,
-         .acmod = iclforge::Acmod::kDualMono,
+         .acmod = iclforge::ac3::Acmod::kDualMono,
          .dialnorm = 27,
          .dialnorm2 = 25,
-         .drc = iclforge::meta::profile(iclforge::meta::ProfileId::kFilmStandard),
-         .heavy = iclforge::meta::HeavyConfig{},
-         .drc2 = iclforge::meta::profile(iclforge::meta::ProfileId::kMusicLight),
-         .heavy2 = iclforge::meta::HeavyConfig{.peak_ceiling_dbfs = -3.0}}};
+         .drc = iclforge::ac3::meta::profile(iclforge::ac3::meta::ProfileId::kFilmStandard),
+         .heavy = iclforge::ac3::meta::HeavyConfig{},
+         .drc2 = iclforge::ac3::meta::profile(iclforge::ac3::meta::ProfileId::kMusicLight),
+         .heavy2 = iclforge::ac3::meta::HeavyConfig{.peak_ceiling_dbfs = -3.0}}};
     const auto stream = encode_eac3_stream(encoder, {900.0, 500.0}, 3);
 
     iclforge_decoder_config_t config;
@@ -911,8 +911,8 @@ TEST_CASE("the C API holds back and flushes transient pre-noise frames like the 
     // it corrected" (tests/ac3/decoder/test_eac3_decoder.cpp). The silent frames here are
     // the tool's own semantics - frames that never switch a block release
     // immediately - not the test signal; the transient itself is real audio.
-    iclforge::eac3::FrameEncoder encoder{
-        {.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0, .transient_prenoise = true}};
+    iclforge::ac3::eac3::FrameEncoder encoder{
+        {.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k2_0, .transient_prenoise = true}};
 
     iclforge_decoder_config_t config;
     iclforge_decoder_config_init(&config);
@@ -1064,7 +1064,7 @@ TEST_CASE("E-AC-3 C decode entry points reject bad arguments and bad bitstreams"
 
     // A real frame decodes on this same decoder; the same frame cut short is
     // an error again, not a crash and not a false success.
-    iclforge::eac3::FrameEncoder encoder{{.bitrate_kbps = 192}};
+    iclforge::ac3::eac3::FrameEncoder encoder{{.bitrate_kbps = 192}};
     const auto stream = encode_eac3_stream(encoder, {1000.0, 800.0}, 1);
     REQUIRE(iclforge_eac3_decoder_decode_substream(decoder, stream.bytes.data(),
                                                    stream.bytes.size(), &substream) == ICLFORGE_OK);
@@ -1368,7 +1368,7 @@ TEST_CASE("Atmos C API tool variants round-trip objects and beds", "[capi][atmos
 }
 
 TEST_CASE("C encode entry points surface the encoder's own error codes", "[capi]") {
-    // Each case maps one iclforge::FrameError onto its C status through the
+    // Each case maps one iclforge::ac3::FrameError onto its C status through the
     // internal from_cpp() bridge - the encode-side sibling of the decode
     // range checks above.
     std::vector<float> samples(ICLFORGE_SAMPLES_PER_FRAME);
@@ -1937,12 +1937,12 @@ TEST_CASE(
     // 5.1.2, same layout as the dependent-substream test above - eight
     // rendered channels out of the sixteen documented spans, so the unused
     // trailing spans staying untouched is exercised for real.
-    const iclforge::eac3::AccessUnitConfig config{
-        .independent = {.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true},
+    const iclforge::ac3::eac3::AccessUnitConfig config{
+        .independent = {.bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true},
         .dependents = {{.bitrate_kbps = 192,
-                        .acmod = iclforge::Acmod::k2_0,
-                        .chanmap = iclforge::eac3::chanmap::k512Height}}};
-    iclforge::eac3::AccessUnitEncoder encoder{config};
+                        .acmod = iclforge::ac3::Acmod::k2_0,
+                        .chanmap = iclforge::ac3::eac3::chanmap::k512Height}}};
+    iclforge::ac3::eac3::AccessUnitEncoder encoder{config};
     REQUIRE(encoder.channel_count() == 8);
 
     const std::vector<double> tones = {1000.0, 800.0, 1200.0, 600.0, 1400.0, 60.0, 2000.0, 1300.0};
@@ -2023,8 +2023,8 @@ TEST_CASE(
     // Mirrors tests/ac3/decoder/test_eac3_decoder.cpp's C++ test of the same name -
     // see the C API's own version of this table on the AC-3 flush test above
     // for what the silent/transient split is standing in for.
-    iclforge::eac3::FrameEncoder encoder{
-        {.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0, .transient_prenoise = true}};
+    iclforge::ac3::eac3::FrameEncoder encoder{
+        {.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k2_0, .transient_prenoise = true}};
 
     iclforge_decoder_config_t config;
     iclforge_decoder_config_init(&config);
@@ -2100,7 +2100,7 @@ TEST_CASE(
     "iclforge_eac3_decoder_decode_access_unit_into rejects bad arguments and a mismatched "
     "channel/sample count",
     "[capi][eac3]") {
-    iclforge::eac3::FrameEncoder encoder{{.bitrate_kbps = 192}};
+    iclforge::ac3::eac3::FrameEncoder encoder{{.bitrate_kbps = 192}};
     const auto stream = encode_eac3_stream(encoder, {1000.0, 800.0}, 1);
 
     iclforge_decoder_config_t config;
@@ -2160,7 +2160,7 @@ TEST_CASE(
 
 // --- scan / ScannedStream (legacy item AP5) -----------------------------------
 
-TEST_CASE("iclforge_scan reports the same shape iclforge::io::scan does for an AC-3 stream",
+TEST_CASE("iclforge_scan reports the same shape iclforge::ac3::io::scan does for an AC-3 stream",
           "[capi][scan]") {
     iclforge_encoder_config_t config;
     iclforge_encoder_config_init(&config);
@@ -2287,12 +2287,12 @@ TEST_CASE(
     "iclforge_scan reports programme and substream detail for an E-AC-3 access unit with a "
     "dependent",
     "[capi][scan][eac3]") {
-    const iclforge::eac3::AccessUnitConfig config{
-        .independent = {.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true},
+    const iclforge::ac3::eac3::AccessUnitConfig config{
+        .independent = {.bitrate_kbps = 448, .acmod = iclforge::ac3::Acmod::k3_2, .lfe = true},
         .dependents = {{.bitrate_kbps = 192,
-                        .acmod = iclforge::Acmod::k2_0,
-                        .chanmap = iclforge::eac3::chanmap::k512Height}}};
-    iclforge::eac3::AccessUnitEncoder encoder{config};
+                        .acmod = iclforge::ac3::Acmod::k2_0,
+                        .chanmap = iclforge::ac3::eac3::chanmap::k512Height}}};
+    iclforge::ac3::eac3::AccessUnitEncoder encoder{config};
     REQUIRE(encoder.channel_count() == 8);
 
     const std::vector<double> tones = {1000.0, 800.0, 1200.0, 600.0, 1400.0, 60.0, 2000.0, 1300.0};
@@ -2320,8 +2320,8 @@ TEST_CASE(
     CHECK(iclforge_scanned_stream_channels(scanned) == 8);  // bed + Vhl/Vhr folded in
     CHECK(iclforge_scanned_stream_substreams_per_unit(scanned) == 2);
     CHECK(iclforge_scanned_stream_channel_map(scanned) ==
-          (iclforge::eac3::chanmap::acmod_map(iclforge::Acmod::k3_2, true) |
-           iclforge::eac3::chanmap::k512Height));
+          (iclforge::ac3::eac3::chanmap::acmod_map(iclforge::ac3::Acmod::k3_2, true) |
+           iclforge::ac3::eac3::chanmap::k512Height));
 
     REQUIRE(iclforge_scanned_stream_access_unit_count(scanned) == 2);
     CHECK(iclforge_scanned_stream_access_unit(scanned, 0).offset == 0);
@@ -2346,9 +2346,9 @@ TEST_CASE(
     // programme - a broadcast "second service" (§5.4.2.2), not a dependent
     // widening one bed. Concatenated frame by frame, the same wire shape
     // iclforge_split_access_units already delimits into four access units.
-    iclforge::eac3::FrameEncoder programme0{{.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0}};
-    iclforge::eac3::FrameEncoder programme1{
-        {.bitrate_kbps = 96, .acmod = iclforge::Acmod::k1_0, .substreamid = 1}};
+    iclforge::ac3::eac3::FrameEncoder programme0{{.bitrate_kbps = 192, .acmod = iclforge::ac3::Acmod::k2_0}};
+    iclforge::ac3::eac3::FrameEncoder programme1{
+        {.bitrate_kbps = 96, .acmod = iclforge::ac3::Acmod::k1_0, .substreamid = 1}};
 
     std::vector<float> left(ICLFORGE_SAMPLES_PER_FRAME);
     std::vector<float> right(ICLFORGE_SAMPLES_PER_FRAME);
@@ -2560,7 +2560,7 @@ TEST_CASE("E-AC-3 structure and substream errors reach C as their own codes", "[
         iclforge_eac3_frame_config_init(&d);
         d.has_chanmap = 1;
     }
-    namespace cm = iclforge::eac3::chanmap;
+    namespace cm = iclforge::ac3::eac3::chanmap;
     dependents[0].acmod = ICLFORGE_ACMOD_3_2;
     dependents[0].bitrate_kbps = 448;
     dependents[0].chanmap = static_cast<uint16_t>(cm::kLcRcBit | cm::kLrsRrsBit | cm::kCsBit);
@@ -2668,7 +2668,7 @@ TEST_CASE("iclforge_loudness_meter_create/push reject bad arguments", "[capi][lo
     iclforge_loudness_meter_destroy(meter);
 }
 
-TEST_CASE("iclforge_dialnorm_from_lkfs mirrors iclforge::meta::dialnorm_from_lkfs",
+TEST_CASE("iclforge_dialnorm_from_lkfs mirrors iclforge::ac3::meta::dialnorm_from_lkfs",
           "[capi][loudness]") {
     CHECK(iclforge_dialnorm_from_lkfs(-24.0) == 24);
     CHECK(iclforge_dialnorm_from_lkfs(-1.0) == 1);
@@ -2783,7 +2783,7 @@ TEST_CASE("iclforge_level_meter_process rejects bad arguments", "[capi][levels]"
     iclforge_level_meter_destroy(meter);
 }
 
-TEST_CASE("iclforge_qc_preset/name/parse mirror iclforge::meta::qc's table", "[capi][qc]") {
+TEST_CASE("iclforge_qc_preset/name/parse mirror iclforge::ac3::meta::qc's table", "[capi][qc]") {
     CHECK(iclforge_qc_preset_count() == 5);
 
     const auto atsc = iclforge_qc_preset(ICLFORGE_QC_PRESET_ATSC_A85);
@@ -2808,7 +2808,7 @@ TEST_CASE("iclforge_qc_preset/name/parse mirror iclforge::meta::qc's table", "[c
 }
 
 TEST_CASE(
-    "iclforge_evaluate_qc_gate passes/fails the same way iclforge::meta::evaluate_qc_gate does",
+    "iclforge_evaluate_qc_gate passes/fails the same way iclforge::ac3::meta::evaluate_qc_gate does",
     "[capi][qc]") {
     const auto preset = iclforge_qc_preset(ICLFORGE_QC_PRESET_NETFLIX);  // -27 +/-2 LU, -2 dBTP ceiling
 

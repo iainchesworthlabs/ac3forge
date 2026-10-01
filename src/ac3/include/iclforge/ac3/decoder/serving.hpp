@@ -32,14 +32,14 @@ enum class ObjectsPolicy : std::uint8_t { kAuto, kNever, kAlways };
 struct Serving {
     // The decoder's fold for a stereo or mono layout; std::nullopt when the
     // renderer places the coded channels (or the objects) itself.
-    std::optional<iclforge::DownmixTarget> fold;
+    std::optional<iclforge::ac3::DownmixTarget> fold;
     // Whether the decoder reconstructs the object layer, when a stream has one.
     bool reconstruct = false;
 };
 
 // `stereo_fold` is the fold a two-speaker layout gets, kLoRo or kLtRt; a
 // one-speaker layout folds to mono whatever it says.
-[[nodiscard]] inline Serving serve(const OutputLayout& layout, iclforge::DownmixTarget stereo_fold,
+[[nodiscard]] inline Serving serve(const OutputLayout& layout, iclforge::ac3::DownmixTarget stereo_fold,
                                    ObjectsPolicy objects) {
     Serving out;
     out.fold = layout.fold(stereo_fold);
@@ -56,8 +56,8 @@ struct Serving {
 // The two decoder settings a Serving decides, written into `config`: the
 // output stage's target and whether object reconstruction is skipped. Every
 // other field is the caller's.
-inline void configure_decoder(const Serving& serving, iclforge::DecoderConfig& config) {
-    config.output.target = serving.fold.value_or(iclforge::DownmixTarget::kAsCoded);
+inline void configure_decoder(const Serving& serving, iclforge::ac3::DecoderConfig& config) {
+    config.output.target = serving.fold.value_or(iclforge::ac3::DownmixTarget::kAsCoded);
     config.skip_object_reconstruction = !serving.reconstruct;
 }
 

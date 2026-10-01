@@ -134,7 +134,7 @@ std::string RecordingSink::open(const std::string& path, const Config& config) {
                                                 : iclforge::matroska::kCodecAc3},
             .sample_rate = config.sample_rate,
             .channels = config.channels,
-            .samples_per_frame = iclforge::kSamplesPerFrame});
+            .samples_per_frame = iclforge::ac3::kSamplesPerFrame});
         if (!writer.has_value()) {
             return std::string{iclforge::matroska::describe(writer.error())};
         }
@@ -150,7 +150,7 @@ std::string RecordingSink::open(const std::string& path, const Config& config) {
             .sample_rate = config.sample_rate,
             .channels = ac4 ? 2 : config.channels,
             .samples_per_frame = ac4 ? config.ac4->samples_per_frame
-                                     : static_cast<std::uint32_t>(iclforge::kSamplesPerFrame)});
+                                     : static_cast<std::uint32_t>(iclforge::ac3::kSamplesPerFrame)});
         if (!writer.has_value()) {
             return std::string{iclforge::mpegts::describe(writer.error())};
         }

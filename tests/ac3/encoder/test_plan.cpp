@@ -27,7 +27,7 @@
 // an all-zero channel, so a frame-layout error survives it intact.
 
 using Catch::Approx;
-using iclforge::eac3::chanmap::Location;
+using iclforge::ac3::eac3::chanmap::Location;
 
 namespace {
 
@@ -52,9 +52,9 @@ void fill_tone(std::vector<float>& out, double hz, double amplitude, std::uint64
 
 // Energy a source channel puts into just the independent substream's channels,
 // which is the group that has to be a self-sufficient rendering on its own.
-[[nodiscard]] double bed_energy_from(iclforge::plan::LayoutId id,
-                                     const iclforge::plan::Routing& routing, int source) {
-    const auto coded = iclforge::plan::coded_channels(id);
+[[nodiscard]] double bed_energy_from(iclforge::ac3::plan::LayoutId id,
+                                     const iclforge::ac3::plan::Routing& routing, int source) {
+    const auto coded = iclforge::ac3::plan::coded_channels(id);
     double sum = 0.0;
     for (std::size_t c = 0; c < coded.size(); ++c) {
         if (!coded[c].bed) {
@@ -73,11 +73,11 @@ void fill_tone(std::vector<float>& out, double hz, double amplitude, std::uint64
 // ---------------------------------------------------------------------------
 
 TEST_CASE("every layout codes as many channels as it claims") {
-    for (const auto& info : iclforge::plan::kLayouts) {
-        const auto coded = iclforge::plan::coded_channels(info.id);
+    for (const auto& info : iclforge::ac3::plan::kLayouts) {
+        const auto coded = iclforge::ac3::plan::coded_channels(info.id);
         INFO("layout " << info.name);
         CHECK(static_cast<int>(coded.size()) == info.transmitted);
-        CHECK(static_cast<int>(iclforge::plan::coded_channel_names(info.id).size()) ==
+        CHECK(static_cast<int>(iclforge::ac3::plan::coded_channel_names(info.id).size()) ==
               info.transmitted);
 
         // A dependent's channels are the ones its chanmap names, so the
@@ -94,8 +94,8 @@ TEST_CASE("rendered channel counts match what a decoder gets back") {
     // A dependent may replace a bed channel rather than add one, which is why
     // 7.1 codes ten channels for eight speakers. Counting the distinct
     // locations is the only way to check the claim.
-    for (const auto& info : iclforge::plan::kLayouts) {
-        const auto coded = iclforge::plan::coded_channels(info.id);
+    for (const auto& info : iclforge::ac3::plan::kLayouts) {
+        const auto coded = iclforge::ac3::plan::coded_channels(info.id);
         std::vector<Location> distinct;
         for (const auto& channel : coded) {
             if (!std::ranges::contains(distinct, channel.location)) {
@@ -108,46 +108,46 @@ TEST_CASE("rendered channel counts match what a decoder gets back") {
 }
 
 TEST_CASE("a replaced bed channel is named apart from the one replacing it") {
-    const auto names = iclforge::plan::coded_channel_names(iclforge::plan::LayoutId::k71);
+    const auto names = iclforge::ac3::plan::coded_channel_names(iclforge::ac3::plan::LayoutId::k71);
     REQUIRE(names.size() == 10);
     CHECK(names[3] == "Ls (bed)");
     CHECK(names[4] == "Rs (bed)");
     CHECK(names[6] == "Ls");
     CHECK(names[7] == "Rs");
     // 5.1.2 adds channels rather than replacing any, so nothing is marked.
-    for (const auto& name : iclforge::plan::coded_channel_names(iclforge::plan::LayoutId::k512)) {
+    for (const auto& name : iclforge::ac3::plan::coded_channel_names(iclforge::ac3::plan::LayoutId::k512)) {
         CHECK(name.find("(bed)") == std::string::npos);
     }
 }
 
 TEST_CASE("1+1 dual mono is a plan, not a soundstage", "[dual-mono]") {
-    using iclforge::Acmod;
-    using iclforge::plan::LayoutId;
+    using iclforge::ac3::Acmod;
+    using iclforge::ac3::plan::LayoutId;
 
-    const auto id = iclforge::plan::parse_layout("1+1");
+    const auto id = iclforge::ac3::plan::parse_layout("1+1");
     REQUIRE(id.has_value());
     CHECK(*id == LayoutId::kDualMono);
 
-    const auto cp = iclforge::plan::channel_plan_for(LayoutId::kDualMono);
+    const auto cp = iclforge::ac3::plan::channel_plan_for(LayoutId::kDualMono);
     CHECK(cp.bed_acmod == Acmod::kDualMono);
     CHECK_FALSE(cp.bed_lfe);  // no soundfield, so no subwoofer to put anywhere
     CHECK(cp.dependents.empty());
 
     // AC-3 codes acmod 0 directly - no Annex E substream layer needed - so
     // unlike every wide layout, 1+1 carries on both codecs.
-    CHECK(iclforge::plan::carries(iclforge::plan::Codec::kAc3, LayoutId::kDualMono));
-    CHECK(iclforge::plan::carries(iclforge::plan::Codec::kEac3, LayoutId::kDualMono));
+    CHECK(iclforge::ac3::plan::carries(iclforge::ac3::plan::Codec::kAc3, LayoutId::kDualMono));
+    CHECK(iclforge::ac3::plan::carries(iclforge::ac3::plan::Codec::kEac3, LayoutId::kDualMono));
 
     // A 2-channel source is never auto-inferred as dual mono - it stays
     // ambiguous with plain stereo, so 1+1 has to be asked for by name.
-    const auto inferred = iclforge::plan::layout_for_source(2);
+    const auto inferred = iclforge::ac3::plan::layout_for_source(2);
     REQUIRE(inferred.has_value());
     CHECK(*inferred == LayoutId::kStereo);
 
     // Routing is the identity: no panning, no downmix, Ch1 stays Ch1.
-    const auto routing = iclforge::plan::route(LayoutId::kDualMono, 2,
-                                          iclforge::meta::CentreMixLevel::kMinus4_5dB,
-                                          iclforge::meta::SurroundMixLevel::kMinus6dB);
+    const auto routing = iclforge::ac3::plan::route(LayoutId::kDualMono, 2,
+                                          iclforge::ac3::meta::CentreMixLevel::kMinus4_5dB,
+                                          iclforge::ac3::meta::SurroundMixLevel::kMinus6dB);
     REQUIRE(routing.has_value());
     CHECK(routing->is_permutation());
     CHECK(routing->at(0, 0) == Approx(1.0));
@@ -159,111 +159,111 @@ TEST_CASE("1+1 dual mono is a plan, not a soundstage", "[dual-mono]") {
     // pan that turns, say, a 5.1 source into two independent programmes.
     for (const std::size_t channels : {std::size_t{1}, std::size_t{3}, std::size_t{6}}) {
         INFO("source channels " << channels);
-        CHECK_FALSE(iclforge::plan::route(LayoutId::kDualMono, channels,
-                                     iclforge::meta::CentreMixLevel::kMinus4_5dB,
-                                     iclforge::meta::SurroundMixLevel::kMinus6dB)
+        CHECK_FALSE(iclforge::ac3::plan::route(LayoutId::kDualMono, channels,
+                                     iclforge::ac3::meta::CentreMixLevel::kMinus4_5dB,
+                                     iclforge::ac3::meta::SurroundMixLevel::kMinus6dB)
                         .has_value());
     }
 }
 
 TEST_CASE("every layout name parses back to itself") {
-    for (const auto& info : iclforge::plan::kLayouts) {
-        const auto parsed = iclforge::plan::parse_layout(info.name);
+    for (const auto& info : iclforge::ac3::plan::kLayouts) {
+        const auto parsed = iclforge::ac3::plan::parse_layout(info.name);
         REQUIRE(parsed.has_value());
         CHECK(*parsed == info.id);
     }
-    CHECK_FALSE(iclforge::plan::parse_layout("714b").has_value());
-    CHECK_FALSE(iclforge::plan::parse_layout("").has_value());
+    CHECK_FALSE(iclforge::ac3::plan::parse_layout("714b").has_value());
+    CHECK_FALSE(iclforge::ac3::plan::parse_layout("").has_value());
 }
 
 TEST_CASE("the layout list a front end prints is the list the parser accepts") {
     // These two drifting apart is exactly the failure the table exists to stop:
     // a usage line offering a layout the parser rejects, or hiding one it takes.
-    const auto listed = iclforge::plan::layout_names(iclforge::plan::Codec::kAc3);
+    const auto listed = iclforge::ac3::plan::layout_names(iclforge::ac3::plan::Codec::kAc3);
     CHECK(listed.find("714") == std::string::npos);  // AC-3 has no substreams
     CHECK(listed.find("51") != std::string::npos);
 
-    const auto wide = iclforge::plan::layout_names(iclforge::plan::Codec::kEac3);
-    for (const auto& info : iclforge::plan::kLayouts) {
+    const auto wide = iclforge::ac3::plan::layout_names(iclforge::ac3::plan::Codec::kEac3);
+    for (const auto& info : iclforge::ac3::plan::kLayouts) {
         INFO("layout " << info.name);
         CHECK(wide.find(std::string{info.name}) != std::string::npos);
     }
 }
 
 TEST_CASE("each codec names itself and its name parses back", "[ac4]") {
-    using iclforge::plan::Codec;
+    using iclforge::ac3::plan::Codec;
     for (const Codec codec : {Codec::kAc3, Codec::kEac3, Codec::kAc4}) {
-        const auto name = iclforge::plan::codec_name(codec);
+        const auto name = iclforge::ac3::plan::codec_name(codec);
         INFO("codec " << name);
         REQUIRE_FALSE(name.empty());
-        CHECK_FALSE(iclforge::plan::codec_label(codec).empty());
-        CHECK_FALSE(iclforge::plan::codec_suffix(codec).empty());
-        CHECK(iclforge::plan::parse_codec(name) == codec);
+        CHECK_FALSE(iclforge::ac3::plan::codec_label(codec).empty());
+        CHECK_FALSE(iclforge::ac3::plan::codec_suffix(codec).empty());
+        CHECK(iclforge::ac3::plan::parse_codec(name) == codec);
     }
-    CHECK(iclforge::plan::codec_label(Codec::kAc4) == "AC-4");
-    CHECK(iclforge::plan::codec_suffix(Codec::kAc4) == "ac4");
-    CHECK(iclforge::plan::parse_codec("ec3") == Codec::kEac3);
-    CHECK_FALSE(iclforge::plan::parse_codec("ac-4").has_value());
-    CHECK_FALSE(iclforge::plan::parse_codec("").has_value());
+    CHECK(iclforge::ac3::plan::codec_label(Codec::kAc4) == "AC-4");
+    CHECK(iclforge::ac3::plan::codec_suffix(Codec::kAc4) == "ac4");
+    CHECK(iclforge::ac3::plan::parse_codec("ec3") == Codec::kEac3);
+    CHECK_FALSE(iclforge::ac3::plan::parse_codec("ac-4").has_value());
+    CHECK_FALSE(iclforge::ac3::plan::parse_codec("").has_value());
 }
 
 TEST_CASE("a codec outside the enum names nothing and plans nothing", "[ac4]") {
     // Two-way tests read any codec but AC-3 as E-AC-3; every helper now names
     // nothing for a value it does not know.
-    const auto unknown = static_cast<iclforge::plan::Codec>(7);
-    CHECK(iclforge::plan::codec_name(unknown).empty());
-    CHECK(iclforge::plan::codec_label(unknown).empty());
-    CHECK(iclforge::plan::codec_suffix(unknown).empty());
-    for (const auto& info : iclforge::plan::kLayouts) {
+    const auto unknown = static_cast<iclforge::ac3::plan::Codec>(7);
+    CHECK(iclforge::ac3::plan::codec_name(unknown).empty());
+    CHECK(iclforge::ac3::plan::codec_label(unknown).empty());
+    CHECK(iclforge::ac3::plan::codec_suffix(unknown).empty());
+    for (const auto& info : iclforge::ac3::plan::kLayouts) {
         INFO("layout " << info.name);
-        CHECK_FALSE(iclforge::plan::carries(unknown, info.id));
+        CHECK_FALSE(iclforge::ac3::plan::carries(unknown, info.id));
     }
-    CHECK(iclforge::plan::layout_names(unknown).empty());
-    const iclforge::plan::Plan plan{.codec = unknown};
-    CHECK(iclforge::plan::validate(plan) == iclforge::plan::PlanError::kUnknownCodec);
-    CHECK_FALSE(iclforge::plan::describe(iclforge::plan::PlanError::kUnknownCodec).empty());
+    CHECK(iclforge::ac3::plan::layout_names(unknown).empty());
+    const iclforge::ac3::plan::Plan plan{.codec = unknown};
+    CHECK(iclforge::ac3::plan::validate(plan) == iclforge::ac3::plan::PlanError::kUnknownCodec);
+    CHECK_FALSE(iclforge::ac3::plan::describe(iclforge::ac3::plan::PlanError::kUnknownCodec).empty());
 }
 
 TEST_CASE("an AC-4 plan takes mono stereo 5.0 and 5.1 at 48 or 44.1 kHz", "[ac4]") {
-    using iclforge::plan::Codec;
-    using iclforge::plan::LayoutId;
-    using iclforge::plan::PlanError;
-    namespace cm = iclforge::eac3::chanmap;
-    CHECK(iclforge::plan::layout_names(Codec::kAc4) == "mono | stereo | 51");
+    using iclforge::ac3::plan::Codec;
+    using iclforge::ac3::plan::LayoutId;
+    using iclforge::ac3::plan::PlanError;
+    namespace cm = iclforge::ac3::eac3::chanmap;
+    CHECK(iclforge::ac3::plan::layout_names(Codec::kAc4) == "mono | stereo | 51");
     for (const LayoutId id : {LayoutId::kMono, LayoutId::kStereo, LayoutId::k51}) {
-        const iclforge::plan::Plan plan{.codec = Codec::kAc4, .layout = id};
-        INFO("layout " << iclforge::plan::layout(id).name);
-        CHECK_FALSE(iclforge::plan::validate(plan).has_value());
+        const iclforge::ac3::plan::Plan plan{.codec = Codec::kAc4, .layout = id};
+        INFO("layout " << iclforge::ac3::plan::layout(id).name);
+        CHECK_FALSE(iclforge::ac3::plan::validate(plan).has_value());
     }
     for (const LayoutId id : {LayoutId::kDualMono, LayoutId::k71, LayoutId::k514}) {
-        const iclforge::plan::Plan plan{.codec = Codec::kAc4, .layout = id};
-        INFO("layout " << iclforge::plan::layout(id).name);
-        CHECK(iclforge::plan::validate(plan) == PlanError::kLayoutNotInAc4);
+        const iclforge::ac3::plan::Plan plan{.codec = Codec::kAc4, .layout = id};
+        INFO("layout " << iclforge::ac3::plan::layout(id).name);
+        CHECK(iclforge::ac3::plan::validate(plan) == PlanError::kLayoutNotInAc4);
     }
     // 5.0 has no named layout; a channel list reaches it, where one of a channel
     // mode the encoder does not take (3.0, or 2.0 with an LFE) is refused.
     const auto five = static_cast<std::uint16_t>(cm::kLeftBit | cm::kCentreBit | cm::kRightBit |
                                                  cm::kLeftSurroundBit | cm::kRightSurroundBit);
-    const iclforge::plan::Plan five_zero{.codec = Codec::kAc4, .custom_locations = five};
-    CHECK_FALSE(iclforge::plan::validate(five_zero).has_value());
+    const iclforge::ac3::plan::Plan five_zero{.codec = Codec::kAc4, .custom_locations = five};
+    CHECK_FALSE(iclforge::ac3::plan::validate(five_zero).has_value());
     for (const auto bits :
          {static_cast<std::uint16_t>(cm::kLeftBit | cm::kCentreBit | cm::kRightBit),
           static_cast<std::uint16_t>(cm::kLeftBit | cm::kRightBit | cm::kLfeBit)}) {
-        const iclforge::plan::Plan plan{.codec = Codec::kAc4, .custom_locations = bits};
-        INFO("locations " << iclforge::plan::format_channels(bits));
-        CHECK(iclforge::plan::validate(plan) == PlanError::kLayoutNotInAc4);
+        const iclforge::ac3::plan::Plan plan{.codec = Codec::kAc4, .custom_locations = bits};
+        INFO("locations " << iclforge::ac3::plan::format_channels(bits));
+        CHECK(iclforge::ac3::plan::validate(plan) == PlanError::kLayoutNotInAc4);
     }
-    const iclforge::plan::Plan at_44{.codec = Codec::kAc4,
-                                     .sample_rate = iclforge::SampleRate::k44100};
-    CHECK_FALSE(iclforge::plan::validate(at_44).has_value());
-    const iclforge::plan::Plan at_32{.codec = Codec::kAc4,
-                                     .sample_rate = iclforge::SampleRate::k32000};
-    CHECK(iclforge::plan::validate(at_32) == PlanError::kSampleRateNotInAc4);
-    const iclforge::plan::Plan vbr{.codec = Codec::kAc4,
-                                   .vbr = iclforge::eac3::VbrConfig{.quality = 0.5}};
-    CHECK(iclforge::plan::validate(vbr) == PlanError::kVbrNeedsEac3);
+    const iclforge::ac3::plan::Plan at_44{.codec = Codec::kAc4,
+                                     .sample_rate = iclforge::ac3::SampleRate::k44100};
+    CHECK_FALSE(iclforge::ac3::plan::validate(at_44).has_value());
+    const iclforge::ac3::plan::Plan at_32{.codec = Codec::kAc4,
+                                     .sample_rate = iclforge::ac3::SampleRate::k32000};
+    CHECK(iclforge::ac3::plan::validate(at_32) == PlanError::kSampleRateNotInAc4);
+    const iclforge::ac3::plan::Plan vbr{.codec = Codec::kAc4,
+                                   .vbr = iclforge::ac3::eac3::VbrConfig{.quality = 0.5}};
+    CHECK(iclforge::ac3::plan::validate(vbr) == PlanError::kVbrNeedsEac3);
     for (const PlanError error : {PlanError::kLayoutNotInAc4, PlanError::kSampleRateNotInAc4}) {
-        CHECK_FALSE(iclforge::plan::describe(error).empty());
+        CHECK_FALSE(iclforge::ac3::plan::describe(error).empty());
     }
 }
 
@@ -273,17 +273,17 @@ TEST_CASE("Table E2.5 location lists parse and format symmetrically") {
     // already written in that order.
     for (const auto* text : {"L,C,R", "L,C,R,LFE", "L,C,R,Vhl,Vhr,LFE",
                              "L,C,R,Vhc,Lts,Rts,LFE", "Vhc,LFE2,LFE"}) {
-        const auto mask = iclforge::plan::parse_channels(text);
+        const auto mask = iclforge::ac3::plan::parse_channels(text);
         REQUIRE(mask.has_value());
-        CHECK(iclforge::plan::format_channels(*mask) == text);
+        CHECK(iclforge::ac3::plan::format_channels(*mask) == text);
     }
     // Naming only one half of a pair location is not expressible - Table
     // E2.5 has no bit for Vhl alone.
-    CHECK_FALSE(iclforge::plan::parse_channels("L,C,R,Vhl").has_value());
-    CHECK_FALSE(iclforge::plan::parse_channels("").has_value());
-    CHECK_FALSE(iclforge::plan::parse_channels("Nope").has_value());
-    CHECK_FALSE(iclforge::plan::parse_channels("L,C,R,").has_value());  // trailing empty token
-    CHECK_FALSE(iclforge::plan::parse_channels("L,L,C,R").has_value());  // L named twice
+    CHECK_FALSE(iclforge::ac3::plan::parse_channels("L,C,R,Vhl").has_value());
+    CHECK_FALSE(iclforge::ac3::plan::parse_channels("").has_value());
+    CHECK_FALSE(iclforge::ac3::plan::parse_channels("Nope").has_value());
+    CHECK_FALSE(iclforge::ac3::plan::parse_channels("L,C,R,").has_value());  // trailing empty token
+    CHECK_FALSE(iclforge::ac3::plan::parse_channels("L,L,C,R").has_value());  // L named twice
 }
 
 // ---------------------------------------------------------------------------
@@ -298,15 +298,15 @@ TEST_CASE("tool tokens survive a round trip") {
                                              "nodither", "cpl+nodither",
                                              "nodelta",  "cpl+nodelta"};
     for (const auto& token : tokens) {
-        iclforge::plan::Tools tools{};
+        iclforge::ac3::plan::Tools tools{};
         INFO("token " << token);
-        REQUIRE(iclforge::plan::parse_tools(token, tools));
-        CHECK(iclforge::plan::format_tools(tools) == token);
+        REQUIRE(iclforge::ac3::plan::parse_tools(token, tools));
+        CHECK(iclforge::ac3::plan::format_tools(tools) == token);
     }
     // "all" names a set rather than a spelling, so it round-trips to the set.
-    iclforge::plan::Tools all{};
-    REQUIRE(iclforge::plan::parse_tools("all", all));
-    CHECK(iclforge::plan::format_tools(all) == "cpl+spx+aht");
+    iclforge::ac3::plan::Tools all{};
+    REQUIRE(iclforge::ac3::plan::parse_tools("all", all));
+    CHECK(iclforge::ac3::plan::format_tools(all) == "cpl+spx+aht");
 }
 
 TEST_CASE("the fast MDCT is on by default and negated like noatten") {
@@ -314,10 +314,10 @@ TEST_CASE("the fast MDCT is on by default and negated like noatten") {
     // the direct §8.2.3.2 form stays reachable because it is the validation
     // oracle, and "nofastmdct" is its spelling - the same shape "noatten"
     // gives default-on spx_atten.
-    CHECK(iclforge::plan::Tools{}.fast_mdct);
+    CHECK(iclforge::ac3::plan::Tools{}.fast_mdct);
 
-    iclforge::plan::Tools off{};
-    REQUIRE(iclforge::plan::parse_tools("nofastmdct", off));
+    iclforge::ac3::plan::Tools off{};
+    REQUIRE(iclforge::ac3::plan::parse_tools("nofastmdct", off));
     CHECK_FALSE(off.fast_mdct);
     // Not a coding tool: forcing the direct transform never claims the
     // stream "used a tool".
@@ -325,15 +325,15 @@ TEST_CASE("the fast MDCT is on by default and negated like noatten") {
 
     // The opt-in spelling from the default-off era still parses, and now
     // formats as nothing at all - it names the default.
-    iclforge::plan::Tools legacy{};
-    REQUIRE(iclforge::plan::parse_tools("fastmdct", legacy));
+    iclforge::ac3::plan::Tools legacy{};
+    REQUIRE(iclforge::ac3::plan::parse_tools("fastmdct", legacy));
     CHECK(legacy.fast_mdct);
-    CHECK(iclforge::plan::format_tools(legacy) == "none");
+    CHECK(iclforge::ac3::plan::format_tools(legacy) == "none");
 
     // "none" means no CODING tools; it does not drag the transform choice
     // back to the reference form.
-    iclforge::plan::Tools none{};
-    REQUIRE(iclforge::plan::parse_tools("none", none));
+    iclforge::ac3::plan::Tools none{};
+    REQUIRE(iclforge::ac3::plan::parse_tools("none", none));
     CHECK(none.fast_mdct);
 }
 
@@ -345,18 +345,18 @@ TEST_CASE("dithflag is content-decided by default and negated like nofastmdct") 
     // that needs it). No legacy opt-in spelling: unlike fast_mdct, dither's
     // default was never off, so there is no prior era's token to keep
     // parsing.
-    CHECK(iclforge::plan::Tools{}.dither);
+    CHECK(iclforge::ac3::plan::Tools{}.dither);
 
-    iclforge::plan::Tools off{};
-    REQUIRE(iclforge::plan::parse_tools("nodither", off));
+    iclforge::ac3::plan::Tools off{};
+    REQUIRE(iclforge::ac3::plan::parse_tools("nodither", off));
     CHECK_FALSE(off.dither);
     // Not a coding tool: a decoder that never receives a set dithflag still
     // decodes every stream correctly.
     CHECK_FALSE(off.any());
 
     // "none" means no CODING tools; it does not drag dither off with it.
-    iclforge::plan::Tools none{};
-    REQUIRE(iclforge::plan::parse_tools("none", none));
+    iclforge::ac3::plan::Tools none{};
+    REQUIRE(iclforge::ac3::plan::parse_tools("none", none));
     CHECK(none.dither);
 }
 
@@ -364,23 +364,23 @@ TEST_CASE("a tool token out of range is rejected rather than clamped") {
     // Silently clamping would leave a band edge that is not the one asked for,
     // and nothing downstream could tell.
     for (const auto* token : {"cpl:16", "spx:8", "aht:4", "atten:32", "cpl:", "wibble", "cpl+"}) {
-        iclforge::plan::Tools tools{};
+        iclforge::ac3::plan::Tools tools{};
         INFO("token " << token);
-        CHECK_FALSE(iclforge::plan::parse_tools(token, tools));
+        CHECK_FALSE(iclforge::ac3::plan::parse_tools(token, tools));
     }
 }
 
 TEST_CASE("spectral extension attenuation is expressible both ways") {
-    iclforge::plan::Tools off{};
-    REQUIRE(iclforge::plan::parse_tools("spx+noatten", off));
+    iclforge::ac3::plan::Tools off{};
+    REQUIRE(iclforge::ac3::plan::parse_tools("spx+noatten", off));
     CHECK_FALSE(off.spx_atten);
-    CHECK(iclforge::plan::format_tools(off) == "spx+noatten");
+    CHECK(iclforge::ac3::plan::format_tools(off) == "spx+noatten");
 
-    iclforge::plan::Tools depth{};
-    REQUIRE(iclforge::plan::parse_tools("spx+atten:12", depth));
+    iclforge::ac3::plan::Tools depth{};
+    REQUIRE(iclforge::ac3::plan::parse_tools("spx+atten:12", depth));
     CHECK(depth.spx_atten);
     CHECK(depth.spxattencod == 12);
-    CHECK(iclforge::plan::format_tools(depth) == "spx+atten:12");
+    CHECK(iclforge::ac3::plan::format_tools(depth) == "spx+atten:12");
 }
 
 // ---------------------------------------------------------------------------
@@ -388,51 +388,51 @@ TEST_CASE("spectral extension attenuation is expressible both ways") {
 // ---------------------------------------------------------------------------
 
 TEST_CASE("an immersive layout is refused to AC-3 rather than silently narrowed") {
-    const iclforge::plan::Plan plan{.codec = iclforge::plan::Codec::kAc3,
-                               .layout = iclforge::plan::LayoutId::k714};
-    const auto error = iclforge::plan::validate(plan);
+    const iclforge::ac3::plan::Plan plan{.codec = iclforge::ac3::plan::Codec::kAc3,
+                               .layout = iclforge::ac3::plan::LayoutId::k714};
+    const auto error = iclforge::ac3::plan::validate(plan);
     REQUIRE(error.has_value());
-    CHECK(*error == iclforge::plan::PlanError::kLayoutNeedsEac3);
+    CHECK(*error == iclforge::ac3::plan::PlanError::kLayoutNeedsEac3);
     CHECK_FALSE(
-        iclforge::plan::carries(iclforge::plan::Codec::kAc3, iclforge::plan::LayoutId::k714));
-    CHECK(iclforge::plan::carries(iclforge::plan::Codec::kEac3, iclforge::plan::LayoutId::k714));
+        iclforge::ac3::plan::carries(iclforge::ac3::plan::Codec::kAc3, iclforge::ac3::plan::LayoutId::k714));
+    CHECK(iclforge::ac3::plan::carries(iclforge::ac3::plan::Codec::kEac3, iclforge::ac3::plan::LayoutId::k714));
 }
 
 TEST_CASE("AC-3 takes only the Table 5.18 rates") {
-    iclforge::plan::Plan plan{.codec = iclforge::plan::Codec::kAc3, .bitrate_kbps = 200};
-    REQUIRE(iclforge::plan::validate(plan).has_value());
-    CHECK(*iclforge::plan::validate(plan) == iclforge::plan::PlanError::kBitrateNotLegal);
+    iclforge::ac3::plan::Plan plan{.codec = iclforge::ac3::plan::Codec::kAc3, .bitrate_kbps = 200};
+    REQUIRE(iclforge::ac3::plan::validate(plan).has_value());
+    CHECK(*iclforge::ac3::plan::validate(plan) == iclforge::ac3::plan::PlanError::kBitrateNotLegal);
     // E-AC-3 signals frmsiz directly, so the same rate is expressible there.
-    plan.codec = iclforge::plan::Codec::kEac3;
-    CHECK_FALSE(iclforge::plan::validate(plan).has_value());
+    plan.codec = iclforge::ac3::plan::Codec::kEac3;
+    CHECK_FALSE(iclforge::ac3::plan::validate(plan).has_value());
 }
 
 TEST_CASE("E-AC-3 refuses a rate no substream's frmsiz can express") {
     // frmsiz is 11 bits holding (words - 1), so a syncframe is 1 to 2048
     // words - at 48 kHz, 1 to 1024 kbit/s. This is E-AC-3's own answer to
     // Table 5.18 above: a free word count is still a bounded one.
-    iclforge::plan::Plan plan{.codec = iclforge::plan::Codec::kEac3,
-                         .layout = iclforge::plan::LayoutId::kStereo,
+    iclforge::ac3::plan::Plan plan{.codec = iclforge::ac3::plan::Codec::kEac3,
+                         .layout = iclforge::ac3::plan::LayoutId::kStereo,
                          .bitrate_kbps = 1026};
-    REQUIRE(iclforge::plan::validate(plan).has_value());
-    CHECK(*iclforge::plan::validate(plan) == iclforge::plan::PlanError::kBitrateNotFramable);
+    REQUIRE(iclforge::ac3::plan::validate(plan).has_value());
+    CHECK(*iclforge::ac3::plan::validate(plan) == iclforge::ac3::plan::PlanError::kBitrateNotFramable);
 
     // One word count either side of the ceiling, so this pins the boundary
     // rather than merely "a big number is refused".
     plan.bitrate_kbps = 1025;
-    CHECK(iclforge::eac3::frame_words(plan.sample_rate, 1025) > iclforge::eac3::kMaxFrameWords);
-    CHECK(iclforge::plan::validate(plan).has_value());
+    CHECK(iclforge::ac3::eac3::frame_words(plan.sample_rate, 1025) > iclforge::ac3::eac3::kMaxFrameWords);
+    CHECK(iclforge::ac3::plan::validate(plan).has_value());
     plan.bitrate_kbps = 1024;
-    CHECK(iclforge::eac3::frame_words(plan.sample_rate, 1024) == iclforge::eac3::kMaxFrameWords);
-    CHECK_FALSE(iclforge::plan::validate(plan).has_value());
+    CHECK(iclforge::ac3::eac3::frame_words(plan.sample_rate, 1024) == iclforge::ac3::eac3::kMaxFrameWords);
+    CHECK_FALSE(iclforge::ac3::plan::validate(plan).has_value());
 
     // The floor is the same rule read the other way: 0 kbit/s is a frame of
     // no words at all, which is not a syncframe.
     plan.bitrate_kbps = 0;
-    REQUIRE(iclforge::plan::validate(plan).has_value());
-    CHECK(*iclforge::plan::validate(plan) == iclforge::plan::PlanError::kBitrateNotFramable);
+    REQUIRE(iclforge::ac3::plan::validate(plan).has_value());
+    CHECK(*iclforge::ac3::plan::validate(plan) == iclforge::ac3::plan::PlanError::kBitrateNotFramable);
     plan.bitrate_kbps = 1;
-    CHECK_FALSE(iclforge::plan::validate(plan).has_value());
+    CHECK_FALSE(iclforge::ac3::plan::validate(plan).has_value());
 }
 
 TEST_CASE("the frmsiz ceiling follows the sample rate, not a fixed kbit/s") {
@@ -441,21 +441,21 @@ TEST_CASE("the frmsiz ceiling follows the sample rate, not a fixed kbit/s") {
     // expressible rate falls with the sample rate rather than staying at
     // 48 kHz's 1024.
     struct Case {
-        iclforge::SampleRate rate;
+        iclforge::ac3::SampleRate rate;
         std::uint32_t highest_legal;
     };
-    for (const auto& c : {Case{iclforge::SampleRate::k48000, 1024},
-                          Case{iclforge::SampleRate::k44100, 941},
-                          Case{iclforge::SampleRate::k32000, 682}}) {
-        CAPTURE(iclforge::sample_rate_hz(c.rate), c.highest_legal);
-        iclforge::plan::Plan plan{.codec = iclforge::plan::Codec::kEac3,
-                             .layout = iclforge::plan::LayoutId::kStereo,
+    for (const auto& c : {Case{iclforge::ac3::SampleRate::k48000, 1024},
+                          Case{iclforge::ac3::SampleRate::k44100, 941},
+                          Case{iclforge::ac3::SampleRate::k32000, 682}}) {
+        CAPTURE(iclforge::ac3::sample_rate_hz(c.rate), c.highest_legal);
+        iclforge::ac3::plan::Plan plan{.codec = iclforge::ac3::plan::Codec::kEac3,
+                             .layout = iclforge::ac3::plan::LayoutId::kStereo,
                              .sample_rate = c.rate,
                              .bitrate_kbps = c.highest_legal};
-        CHECK_FALSE(iclforge::plan::validate(plan).has_value());
+        CHECK_FALSE(iclforge::ac3::plan::validate(plan).has_value());
         plan.bitrate_kbps = c.highest_legal + 1;
-        REQUIRE(iclforge::plan::validate(plan).has_value());
-        CHECK(*iclforge::plan::validate(plan) == iclforge::plan::PlanError::kBitrateNotFramable);
+        REQUIRE(iclforge::ac3::plan::validate(plan).has_value());
+        CHECK(*iclforge::ac3::plan::validate(plan) == iclforge::ac3::plan::PlanError::kBitrateNotFramable);
     }
 }
 
@@ -464,33 +464,33 @@ TEST_CASE("a dependent substream's own half of the rate has to be framable too")
     // dependent half of it, so the plan's own bitrate_kbps is not what frmsiz
     // has to hold - which makes the floor reachable at a rate the same plan
     // would accept without dependents.
-    iclforge::plan::Plan stereo{.codec = iclforge::plan::Codec::kEac3,
-                           .layout = iclforge::plan::LayoutId::kStereo,
+    iclforge::ac3::plan::Plan stereo{.codec = iclforge::ac3::plan::Codec::kEac3,
+                           .layout = iclforge::ac3::plan::LayoutId::kStereo,
                            .bitrate_kbps = 1};
-    CHECK_FALSE(iclforge::plan::validate(stereo).has_value());
+    CHECK_FALSE(iclforge::ac3::plan::validate(stereo).has_value());
 
-    iclforge::plan::Plan immersive{.codec = iclforge::plan::Codec::kEac3,
-                              .layout = iclforge::plan::LayoutId::k714,
+    iclforge::ac3::plan::Plan immersive{.codec = iclforge::ac3::plan::Codec::kEac3,
+                              .layout = iclforge::ac3::plan::LayoutId::k714,
                               .bitrate_kbps = 1};
-    REQUIRE_FALSE(iclforge::plan::eac3_config(immersive).dependents.empty());
-    REQUIRE(iclforge::plan::validate(immersive).has_value());
-    CHECK(*iclforge::plan::validate(immersive) == iclforge::plan::PlanError::kBitrateNotFramable);
+    REQUIRE_FALSE(iclforge::ac3::plan::eac3_config(immersive).dependents.empty());
+    REQUIRE(iclforge::ac3::plan::validate(immersive).has_value());
+    CHECK(*iclforge::ac3::plan::validate(immersive) == iclforge::ac3::plan::PlanError::kBitrateNotFramable);
     // Two is the smallest rate that still leaves the dependents a word each
     // once it has been halved.
     immersive.bitrate_kbps = 2;
-    CHECK_FALSE(iclforge::plan::validate(immersive).has_value());
+    CHECK_FALSE(iclforge::ac3::plan::validate(immersive).has_value());
 }
 
 TEST_CASE("VBR is exempt from the frmsiz rate check, as it is in the frame encoder") {
     // Under VBR the content decides the word count and bitrate_kbps only
     // steers the coupling/spx frequency defaults, so a nominal rate no CBR
     // frame could hold says nothing about whether a frame will fit.
-    const iclforge::plan::Plan plan{.codec = iclforge::plan::Codec::kEac3,
-                               .layout = iclforge::plan::LayoutId::kStereo,
+    const iclforge::ac3::plan::Plan plan{.codec = iclforge::ac3::plan::Codec::kEac3,
+                               .layout = iclforge::ac3::plan::LayoutId::kStereo,
                                .bitrate_kbps = 1026,
-                               .vbr = iclforge::eac3::VbrConfig{.quality = 0.5,
+                               .vbr = iclforge::ac3::eac3::VbrConfig{.quality = 0.5,
                                                            .max_kbps = 256}};
-    CHECK_FALSE(iclforge::plan::validate(plan).has_value());
+    CHECK_FALSE(iclforge::ac3::plan::validate(plan).has_value());
 }
 
 TEST_CASE("an unframable rate leaves AccessUnitEncoder with no substreams at all") {
@@ -499,26 +499,26 @@ TEST_CASE("an unframable rate leaves AccessUnitEncoder with no substreams at all
     // and a config it refuses produces an encoder that silently codes
     // nothing. A front end that sized its buffers from the plan then
     // disagrees with channel_count() before the first frame is encoded.
-    const iclforge::plan::Plan plan{.codec = iclforge::plan::Codec::kEac3,
-                               .layout = iclforge::plan::LayoutId::kStereo,
+    const iclforge::ac3::plan::Plan plan{.codec = iclforge::ac3::plan::Codec::kEac3,
+                               .layout = iclforge::ac3::plan::LayoutId::kStereo,
                                .bitrate_kbps = 1026};
-    const iclforge::eac3::AccessUnitEncoder encoder{iclforge::plan::eac3_config(plan)};
+    const iclforge::ac3::eac3::AccessUnitEncoder encoder{iclforge::ac3::plan::eac3_config(plan)};
     CHECK(encoder.channel_count() == 0);
-    CHECK(iclforge::plan::rendered_channel_count(iclforge::plan::resolve(plan)) == 2);
+    CHECK(iclforge::ac3::plan::rendered_channel_count(iclforge::ac3::plan::resolve(plan)) == 2);
 }
 
 TEST_CASE("fscod2 half rates are refused to AC-3 rather than silently narrowed") {
-    for (const auto rate : {iclforge::SampleRate::k24000, iclforge::SampleRate::k22050,
-                            iclforge::SampleRate::k16000}) {
-        CAPTURE(iclforge::sample_rate_hz(rate));
-        iclforge::plan::Plan plan{.codec = iclforge::plan::Codec::kAc3, .sample_rate = rate};
-        const auto error = iclforge::plan::validate(plan);
+    for (const auto rate : {iclforge::ac3::SampleRate::k24000, iclforge::ac3::SampleRate::k22050,
+                            iclforge::ac3::SampleRate::k16000}) {
+        CAPTURE(iclforge::ac3::sample_rate_hz(rate));
+        iclforge::ac3::plan::Plan plan{.codec = iclforge::ac3::plan::Codec::kAc3, .sample_rate = rate};
+        const auto error = iclforge::ac3::plan::validate(plan);
         REQUIRE(error.has_value());
-        CHECK(*error == iclforge::plan::PlanError::kSampleRateNeedsEac3);
+        CHECK(*error == iclforge::ac3::plan::PlanError::kSampleRateNeedsEac3);
         // Annex E's fscod2 is exactly what E-AC-3 has instead of a fourth
         // Table 5.6 rate, so the identical Plan is fine once retargeted.
-        plan.codec = iclforge::plan::Codec::kEac3;
-        CHECK_FALSE(iclforge::plan::validate(plan).has_value());
+        plan.codec = iclforge::ac3::plan::Codec::kEac3;
+        CHECK_FALSE(iclforge::ac3::plan::validate(plan).has_value());
     }
 }
 
@@ -526,55 +526,55 @@ TEST_CASE("classic AC-3 encoders refuse a reduced sample rate directly, not just
     // Plan::validate() is the friendly front door, but FrameEncoder/
     // build_silent_stereo_frame must refuse it too - a caller can construct
     // an EncoderConfig/SilentFrameConfig without ever going through a Plan.
-    iclforge::FrameEncoder encoder{
-        {.sample_rate = iclforge::SampleRate::k24000, .bitrate_kbps = 192}};
-    const std::vector<float> silence(static_cast<std::size_t>(iclforge::kSamplesPerFrame), 0.0f);
+    iclforge::ac3::FrameEncoder encoder{
+        {.sample_rate = iclforge::ac3::SampleRate::k24000, .bitrate_kbps = 192}};
+    const std::vector<float> silence(static_cast<std::size_t>(iclforge::ac3::kSamplesPerFrame), 0.0f);
     const std::vector<std::span<const float>> views{silence, silence};
     const auto frame = encoder.encode_frame(views);
     REQUIRE_FALSE(frame.has_value());
-    CHECK(frame.error() == iclforge::FrameError::kInvalidBitrate);
+    CHECK(frame.error() == iclforge::ac3::FrameError::kInvalidBitrate);
 
     const auto silent =
-        iclforge::build_silent_stereo_frame({.sample_rate = iclforge::SampleRate::k16000});
+        iclforge::ac3::build_silent_stereo_frame({.sample_rate = iclforge::ac3::SampleRate::k16000});
     REQUIRE_FALSE(silent.has_value());
-    CHECK(silent.error() == iclforge::FrameError::kInvalidBitrate);
+    CHECK(silent.error() == iclforge::ac3::FrameError::kInvalidBitrate);
 }
 
 TEST_CASE("VBR is refused to AC-3 rather than silently ignored") {
-    iclforge::plan::Plan plan{.codec = iclforge::plan::Codec::kAc3,
-                         .vbr = iclforge::eac3::VbrConfig{.quality = 0.5}};
-    const auto error = iclforge::plan::validate(plan);
+    iclforge::ac3::plan::Plan plan{.codec = iclforge::ac3::plan::Codec::kAc3,
+                         .vbr = iclforge::ac3::eac3::VbrConfig{.quality = 0.5}};
+    const auto error = iclforge::ac3::plan::validate(plan);
     REQUIRE(error.has_value());
-    CHECK(*error == iclforge::plan::PlanError::kVbrNeedsEac3);
+    CHECK(*error == iclforge::ac3::plan::PlanError::kVbrNeedsEac3);
     // AC-3's frame size indexes Table 5.18 rather than stating a word count
     // directly, so unlike bitrate legality this has no per-rate escape.
-    plan.codec = iclforge::plan::Codec::kEac3;
-    CHECK_FALSE(iclforge::plan::validate(plan).has_value());
+    plan.codec = iclforge::ac3::plan::Codec::kEac3;
+    CHECK_FALSE(iclforge::ac3::plan::validate(plan).has_value());
 }
 
 TEST_CASE("validate refuses a custom channel selection Annex E cannot express") {
-    namespace cm = iclforge::eac3::chanmap;
+    namespace cm = iclforge::ac3::eac3::chanmap;
     // No front coverage at all: no Table 5.8 acmod has anything to anchor a
     // bed on (chanmap::allocate's own AllocationError::kNoBedFit - see
     // test_eac3.cpp - collapses to this one PlanError at the Plan layer).
     {
-        const iclforge::plan::Plan plan{
-            .codec = iclforge::plan::Codec::kEac3, .custom_locations = cm::kLrsRrsBit, .bitrate_kbps = 448};
-        const auto error = iclforge::plan::validate(plan);
+        const iclforge::ac3::plan::Plan plan{
+            .codec = iclforge::ac3::plan::Codec::kEac3, .custom_locations = cm::kLrsRrsBit, .bitrate_kbps = 448};
+        const auto error = iclforge::ac3::plan::validate(plan);
         REQUIRE(error.has_value());
-        CHECK(*error == iclforge::plan::PlanError::kInvalidChannels);
+        CHECK(*error == iclforge::ac3::plan::PlanError::kInvalidChannels);
     }
     // The empty selection - constructible directly against this API even
     // though parse_channels() itself never produces it (empty text is
     // nullopt, not zero) - is exactly as inexpressible as any other mask with
     // no front coverage.
     {
-        const iclforge::plan::Plan plan{.codec = iclforge::plan::Codec::kEac3,
+        const iclforge::ac3::plan::Plan plan{.codec = iclforge::ac3::plan::Codec::kEac3,
                                    .custom_locations = std::uint16_t{0},
                                    .bitrate_kbps = 448};
-        const auto error = iclforge::plan::validate(plan);
+        const auto error = iclforge::ac3::plan::validate(plan);
         REQUIRE(error.has_value());
-        CHECK(*error == iclforge::plan::PlanError::kInvalidChannels);
+        CHECK(*error == iclforge::ac3::plan::PlanError::kInvalidChannels);
     }
     // Seventeen distinct locations is one past §E3.8.2's whole-programme
     // ceiling.
@@ -584,49 +584,49 @@ TEST_CASE("validate refuses a custom channel selection Annex E cannot express") 
             cm::kRightSurroundBit | cm::kLfeBit | cm::kLcRcBit | cm::kLrsRrsBit | cm::kLsdRsdBit |
             cm::kLwRwBit | cm::kVhlVhrBit | cm::kVhcBit);
         REQUIRE(cm::channel_count(locations) == 17);
-        const iclforge::plan::Plan plan{.codec = iclforge::plan::Codec::kEac3,
+        const iclforge::ac3::plan::Plan plan{.codec = iclforge::ac3::plan::Codec::kEac3,
                                         .custom_locations = locations,
                                         .bitrate_kbps = 448};
-        const auto error = iclforge::plan::validate(plan);
+        const auto error = iclforge::ac3::plan::validate(plan);
         REQUIRE(error.has_value());
-        CHECK(*error == iclforge::plan::PlanError::kInvalidChannels);
+        CHECK(*error == iclforge::ac3::plan::PlanError::kInvalidChannels);
     }
 }
 
 TEST_CASE("validate refuses a custom channel selection that needs a dependent on AC-3") {
-    namespace cm = iclforge::eac3::chanmap;
+    namespace cm = iclforge::ac3::eac3::chanmap;
     // AC-3 has no substream layer at all, so any selection allocate() can
     // only satisfy with a dependent (anything past 3/2+LFE) is off-limits to
     // it - the same rule carries() already states for named layouts.
     const auto locations = static_cast<std::uint16_t>(
         cm::kLeftBit | cm::kCentreBit | cm::kRightBit | cm::kLeftSurroundBit |
         cm::kRightSurroundBit | cm::kLfeBit | cm::kVhlVhrBit);
-    const iclforge::plan::Plan plan{
-        .codec = iclforge::plan::Codec::kAc3, .custom_locations = locations, .bitrate_kbps = 384};
-    const auto error = iclforge::plan::validate(plan);
+    const iclforge::ac3::plan::Plan plan{
+        .codec = iclforge::ac3::plan::Codec::kAc3, .custom_locations = locations, .bitrate_kbps = 384};
+    const auto error = iclforge::ac3::plan::validate(plan);
     REQUIRE(error.has_value());
-    CHECK(*error == iclforge::plan::PlanError::kLayoutNeedsEac3);
+    CHECK(*error == iclforge::ac3::plan::PlanError::kLayoutNeedsEac3);
 }
 
 TEST_CASE("coupling is dropped where there is nothing to couple") {
-    iclforge::plan::Plan plan{.codec = iclforge::plan::Codec::kAc3,
-                              .layout = iclforge::plan::LayoutId::kMono};
+    iclforge::ac3::plan::Plan plan{.codec = iclforge::ac3::plan::Codec::kAc3,
+                              .layout = iclforge::ac3::plan::LayoutId::kMono};
     plan.tools.coupling = true;
-    CHECK_FALSE(iclforge::plan::ac3_config(plan).coupling);
-    plan.layout = iclforge::plan::LayoutId::kStereo;
-    CHECK(iclforge::plan::ac3_config(plan).coupling);
+    CHECK_FALSE(iclforge::ac3::plan::ac3_config(plan).coupling);
+    plan.layout = iclforge::ac3::plan::LayoutId::kStereo;
+    CHECK(iclforge::ac3::plan::ac3_config(plan).coupling);
 }
 
 TEST_CASE("7.1.4 asks for two dependent substreams carrying the right channels") {
-    iclforge::plan::Plan plan{.codec = iclforge::plan::Codec::kEac3,
-                         .layout = iclforge::plan::LayoutId::k714,
+    iclforge::ac3::plan::Plan plan{.codec = iclforge::ac3::plan::Codec::kEac3,
+                         .layout = iclforge::ac3::plan::LayoutId::k714,
                          .bitrate_kbps = 640};
-    const auto config = iclforge::plan::eac3_config(plan);
+    const auto config = iclforge::ac3::plan::eac3_config(plan);
     REQUIRE(config.dependents.size() == 2);
-    CHECK(config.independent.acmod == iclforge::Acmod::k3_2);
+    CHECK(config.independent.acmod == iclforge::ac3::Acmod::k3_2);
     CHECK(config.independent.lfe);
-    CHECK(config.dependents[0].chanmap == iclforge::eac3::chanmap::k71Rear);
-    CHECK(config.dependents[1].chanmap == iclforge::eac3::chanmap::kTopQuad);
+    CHECK(config.dependents[0].chanmap == iclforge::ac3::eac3::chanmap::k71Rear);
+    CHECK(config.dependents[1].chanmap == iclforge::ac3::eac3::chanmap::kTopQuad);
     // Substreams occupy one frame period, not one frame, so a dependent gets
     // its own slice of the rate rather than a share of the independent's.
     CHECK(config.dependents[0].bitrate_kbps == 320);
@@ -634,14 +634,14 @@ TEST_CASE("7.1.4 asks for two dependent substreams carrying the right channels")
 }
 
 TEST_CASE("eac3_config halves a plan's VBR bounds for each dependent, not its quality") {
-    iclforge::plan::Plan plan{.codec = iclforge::plan::Codec::kEac3,
-                         .layout = iclforge::plan::LayoutId::k714,
+    iclforge::ac3::plan::Plan plan{.codec = iclforge::ac3::plan::Codec::kEac3,
+                         .layout = iclforge::ac3::plan::LayoutId::k714,
                          .bitrate_kbps = 640,
-                         .vbr = iclforge::eac3::VbrConfig{.quality = 0.6,
+                         .vbr = iclforge::ac3::eac3::VbrConfig{.quality = 0.6,
                                                      .min_kbps = 200,
                                                      .max_kbps = 640,
                                                      .nominal_kbps = 300}};
-    const auto config = iclforge::plan::eac3_config(plan);
+    const auto config = iclforge::ac3::plan::eac3_config(plan);
     REQUIRE(config.dependents.size() == 2);
     REQUIRE(config.independent.vbr.has_value());
     CHECK(config.independent.vbr->quality == 0.6);
@@ -670,25 +670,25 @@ TEST_CASE("vbr tokens survive a round trip", "[vbr][abr]") {
         "avg:192",       "avg:192,win:8",      "avg:192,min:96,max:448",
         "avg:192,win:8,min:96,max:448"};
     for (const auto& token : tokens) {
-        std::optional<iclforge::eac3::VbrConfig> vbr;
+        std::optional<iclforge::ac3::eac3::VbrConfig> vbr;
         INFO("token " << token);
-        REQUIRE(iclforge::plan::parse_vbr(token, vbr));
-        CHECK(iclforge::plan::format_vbr(vbr) == token);
+        REQUIRE(iclforge::ac3::plan::parse_vbr(token, vbr));
+        CHECK(iclforge::ac3::plan::format_vbr(vbr) == token);
     }
 }
 
 TEST_CASE("the vbr avg: token turns average-rate mode on", "[vbr][abr]") {
-    std::optional<iclforge::eac3::VbrConfig> vbr;
-    REQUIRE(iclforge::plan::parse_vbr("avg:224", vbr));
+    std::optional<iclforge::ac3::eac3::VbrConfig> vbr;
+    REQUIRE(iclforge::ac3::plan::parse_vbr("avg:224", vbr));
     REQUIRE(vbr.has_value());
     REQUIRE(vbr->abr.has_value());
     CHECK(vbr->abr->target_kbps == 224);
     // Left alone, the window is AbrConfig's own default rather than anything
     // this parser invents.
-    CHECK(vbr->abr->window_frames == iclforge::eac3::kAbrDefaultWindowFrames);
+    CHECK(vbr->abr->window_frames == iclforge::ac3::eac3::kAbrDefaultWindowFrames);
 
-    std::optional<iclforge::eac3::VbrConfig> bounded;
-    REQUIRE(iclforge::plan::parse_vbr("avg:224,win:12,max:320", bounded));
+    std::optional<iclforge::ac3::eac3::VbrConfig> bounded;
+    REQUIRE(iclforge::ac3::plan::parse_vbr("avg:224,win:12,max:320", bounded));
     REQUIRE(bounded->abr.has_value());
     CHECK(bounded->abr->target_kbps == 224);
     CHECK(bounded->abr->window_frames == 12);
@@ -696,8 +696,8 @@ TEST_CASE("the vbr avg: token turns average-rate mode on", "[vbr][abr]") {
 }
 
 TEST_CASE("plain vbr tokens leave average-rate mode off", "[vbr][abr]") {
-    std::optional<iclforge::eac3::VbrConfig> vbr;
-    REQUIRE(iclforge::plan::parse_vbr("q:0.4,min:96,max:320", vbr));
+    std::optional<iclforge::ac3::eac3::VbrConfig> vbr;
+    REQUIRE(iclforge::ac3::plan::parse_vbr("q:0.4,min:96,max:320", vbr));
     REQUIRE(vbr.has_value());
     CHECK_FALSE(vbr->abr.has_value());
 }
@@ -718,9 +718,9 @@ TEST_CASE("a malformed vbr token is rejected rather than half-applied", "[vbr][a
         "avg:192,max:96",    // a ceiling below it
     };
     for (const auto& token : bad) {
-        std::optional<iclforge::eac3::VbrConfig> vbr;
+        std::optional<iclforge::ac3::eac3::VbrConfig> vbr;
         INFO("token " << token);
-        CHECK_FALSE(iclforge::plan::parse_vbr(token, vbr));
+        CHECK_FALSE(iclforge::ac3::plan::parse_vbr(token, vbr));
     }
 }
 
@@ -730,13 +730,13 @@ TEST_CASE("eac3_config halves a plan's ABR target for each dependent, not its wi
     // average, so each substream holds half of it - the same rule min/max
     // already follow. The window counts frames, not bits, and both substreams
     // cover the same 1536 samples, so it carries over unchanged.
-    const iclforge::plan::Plan plan{
-        .codec = iclforge::plan::Codec::kEac3,
-        .layout = iclforge::plan::LayoutId::k71,
+    const iclforge::ac3::plan::Plan plan{
+        .codec = iclforge::ac3::plan::Codec::kEac3,
+        .layout = iclforge::ac3::plan::LayoutId::k71,
         .bitrate_kbps = 640,
-        .vbr = iclforge::eac3::VbrConfig{
-            .abr = iclforge::eac3::AbrConfig{.target_kbps = 384, .window_frames = 10}}};
-    const auto config = iclforge::plan::eac3_config(plan);
+        .vbr = iclforge::ac3::eac3::VbrConfig{
+            .abr = iclforge::ac3::eac3::AbrConfig{.target_kbps = 384, .window_frames = 10}}};
+    const auto config = iclforge::ac3::plan::eac3_config(plan);
     REQUIRE(config.independent.vbr.has_value());
     REQUIRE(config.independent.vbr->abr.has_value());
     CHECK(config.independent.vbr->abr->target_kbps == 384);
@@ -751,10 +751,10 @@ TEST_CASE("eac3_config halves a plan's ABR target for each dependent, not its wi
 }
 
 TEST_CASE("a plan with no VBR config leaves every substream's vbr unset") {
-    const iclforge::plan::Plan plan{.codec = iclforge::plan::Codec::kEac3,
-                               .layout = iclforge::plan::LayoutId::k714,
+    const iclforge::ac3::plan::Plan plan{.codec = iclforge::ac3::plan::Codec::kEac3,
+                               .layout = iclforge::ac3::plan::LayoutId::k714,
                                .bitrate_kbps = 640};
-    const auto config = iclforge::plan::eac3_config(plan);
+    const auto config = iclforge::ac3::plan::eac3_config(plan);
     REQUIRE(config.dependents.size() == 2);
     CHECK_FALSE(config.independent.vbr.has_value());
     for (const auto& dependent : config.dependents) {
@@ -763,14 +763,14 @@ TEST_CASE("a plan with no VBR config leaves every substream's vbr unset") {
 }
 
 TEST_CASE("the mixmdate group is written only when it is asked for") {
-    iclforge::plan::Plan plan{.codec = iclforge::plan::Codec::kEac3,
-                              .layout = iclforge::plan::LayoutId::k51};
-    CHECK_FALSE(iclforge::plan::eac3_config(plan).independent.mixing.has_value());
+    iclforge::ac3::plan::Plan plan{.codec = iclforge::ac3::plan::Codec::kEac3,
+                              .layout = iclforge::ac3::plan::LayoutId::k51};
+    CHECK_FALSE(iclforge::ac3::plan::eac3_config(plan).independent.mixing.has_value());
     plan.meta.mixmeta = true;
-    plan.meta.cmixlev = iclforge::meta::CentreMixLevel::kMinus3dB;
-    const auto config = iclforge::plan::eac3_config(plan);
+    plan.meta.cmixlev = iclforge::ac3::meta::CentreMixLevel::kMinus3dB;
+    const auto config = iclforge::ac3::plan::eac3_config(plan);
     REQUIRE(config.independent.mixing.has_value());
-    CHECK(config.independent.mixing->lorocmixlev == iclforge::meta::MixLevel::kMinus3dB);
+    CHECK(config.independent.mixing->lorocmixlev == iclforge::ac3::meta::MixLevel::kMinus3dB);
 }
 
 // ---------------------------------------------------------------------------
@@ -779,9 +779,9 @@ TEST_CASE("the mixmdate group is written only when it is asked for") {
 
 // Catch2 splits a filter on commas, so no test name here contains one.
 TEST_CASE("a source that already is the layout is carried rather than rendered") {
-    const auto routing = iclforge::plan::route(iclforge::plan::LayoutId::k51, 6,
-                                          iclforge::meta::CentreMixLevel::kMinus4_5dB,
-                                          iclforge::meta::SurroundMixLevel::kMinus6dB);
+    const auto routing = iclforge::ac3::plan::route(iclforge::ac3::plan::LayoutId::k51, 6,
+                                          iclforge::ac3::meta::CentreMixLevel::kMinus4_5dB,
+                                          iclforge::ac3::meta::SurroundMixLevel::kMinus6dB);
     REQUIRE(routing.has_value());
     CHECK(routing->is_permutation());
     // A/52 Table 5.8 order L C R Ls Rs LFE, taken from a WAV's FL FR FC LFE
@@ -806,27 +806,27 @@ TEST_CASE("side surrounds, rear surrounds and discrete sides route without "
     // (or two channels splitting one source), so a broken direction_of()
     // fails this exact check, not just a spot-checked frequency.
     const auto locations =
-        iclforge::plan::parse_channels("L,C,R,Ls,Rs,Lrs,Rrs,Cs,Ts,Lsd,Rsd,Vhc,LFE");
+        iclforge::ac3::plan::parse_channels("L,C,R,Ls,Rs,Lrs,Rrs,Cs,Ts,Lsd,Rsd,Vhc,LFE");
     REQUIRE(locations.has_value());
-    const iclforge::plan::Plan plan{
-        .codec = iclforge::plan::Codec::kEac3, .custom_locations = locations, .bitrate_kbps = 640};
-    REQUIRE_FALSE(iclforge::plan::validate(plan).has_value());
+    const iclforge::ac3::plan::Plan plan{
+        .codec = iclforge::ac3::plan::Codec::kEac3, .custom_locations = locations, .bitrate_kbps = 640};
+    REQUIRE_FALSE(iclforge::ac3::plan::validate(plan).has_value());
 
-    const auto cp = iclforge::plan::resolve(plan);
-    const auto rendered = iclforge::plan::rendered_channel_count(cp);
+    const auto cp = iclforge::ac3::plan::resolve(plan);
+    const auto rendered = iclforge::ac3::plan::rendered_channel_count(cp);
     REQUIRE(rendered == 13);
 
-    const auto routing = iclforge::plan::route(cp, static_cast<std::size_t>(rendered),
-                                          iclforge::meta::CentreMixLevel::kMinus4_5dB,
-                                          iclforge::meta::SurroundMixLevel::kMinus6dB);
+    const auto routing = iclforge::ac3::plan::route(cp, static_cast<std::size_t>(rendered),
+                                          iclforge::ac3::meta::CentreMixLevel::kMinus4_5dB,
+                                          iclforge::ac3::meta::SurroundMixLevel::kMinus6dB);
     REQUIRE(routing.has_value());
     CHECK(routing->is_permutation());
 }
 
 TEST_CASE("stereo in and stereo out is the identity") {
-    const auto routing = iclforge::plan::route(iclforge::plan::LayoutId::kStereo, 2,
-                                          iclforge::meta::CentreMixLevel::kMinus4_5dB,
-                                          iclforge::meta::SurroundMixLevel::kMinus6dB);
+    const auto routing = iclforge::ac3::plan::route(iclforge::ac3::plan::LayoutId::kStereo, 2,
+                                          iclforge::ac3::meta::CentreMixLevel::kMinus4_5dB,
+                                          iclforge::ac3::meta::SurroundMixLevel::kMinus6dB);
     REQUIRE(routing.has_value());
     CHECK(routing->is_permutation());
     CHECK(routing->at(0, 0) == 1.0);
@@ -837,9 +837,9 @@ TEST_CASE("a narrow source does not invent the channels it lacks") {
     // Upmixing stereo into a 5.1 ring would put energy in a centre and
     // surrounds the source never had. The honest answer is silence there, and
     // the meters then show it.
-    const auto routing = iclforge::plan::route(iclforge::plan::LayoutId::k51, 2,
-                                          iclforge::meta::CentreMixLevel::kMinus4_5dB,
-                                          iclforge::meta::SurroundMixLevel::kMinus6dB);
+    const auto routing = iclforge::ac3::plan::route(iclforge::ac3::plan::LayoutId::k51, 2,
+                                          iclforge::ac3::meta::CentreMixLevel::kMinus4_5dB,
+                                          iclforge::ac3::meta::SurroundMixLevel::kMinus6dB);
     REQUIRE(routing.has_value());
     CHECK(routing->at(0, 0) == Approx(1.0));  // L <- L
     CHECK(routing->at(2, 1) == Approx(1.0));  // R <- R
@@ -851,9 +851,9 @@ TEST_CASE("a narrow source does not invent the channels it lacks") {
 }
 
 TEST_CASE("folding 5.1 to stereo follows 7.8 rather than a panner") {
-    const auto routing = iclforge::plan::route(iclforge::plan::LayoutId::kStereo, 6,
-                                          iclforge::meta::CentreMixLevel::kMinus4_5dB,
-                                          iclforge::meta::SurroundMixLevel::kMinus6dB);
+    const auto routing = iclforge::ac3::plan::route(iclforge::ac3::plan::LayoutId::kStereo, 6,
+                                          iclforge::ac3::meta::CentreMixLevel::kMinus4_5dB,
+                                          iclforge::ac3::meta::SurroundMixLevel::kMinus6dB);
     REQUIRE(routing.has_value());
     // §7.8's Lo/Ro sends each surround to its OWN side only. A pairwise pan
     // would bleed it across both, which is audibly a different mix.
@@ -870,15 +870,15 @@ TEST_CASE("folding 5.1 to stereo follows 7.8 rather than a panner") {
 }
 
 TEST_CASE("the surround downmix level actually changes the fold") {
-    const auto quiet = iclforge::plan::route(iclforge::plan::LayoutId::kStereo, 6,
-                                        iclforge::meta::CentreMixLevel::kMinus4_5dB,
-                                        iclforge::meta::SurroundMixLevel::kMinus6dB);
-    const auto loud = iclforge::plan::route(iclforge::plan::LayoutId::kStereo, 6,
-                                       iclforge::meta::CentreMixLevel::kMinus4_5dB,
-                                       iclforge::meta::SurroundMixLevel::kMinus3dB);
-    const auto off = iclforge::plan::route(iclforge::plan::LayoutId::kStereo, 6,
-                                      iclforge::meta::CentreMixLevel::kMinus4_5dB,
-                                      iclforge::meta::SurroundMixLevel::kSilent);
+    const auto quiet = iclforge::ac3::plan::route(iclforge::ac3::plan::LayoutId::kStereo, 6,
+                                        iclforge::ac3::meta::CentreMixLevel::kMinus4_5dB,
+                                        iclforge::ac3::meta::SurroundMixLevel::kMinus6dB);
+    const auto loud = iclforge::ac3::plan::route(iclforge::ac3::plan::LayoutId::kStereo, 6,
+                                       iclforge::ac3::meta::CentreMixLevel::kMinus4_5dB,
+                                       iclforge::ac3::meta::SurroundMixLevel::kMinus3dB);
+    const auto off = iclforge::ac3::plan::route(iclforge::ac3::plan::LayoutId::kStereo, 6,
+                                      iclforge::ac3::meta::CentreMixLevel::kMinus4_5dB,
+                                      iclforge::ac3::meta::SurroundMixLevel::kSilent);
     REQUIRE(quiet.has_value());
     REQUIRE(loud.has_value());
     REQUIRE(off.has_value());
@@ -887,11 +887,11 @@ TEST_CASE("the surround downmix level actually changes the fold") {
 }
 
 TEST_CASE("the LFE is routed by name and never panned") {
-    const auto routing = iclforge::plan::route(iclforge::plan::LayoutId::k514, 6,
-                                          iclforge::meta::CentreMixLevel::kMinus4_5dB,
-                                          iclforge::meta::SurroundMixLevel::kMinus6dB);
+    const auto routing = iclforge::ac3::plan::route(iclforge::ac3::plan::LayoutId::k514, 6,
+                                          iclforge::ac3::meta::CentreMixLevel::kMinus4_5dB,
+                                          iclforge::ac3::meta::SurroundMixLevel::kMinus6dB);
     REQUIRE(routing.has_value());
-    const auto coded = iclforge::plan::coded_channels(iclforge::plan::LayoutId::k514);
+    const auto coded = iclforge::ac3::plan::coded_channels(iclforge::ac3::plan::LayoutId::k514);
     const int wav_lfe = 3;
     for (std::size_t c = 0; c < coded.size(); ++c) {
         const bool lfe = coded[c].location == Location::kLfe;
@@ -915,13 +915,13 @@ TEST_CASE("the bed stays a self-sufficient rendering of the whole programme") {
     // full energy even when a dependent will later replace the channel it
     // landed on. The source here is flat 5.1 - a height channel deliberately
     // does NOT reach the bed, which the ceiling test above covers.
-    for (const auto id : {iclforge::plan::LayoutId::k71, iclforge::plan::LayoutId::k512,
-                          iclforge::plan::LayoutId::k514, iclforge::plan::LayoutId::k714}) {
+    for (const auto id : {iclforge::ac3::plan::LayoutId::k71, iclforge::ac3::plan::LayoutId::k512,
+                          iclforge::ac3::plan::LayoutId::k514, iclforge::ac3::plan::LayoutId::k714}) {
         const auto routing =
-            iclforge::plan::route(id, 6, iclforge::meta::CentreMixLevel::kMinus4_5dB,
-                                  iclforge::meta::SurroundMixLevel::kMinus6dB);
+            iclforge::ac3::plan::route(id, 6, iclforge::ac3::meta::CentreMixLevel::kMinus4_5dB,
+                                  iclforge::ac3::meta::SurroundMixLevel::kMinus6dB);
         REQUIRE(routing.has_value());
-        INFO("layout " << iclforge::plan::layout(id).name);
+        INFO("layout " << iclforge::ac3::plan::layout(id).name);
         for (int s = 0; s < routing->source_channels; ++s) {
             if (s == 3) {
                 continue;  // the LFE, which has no direction to preserve
@@ -933,9 +933,9 @@ TEST_CASE("the bed stays a self-sufficient rendering of the whole programme") {
 }
 
 TEST_CASE("a 7.1 source reaches the rears the 5.1 bed cannot hold") {
-    const auto routing = iclforge::plan::route(iclforge::plan::LayoutId::k71, 8,
-                                          iclforge::meta::CentreMixLevel::kMinus4_5dB,
-                                          iclforge::meta::SurroundMixLevel::kMinus6dB);
+    const auto routing = iclforge::ac3::plan::route(iclforge::ac3::plan::LayoutId::k71, 8,
+                                          iclforge::ac3::meta::CentreMixLevel::kMinus4_5dB,
+                                          iclforge::ac3::meta::SurroundMixLevel::kMinus6dB);
     REQUIRE(routing.has_value());
     REQUIRE(routing->source_channels == 8);
     REQUIRE(routing->coded_channels == 10);
@@ -944,7 +944,7 @@ TEST_CASE("a 7.1 source reaches the rears the 5.1 bed cannot hold") {
     // sides 6/7.
     const int wav_bl = 4;
     const int wav_sl = 6;
-    const auto coded = iclforge::plan::coded_channels(iclforge::plan::LayoutId::k71);
+    const auto coded = iclforge::ac3::plan::coded_channels(iclforge::ac3::plan::LayoutId::k71);
     // The dependent's Ls takes the source's side surround alone, and its Lrs
     // the source's rear: at 7.1 geometry those directions coincide exactly.
     int dep_ls = -1;
@@ -971,16 +971,16 @@ TEST_CASE("a 7.1 source reaches the rears the 5.1 bed cannot hold") {
 TEST_CASE("a source with height reaches the ceiling and nowhere else") {
     // Ten channels against a 5.1.4 target is the exact-match path, so every
     // channel should arrive at its own speaker untouched.
-    const auto routing = iclforge::plan::route(iclforge::plan::LayoutId::k514, 10,
-                                          iclforge::meta::CentreMixLevel::kMinus4_5dB,
-                                          iclforge::meta::SurroundMixLevel::kMinus6dB);
+    const auto routing = iclforge::ac3::plan::route(iclforge::ac3::plan::LayoutId::k514, 10,
+                                          iclforge::ac3::meta::CentreMixLevel::kMinus4_5dB,
+                                          iclforge::ac3::meta::SurroundMixLevel::kMinus6dB);
     REQUIRE(routing.has_value());
     CHECK(routing->is_permutation());
 
     // The height channels a dependent ADDS must not also be folded into the
     // bed: the dependent does not replace anything, so a 5.1.4 decoder plays
     // both and would hear the ceiling twice - once above and once on the ring.
-    const auto coded = iclforge::plan::coded_channels(iclforge::plan::LayoutId::k514);
+    const auto coded = iclforge::ac3::plan::coded_channels(iclforge::ac3::plan::LayoutId::k514);
     const int wav_tfl = 6;  // FL FR FC LFE SL SR TFL TFR TBL TBR
     int dep_vhl = -1;
     for (std::size_t c = 0; c < coded.size(); ++c) {
@@ -996,11 +996,11 @@ TEST_CASE("a source with height reaches the ceiling and nowhere else") {
 }
 
 TEST_CASE("a flat source leaves the ceiling silent rather than inventing height") {
-    const auto routing = iclforge::plan::route(iclforge::plan::LayoutId::k514, 6,
-                                          iclforge::meta::CentreMixLevel::kMinus4_5dB,
-                                          iclforge::meta::SurroundMixLevel::kMinus6dB);
+    const auto routing = iclforge::ac3::plan::route(iclforge::ac3::plan::LayoutId::k514, 6,
+                                          iclforge::ac3::meta::CentreMixLevel::kMinus4_5dB,
+                                          iclforge::ac3::meta::SurroundMixLevel::kMinus6dB);
     REQUIRE(routing.has_value());
-    const auto coded = iclforge::plan::coded_channels(iclforge::plan::LayoutId::k514);
+    const auto coded = iclforge::ac3::plan::coded_channels(iclforge::ac3::plan::LayoutId::k514);
     for (std::size_t c = 0; c < coded.size(); ++c) {
         const auto location = coded[c].location;
         if (location != Location::kVhl && location != Location::kVhr &&
@@ -1019,19 +1019,19 @@ TEST_CASE("no speaker is sent more than full scale") {
     // sum, and a sum above unity clips. §7.8.1 answers this by attenuating
     // every coefficient equally, which is what route() has to do too: folding
     // a 5.1.4 source's ceiling into a 7.1.4 bed measured +1.5 dBFS without it.
-    for (const auto& info : iclforge::plan::kLayouts) {
+    for (const auto& info : iclforge::ac3::plan::kLayouts) {
         // Dual mono is not a pannable soundstage - route() only ever accepts
         // an exact 2-channel source for it (Ch1, Ch2, identity) and refuses
         // every other width by design, which the §7.8.1 normalisation this
         // test checks has nothing to say about.
-        if (info.id == iclforge::plan::LayoutId::kDualMono) {
+        if (info.id == iclforge::ac3::plan::LayoutId::kDualMono) {
             continue;
         }
         for (const std::size_t channels : {std::size_t{2}, std::size_t{6}, std::size_t{8},
                                            std::size_t{10}, std::size_t{12}}) {
             const auto routing =
-                iclforge::plan::route(info.id, channels, iclforge::meta::CentreMixLevel::kMinus3dB,
-                                 iclforge::meta::SurroundMixLevel::kMinus3dB);
+                iclforge::ac3::plan::route(info.id, channels, iclforge::ac3::meta::CentreMixLevel::kMinus3dB,
+                                 iclforge::ac3::meta::SurroundMixLevel::kMinus3dB);
             REQUIRE(routing.has_value());
             for (int c = 0; c < routing->coded_channels; ++c) {
                 double sum = 0.0;
@@ -1050,11 +1050,11 @@ TEST_CASE("normalising the fold does not disturb a source that needs no fold") {
     // The attenuation is a global scale, so it must be exactly 1 wherever no
     // speaker is oversubscribed - otherwise every ordinary encode would come
     // out quieter than its source for no reason.
-    for (const auto& info : iclforge::plan::kLayouts) {
-        const auto routing = iclforge::plan::route(info.id,
+    for (const auto& info : iclforge::ac3::plan::kLayouts) {
+        const auto routing = iclforge::ac3::plan::route(info.id,
                                               static_cast<std::size_t>(info.rendered),
-                                              iclforge::meta::CentreMixLevel::kMinus4_5dB,
-                                              iclforge::meta::SurroundMixLevel::kMinus6dB);
+                                              iclforge::ac3::meta::CentreMixLevel::kMinus4_5dB,
+                                              iclforge::ac3::meta::SurroundMixLevel::kMinus6dB);
         REQUIRE(routing.has_value());
         INFO("layout " << info.name);
         // Every coded channel still receives some source at unity: the bed
@@ -1072,17 +1072,17 @@ TEST_CASE("normalising the fold does not disturb a source that needs no fold") {
 TEST_CASE("a source width no speaker layout has is refused") {
     for (const std::size_t channels : {std::size_t{0}, std::size_t{7}, std::size_t{13}}) {
         INFO(channels << " channels");
-        CHECK_FALSE(iclforge::plan::route(iclforge::plan::LayoutId::k51, channels,
-                                     iclforge::meta::CentreMixLevel::kMinus4_5dB,
-                                     iclforge::meta::SurroundMixLevel::kMinus6dB)
+        CHECK_FALSE(iclforge::ac3::plan::route(iclforge::ac3::plan::LayoutId::k51, channels,
+                                     iclforge::ac3::meta::CentreMixLevel::kMinus4_5dB,
+                                     iclforge::ac3::meta::SurroundMixLevel::kMinus6dB)
                         .has_value());
     }
 }
 
 TEST_CASE("render applies the routing it was given") {
-    const auto routing = iclforge::plan::route(iclforge::plan::LayoutId::k51, 2,
-                                          iclforge::meta::CentreMixLevel::kMinus4_5dB,
-                                          iclforge::meta::SurroundMixLevel::kMinus6dB);
+    const auto routing = iclforge::ac3::plan::route(iclforge::ac3::plan::LayoutId::k51, 2,
+                                          iclforge::ac3::meta::CentreMixLevel::kMinus4_5dB,
+                                          iclforge::ac3::meta::SurroundMixLevel::kMinus6dB);
     REQUIRE(routing.has_value());
 
     constexpr std::size_t kSamples = 64;
@@ -1096,7 +1096,7 @@ TEST_CASE("render applies the routing it was given") {
     for (auto& channel : out) {
         views.emplace_back(channel);
     }
-    iclforge::plan::render(*routing, in, views, kSamples);
+    iclforge::ac3::plan::render(*routing, in, views, kSamples);
 
     CHECK(rms(out[0]) == Approx(rms(source[0])));
     CHECK(rms(out[2]) == Approx(rms(source[1])));
@@ -1176,20 +1176,20 @@ TEST_CASE("every E-AC-3 layout encodes real audio and decodes back to its speake
     constexpr int kFrames = 4;
     constexpr int kSkipFrames = 2;
 
-    for (const auto& info : iclforge::plan::kLayouts) {
-        if (info.id == iclforge::plan::LayoutId::kMono) {
+    for (const auto& info : iclforge::ac3::plan::kLayouts) {
+        if (info.id == iclforge::ac3::plan::LayoutId::kMono) {
             continue;  // a mono bed has no directions to check
         }
-        const iclforge::plan::Plan plan{.codec = iclforge::plan::Codec::kEac3,
+        const iclforge::ac3::plan::Plan plan{.codec = iclforge::ac3::plan::Codec::kEac3,
                                    .layout = info.id,
                                    .bitrate_kbps = 640};
         const auto routing =
-            iclforge::plan::route(info.id, static_cast<std::size_t>(info.rendered),
-                             iclforge::meta::CentreMixLevel::kMinus4_5dB,
-                             iclforge::meta::SurroundMixLevel::kMinus6dB);
+            iclforge::ac3::plan::route(info.id, static_cast<std::size_t>(info.rendered),
+                             iclforge::ac3::meta::CentreMixLevel::kMinus4_5dB,
+                             iclforge::ac3::meta::SurroundMixLevel::kMinus6dB);
         REQUIRE(routing.has_value());
 
-        iclforge::eac3::AccessUnitEncoder encoder{iclforge::plan::eac3_config(plan)};
+        iclforge::ac3::eac3::AccessUnitEncoder encoder{iclforge::ac3::plan::eac3_config(plan)};
         REQUIRE(encoder.channel_count() == info.transmitted);
 
         const auto nsource = static_cast<std::size_t>(routing->source_channels);
@@ -1198,7 +1198,7 @@ TEST_CASE("every E-AC-3 layout encodes real audio and decodes back to its speake
         // a mid tone would come back as silence and look like a routing fault.
         int lfe_source = -1;
         {
-            const auto coded_list = iclforge::plan::coded_channels(info.id);
+            const auto coded_list = iclforge::ac3::plan::coded_channels(info.id);
             for (std::size_t c = 0; c < coded_list.size() && lfe_source < 0; ++c) {
                 if (coded_list[c].location != Location::kLfe) {
                     continue;
@@ -1212,10 +1212,10 @@ TEST_CASE("every E-AC-3 layout encodes real audio and decodes back to its speake
             }
         }
         std::vector<std::vector<float>> source(nsource,
-                                               std::vector<float>(iclforge::kSamplesPerFrame));
+                                               std::vector<float>(iclforge::ac3::kSamplesPerFrame));
         std::vector<std::vector<float>> coded(
             static_cast<std::size_t>(info.transmitted),
-            std::vector<float>(iclforge::kSamplesPerFrame));
+            std::vector<float>(iclforge::ac3::kSamplesPerFrame));
 
         std::vector<std::byte> stream;
         std::uint64_t n0 = 0;
@@ -1234,7 +1234,7 @@ TEST_CASE("every E-AC-3 layout encodes real audio and decodes back to its speake
             for (auto& channel : coded) {
                 out.emplace_back(channel);
             }
-            iclforge::plan::render(*routing, in, out, iclforge::kSamplesPerFrame);
+            iclforge::ac3::plan::render(*routing, in, out, iclforge::ac3::kSamplesPerFrame);
 
             std::vector<std::span<const float>> encoded;
             for (const auto& channel : coded) {
@@ -1244,15 +1244,15 @@ TEST_CASE("every E-AC-3 layout encodes real audio and decodes back to its speake
             INFO("layout " << info.name << " frame " << frame);
             REQUIRE(unit.has_value());
             stream.insert(stream.end(), unit->bytes.begin(), unit->bytes.end());
-            n0 += iclforge::kSamplesPerFrame;
+            n0 += iclforge::ac3::kSamplesPerFrame;
         }
 
-        const auto units = iclforge::split_access_units(stream);
+        const auto units = iclforge::ac3::split_access_units(stream);
         INFO("layout " << info.name);
         REQUIRE(units.has_value());
         REQUIRE(units->size() == kFrames);
 
-        iclforge::Eac3Decoder decoder;
+        iclforge::ac3::Eac3Decoder decoder;
         std::vector<std::vector<float>> pcm;
         for (int frame = 0; frame < kFrames; ++frame) {
             const auto decoded = decoder.decode_access_unit((*units)[static_cast<std::size_t>(frame)]);
@@ -1291,33 +1291,33 @@ TEST_CASE("a custom channel selection encodes real audio and decodes back to its
     constexpr int kFrames = 4;
     constexpr int kSkipFrames = 2;
 
-    const auto locations = iclforge::plan::parse_channels("L,C,R,LFE,Vhl,Vhr,Lts,Rts");
+    const auto locations = iclforge::ac3::plan::parse_channels("L,C,R,LFE,Vhl,Vhr,Lts,Rts");
     REQUIRE(locations.has_value());
-    const iclforge::plan::Plan plan{
-        .codec = iclforge::plan::Codec::kEac3, .custom_locations = locations, .bitrate_kbps = 448};
-    REQUIRE_FALSE(iclforge::plan::validate(plan).has_value());
+    const iclforge::ac3::plan::Plan plan{
+        .codec = iclforge::ac3::plan::Codec::kEac3, .custom_locations = locations, .bitrate_kbps = 448};
+    REQUIRE_FALSE(iclforge::ac3::plan::validate(plan).has_value());
 
-    const auto cp = iclforge::plan::resolve(plan);
-    CHECK(cp.bed_acmod == iclforge::Acmod::k3_0);
+    const auto cp = iclforge::ac3::plan::resolve(plan);
+    CHECK(cp.bed_acmod == iclforge::ac3::Acmod::k3_0);
     CHECK(cp.bed_lfe);
     REQUIRE(cp.dependents.size() == 1);
-    const auto rendered = iclforge::plan::rendered_channel_count(cp);
+    const auto rendered = iclforge::ac3::plan::rendered_channel_count(cp);
 
     const auto routing =
-        iclforge::plan::route(cp, static_cast<std::size_t>(rendered),
-                         iclforge::meta::CentreMixLevel::kMinus4_5dB,
-                         iclforge::meta::SurroundMixLevel::kMinus6dB);
+        iclforge::ac3::plan::route(cp, static_cast<std::size_t>(rendered),
+                         iclforge::ac3::meta::CentreMixLevel::kMinus4_5dB,
+                         iclforge::ac3::meta::SurroundMixLevel::kMinus6dB);
     REQUIRE(routing.has_value());
 
-    iclforge::eac3::AccessUnitEncoder encoder{iclforge::plan::eac3_config(plan)};
+    iclforge::ac3::eac3::AccessUnitEncoder encoder{iclforge::ac3::plan::eac3_config(plan)};
     REQUIRE(static_cast<std::size_t>(encoder.channel_count()) ==
-            iclforge::plan::coded_channels(cp).size());
+            iclforge::ac3::plan::coded_channels(cp).size());
 
     // §7.3.1 codes seven LFE mantissas and nothing above about 120 Hz, so the
     // channel that lands there has to be fed something it can carry.
     int lfe_source = -1;
     {
-        const auto coded_list = iclforge::plan::coded_channels(cp);
+        const auto coded_list = iclforge::ac3::plan::coded_channels(cp);
         for (std::size_t c = 0; c < coded_list.size() && lfe_source < 0; ++c) {
             if (coded_list[c].location != Location::kLfe) {
                 continue;
@@ -1332,9 +1332,9 @@ TEST_CASE("a custom channel selection encodes real audio and decodes back to its
     }
 
     const auto nsource = static_cast<std::size_t>(routing->source_channels);
-    std::vector<std::vector<float>> source(nsource, std::vector<float>(iclforge::kSamplesPerFrame));
+    std::vector<std::vector<float>> source(nsource, std::vector<float>(iclforge::ac3::kSamplesPerFrame));
     std::vector<std::vector<float>> coded(static_cast<std::size_t>(routing->coded_channels),
-                                          std::vector<float>(iclforge::kSamplesPerFrame));
+                                          std::vector<float>(iclforge::ac3::kSamplesPerFrame));
 
     std::vector<std::byte> stream;
     std::uint64_t n0 = 0;
@@ -1351,7 +1351,7 @@ TEST_CASE("a custom channel selection encodes real audio and decodes back to its
         for (auto& channel : coded) {
             out.emplace_back(channel);
         }
-        iclforge::plan::render(*routing, in, out, iclforge::kSamplesPerFrame);
+        iclforge::ac3::plan::render(*routing, in, out, iclforge::ac3::kSamplesPerFrame);
 
         std::vector<std::span<const float>> encoded;
         for (const auto& channel : coded) {
@@ -1360,14 +1360,14 @@ TEST_CASE("a custom channel selection encodes real audio and decodes back to its
         const auto unit = encoder.encode_access_unit(encoded);
         REQUIRE(unit.has_value());
         stream.insert(stream.end(), unit->bytes.begin(), unit->bytes.end());
-        n0 += iclforge::kSamplesPerFrame;
+        n0 += iclforge::ac3::kSamplesPerFrame;
     }
 
-    const auto units = iclforge::split_access_units(stream);
+    const auto units = iclforge::ac3::split_access_units(stream);
     REQUIRE(units.has_value());
     REQUIRE(units->size() == kFrames);
 
-    iclforge::Eac3Decoder decoder;
+    iclforge::ac3::Eac3Decoder decoder;
     std::vector<std::vector<float>> pcm;
     for (int frame = 0; frame < kFrames; ++frame) {
         const auto decoded = decoder.decode_access_unit((*units)[static_cast<std::size_t>(frame)]);
@@ -1410,35 +1410,35 @@ TEST_CASE("a boundary sixteen-channel custom selection encodes real audio and "
     constexpr int kSkipFrames = 2;
 
     const auto locations =
-        iclforge::plan::parse_channels("L,C,R,Ls,Rs,Lc,Rc,Lrs,Rrs,Cs,Ts,Lw,Rw,Vhl,Vhr,LFE");
+        iclforge::ac3::plan::parse_channels("L,C,R,Ls,Rs,Lc,Rc,Lrs,Rrs,Cs,Ts,Lw,Rw,Vhl,Vhr,LFE");
     REQUIRE(locations.has_value());
-    REQUIRE(iclforge::eac3::chanmap::channel_count(*locations) == 16);
-    const iclforge::plan::Plan plan{
-        .codec = iclforge::plan::Codec::kEac3, .custom_locations = locations, .bitrate_kbps = 640};
-    REQUIRE_FALSE(iclforge::plan::validate(plan).has_value());
+    REQUIRE(iclforge::ac3::eac3::chanmap::channel_count(*locations) == 16);
+    const iclforge::ac3::plan::Plan plan{
+        .codec = iclforge::ac3::plan::Codec::kEac3, .custom_locations = locations, .bitrate_kbps = 640};
+    REQUIRE_FALSE(iclforge::ac3::plan::validate(plan).has_value());
 
-    const auto cp = iclforge::plan::resolve(plan);
-    CHECK(cp.bed_acmod == iclforge::Acmod::k3_2);
+    const auto cp = iclforge::ac3::plan::resolve(plan);
+    CHECK(cp.bed_acmod == iclforge::ac3::Acmod::k3_2);
     CHECK(cp.bed_lfe);
     REQUIRE(cp.dependents.size() == 2);
-    const auto rendered = iclforge::plan::rendered_channel_count(cp);
+    const auto rendered = iclforge::ac3::plan::rendered_channel_count(cp);
     REQUIRE(rendered == 16);
 
     const auto routing =
-        iclforge::plan::route(cp, static_cast<std::size_t>(rendered),
-                         iclforge::meta::CentreMixLevel::kMinus4_5dB,
-                         iclforge::meta::SurroundMixLevel::kMinus6dB);
+        iclforge::ac3::plan::route(cp, static_cast<std::size_t>(rendered),
+                         iclforge::ac3::meta::CentreMixLevel::kMinus4_5dB,
+                         iclforge::ac3::meta::SurroundMixLevel::kMinus6dB);
     REQUIRE(routing.has_value());
 
-    iclforge::eac3::AccessUnitEncoder encoder{iclforge::plan::eac3_config(plan)};
+    iclforge::ac3::eac3::AccessUnitEncoder encoder{iclforge::ac3::plan::eac3_config(plan)};
     REQUIRE(static_cast<std::size_t>(encoder.channel_count()) ==
-            iclforge::plan::coded_channels(cp).size());
+            iclforge::ac3::plan::coded_channels(cp).size());
 
     // §7.3.1 codes seven LFE mantissas and nothing above about 120 Hz, so the
     // channel that lands there has to be fed something it can carry.
     int lfe_source = -1;
     {
-        const auto coded_list = iclforge::plan::coded_channels(cp);
+        const auto coded_list = iclforge::ac3::plan::coded_channels(cp);
         for (std::size_t c = 0; c < coded_list.size() && lfe_source < 0; ++c) {
             if (coded_list[c].location != Location::kLfe) {
                 continue;
@@ -1453,9 +1453,9 @@ TEST_CASE("a boundary sixteen-channel custom selection encodes real audio and "
     }
 
     const auto nsource = static_cast<std::size_t>(routing->source_channels);
-    std::vector<std::vector<float>> source(nsource, std::vector<float>(iclforge::kSamplesPerFrame));
+    std::vector<std::vector<float>> source(nsource, std::vector<float>(iclforge::ac3::kSamplesPerFrame));
     std::vector<std::vector<float>> coded(static_cast<std::size_t>(routing->coded_channels),
-                                          std::vector<float>(iclforge::kSamplesPerFrame));
+                                          std::vector<float>(iclforge::ac3::kSamplesPerFrame));
 
     std::vector<std::byte> stream;
     std::uint64_t n0 = 0;
@@ -1472,7 +1472,7 @@ TEST_CASE("a boundary sixteen-channel custom selection encodes real audio and "
         for (auto& channel : coded) {
             out.emplace_back(channel);
         }
-        iclforge::plan::render(*routing, in, out, iclforge::kSamplesPerFrame);
+        iclforge::ac3::plan::render(*routing, in, out, iclforge::ac3::kSamplesPerFrame);
 
         std::vector<std::span<const float>> encoded;
         for (const auto& channel : coded) {
@@ -1481,14 +1481,14 @@ TEST_CASE("a boundary sixteen-channel custom selection encodes real audio and "
         const auto unit = encoder.encode_access_unit(encoded);
         REQUIRE(unit.has_value());
         stream.insert(stream.end(), unit->bytes.begin(), unit->bytes.end());
-        n0 += iclforge::kSamplesPerFrame;
+        n0 += iclforge::ac3::kSamplesPerFrame;
     }
 
-    const auto units = iclforge::split_access_units(stream);
+    const auto units = iclforge::ac3::split_access_units(stream);
     REQUIRE(units.has_value());
     REQUIRE(units->size() == kFrames);
 
-    iclforge::Eac3Decoder decoder;
+    iclforge::ac3::Eac3Decoder decoder;
     std::vector<std::vector<float>> pcm;
     for (int frame = 0; frame < kFrames; ++frame) {
         const auto decoded = decoder.decode_access_unit((*units)[static_cast<std::size_t>(frame)]);
@@ -1513,17 +1513,17 @@ TEST_CASE("a boundary sixteen-channel custom selection encodes real audio and "
 }
 
 TEST_CASE("an AC-3 plan encodes real audio the AC-3 decoder reads back") {
-    const iclforge::plan::Plan plan{.codec = iclforge::plan::Codec::kAc3,
-                               .layout = iclforge::plan::LayoutId::k51,
+    const iclforge::ac3::plan::Plan plan{.codec = iclforge::ac3::plan::Codec::kAc3,
+                               .layout = iclforge::ac3::plan::LayoutId::k51,
                                .bitrate_kbps = 448};
-    const auto routing = iclforge::plan::route(iclforge::plan::LayoutId::k51, 6,
-                                          iclforge::meta::CentreMixLevel::kMinus4_5dB,
-                                          iclforge::meta::SurroundMixLevel::kMinus6dB);
+    const auto routing = iclforge::ac3::plan::route(iclforge::ac3::plan::LayoutId::k51, 6,
+                                          iclforge::ac3::meta::CentreMixLevel::kMinus4_5dB,
+                                          iclforge::ac3::meta::SurroundMixLevel::kMinus6dB);
     REQUIRE(routing.has_value());
 
-    iclforge::FrameEncoder encoder{iclforge::plan::ac3_config(plan)};
-    std::vector<std::vector<float>> source(6, std::vector<float>(iclforge::kSamplesPerFrame));
-    std::vector<std::vector<float>> coded(6, std::vector<float>(iclforge::kSamplesPerFrame));
+    iclforge::ac3::FrameEncoder encoder{iclforge::ac3::plan::ac3_config(plan)};
+    std::vector<std::vector<float>> source(6, std::vector<float>(iclforge::ac3::kSamplesPerFrame));
+    std::vector<std::vector<float>> coded(6, std::vector<float>(iclforge::ac3::kSamplesPerFrame));
 
     std::vector<std::byte> stream;
     std::uint64_t n0 = 0;
@@ -1537,7 +1537,7 @@ TEST_CASE("an AC-3 plan encodes real audio the AC-3 decoder reads back") {
         for (auto& channel : coded) {
             out.emplace_back(channel);
         }
-        iclforge::plan::render(*routing, in, out, iclforge::kSamplesPerFrame);
+        iclforge::ac3::plan::render(*routing, in, out, iclforge::ac3::kSamplesPerFrame);
 
         std::vector<std::span<const float>> encoded;
         for (const auto& channel : coded) {
@@ -1546,17 +1546,17 @@ TEST_CASE("an AC-3 plan encodes real audio the AC-3 decoder reads back") {
         const auto bytes = encoder.encode_frame(encoded);
         REQUIRE(bytes.has_value());
         stream.insert(stream.end(), bytes->begin(), bytes->end());
-        n0 += iclforge::kSamplesPerFrame;
+        n0 += iclforge::ac3::kSamplesPerFrame;
     }
 
-    const auto frames = iclforge::split_frames(stream);
+    const auto frames = iclforge::ac3::split_frames(stream);
     REQUIRE(frames.has_value());
     REQUIRE(frames->size() == 4);
-    iclforge::FrameDecoder decoder;
+    iclforge::ac3::FrameDecoder decoder;
     for (const auto& frame : *frames) {
         const auto decoded = decoder.decode_frame(frame);
         REQUIRE(decoded.has_value());
-        CHECK(decoded->acmod == iclforge::Acmod::k3_2);
+        CHECK(decoded->acmod == iclforge::ac3::Acmod::k3_2);
         CHECK(decoded->lfe);
     }
 }

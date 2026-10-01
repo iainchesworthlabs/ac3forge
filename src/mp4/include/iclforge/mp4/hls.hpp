@@ -35,7 +35,7 @@ struct HlsOptions {
     // ordinarily just the decimal channel count (e.g. "6"), but Dolby
     // Digital Plus with Atmos objects needs "<N>/JOC" instead, where N is
     // the decodable object count (this project's own
-    // iclforge::io::ScannedStream::oba_complexity_index, TS 103 420
+    // iclforge::ac3::io::ScannedStream::oba_complexity_index, TS 103 420
     // §8.3.2's complexity_index_type_a) - reiterated, with a worked example
     // ("CHANNELS="12/JOC""), by Dolby's own Online Delivery Kit
     // documentation
@@ -47,7 +47,7 @@ struct HlsOptions {
     // opinion on JOC, since that is TS 103 420 object-layer syntax this
     // module never reads; the caller (which already read
     // oba_complexity_index off the bitstream to build the dec3 box, see
-    // iclforge::io::build_codec_config_box) is the one that knows.
+    // iclforge::ac3::io::build_codec_config_box) is the one that knows.
     std::string channels_attribute{};
     // #EXT-X-VERSION. 7 is the first version whose #EXT-X-MAP may appear in
     // a plain (non-I-frame-only) Media Playlist, which every fMP4 media
@@ -87,7 +87,7 @@ struct HlsOptions {
 // CHANNELS="6" IN THE SAME GROUP, so a client that cannot render the object
 // layer selects the plain bed rather than the asset failing to play. The two
 // renditions are the same programme at the same duration, which is what makes
-// them interchangeable inside one group - see iclforge::io::strip_objects
+// them interchangeable inside one group - see iclforge::ac3::io::strip_objects
 // (ac3/io/object_strip.hpp), which produces exactly that companion without
 // re-encoding anything.
 struct HlsRendition {

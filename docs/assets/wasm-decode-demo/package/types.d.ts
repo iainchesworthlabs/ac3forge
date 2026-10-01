@@ -1,4 +1,4 @@
-/** iclforge::DownmixTarget's own numeric order (output.hpp) - kept in sync by hand, there being only four values. */
+/** iclforge::ac3::DownmixTarget's own numeric order (output.hpp) - kept in sync by hand, there being only four values. */
 export declare enum DownmixTarget {
     AsCoded = 0,
     LoRo = 1,

@@ -740,7 +740,7 @@ void CrucibleController::setRoomLayout(const QString& layout) {
 }
 
 QString CrucibleController::versionDetails() const {
-    return QString::fromStdString(iclforge::version_details());
+    return QString::fromStdString(iclforge::ac3::version_details());
 }
 
 QString CrucibleController::licenceNotices() const {
@@ -1129,7 +1129,7 @@ iclforge::crucible::ReportFacts CrucibleController::build_report_facts() const {
         std::chrono::duration_cast<std::chrono::milliseconds>(log_.started_at().time_since_epoch()).count();
     facts.log_started_at =
         QDateTime::fromMSecsSinceEpoch(static_cast<qint64>(started_ms)).toString(Qt::ISODateWithMs).toStdString();
-    facts.version = iclforge::version_details();
+    facts.version = iclforge::ac3::version_details();
 
     auto platform_row = [&facts](const char* name, const QString& value) {
         facts.platform.emplace_back(name, value.toStdString());

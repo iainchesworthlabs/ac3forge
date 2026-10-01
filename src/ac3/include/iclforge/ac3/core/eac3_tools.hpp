@@ -381,7 +381,7 @@ ICLFORGE_AC3_EXPORT void ecpl_channel_spectrum(std::span<const double, 256> prev
                                            std::span<double, 256> imag_out, bool fast = false);
 
 // The same reconstruction over float32, for a decoder whose coefficient store
-// is float (iclforge::internal::decode_scalar_t on the minimum-footprint profile).
+// is float (iclforge::ac3::internal::decode_scalar_t on the minimum-footprint profile).
 // No `fast` parameter, for the reason the float imdct512_windowed has none:
 // the direct form is double-only, and this form is the fast fold throughout -
 // three float inverses and a float dft512 over tables narrowed once from the
@@ -558,7 +558,7 @@ ICLFORGE_AC3_EXPORT void aht_inverse(std::span<const double, kBlocksPerFrameSize
                                  std::span<double, kBlocksPerFrameSize> out);
 
 // The same inverse over float32, for a decoder whose coefficient store is
-// float (iclforge::internal::decode_scalar_t on the minimum-footprint profile).
+// float (iclforge::ac3::internal::decode_scalar_t on the minimum-footprint profile).
 // Thirty-six multiply-adds per bin against a kernel narrowed once from the
 // double one: at double, on a single-precision FPU, those were seventy-two
 // software routines per bin and a quarter of an E-AC-3 decode

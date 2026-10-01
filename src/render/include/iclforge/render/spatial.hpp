@@ -84,7 +84,7 @@ ICLFORGE_RENDER_EXPORT void pan_ring(double azimuth_deg, std::span<const double>
 // Everything above targets the fixed 5.1 ring. A source with real elevation -
 // a Table E2.5 height location, or an object whose z lifts it toward the
 // ceiling - needs a second, upper ring and a crossfade between the two, which
-// is what iclforge::plan's channel-layout renderer already built to move a bed's
+// is what iclforge::ac3::plan's channel-layout renderer already built to move a bed's
 // channels between differently-shaped layouts (5.1 to 7.1.4 and back). It is
 // promoted here rather than duplicated because IO12's object-based loudness
 // measurement needs the identical geometry: an object panned onto a wide

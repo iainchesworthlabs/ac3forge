@@ -29,166 +29,166 @@
 // a switch - see e.g. encoder.cpp's to_cpp()/from_cpp() pairs. These
 // static_asserts are what makes that safe: a future change to either side's
 // enumerator order fails the build here rather than silently mistranslating.
-static_assert(static_cast<int>(iclforge::SampleRate::k48000) == ICLFORGE_SAMPLE_RATE_48000);
-static_assert(static_cast<int>(iclforge::SampleRate::k44100) == ICLFORGE_SAMPLE_RATE_44100);
-static_assert(static_cast<int>(iclforge::SampleRate::k32000) == ICLFORGE_SAMPLE_RATE_32000);
-static_assert(static_cast<int>(iclforge::SampleRate::k24000) == ICLFORGE_SAMPLE_RATE_24000);
-static_assert(static_cast<int>(iclforge::SampleRate::k22050) == ICLFORGE_SAMPLE_RATE_22050);
-static_assert(static_cast<int>(iclforge::SampleRate::k16000) == ICLFORGE_SAMPLE_RATE_16000);
+static_assert(static_cast<int>(iclforge::ac3::SampleRate::k48000) == ICLFORGE_SAMPLE_RATE_48000);
+static_assert(static_cast<int>(iclforge::ac3::SampleRate::k44100) == ICLFORGE_SAMPLE_RATE_44100);
+static_assert(static_cast<int>(iclforge::ac3::SampleRate::k32000) == ICLFORGE_SAMPLE_RATE_32000);
+static_assert(static_cast<int>(iclforge::ac3::SampleRate::k24000) == ICLFORGE_SAMPLE_RATE_24000);
+static_assert(static_cast<int>(iclforge::ac3::SampleRate::k22050) == ICLFORGE_SAMPLE_RATE_22050);
+static_assert(static_cast<int>(iclforge::ac3::SampleRate::k16000) == ICLFORGE_SAMPLE_RATE_16000);
 
-static_assert(static_cast<int>(iclforge::Acmod::kDualMono) == ICLFORGE_ACMOD_DUAL_MONO);
-static_assert(static_cast<int>(iclforge::Acmod::k1_0) == ICLFORGE_ACMOD_1_0);
-static_assert(static_cast<int>(iclforge::Acmod::k2_0) == ICLFORGE_ACMOD_2_0);
-static_assert(static_cast<int>(iclforge::Acmod::k3_0) == ICLFORGE_ACMOD_3_0);
-static_assert(static_cast<int>(iclforge::Acmod::k2_1) == ICLFORGE_ACMOD_2_1);
-static_assert(static_cast<int>(iclforge::Acmod::k3_1) == ICLFORGE_ACMOD_3_1);
-static_assert(static_cast<int>(iclforge::Acmod::k2_2) == ICLFORGE_ACMOD_2_2);
-static_assert(static_cast<int>(iclforge::Acmod::k3_2) == ICLFORGE_ACMOD_3_2);
+static_assert(static_cast<int>(iclforge::ac3::Acmod::kDualMono) == ICLFORGE_ACMOD_DUAL_MONO);
+static_assert(static_cast<int>(iclforge::ac3::Acmod::k1_0) == ICLFORGE_ACMOD_1_0);
+static_assert(static_cast<int>(iclforge::ac3::Acmod::k2_0) == ICLFORGE_ACMOD_2_0);
+static_assert(static_cast<int>(iclforge::ac3::Acmod::k3_0) == ICLFORGE_ACMOD_3_0);
+static_assert(static_cast<int>(iclforge::ac3::Acmod::k2_1) == ICLFORGE_ACMOD_2_1);
+static_assert(static_cast<int>(iclforge::ac3::Acmod::k3_1) == ICLFORGE_ACMOD_3_1);
+static_assert(static_cast<int>(iclforge::ac3::Acmod::k2_2) == ICLFORGE_ACMOD_2_2);
+static_assert(static_cast<int>(iclforge::ac3::Acmod::k3_2) == ICLFORGE_ACMOD_3_2);
 
-static_assert(static_cast<int>(iclforge::meta::CentreMixLevel::kMinus3dB) ==
+static_assert(static_cast<int>(iclforge::ac3::meta::CentreMixLevel::kMinus3dB) ==
               ICLFORGE_CMIXLEV_MINUS_3DB);
-static_assert(static_cast<int>(iclforge::meta::CentreMixLevel::kMinus4_5dB) ==
+static_assert(static_cast<int>(iclforge::ac3::meta::CentreMixLevel::kMinus4_5dB) ==
               ICLFORGE_CMIXLEV_MINUS_4_5DB);
-static_assert(static_cast<int>(iclforge::meta::CentreMixLevel::kMinus6dB) ==
+static_assert(static_cast<int>(iclforge::ac3::meta::CentreMixLevel::kMinus6dB) ==
               ICLFORGE_CMIXLEV_MINUS_6DB);
 
-static_assert(static_cast<int>(iclforge::meta::SurroundMixLevel::kMinus3dB) ==
+static_assert(static_cast<int>(iclforge::ac3::meta::SurroundMixLevel::kMinus3dB) ==
               ICLFORGE_SURMIXLEV_MINUS_3DB);
-static_assert(static_cast<int>(iclforge::meta::SurroundMixLevel::kMinus6dB) ==
+static_assert(static_cast<int>(iclforge::ac3::meta::SurroundMixLevel::kMinus6dB) ==
               ICLFORGE_SURMIXLEV_MINUS_6DB);
-static_assert(static_cast<int>(iclforge::meta::SurroundMixLevel::kSilent) ==
+static_assert(static_cast<int>(iclforge::ac3::meta::SurroundMixLevel::kSilent) ==
               ICLFORGE_SURMIXLEV_SILENT);
 
-static_assert(static_cast<int>(iclforge::meta::ProfileId::kFilmStandard) ==
+static_assert(static_cast<int>(iclforge::ac3::meta::ProfileId::kFilmStandard) ==
               ICLFORGE_DRC_FILM_STANDARD);
-static_assert(static_cast<int>(iclforge::meta::ProfileId::kFilmLight) == ICLFORGE_DRC_FILM_LIGHT);
-static_assert(static_cast<int>(iclforge::meta::ProfileId::kMusicStandard) ==
+static_assert(static_cast<int>(iclforge::ac3::meta::ProfileId::kFilmLight) == ICLFORGE_DRC_FILM_LIGHT);
+static_assert(static_cast<int>(iclforge::ac3::meta::ProfileId::kMusicStandard) ==
               ICLFORGE_DRC_MUSIC_STANDARD);
-static_assert(static_cast<int>(iclforge::meta::ProfileId::kMusicLight) == ICLFORGE_DRC_MUSIC_LIGHT);
-static_assert(static_cast<int>(iclforge::meta::ProfileId::kSpeech) == ICLFORGE_DRC_SPEECH);
+static_assert(static_cast<int>(iclforge::ac3::meta::ProfileId::kMusicLight) == ICLFORGE_DRC_MUSIC_LIGHT);
+static_assert(static_cast<int>(iclforge::ac3::meta::ProfileId::kSpeech) == ICLFORGE_DRC_SPEECH);
 
-static_assert(static_cast<int>(iclforge::eac3::StreamType::kIndependent) ==
+static_assert(static_cast<int>(iclforge::ac3::eac3::StreamType::kIndependent) ==
               ICLFORGE_STREAM_TYPE_INDEPENDENT);
-static_assert(static_cast<int>(iclforge::eac3::StreamType::kDependent) == ICLFORGE_STREAM_TYPE_DEPENDENT);
-static_assert(static_cast<int>(iclforge::eac3::StreamType::kConvertible) ==
+static_assert(static_cast<int>(iclforge::ac3::eac3::StreamType::kDependent) == ICLFORGE_STREAM_TYPE_DEPENDENT);
+static_assert(static_cast<int>(iclforge::ac3::eac3::StreamType::kConvertible) ==
               ICLFORGE_STREAM_TYPE_CONVERTIBLE);
-static_assert(static_cast<int>(iclforge::eac3::StreamType::kReserved) ==
+static_assert(static_cast<int>(iclforge::ac3::eac3::StreamType::kReserved) ==
               ICLFORGE_STREAM_TYPE_RESERVED);
 
-static_assert(ICLFORGE_SAMPLES_PER_FRAME == iclforge::kSamplesPerFrame);
-static_assert(ICLFORGE_BLOCKS_PER_FRAME == iclforge::kBlocksPerFrame);
-static_assert(ICLFORGE_SAMPLES_PER_BLOCK == iclforge::kSamplesPerBlock);
+static_assert(ICLFORGE_SAMPLES_PER_FRAME == iclforge::ac3::kSamplesPerFrame);
+static_assert(ICLFORGE_BLOCKS_PER_FRAME == iclforge::ac3::kBlocksPerFrame);
+static_assert(ICLFORGE_SAMPLES_PER_BLOCK == iclforge::ac3::kSamplesPerBlock);
 
-static_assert(static_cast<int>(iclforge::io::StreamKind::kAc3) == ICLFORGE_STREAM_KIND_AC3);
-static_assert(static_cast<int>(iclforge::io::StreamKind::kEac3) == ICLFORGE_STREAM_KIND_EAC3);
-static_assert(static_cast<int>(iclforge::io::StreamKind::kAc3CoreEac3Extension) ==
+static_assert(static_cast<int>(iclforge::ac3::io::StreamKind::kAc3) == ICLFORGE_STREAM_KIND_AC3);
+static_assert(static_cast<int>(iclforge::ac3::io::StreamKind::kEac3) == ICLFORGE_STREAM_KIND_EAC3);
+static_assert(static_cast<int>(iclforge::ac3::io::StreamKind::kAc3CoreEac3Extension) ==
               ICLFORGE_STREAM_KIND_AC3_CORE_EAC3_EXTENSION);
 
-static_assert(static_cast<int>(iclforge::meta::QcLoudnessLimit::kBand) ==
+static_assert(static_cast<int>(iclforge::ac3::meta::QcLoudnessLimit::kBand) ==
               ICLFORGE_QC_LOUDNESS_BAND);
-static_assert(static_cast<int>(iclforge::meta::QcLoudnessLimit::kCeiling) ==
+static_assert(static_cast<int>(iclforge::ac3::meta::QcLoudnessLimit::kCeiling) ==
               ICLFORGE_QC_LOUDNESS_CEILING);
-static_assert(static_cast<int>(iclforge::meta::QcPresetId::kEbuR128S2) == ICLFORGE_QC_PRESET_EBU_R128_S2);
-static_assert(static_cast<int>(iclforge::meta::QcPresetId::kAtscA85) ==
+static_assert(static_cast<int>(iclforge::ac3::meta::QcPresetId::kEbuR128S2) == ICLFORGE_QC_PRESET_EBU_R128_S2);
+static_assert(static_cast<int>(iclforge::ac3::meta::QcPresetId::kAtscA85) ==
               ICLFORGE_QC_PRESET_ATSC_A85);
-static_assert(static_cast<int>(iclforge::meta::QcPresetId::kAtscA85Streaming) ==
+static_assert(static_cast<int>(iclforge::ac3::meta::QcPresetId::kAtscA85Streaming) ==
               ICLFORGE_QC_PRESET_ATSC_A85_STREAMING);
-static_assert(static_cast<int>(iclforge::meta::QcPresetId::kNetflix) == ICLFORGE_QC_PRESET_NETFLIX);
-static_assert(static_cast<int>(iclforge::meta::QcPresetId::kAppleMusicAtmos) ==
+static_assert(static_cast<int>(iclforge::ac3::meta::QcPresetId::kNetflix) == ICLFORGE_QC_PRESET_NETFLIX);
+static_assert(static_cast<int>(iclforge::ac3::meta::QcPresetId::kAppleMusicAtmos) ==
               ICLFORGE_QC_PRESET_APPLE_MUSIC_ATMOS);
-static_assert(iclforge::meta::kQcPresetIds.size() == 5);
+static_assert(iclforge::ac3::meta::kQcPresetIds.size() == 5);
 
 
 namespace iclforge_c {
 
-[[nodiscard]] inline iclforge_sample_rate_t from_cpp(iclforge::SampleRate rate) {
+[[nodiscard]] inline iclforge_sample_rate_t from_cpp(iclforge::ac3::SampleRate rate) {
     return static_cast<iclforge_sample_rate_t>(rate);
 }
-[[nodiscard]] inline iclforge::SampleRate to_cpp(iclforge_sample_rate_t rate) {
-    return static_cast<iclforge::SampleRate>(rate);
+[[nodiscard]] inline iclforge::ac3::SampleRate to_cpp(iclforge_sample_rate_t rate) {
+    return static_cast<iclforge::ac3::SampleRate>(rate);
 }
-[[nodiscard]] inline iclforge_acmod_t from_cpp(iclforge::Acmod acmod) {
+[[nodiscard]] inline iclforge_acmod_t from_cpp(iclforge::ac3::Acmod acmod) {
     return static_cast<iclforge_acmod_t>(acmod);
 }
-[[nodiscard]] inline iclforge::Acmod to_cpp(iclforge_acmod_t acmod) {
-    return static_cast<iclforge::Acmod>(acmod);
+[[nodiscard]] inline iclforge::ac3::Acmod to_cpp(iclforge_acmod_t acmod) {
+    return static_cast<iclforge::ac3::Acmod>(acmod);
 }
-[[nodiscard]] inline iclforge::meta::CentreMixLevel to_cpp(iclforge_centre_mix_level_t level) {
-    return static_cast<iclforge::meta::CentreMixLevel>(level);
+[[nodiscard]] inline iclforge::ac3::meta::CentreMixLevel to_cpp(iclforge_centre_mix_level_t level) {
+    return static_cast<iclforge::ac3::meta::CentreMixLevel>(level);
 }
-[[nodiscard]] inline iclforge_centre_mix_level_t from_cpp(iclforge::meta::CentreMixLevel level) {
+[[nodiscard]] inline iclforge_centre_mix_level_t from_cpp(iclforge::ac3::meta::CentreMixLevel level) {
     return static_cast<iclforge_centre_mix_level_t>(level);
 }
-[[nodiscard]] inline iclforge::meta::SurroundMixLevel to_cpp(iclforge_surround_mix_level_t level) {
-    return static_cast<iclforge::meta::SurroundMixLevel>(level);
+[[nodiscard]] inline iclforge::ac3::meta::SurroundMixLevel to_cpp(iclforge_surround_mix_level_t level) {
+    return static_cast<iclforge::ac3::meta::SurroundMixLevel>(level);
 }
 [[nodiscard]] inline iclforge_surround_mix_level_t from_cpp(
-    iclforge::meta::SurroundMixLevel level) {
+    iclforge::ac3::meta::SurroundMixLevel level) {
     return static_cast<iclforge_surround_mix_level_t>(level);
 }
-[[nodiscard]] inline iclforge::meta::ProfileId to_cpp(iclforge_drc_profile_t profile) {
-    return static_cast<iclforge::meta::ProfileId>(profile);
+[[nodiscard]] inline iclforge::ac3::meta::ProfileId to_cpp(iclforge_drc_profile_t profile) {
+    return static_cast<iclforge::ac3::meta::ProfileId>(profile);
 }
-[[nodiscard]] inline iclforge_stream_type_t from_cpp(iclforge::eac3::StreamType type) {
+[[nodiscard]] inline iclforge_stream_type_t from_cpp(iclforge::ac3::eac3::StreamType type) {
     return static_cast<iclforge_stream_type_t>(type);
 }
-[[nodiscard]] inline iclforge::eac3::StreamType to_cpp(iclforge_stream_type_t type) {
-    return static_cast<iclforge::eac3::StreamType>(type);
+[[nodiscard]] inline iclforge::ac3::eac3::StreamType to_cpp(iclforge_stream_type_t type) {
+    return static_cast<iclforge::ac3::eac3::StreamType>(type);
 }
-[[nodiscard]] inline iclforge::meta::HeavyConfig to_cpp(const iclforge_heavy_config_t& config) {
-    return iclforge::meta::HeavyConfig{.dialogue_target_dbfs = config.dialogue_target_dbfs,
+[[nodiscard]] inline iclforge::ac3::meta::HeavyConfig to_cpp(const iclforge_heavy_config_t& config) {
+    return iclforge::ac3::meta::HeavyConfig{.dialogue_target_dbfs = config.dialogue_target_dbfs,
                                    .peak_ceiling_dbfs = config.peak_ceiling_dbfs,
                                    .release_db_per_second = config.release_db_per_second};
 }
 
-[[nodiscard]] inline iclforge_latency_t from_cpp(const iclforge::LatencyBudget& budget) {
+[[nodiscard]] inline iclforge_latency_t from_cpp(const iclforge::ac3::LatencyBudget& budget) {
     return iclforge_latency_t{.frame_samples = budget.frame_samples,
                               .transform_samples = budget.transform_samples,
                               .lookahead_samples = budget.lookahead_samples,
                               .holdback_samples = budget.holdback_samples};
 }
 
-[[nodiscard]] inline iclforge_status_t from_cpp(iclforge::FrameError error) {
+[[nodiscard]] inline iclforge_status_t from_cpp(iclforge::ac3::FrameError error) {
     switch (error) {
-        case iclforge::FrameError::kInvalidBitrate: return ICLFORGE_ERROR_ENCODE_INVALID_BITRATE;
-        case iclforge::FrameError::kInvalidDialnorm: return ICLFORGE_ERROR_ENCODE_INVALID_DIALNORM;
-        case iclforge::FrameError::kInvalidSubstream:
+        case iclforge::ac3::FrameError::kInvalidBitrate: return ICLFORGE_ERROR_ENCODE_INVALID_BITRATE;
+        case iclforge::ac3::FrameError::kInvalidDialnorm: return ICLFORGE_ERROR_ENCODE_INVALID_DIALNORM;
+        case iclforge::ac3::FrameError::kInvalidSubstream:
             return ICLFORGE_ERROR_ENCODE_INVALID_SUBSTREAM;
-        case iclforge::FrameError::kInvalidChannelMap:
+        case iclforge::ac3::FrameError::kInvalidChannelMap:
             return ICLFORGE_ERROR_ENCODE_INVALID_CHANNEL_MAP;
-        case iclforge::FrameError::kTooManyChannels: return ICLFORGE_ERROR_ENCODE_TOO_MANY_CHANNELS;
-        case iclforge::FrameError::kInvalidMixLevel: return ICLFORGE_ERROR_ENCODE_INVALID_MIX_LEVEL;
-        case iclforge::FrameError::kInvalidBsi: return ICLFORGE_ERROR_ENCODE_INVALID_BSI;
-        case iclforge::FrameError::kInvalidObjectAudio:
+        case iclforge::ac3::FrameError::kTooManyChannels: return ICLFORGE_ERROR_ENCODE_TOO_MANY_CHANNELS;
+        case iclforge::ac3::FrameError::kInvalidMixLevel: return ICLFORGE_ERROR_ENCODE_INVALID_MIX_LEVEL;
+        case iclforge::ac3::FrameError::kInvalidBsi: return ICLFORGE_ERROR_ENCODE_INVALID_BSI;
+        case iclforge::ac3::FrameError::kInvalidObjectAudio:
             return ICLFORGE_ERROR_ENCODE_INVALID_OBJECT_AUDIO;
     }
     return ICLFORGE_ERROR_INTERNAL;
 }
 
-[[nodiscard]] inline iclforge_status_t from_cpp(iclforge::DecodeError error) {
+[[nodiscard]] inline iclforge_status_t from_cpp(iclforge::ac3::DecodeError error) {
     switch (error) {
-        case iclforge::DecodeError::kTruncated: return ICLFORGE_ERROR_DECODE_TRUNCATED;
-        case iclforge::DecodeError::kBadSyncWord: return ICLFORGE_ERROR_DECODE_BAD_SYNC_WORD;
-        case iclforge::DecodeError::kBadCrc: return ICLFORGE_ERROR_DECODE_BAD_CRC;
-        case iclforge::DecodeError::kReservedValue: return ICLFORGE_ERROR_DECODE_RESERVED_VALUE;
-        case iclforge::DecodeError::kUnsupported: return ICLFORGE_ERROR_DECODE_UNSUPPORTED;
-        case iclforge::DecodeError::kInvalidStream: return ICLFORGE_ERROR_DECODE_INVALID_STREAM;
+        case iclforge::ac3::DecodeError::kTruncated: return ICLFORGE_ERROR_DECODE_TRUNCATED;
+        case iclforge::ac3::DecodeError::kBadSyncWord: return ICLFORGE_ERROR_DECODE_BAD_SYNC_WORD;
+        case iclforge::ac3::DecodeError::kBadCrc: return ICLFORGE_ERROR_DECODE_BAD_CRC;
+        case iclforge::ac3::DecodeError::kReservedValue: return ICLFORGE_ERROR_DECODE_RESERVED_VALUE;
+        case iclforge::ac3::DecodeError::kUnsupported: return ICLFORGE_ERROR_DECODE_UNSUPPORTED;
+        case iclforge::ac3::DecodeError::kInvalidStream: return ICLFORGE_ERROR_DECODE_INVALID_STREAM;
         // Never reaches this API: it has no fast_imdct switch, so its decoders
         // always run the fast transform every build carries. Mapped to the
         // nearest code rather than left to the INTERNAL fallback all the same.
-        case iclforge::DecodeError::kNoReferenceTransform: return ICLFORGE_ERROR_DECODE_UNSUPPORTED;
+        case iclforge::ac3::DecodeError::kNoReferenceTransform: return ICLFORGE_ERROR_DECODE_UNSUPPORTED;
     }
     return ICLFORGE_ERROR_INTERNAL;
 }
 
-[[nodiscard]] inline iclforge_status_t from_cpp(iclforge::io::ScanError error) {
+[[nodiscard]] inline iclforge_status_t from_cpp(iclforge::ac3::io::ScanError error) {
     switch (error) {
-        case iclforge::io::ScanError::kEmpty: return ICLFORGE_ERROR_SCAN_EMPTY;
-        case iclforge::io::ScanError::kLostSync: return ICLFORGE_ERROR_SCAN_LOST_SYNC;
-        case iclforge::io::ScanError::kUnsupportedBsid: return ICLFORGE_ERROR_SCAN_UNSUPPORTED_BSID;
-        case iclforge::io::ScanError::kReservedValue: return ICLFORGE_ERROR_SCAN_RESERVED_VALUE;
-        case iclforge::io::ScanError::kTruncated: return ICLFORGE_ERROR_SCAN_TRUNCATED;
-        case iclforge::io::ScanError::kUnsupportedStructure:
+        case iclforge::ac3::io::ScanError::kEmpty: return ICLFORGE_ERROR_SCAN_EMPTY;
+        case iclforge::ac3::io::ScanError::kLostSync: return ICLFORGE_ERROR_SCAN_LOST_SYNC;
+        case iclforge::ac3::io::ScanError::kUnsupportedBsid: return ICLFORGE_ERROR_SCAN_UNSUPPORTED_BSID;
+        case iclforge::ac3::io::ScanError::kReservedValue: return ICLFORGE_ERROR_SCAN_RESERVED_VALUE;
+        case iclforge::ac3::io::ScanError::kTruncated: return ICLFORGE_ERROR_SCAN_TRUNCATED;
+        case iclforge::ac3::io::ScanError::kUnsupportedStructure:
             return ICLFORGE_ERROR_SCAN_UNSUPPORTED_STRUCTURE;
     }
     return ICLFORGE_ERROR_INTERNAL;
@@ -201,7 +201,7 @@ namespace iclforge_c {
 // it - std::bad_alloc from an allocation this layer or the codec core makes,
 // or anything else - is caught here instead of crossing into the caller's
 // (possibly non-C++) frame, which is undefined behaviour. The codec core
-// itself never throws (see iclforge::FrameError/DecodeError's std::expected
+// itself never throws (see iclforge::ac3::FrameError/DecodeError's std::expected
 // convention), and every entry point validates its pointers and counts
 // BEFORE calling guard() - in particular any count a body sizes a container
 // from (reserve(n) throws std::length_error past max_size()) - so in practice
@@ -233,50 +233,50 @@ struct iclforge_bytes {
 };
 
 struct iclforge_encoder {
-    explicit iclforge_encoder(const iclforge::EncoderConfig& config) : impl(config) {}
-    iclforge::FrameEncoder impl;
+    explicit iclforge_encoder(const iclforge::ac3::EncoderConfig& config) : impl(config) {}
+    iclforge::ac3::FrameEncoder impl;
 };
 
 struct iclforge_decoder {
-    explicit iclforge_decoder(const iclforge::DecoderConfig& config) : impl(config) {}
-    iclforge::FrameDecoder impl;
+    explicit iclforge_decoder(const iclforge::ac3::DecoderConfig& config) : impl(config) {}
+    iclforge::ac3::FrameDecoder impl;
 };
 
 struct iclforge_decoded_frame {
-    iclforge::DecodedFrame data;
+    iclforge::ac3::DecodedFrame data;
 };
 
 struct iclforge_eac3_decoder {
-    explicit iclforge_eac3_decoder(const iclforge::DecoderConfig& config) : impl(config) {}
-    iclforge::Eac3Decoder impl;
+    explicit iclforge_eac3_decoder(const iclforge::ac3::DecoderConfig& config) : impl(config) {}
+    iclforge::ac3::Eac3Decoder impl;
 };
 
 struct iclforge_decoded_substream {
-    iclforge::DecodedSubstream data;
+    iclforge::ac3::DecodedSubstream data;
 };
 
 struct iclforge_decoded_access_unit {
-    iclforge::DecodedAccessUnit data;
+    iclforge::ac3::DecodedAccessUnit data;
 };
 
 struct iclforge_atmos_encoder {
-    iclforge_atmos_encoder(const iclforge::oba::AtmosConfig& config, int objects) : impl(config, objects) {}
-    iclforge::oba::AtmosEncoder impl;
+    iclforge_atmos_encoder(const iclforge::ac3::oba::AtmosConfig& config, int objects) : impl(config, objects) {}
+    iclforge::ac3::oba::AtmosEncoder impl;
 };
 
 struct iclforge_eac3_encoder {
-    explicit iclforge_eac3_encoder(const iclforge::eac3::FrameConfig& config) : impl(config) {}
-    iclforge::eac3::FrameEncoder impl;
+    explicit iclforge_eac3_encoder(const iclforge::ac3::eac3::FrameConfig& config) : impl(config) {}
+    iclforge::ac3::eac3::FrameEncoder impl;
 };
 
 struct iclforge_eac3_access_unit_encoder {
-    explicit iclforge_eac3_access_unit_encoder(const iclforge::eac3::AccessUnitConfig& config)
+    explicit iclforge_eac3_access_unit_encoder(const iclforge::ac3::eac3::AccessUnitConfig& config)
         : impl(config) {}
-    iclforge::eac3::AccessUnitEncoder impl;
+    iclforge::ac3::eac3::AccessUnitEncoder impl;
 };
 
 struct iclforge_eac3_access_unit {
-    iclforge::eac3::AccessUnit data;
+    iclforge::ac3::eac3::AccessUnit data;
 };
 
 struct iclforge_spans {
@@ -284,10 +284,10 @@ struct iclforge_spans {
 };
 
 struct iclforge_scanned_stream {
-    iclforge::io::ScannedStream data;
+    iclforge::ac3::io::ScannedStream data;
     // ScannedStream::access_units/ScannedProgramme::access_units point into
     // the caller's own buffer (std::span<const std::byte>), exactly as
-    // iclforge::split_frames()'s result does - see iclforge_spans above. Rather
+    // iclforge::ac3::split_frames()'s result does - see iclforge_spans above. Rather
     // than expose that pointer directly (which would tie this handle to a
     // std::byte* the header never otherwise names), iclforge_scan() converts
     // every one of them to an offset/length iclforge_span_t once, at scan
@@ -299,17 +299,17 @@ struct iclforge_scanned_stream {
 };
 
 struct iclforge_loudness_meter {
-    // Neither iclforge::meta::LoudnessMeter constructor is default-constructible
+    // Neither iclforge::ac3::meta::LoudnessMeter constructor is default-constructible
     // (both need rate/acmod/lfe or rate/layout up front), so this holds one
     // built at create() time rather than embedding it by value the way
-    // iclforge_encoder/iclforge_decoder do - matches iclforge::io::WavStreamReader's
+    // iclforge_encoder/iclforge_decoder do - matches iclforge::ac3::io::WavStreamReader's
     // own reason for the same shape (elementary.hpp).
-    std::unique_ptr<iclforge::meta::LoudnessMeter> impl;
+    std::unique_ptr<iclforge::ac3::meta::LoudnessMeter> impl;
 };
 
 struct iclforge_level_meter {
     // Same reasoning as iclforge_loudness_meter above - LevelMeter is not
     // default-constructible either.
-    std::unique_ptr<iclforge::analysis::LevelMeter> impl;
+    std::unique_ptr<iclforge::ac3::analysis::LevelMeter> impl;
 };
 

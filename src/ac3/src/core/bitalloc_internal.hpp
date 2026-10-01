@@ -15,14 +15,14 @@
 // cross-translation-unit plumbing that is not library surface.
 //
 // A second entry point rather than a parameter added to the public, exported
-// iclforge::compute_bit_allocation: that function's signature is part of this
+// iclforge::ac3::compute_bit_allocation: that function's signature is part of this
 // library's ABI, and growing it would change every consumer's link
 // requirement for a facility only the trace has any use for. See
 // CONTRIBUTING.md's ABI-gate note and tools/ci/abi-allowlist/.
 
 namespace iclforge::ac3::internal {
 
-// Same contract as iclforge::compute_bit_allocation, plus `mask` - always written
+// Same contract as iclforge::ac3::compute_bit_allocation, plus `mask` - always written
 // in full, on every path that function itself takes (including its two
 // early-exit, all-zero cases), never left holding a previous call's values.
 void compute_bit_allocation_traced(std::span<const std::uint8_t> exps, SampleRate sample_rate,

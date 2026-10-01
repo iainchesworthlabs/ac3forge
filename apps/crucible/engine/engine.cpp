@@ -160,7 +160,7 @@ struct Engine::Impl {
     BedMix bed;
     SigningHook signing;
     std::unique_ptr<OutputStage> output;
-    std::unique_ptr<iclforge::oba::AtmosEncoder> encoder;
+    std::unique_ptr<iclforge::ac3::oba::AtmosEncoder> encoder;
     iclforge::audio::DeviceWatcher watcher;
     // The probe's thread, declared after everything its body touches:
     // `output`, whose `enumerate()` it calls, and the probe state above,
@@ -253,13 +253,13 @@ struct Engine::Impl {
     }
 
     void build_encoder() {
-        iclforge::oba::AtmosConfig atmos;
+        iclforge::ac3::oba::AtmosConfig atmos;
         atmos.numblkscod = config.low_latency ? 0 : 3;
         atmos.bitrate_kbps = bitrate_kbps();
         atmos.emit_object_metadata = signing.available();
-        encoder = std::make_unique<iclforge::oba::AtmosEncoder>(atmos, kObjectSlots);
-        const int blocks = config.low_latency ? 1 : iclforge::kBlocksPerFrame;
-        frames_per = static_cast<std::size_t>(blocks * iclforge::kSamplesPerBlock);
+        encoder = std::make_unique<iclforge::ac3::oba::AtmosEncoder>(atmos, kObjectSlots);
+        const int blocks = config.low_latency ? 1 : iclforge::ac3::kBlocksPerFrame;
+        frames_per = static_cast<std::size_t>(blocks * iclforge::ac3::kSamplesPerBlock);
         objects.assign(kObjectSlots, std::vector<float>(frames_per, 0.0F));
         views.resize(kObjectSlots);
         placements.resize(kObjectSlots);
@@ -577,7 +577,7 @@ struct Engine::Impl {
         want_reprobe.store(true, std::memory_order_release);
         signing_status = signing.load(config.signing_key_path);
         build_encoder();
-        note("engine started: " + std::to_string(config.low_latency ? 1 : iclforge::kBlocksPerFrame) + "-block frames, " +
+        note("engine started: " + std::to_string(config.low_latency ? 1 : iclforge::ac3::kBlocksPerFrame) + "-block frames, " +
              std::to_string(bitrate_kbps()) + " kb/s, taps " + std::to_string(taps.channels()) + "ch");
         note(signing_note());
         // Without the watcher, endpoint changes reach the loop only through

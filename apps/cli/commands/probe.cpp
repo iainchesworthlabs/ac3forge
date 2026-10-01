@@ -39,7 +39,7 @@ namespace forge_cli::commands {
 
 namespace {
 
-namespace io = iclforge::io;
+namespace io = iclforge::ac3::io;
 
 // How much per-frame detail was asked for. The stream summary always comes
 // out; these add to it.
@@ -90,18 +90,18 @@ void print_table(std::string_view path, const io::ProbeReport& report,
     fmt::println("{:<16}{}", "file", path);
     print_container(container);
     fmt::println("{:<16}{} (bsid {})", "codec", codec_label(report.kind), report.bsid);
-    fmt::println("{:<16}{} Hz{}", "sample rate", iclforge::sample_rate_hz(report.sample_rate),
+    fmt::println("{:<16}{} Hz{}", "sample rate", iclforge::ac3::sample_rate_hz(report.sample_rate),
                  report.reduced_rate ? " (fscod2 reduced rate)" : "");
     fmt::println("{:<16}{} ({})", "bsmod", report.bsmod,
                  bsmod_label(report.bsmod, report.acmod));
     fmt::println("{:<16}{} (acmod {}, lfeon {})", "layout",
-                 iclforge::analysis::layout_name(report.acmod, report.lfe),
+                 iclforge::ac3::analysis::layout_name(report.acmod, report.lfe),
                  static_cast<int>(report.acmod), report.lfe ? 1 : 0);
     if (report.layout.count > 0) {
         std::string locations;
         for (const auto location : report.layout) {
             locations += locations.empty() ? "" : " ";
-            locations += iclforge::eac3::chanmap::name(location);
+            locations += iclforge::ac3::eac3::chanmap::name(location);
         }
         fmt::println("{:<16}{} channel(s): {}", "renders", report.rendered_channels, locations);
     } else {
@@ -110,8 +110,8 @@ void print_table(std::string_view path, const io::ProbeReport& report,
     }
     fmt::println("{:<16}{} per syncframe (numblkscod {})", "blocks",
                  report.kind == io::StreamKind::kAc3
-                     ? iclforge::kBlocksPerFrame
-                     : iclforge::eac3::blocks_per_syncframe(report.numblkscod),
+                     ? iclforge::ac3::kBlocksPerFrame
+                     : iclforge::ac3::eac3::blocks_per_syncframe(report.numblkscod),
                  report.numblkscod);
 
     fmt::println("{:<16}{} per access unit", "substreams", report.substreams_per_unit);
@@ -122,7 +122,7 @@ void print_table(std::string_view path, const io::ProbeReport& report,
         }
         fmt::println("  {:<14}{} id {}, {}, {} syncframe(s), {}", "",
                      strmtyp_token(sub.strmtyp), sub.substreamid,
-                     iclforge::analysis::layout_name(sub.acmod, sub.lfe), sub.syncframes, chanmap);
+                     iclforge::ac3::analysis::layout_name(sub.acmod, sub.lfe), sub.syncframes, chanmap);
     }
 
     fmt::println("{:<16}{} ({} syncframe(s)), {} bytes", "access units", report.access_units,
@@ -166,7 +166,7 @@ void print_table(std::string_view path, const io::ProbeReport& report,
     // Table D2.2's code and its name, in the same "code (name)" shape as bsmod.
     if (report.dmixmod.has_value()) {
         fmt::println("{:<16}{} ({})", "dmixmod", static_cast<int>(*report.dmixmod),
-                     iclforge::meta::describe(*report.dmixmod));
+                     iclforge::ac3::meta::describe(*report.dmixmod));
     } else {
         fmt::println("{:<16}absent", "dmixmod");
     }
@@ -207,7 +207,7 @@ void print_table(std::string_view path, const io::ProbeReport& report,
         fmt::println(
             "{:<16}{} syncframe(s) refused by the parser{}", "parse errors", report.parse_failures,
             report.first_parse_error
-                ? fmt::format(" (first: {})", iclforge::describe(*report.first_parse_error))
+                ? fmt::format(" (first: {})", iclforge::ac3::describe(*report.first_parse_error))
                 : std::string{});
     }
 
@@ -252,14 +252,14 @@ void print_access_unit(const io::ProbeAccessUnit& unit, Detail detail) {
         fmt::println("  {} id {} @ {}: {} bytes, {}, {}, dialnorm {} dB{}{}",
                      strmtyp_token(frame.header.strmtyp), frame.header.substreamid,
                      frame.byte_offset, frame.header.bytes,
-                     iclforge::analysis::layout_name(frame.header.acmod, frame.header.lfe),
+                     iclforge::ac3::analysis::layout_name(frame.header.acmod, frame.header.lfe),
                      frame.crc_valid ? "crc ok" : "CRC BAD",
                      dialnorm_db(frame.header.dialnorm),
                      frame.header.compr ? fmt::format(", compr {}", *frame.header.compr)
                                         : std::string{},
                      frame.authenticity_tag ? ", signed" : "");
         if (frame.parse_error.has_value()) {
-            fmt::println("    parse error: {}", iclforge::describe(*frame.parse_error));
+            fmt::println("    parse error: {}", iclforge::ac3::describe(*frame.parse_error));
         }
         if (frame.objects.has_value()) {
             fmt::println("    objects: {} total, {} dynamic, bed {}",
@@ -302,7 +302,7 @@ void print_access_unit(const io::ProbeAccessUnit& unit, Detail detail) {
             if (block.coupling) {
                 strategies += fmt::format(
                     " cpl:{}",
-                    exp_strategy_token(block.exp_strategy[iclforge::kCouplingSyntaxStream]));
+                    exp_strategy_token(block.exp_strategy[iclforge::ac3::kCouplingSyntaxStream]));
             }
             fmt::println("    blk {}: {:<28} exp [{}]", index,
                          tools.empty() ? "-" : tools, strategies);
@@ -343,7 +343,7 @@ void write_syncframe(JsonWriter& json, const io::ProbeSyncframe& frame, Detail d
     json.member("crc_valid", frame.crc_valid);
     json.member("authenticity_tag", frame.authenticity_tag);
     if (frame.parse_error.has_value()) {
-        json.member("parse_error", iclforge::describe(*frame.parse_error));
+        json.member("parse_error", iclforge::ac3::describe(*frame.parse_error));
     } else {
         json.member_null("parse_error");
     }
@@ -378,7 +378,7 @@ void write_syncframe(JsonWriter& json, const io::ProbeSyncframe& frame, Detail d
     json.member("snroffststr", static_cast<std::int64_t>(syntax.snroffststr));
     json.key("aht_streams");
     json.begin_array();
-    for (int stream = 0; stream < iclforge::kMaxSyntaxStreams; ++stream) {
+    for (int stream = 0; stream < iclforge::ac3::kMaxSyntaxStreams; ++stream) {
         if (syntax.aht_stream[static_cast<std::size_t>(stream)]) {
             json.value(static_cast<std::int64_t>(stream));
         }
@@ -411,7 +411,7 @@ void write_syncframe(JsonWriter& json, const io::ProbeSyncframe& frame, Detail d
         json.end_array();
         if (block.coupling) {
             json.member("coupling_exponent_strategy",
-                        exp_strategy_token(block.exp_strategy[iclforge::kCouplingSyntaxStream]));
+                        exp_strategy_token(block.exp_strategy[iclforge::ac3::kCouplingSyntaxStream]));
         } else {
             json.member_null("coupling_exponent_strategy");
         }
@@ -439,7 +439,7 @@ void write_access_unit(JsonWriter& json, const io::ProbeAccessUnit& unit, Detail
 // --- AC-4 ---------------------------------------------------------------
 //
 // A separate walk from everything above, over iclforge::ac4::scan()/parse_raw_frame()
-// rather than iclforge::io::Prober: probe_json's summarize_ac4() and
+// rather than iclforge::ac3::io::Prober: probe_json's summarize_ac4() and
 // write_ac4_stream(), whose comments say why the document's AC-4 stream has
 // its own shape.
 //
@@ -619,7 +619,7 @@ int run_probe_ac4(std::string_view in_path, std::istream& in, const Options& met
         JsonWriter json{stdout};
         json.begin_object();
         json.member("schema", "iclforge.probe/1");
-        json.member("generator", iclforge::version_full);
+        json.member("generator", iclforge::ac3::version_full);
         json.member("file", in_path);
         // null for a bare stream: the schema's members are never omitted.
         write_container(json, container);
@@ -700,7 +700,7 @@ int run_probe(std::string_view in_path, const Options& meta) {
     // for either downstream reader: AC-3/E-AC-3's syncword starts 0x0B77,
     // AC-4's Annex G sync_word starts 0xAC40/0xAC41 - the first byte alone
     // (0x0B vs 0xAC) already decides it, and peek() works the same way on a
-    // real file and on a pipe (std::cin), unlike a seek. iclforge::io::
+    // real file and on a pipe (std::cin), unlike a seek. iclforge::ac3::io::
     // AccessUnitReader below is unaffected either way - this dispatch has
     // to happen before it, since it is hardwired to AC-3/E-AC-3 framing.
     if (in.peek() == 0xAC) {
@@ -718,7 +718,7 @@ int run_probe(std::string_view in_path, const Options& meta) {
     if (meta.json) {
         json.begin_object();
         json.member("schema", "iclforge.probe/1");
-        json.member("generator", iclforge::version_full);
+        json.member("generator", iclforge::ac3::version_full);
         json.member("file", in_path);
         // null for a bare stream: the schema's members are never omitted.
         write_container(json, container);
@@ -753,7 +753,7 @@ int run_probe(std::string_view in_path, const Options& meta) {
     while (true) {
         const auto unit = reader.next();
         if (!unit) {
-            fmt::println(stderr, "error: {} at byte {}", iclforge::io::describe(unit.error()),
+            fmt::println(stderr, "error: {} at byte {}", iclforge::ac3::io::describe(unit.error()),
                          reader.byte_offset());
             return 1;
         }
@@ -761,7 +761,7 @@ int run_probe(std::string_view in_path, const Options& meta) {
             break;
         }
         if (const auto pushed = prober.push(*unit); !pushed) {
-            fmt::println(stderr, "error: {} at byte {}", iclforge::io::describe(pushed.error()),
+            fmt::println(stderr, "error: {} at byte {}", iclforge::ac3::io::describe(pushed.error()),
                          reader.byte_offset());
             return 1;
         }
@@ -769,7 +769,7 @@ int run_probe(std::string_view in_path, const Options& meta) {
 
     const auto report = prober.report();
     if (report.access_units == 0) {
-        fmt::println(stderr, "error: {}", iclforge::io::describe(io::ScanError::kEmpty));
+        fmt::println(stderr, "error: {}", iclforge::ac3::io::describe(io::ScanError::kEmpty));
         return 1;
     }
     if (meta.json) {

@@ -1,8 +1,8 @@
 # Python bindings
 
 A pybind11 module (`python/src/iclforge_ext/bindings.cpp`) bound straight onto
-`iclforge::FrameEncoder`, `iclforge::FrameDecoder`, `iclforge::Eac3Decoder`, `iclforge::eac3::FrameEncoder`,
-`iclforge::eac3::AccessUnitEncoder` and `iclforge::oba::AtmosEncoder`, and, in the `iclforge.ac4` submodule,
+`iclforge::ac3::FrameEncoder`, `iclforge::ac3::FrameDecoder`, `iclforge::ac3::Eac3Decoder`, `iclforge::ac3::eac3::FrameEncoder`,
+`iclforge::ac3::eac3::AccessUnitEncoder` and `iclforge::ac3::oba::AtmosEncoder`, and, in the `iclforge.ac4` submodule,
 `iclforge::ac4::Decoder` and `iclforge::ac4::Encoder` — pybind11-direct, not layered on a separate C API. From the
 first release made after the rename, install from PyPI:
 
@@ -58,7 +58,7 @@ samples. It returns one syncframe as `bytes`. See [Zero-copy numpy and buffer
 reuse](#zero-copy-numpy-and-buffer-reuse) below for what "zero-copy" means here and the one
 caveat it comes with.
 
-`ac3.EncoderConfig` mirrors the coding and metadata fields of `iclforge::EncoderConfig`
+`ac3.EncoderConfig` mirrors the coding and metadata fields of `iclforge::ac3::EncoderConfig`
 (`encoder/encoder.hpp`): `sample_rate`, `bitrate_kbps`, `dialnorm`, `dialnorm2`, `chbwcod`, `acmod`,
 `lfe`, `coupling`, `cplbegf`, `cplendf`, `fast_mdct`, `drc`, `heavy`, `drc2`, `heavy2`, `cmixlev`
 and `surmixlev`. `fgaincod`, `dither`, `delta_allocation`, `search`, `info` (the bsi fields),
@@ -75,7 +75,7 @@ config = ac3.EncoderConfig(
 )
 ```
 
-`ac3.profile_for(id)` is `iclforge::meta::profile(ProfileId)` — the conventional Dolby DRC curves;
+`ac3.profile_for(id)` is `iclforge::ac3::meta::profile(ProfileId)` — the conventional Dolby DRC curves;
 `ac3.Profile(...)` is available directly for a fully custom curve, same shape as the C++
 `meta::Profile` struct.
 
@@ -155,7 +155,7 @@ empty either way — read the PCM back from `out`.
 
 ## Scanning a stream
 
-`ac3.scan()` wraps `iclforge::io::scan` (`iclforge/ac3/io/elementary.hpp`) — reading an
+`ac3.scan()` wraps `iclforge::ac3::io::scan` (`iclforge/ac3/io/elementary.hpp`) — reading an
 elementary stream's shape (channel layout, every programme, every access unit's byte range)
 without decoding any audio, the same walk `forge probe`/a muxer's own input stage does:
 
@@ -180,9 +180,9 @@ since two programmes are never one spliced timeline.
 
 `ac3.access_unit_timing(result, index)` and `ac3.stream_duration_samples`/`stream_duration_seconds`/
 `access_unit_at_sample`/`access_unit_at_seconds`/`uniform_access_unit_samples` mirror
-`iclforge::io::access_unit_timing` and its neighbours — all free functions taking a `ScannedStream`,
+`iclforge::ac3::io::access_unit_timing` and its neighbours — all free functions taking a `ScannedStream`,
 matching the C++ shape, useful for a container muxer computing where to cut. `ac3.read_frame_header`
-(`iclforge::io::read_frame_header`) reads one syncframe's header — everything `scan()` reports about
+(`iclforge::ac3::io::read_frame_header`) reads one syncframe's header — everything `scan()` reports about
 the first frame, without walking the rest of the stream.
 
 A malformed stream raises `ac3.Ac3ScanError` (`.error: ac3.ScanError`) — same exception-translation
@@ -218,10 +218,10 @@ Load the CSV/JSON Lines text with `pandas.read_csv`/`read_json(lines=True)` and 
 
 ## Encoding E-AC-3
 
-`ac3.eac3.FrameEncoder`/`AccessUnitEncoder` wrap `iclforge::eac3::FrameEncoder`/
+`ac3.eac3.FrameEncoder`/`AccessUnitEncoder` wrap `iclforge::ac3::eac3::FrameEncoder`/
 `AccessUnitEncoder` directly (pybind11-direct, like everything else in this binding) — a real
-submodule rather than a flat `Eac3FrameEncoder` name, since `iclforge::FrameEncoder` and
-`iclforge::eac3::FrameEncoder` share a name across C++ namespaces; `ac3.FrameEncoder`
+submodule rather than a flat `Eac3FrameEncoder` name, since `iclforge::ac3::FrameEncoder` and
+`iclforge::ac3::eac3::FrameEncoder` share a name across C++ namespaces; `ac3.FrameEncoder`
 (AC-3) and `ac3.eac3.FrameEncoder` (E-AC-3) keep that collision out of the Python surface too.
 
 ```python
@@ -230,7 +230,7 @@ encoder = ac3.eac3.FrameEncoder(config)
 frame = encoder.encode_frame(channels)  # channels: encoder.channel_count arrays, AC-3 order
 ```
 
-`ac3.eac3.FrameConfig` mirrors `iclforge::eac3::FrameConfig`'s core surface — sample rate (including
+`ac3.eac3.FrameConfig` mirrors `iclforge::ac3::eac3::FrameConfig`'s core surface — sample rate (including
 the three `fscod2` reduced rates), bitrate, `numblkscod`, `acmod`/`lfe`, the Annex E tools
 (`auto_tools` and the individual `coupling`/`spx`/`aht` flags it overrides), substream identity
 (`strmtyp`/`substreamid`/`chanmap`/`last_dependent`), and `drc`/`heavy`/`drc2`/`heavy2` (the same
@@ -252,7 +252,7 @@ unit = encoder.encode_access_unit(channels)  # channels: encoder.channel_count a
 stream += unit.bytes
 ```
 
-`ac3.eac3.LayoutId` names the same eight layouts `iclforge::plan::LayoutId` does (`kMono`, `kStereo`,
+`ac3.eac3.LayoutId` names the same eight layouts `iclforge::ac3::plan::LayoutId` does (`kMono`, `kStereo`,
 `kDualMono`, `k51`, `k71`, `k512`, `k514`, `k714`); `dependent_bitrate_kbps` (default half of
 `bitrate_kbps`, applied to every dependent) overrides the per-dependent rate. Building an
 `AccessUnitConfig` by hand works too — `independent`/`dependents` are plain
@@ -497,11 +497,11 @@ sample comes out; the limits, the I-frame lists and the experimental flags); `te
 
 ## What isn't exposed
 
-`FrameEncoder`/`AtmosEncoder`'s self-check `trace` hook (`iclforge::verify::FrameTrace`) and
+`FrameEncoder`/`AtmosEncoder`'s self-check `trace` hook (`iclforge::ac3::verify::FrameTrace`) and
 `AtmosEncoder`'s `bed()`/`parameters()` introspection accessors are internal verification
 tooling, not part of this binding's surface — the DECODE-side `trace`/`eac3_trace` on
 `DecoderConfig` above is a different thing (the research export, not the
-encoder/decoder mirror self-check `iclforge::verify::MirrorEncoder`/`Eac3MirrorEncoder` drive
+encoder/decoder mirror self-check `iclforge::ac3::verify::MirrorEncoder`/`Eac3MirrorEncoder` drive
 in-repo) and is exposed. `DecodedAccessUnit`/`DecodedSubstream`'s full Table E2.5 channel-map
 machinery (`chanmap`, `location_map()`, `layout`) is likewise not exposed beyond the convenience
 `channel_labels` list above — deliberately unsupported, and said so here, the "say so and say why"
@@ -522,7 +522,7 @@ design behind it (see [Encoding E-AC-3](#encoding-e-ac-3) above); `AccessUnitCon
 
 There is no `Eac3Decoder.decode_substream_into` — only the two forms that assemble a full
 programme (`FrameDecoder.decode_frame_into`, `Eac3Decoder.decode_access_unit_into`) have a
-caller-buffer form, because that is the only pair `iclforge::FrameDecoder`/`iclforge::Eac3Decoder`
+caller-buffer form, because that is the only pair `iclforge::ac3::FrameDecoder`/`iclforge::ac3::Eac3Decoder`
 themselves expose one for (see [Zero-copy numpy](#zero-copy-numpy-and-buffer-reuse) above); a
 single substream's own PCM is always freshly allocated.
 

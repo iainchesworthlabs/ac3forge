@@ -371,12 +371,12 @@ TEST_CASE("transcode keeps a 1+1 source as two programmes and folds 7.1 for AC-3
           std::string::npos);
     CHECK(text.find("  layout 5.1 <- 8 source channels") != std::string::npos);
     const auto bytes = read_bytes(folded);
-    const auto frames = iclforge::split_frames(bytes);
+    const auto frames = iclforge::ac3::split_frames(bytes);
     REQUIRE(frames.has_value());
-    iclforge::FrameDecoder decoder;
+    iclforge::ac3::FrameDecoder decoder;
     const auto first = decoder.decode_frame(frames->front());
     REQUIRE(first.has_value());
-    CHECK(first->acmod == iclforge::Acmod::k3_2);
+    CHECK(first->acmod == iclforge::ac3::Acmod::k3_2);
     CHECK(first->lfe);
 }
 
@@ -402,9 +402,9 @@ TEST_CASE("metadata refuses an empty edit and dialnorm2=auto, and rewrites 1+1's
                     log) == 0);
     const auto bytes = read_bytes(out_path);
     CHECK(bytes.size() == read_bytes(in.dual_mono).size());
-    const auto frames = iclforge::split_frames(bytes);
+    const auto frames = iclforge::ac3::split_frames(bytes);
     REQUIRE(frames.has_value());
-    iclforge::FrameDecoder decoder;
+    iclforge::ac3::FrameDecoder decoder;
     const auto first = decoder.decode_frame(frames->front());
     REQUIRE(first.has_value());
     REQUIRE(first->dialnorm2.has_value());
@@ -415,12 +415,12 @@ TEST_CASE("metadata refuses an empty edit and dialnorm2=auto, and rewrites 1+1's
     REQUIRE(run_cli("metadata " + quoted(in.stereo) + " " + quoted(out_path) + " dsurmod=on", log) ==
             0);
     const auto stereo_bytes = read_bytes(out_path);
-    const auto stereo_frames = iclforge::split_frames(stereo_bytes);
+    const auto stereo_frames = iclforge::ac3::split_frames(stereo_bytes);
     REQUIRE(stereo_frames.has_value());
-    iclforge::FrameDecoder stereo_decoder;
+    iclforge::ac3::FrameDecoder stereo_decoder;
     const auto stereo_first = stereo_decoder.decode_frame(stereo_frames->front());
     REQUIRE(stereo_first.has_value());
-    CHECK(stereo_first->info.dsurmod == iclforge::meta::SurroundMode::kDolbySurround);
+    CHECK(stereo_first->info.dsurmod == iclforge::ac3::meta::SurroundMode::kDolbySurround);
 }
 
 TEST_CASE("normalize measures each 1+1 programme and refuses a silent stream",
@@ -442,9 +442,9 @@ TEST_CASE("normalize measures each 1+1 programme and refuses a silent stream",
     CHECK(text.find("  dialnorm   31 -> 9 (ATSC A/85 \xC2\xA7" "8)") != std::string::npos);
     CHECK(text.find("  dialnorm2  31 -> 9 (Ch2 measured -9.03 LKFS)") != std::string::npos);
     const auto bytes = read_bytes(out_path);
-    const auto frames = iclforge::split_frames(bytes);
+    const auto frames = iclforge::ac3::split_frames(bytes);
     REQUIRE(frames.has_value());
-    iclforge::FrameDecoder decoder;
+    iclforge::ac3::FrameDecoder decoder;
     const auto first = decoder.decode_frame(frames->front());
     REQUIRE(first.has_value());
     CHECK(first->dialnorm == 9);

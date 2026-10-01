@@ -27,7 +27,7 @@
 // src/core/transform/{reference,stub}/reference_transform.cpp - exactly as
 // ac3/internal/profiling.hpp and src/audio's platform backends are selected,
 // and for the same reason (tools/checks/check_platform_macros.ps1: no
-// #ifdef). iclforge::internal::kReferenceTransformAvailable
+// #ifdef). iclforge::ac3::internal::kReferenceTransformAvailable
 // (ac3/internal/profile.hpp, selected the same way) says which one is in the
 // build, and the public API refuses a configuration that would need the
 // missing one rather than silently substituting the fast path - see
