@@ -29,7 +29,7 @@
 #    (iclforge_capi_objects, below);
 #  - libiclforge_c.so exports the C API and nothing else (the end of this file).
 # Without them iclforge-tests in the BUILD_SHARED_LIBS=ON pass bound none of its
-# ac3:: symbols to libiclforge_ac3.so; tools/checks/check_shared_forge_binding.sh
+# iclforge:: symbols to libiclforge_ac3.so; tools/checks/check_shared_forge_binding.sh
 # checks that it does.
 # ---------------------------------------------------------------------------
 add_library(iclforge_capi_objects OBJECT)

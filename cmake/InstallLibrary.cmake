@@ -669,8 +669,8 @@ if(ICLFORGE_BUILD_ADM)
         DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/iclforge"
         COMPONENT library)
 
-    # ac3:: namespace, not iclforge::admbridge:: - matches its in-tree alias (iclforge::admbridge_shared,
-    # see src/admbridge/CMakeLists.txt), the same way capiTargets uses ac3:: below for iclforge_c.
+    # iclforge:: namespace, not iclforge::admbridge:: - matches its in-tree alias (iclforge::admbridge_shared,
+    # see src/admbridge/CMakeLists.txt), the same way capiTargets uses iclforge:: below for iclforge_c.
     install(EXPORT admbridgeTargets
         FILE admbridgeTargets.cmake
         NAMESPACE iclforge::

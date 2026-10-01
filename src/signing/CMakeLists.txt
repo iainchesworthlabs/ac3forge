@@ -23,10 +23,10 @@
 # and iclforge_signing_shared links iclforge::ac3_shared, exactly mirroring how
 # iclforge_ac3_static/iclforge_ac3_shared each wrap iclforge_ac3_objects, rather than always
 # embedding one specific variant regardless of BUILD_SHARED_LIBS the way capi
-# does. Raw target names iclforge_signing_objects/signing_static/signing_shared, not
-# ac3_signing_*: same stutter-avoidance reasoning as iclforge_ac3_objects/iclforge_ac3_static/
-# iclforge_ac3_shared's own header comment (install(EXPORT ... NAMESPACE iclforge::)
-# prepends the namespace to whatever the target is actually named).
+# does. The raw targets are iclforge_signing_objects, iclforge_signing_static and
+# iclforge_signing_shared; a consumer names the aliases iclforge::signing_static,
+# iclforge::signing_shared and iclforge::signing (the shared one when BUILD_SHARED_LIBS is ON),
+# as it does for iclforge::ac3.
 # ---------------------------------------------------------------------------
 add_library(iclforge_signing_objects OBJECT)
 add_library(iclforge_signing_static STATIC)
