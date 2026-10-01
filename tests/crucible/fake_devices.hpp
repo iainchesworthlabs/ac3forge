@@ -392,7 +392,10 @@ inline DeviceFacts realtek_default(const std::string& id = "realtek") {
     return {.id = id, .name = "Speakers (Realtek)", .is_default = true, .shared_channels = 2};
 }
 inline DeviceFacts null_sink(const std::string& id = "null") {
-    return {.id = id, .name = "Speakers (Desktop Atmos)", .is_default = false, .shared_channels = 8};
+    return {.id = id,
+            .name = "Speakers (Crucible Silent Output)",
+            .is_default = false,
+            .shared_channels = 8};
 }
 inline DeviceFacts headphones_spatial(const std::string& id = "hp") {
     return {.id = id, .name = "Headphones (USB)", .is_default = false, .shared_channels = 2, .spatial = true, .spatial_max_objects = 17};

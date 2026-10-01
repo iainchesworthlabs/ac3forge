@@ -24,13 +24,13 @@ param(
     [string]$BuildEnv = 'F:\BuildEnv\SetupBuildEnv.cmd',
     [string]$CodeQL = 'D:\tools\codeql\codeql.exe',
     [string]$RuleSet = 'DriverRecommendedRules.ruleset',
-    [string]$Database = 'D:\aa-wt-builds\codeql-db\Ac3ForgeNullSink',
+    [string]$Database = 'D:\aa-wt-builds\codeql-db\IclForgeNullSink',
     [switch]$SkipCodeQL,
     [switch]$SkipDvl
 )
 $ErrorActionPreference = 'Stop'
 $driver = $PSScriptRoot
-$solution = Join-Path $driver 'Ac3ForgeNullSink.sln'
+$solution = Join-Path $driver 'IclForgeNullSink.sln'
 if (-not (Test-Path $BuildEnv)) { throw "EWDK build environment not found: $BuildEnv (mount the EWDK ISO)" }
 $kits = Join-Path (Split-Path (Split-Path $BuildEnv)) 'Program Files\Windows Kits\10'
 $rulesFrom = Join-Path $kits 'CodeAnalysis'
@@ -88,7 +88,7 @@ if (-not $SkipCodeQL) {
         'recommended' = @()
     }
     foreach ($suite in 'mustfix', 'recommended') {
-        $sarif = Join-Path $driver "Ac3ForgeNullSink.codeql.$suite.sarif"
+        $sarif = Join-Path $driver "IclForgeNullSink.codeql.$suite.sarif"
         & $CodeQL database analyze $Database "microsoft/windows-drivers:windows-driver-suites/$suite.qls" --format=sarifv2.1.0 --output=$sarif --download 2>&1 |
             Where-Object { $_ -match 'error|Interpreting|results' } | ForEach-Object { Write-Host "   $_" }
         if ($LASTEXITCODE -ne 0) { throw "codeql database analyze ($suite) failed ($LASTEXITCODE)" }

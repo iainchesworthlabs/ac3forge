@@ -3175,15 +3175,15 @@ request of its own with its scripts under `tools/n1b/`:
 | S3 | #1161 | the namespace root `ac3` became `iclforge` in 1,208 files, and 294 files were wrapped again to 100 columns |
 | S4 | #1162 | `ac3forge` became `iclforge` in identifiers, names and wire strings (713 files), `sendspin::ac3forge` became `sendspin::player`, and 211 package files moved |
 | N1A | #1164 | `ac3cli`, `ac3gui`, `ac3hearth` and `ac3crucible` became `forge`, `forge-gui`, `hearth` and `crucible`, with what they register |
-| S5 | the pull request that carries this text | the pages, the addresses, the build and tool text and the install routes follow the names; [Renamed](../docs/renamed.md) is the page that puts each old name beside its new one |
+| S5 | #1165 | the pages, the addresses, the build and tool text and the install routes follow the names; [Renamed](../docs/renamed.md) is the page that puts each old name beside its new one |
+| N1D | the pull request that carries this text | the Windows null-sink driver became `IclForgeNullSink` and its endpoint "Crucible Silent Output", on the owner's decision of 2026-10-01 (the driver had never been signed or installed outside the test guest); [the driver's page](../docs/platforms/windows-driver-acx.md#the-rename-2026-10-01) has the record |
+| S6 | the pull request that carries this text | the AC-3 codec's C++ names are in `iclforge::ac3`, a peer of `iclforge::ac4`, and the root `iclforge` holds one namespace per library; [the library index](../docs/library/index.md) and [Renamed](../docs/renamed.md) say how, and `tools/n1b/README.md` has the recipe |
 
 [What the runs found](layout.md#what-the-runs-found-that-the-plan-did-not) gives the counts that
 differed from the study's and the hazards it did not name. **Left:** the owner renames the
 repository, the Homebrew tap and the SonarCloud project key, creates the pending publisher of the
-PyPI project `iclforge` and publishes the first release under the new names; U1 revises wording
-that is not a name; and the Windows driver's installed identity, which the tree still carries as
-`Ac3ForgeNullSink`, is renamed in its own change (N1D) on the owner's decision of 2026-10-01. What
-follows is the plan as it was written.
+PyPI project `iclforge` and publishes the first release under the new names; and U1 revises
+wording that is not a name. What follows is the plan as it was written.
 
 Asked by the user on 2026-09-25, since libraries and programs named `ac3` now do AC-4. A survey of
 the tree found `ac3forge` already the family's name for parts with no AC-3 in them (Hearth,

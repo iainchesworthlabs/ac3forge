@@ -38,6 +38,11 @@ af6b96212eae0a22514aec67bd68c4a061854a41  # S4: paths in text follow the moved p
 ce3c449eaebecbf6bc3d59bb3b0be701bb8fba7b  # S5: build and tool text names the libraries as it should
 ff7ea00f4fe8872158ec97fc3418f2bedc5d637f  # S5: wrap the eight Python lines the rename pushed past 100 columns
 
+# N1D, the Windows driver's names: what n1d_driver_names.py gives on its parent, and the lines clang-format wrapped
+# after it (the commit that moves the three files, the tool's commit and the hand-written one are not listed)
+49bb386eb117413cb36188e47f244c3cbe48a1e9  # N1D: the driver's identity and its endpoint's name, as the script rewrites them
+33e125f2ac71c33f3fac7b08feca8b52916e85e9  # N1D: wrap the lines the endpoint's new name pushed past 100 columns
+
 # N1B stage S6, the AC-3 codec's names under iclforge::ac3: what n1b_ac3ns.py gives on its parent in each of its phases
 # (the namespaces a file opens, the qualified names, what the compiler's loop recorded, the spellings of the other
 # library's half of a shared namespace), the lines n1b_reflow.py wrapped after the first three, what lupdate wrote and what

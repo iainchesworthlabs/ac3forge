@@ -191,7 +191,7 @@ TestCase {
         if (!TestServices.scriptSessions([{ app: 900, name: "chrome", active: true }])) {
             skip("the scripted machine is not available in this harness");
         }
-        CrucibleController.nullSinkName = "Desktop Atmos";
+        CrucibleController.nullSinkName = "Crucible Silent Output";
     }
 
     function test_sendMovesTheDefaultAndCountsAsSeen() {
@@ -203,12 +203,12 @@ TestCase {
         const status = child(window, "firstRunDeviceStatus");
         verify(status.text.indexOf("is on this machine") >= 0, status.text);
         const send = child(window, "firstRunSend");
-        compare(send.text, "Send applications to Desktop Atmos");
+        compare(send.text, "Send applications to Crucible Silent Output");
         verify(send.enabled);
         mouseClick(send);
         tryVerify(function() { return !dialog.opened; });
         tryCompare(CrucibleController, "defaultIsNullSink", true, 3000);
-        compare(CrucibleController.defaultOutputName, "Speakers (Desktop Atmos)");
+        compare(CrucibleController.defaultOutputName, "Speakers (Crucible Silent Output)");
         compare(CrucibleController.previousDefaultName, "Speakers (Realtek)");
         tryCompare(CrucibleController, "firstRunAcknowledged", true);
     }
@@ -256,6 +256,6 @@ TestCase {
         verify(status.text.indexOf(CrucibleController.silentDeviceAdvice) >= 0, status.text);
         child(window, "firstRunLater").clicked();
         tryVerify(function() { return !window.firstRunDialogRef.opened; });
-        CrucibleController.nullSinkName = "Desktop Atmos";
+        CrucibleController.nullSinkName = "Crucible Silent Output";
     }
 }

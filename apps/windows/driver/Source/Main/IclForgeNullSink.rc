@@ -1,6 +1,6 @@
 /*++
 
-Version resource for Ac3ForgeNullSink.sys.
+Version resource for IclForgeNullSink.sys.
 
 --*/
 
@@ -9,9 +9,9 @@ Version resource for Ac3ForgeNullSink.sys.
 
 #define VER_FILETYPE                VFT_DRV
 #define VER_FILESUBTYPE             VFT2_DRV_SOUND
-#define VER_FILEDESCRIPTION_STR     "ICL Forge Desktop Atmos null-sink audio driver (ACX; derived from Microsoft's ACX AudioCodec sample)"
-#define VER_INTERNALNAME_STR        "Ac3ForgeNullSink.sys"
-#define VER_ORIGINALFILENAME_STR    "Ac3ForgeNullSink.sys"
+#define VER_FILEDESCRIPTION_STR     "ICL Forge null-sink audio driver for Crucible (ACX; derived from Microsoft's ACX AudioCodec sample)"
+#define VER_INTERNALNAME_STR        "IclForgeNullSink.sys"
+#define VER_ORIGINALFILENAME_STR    "IclForgeNullSink.sys"
 #define VER_LEGALCOPYRIGHT_YEARS    "2021-2026"
 #define VER_LEGALCOPYRIGHT_STR      "Copyright (C) Microsoft Corp. (sample); modifications Copyright (C) ICL Forge contributors, MS-PL " VER_LEGALCOPYRIGHT_YEARS
 

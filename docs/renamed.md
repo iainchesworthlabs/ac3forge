@@ -101,6 +101,8 @@ header that moved changed with it (`ac3/core/layout.hpp` is `iclforge/base/layou
 | The sink firmware's project name `ac3forge_hearth_sink` | `iclforge_hearth_sink` |
 | `forge probe` JSON schema `ac3forge.probe/1`; Hearth's `ac3forge.hearth.media/1`; the scene file's `ac3forge_scene` | `iclforge.probe/1`, `iclforge.hearth.media/1`, `iclforge_scene` |
 | The writing application of the MP4 and Matroska files `forge` writes: `ac3forge` | `iclforge` |
+| The Windows silent device's driver: the hardware id `ROOT\Ac3ForgeNullSink`, the service `Ac3ForgeNullSink`, the files `Ac3ForgeNullSink.sys` and `.inf` and `ac3forgenullsink.cat` | `ROOT\IclForgeNullSink`, `IclForgeNullSink`, `IclForgeNullSink.sys` and `.inf` and `iclforgenullsink.cat` |
+| The endpoint that driver shows, which Crucible finds by its name: "Speakers (Desktop Atmos)" | "Speakers (Crucible Silent Output)" |
 
 **Every flashed ESP32 board needs one flash over USB.** A board running a firmware from before the
 rename advertises `_ac3forge_player@v1` and its update check wants the project name
@@ -122,6 +124,12 @@ store records it. The old store and the old files are never written, renamed or 
 back to a pre-release finds everything where it was left. On Windows the old keys stay under
 `HKCU\Software\ac3forge`, and Qt creates the empty key of a store it reads, so a machine that never
 had one gets that key with no value in it; delete it whenever you like, since nothing reads it.
+
+The Windows driver was never in a release, and the only installed copy known is the one in the
+project's test guest. Crucible's silent-device filter (Settings, Advanced) is copied with the other
+settings and keeps whatever was typed in it, so a filter that says "Desktop Atmos" no longer
+matches the endpoint. Clearing it brings back the default, which is the platform's own name for
+its silent device.
 
 ## Installed copies
 

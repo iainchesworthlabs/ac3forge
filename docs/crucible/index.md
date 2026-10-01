@@ -78,8 +78,8 @@ a Developer ID certificate for the operating system to show the capture consent 
 
 The silent device suppresses the application's original output while Crucible plays its mix.
 
-**On Windows** it is a virtual audio device called "Desktop Atmos" that discards whatever it is
-given. The release archive has the install and remove scripts only. A source-built driver stays
+**On Windows** it is a virtual audio device called "Crucible Silent Output" that discards whatever
+it is given. The release archive has the install and remove scripts only. A source-built driver stays
 installed until you remove it.
 
 **On Linux** there is nothing to install. Crucible creates a PipeWire node named

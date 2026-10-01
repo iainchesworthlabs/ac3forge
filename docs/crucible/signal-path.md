@@ -40,8 +40,11 @@ pretending otherwise.
 
 ### Windows
 
-Station 1 is the **"Desktop Atmos" driver**, a virtual device that discards its input. Crucible
-offers to make it the system default, and restores your previous default on exit.
+Station 1 is the **"Crucible Silent Output" driver** (`IclForgeNullSink`), a virtual device that
+discards its input. Crucible offers to make it the system default, and restores your previous
+default on exit. The device has a name of its own so that station 1 and station 2 do not read
+alike on the Output page: a device called "Speakers (Crucible)" would stand beside a station
+called Crucible.
 
 The driver is test-signed today, so it loads only on a machine with test signing on. Until an EV
 certificate and attestation land, a normal machine has no silent device and Crucible tells you

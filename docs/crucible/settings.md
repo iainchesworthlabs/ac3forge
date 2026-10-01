@@ -69,9 +69,9 @@ need.
   on a machine.
 - **Silent device** — the name filter. Any endpoint whose name contains this text is treated as
   the silent device and is never chosen as an output. It defaults to the platform's own name for
-  its silent device — "Desktop Atmos" on Windows, "Crucible (silent)" on Linux — and it is the
-  setting that lets a machine with no driver point Crucible at some other endpoint it cannot hear
-  ([Install](install.md#without-the-driver)). Changing it restarts the stream.
+  its silent device — "Crucible Silent Output" on Windows, "Crucible (silent)" on Linux — and it
+  is the setting that lets a machine with no driver point Crucible at some other endpoint it
+  cannot hear ([Install](install.md#without-the-driver)). Changing it restarts the stream.
 
 ## 02 Signing key
 

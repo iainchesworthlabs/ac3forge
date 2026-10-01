@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Unattended Windows 11 install for the Desktop Atmos driver test VM
+  Unattended Windows 11 install for the driver test VM
   (apps/windows/driver-vm/README.md). Windows Setup picks this file up from
   the root of any attached removable medium; New-DriverTestVm.ps1 wraps it
   in a small ISO and attaches it beside the Windows ISO.
@@ -144,7 +144,7 @@
         <SynchronousCommand wcm:action="add" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
           <Order>6</Order>
           <Description>Mark first logon done, then reboot so test signing and Tools take effect</Description>
-          <CommandLine>cmd /c echo done &gt; C:\atmos-first-logon-done.txt &amp; shutdown /r /t 20 /c "Desktop Atmos test guest: first logon complete"</CommandLine>
+          <CommandLine>cmd /c echo done &gt; C:\atmos-first-logon-done.txt &amp; shutdown /r /t 20 /c "Driver test guest: first logon complete"</CommandLine>
         </SynchronousCommand>
       </FirstLogonCommands>
     </component>

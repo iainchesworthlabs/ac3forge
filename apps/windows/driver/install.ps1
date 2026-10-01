@@ -1,4 +1,4 @@
-# Installs the test-signed Ac3ForgeNullSink package on this machine and creates
+# Installs the test-signed IclForgeNullSink package on this machine and creates
 # its root-enumerated device. Run as administrator, with test signing on (see
 # README.md). Pass -PackageDir to point at a build output other than the
 # default Release x64 one. Needs nothing beyond Windows: the package is
@@ -11,7 +11,7 @@ param(
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'NullSinkDevice.ps1')
 
-$inf = Join-Path $PackageDir 'Ac3ForgeNullSink.inf'
+$inf = Join-Path $PackageDir 'IclForgeNullSink.inf'
 if (-not (Test-Path $inf)) { throw "no package at $PackageDir (build the solution first)" }
 
 $cert = Get-ChildItem (Split-Path $PackageDir) -Filter '*.cer' | Select-Object -First 1
@@ -38,4 +38,4 @@ if (Test-NullSinkDevice) {
     $instance = New-NullSinkDevice -Inf $inf
     Write-Host "created $instance"
 }
-Write-Host 'done: look for "Speakers (Desktop Atmos)" in Sound settings'
+Write-Host 'done: look for "Speakers (Crucible Silent Output)" in Sound settings'
