@@ -46,6 +46,9 @@ class Table:
     followers: dict[str, set[Path_]] = field(
         default_factory=dict
     )  # file outside the library -> paths
+    declared: dict[Path_, set[str]] = field(
+        default_factory=dict
+    )  # every namespace: all the names the library declares in it, the namespaces it opens included
 
     @classmethod
     def from_json(cls, data: dict) -> Table:
@@ -53,6 +56,9 @@ class Table:
         for key, row in data["namespaces"].items():
             path = key_to_path(key)
             t.known.add(path)
+            t.declared.setdefault(path, set()).update(row["names"])
+            if path:  # a namespace the library opens is a name in the one around it
+                t.declared.setdefault(path[:-1], set()).add(path[-1])
             # the root holds every library's namespace, so it is never the library's outright
             if row["owner"] == "exclusive" and path:
                 t.exclusive.add(path)

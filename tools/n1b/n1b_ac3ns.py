@@ -7,6 +7,7 @@
     n1b_ac3ns.py --root <worktree> --phase loop --build <build dir> [--rounds 6] [--target all]
     n1b_ac3ns.py --root <worktree> --phase record --base <rev> --sites <sites.json>
     n1b_ac3ns.py --root <worktree> --phase sites --sites <sites.json> [--dry-run]
+    n1b_ac3ns.py --root <worktree> --phase shadows [--apply] [--dry-run]
 
 S3 put every library's namespace under the family root `iclforge`; the AC-3 and E-AC-3 codec stayed
 in the root itself (`iclforge::FrameEncoder`, `iclforge::eac3::...`, `iclforge::meta::...`). This
@@ -44,6 +45,8 @@ Phases, each committed alone:
   record   the net edit of the loop against a commit, as data.
   sites    that record applied to a tree that has the same lines, so that the commit of the loop
            can be made again on its parent with no build.
+  shadows  what no compiler reports: a name that is still found and is another declaration now, and
+           a spelling whose meaning depends on what a file includes first (ac3ns_shadows.py).
 
 Every change `decl` and `uses` make is reported (`--report`): the file and line, whether the place
 is code, a comment or a string, and the name before and after. A string that prints a qualified
@@ -58,6 +61,7 @@ from collections import Counter
 from pathlib import Path
 
 import ac3ns_fix as fix
+import ac3ns_shadows as shadows
 import n1b_docs as docs
 from ac3ns_core import DEFAULT_TABLE, LIBRARY_PREFIX, Table, declare, qualify
 from n1b_lib import Repo, base_parser
@@ -140,10 +144,13 @@ def run_text_phases(a, table: Table) -> int:
 def main(argv: list[str] | None = None) -> int:
     ap = base_parser(__doc__)
     ap.add_argument(
-        "--phase", choices=["decl", "uses", "all", "fix", "loop", "record", "sites"], default="all"
+        "--phase",
+        choices=["decl", "uses", "all", "fix", "loop", "record", "sites", "shadows"],
+        default="all",
     )
     ap.add_argument("--table", default=str(DEFAULT_TABLE))
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--apply", action="store_true", help="write the anchors (shadows)")
     ap.add_argument("--report", default=None, help="write every change to this file")
     ap.add_argument("--json", default=None, help="write the counts to this file")
     ap.add_argument("--log", action="append", default=[], help="a build log (fix)")
@@ -172,6 +179,8 @@ def main(argv: list[str] | None = None) -> int:
         rounds = fix.run_loop(root, table, a.build, a.target, a.rounds, a.jobs, work)
         print(f"{rounds} rounds wrote edits")
         return 0
+    if a.phase == "shadows":
+        return shadows.main_shadows(root, Repo(a.root).files, table, a.apply, a.dry_run)
     if a.phase == "record":
         return fix.main_record(root, a.base, Path(a.sites))
     return fix.main_sites(root, Path(a.sites), a.dry_run)
