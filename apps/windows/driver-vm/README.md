@@ -86,8 +86,8 @@ the guest in the middle of the exercise, after the device had been restarted und
 `0x124` (`WHEA_UNCORRECTABLE_ERROR`, error source 0x10, a device driver), `100126-25046-01.dmp`,
 455,886 bytes, no frame of the driver on the crashing CPU's stack. The VM's own log puts the cause on
 the host: the virtual NVMe disk's writes took up to 14.5 s in the two minutes before it
-(`nvme0:0: Command WRITE(10) took 14.507 seconds`) and the guest's NVMe driver reset the controller
-three times. The renamed `.sys` and the old one have the same code (`.text`, `.data` and `INIT` match
+(`nvme0:0: Command WRITE(10) took 14.507 seconds`), and the guest's NVMe driver reset the
+controller at 06:22:04 and again at 06:22:22 UTC, with a partial reset of its queues between. The renamed `.sys` and the old one have the same code (`.text`, `.data` and `INIT` match
 byte for byte; `PAGE` differs by four bytes of name literals), and the two clean runs are of the
 renamed one.
 
