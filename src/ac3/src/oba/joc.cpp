@@ -1304,7 +1304,7 @@ std::vector<std::vector<float>> reconstruct(std::span<const std::span<const floa
                                             bool fast_imdct, iclforge::oba::joc::Domain domain) {
     assert(bed.size() == static_cast<std::size_t>(params.channels));
     assert(params.channels >= 1 && params.channels <= kMaxChannels);
-    assert(domain != Domain::kQmf || params.channels == kNumChannels5X);
+    assert(domain != iclforge::oba::joc::Domain::kQmf || params.channels == kNumChannels5X);
     assert(params.matrix.size() == params.coefficient_count());
 
     // Each domain function maintains its own previous_matrix/older_matrix/
