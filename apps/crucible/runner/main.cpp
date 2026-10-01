@@ -6,7 +6,8 @@
 //   crucible-run [--null-sink SUBSTR] [--key PATH] [--pin MODE] [--low-latency]
 //              [--bitrate KBPS] [--set-default SUBSTR]
 //
-//   --null-sink SUBSTR         the silent endpoint applications render into ("Crucible Silent Output")
+//   --null-sink SUBSTR         the silent endpoint applications render into
+//                              (default "Crucible Silent Output", the Windows driver's)
 //   --key PATH                 the signing key file; else the ICLFORGE_SIGNING_KEY* variables
 //   --pin MODE                 start pinned to a mode (the pin verb's list), not the policy's choice
 //   --low-latency              one-block frames, the PCM sink at the engine's smallest period

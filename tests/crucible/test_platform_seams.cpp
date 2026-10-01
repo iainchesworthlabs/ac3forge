@@ -88,8 +88,9 @@ TEST_CASE("the session monitor carries the engine's keep list", "[crucible][seam
 TEST_CASE("the default device seam carries a refusal and a platform that never moves it",
           "[crucible][seams]") {
     FakeDefaultDevice device;
-    device.set_endpoints({{.id = "hdmi", .name = "Denon AVR", .is_default = false},
-                          {.id = "null", .name = "Speakers (Crucible Silent Output)", .is_default = true}});
+    device.set_endpoints(
+        {{.id = "hdmi", .name = "Denon AVR", .is_default = false},
+         {.id = "null", .name = "Speakers (Crucible Silent Output)", .is_default = true}});
 
     REQUIRE(device.default_id() == "null");
     REQUIRE(device.find_endpoint("Crucible Silent Output") == "null");
