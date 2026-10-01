@@ -1,5 +1,5 @@
-//! Stream framing and scanning — `iclforge::split_frames`/`split_access_units`/`stream_bsid` and
-//! `iclforge::io::scan` via their C mirrors.
+//! Stream framing and scanning — `iclforge::ac3::split_frames`/`split_access_units`/`stream_bsid` and
+//! `iclforge::ac3::io::scan` via their C mirrors.
 //!
 //! The split results and every access-unit span a scan reports are views into the CALLER's
 //! stream buffer (the C header's own lifetime contract), which Rust expresses directly: the
@@ -55,7 +55,7 @@ pub fn stream_bsid(frame: &[u8]) -> Result<i32, Error> {
     Ok(bsid)
 }
 
-/// Mirrors `iclforge_stream_kind_t` / `iclforge::io::StreamKind`.
+/// Mirrors `iclforge_stream_kind_t` / `iclforge::ac3::io::StreamKind`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum StreamKind {
     Ac3,
@@ -79,7 +79,7 @@ impl StreamKind {
 }
 
 /// A whole-stream scan — sample rate, layout, access-unit boundaries, the descriptor-facing
-/// service fields — without decoding any audio. `iclforge::io::scan`/`ScannedStream` via
+/// service fields — without decoding any audio. `iclforge::ac3::io::scan`/`ScannedStream` via
 /// `iclforge_scanned_stream_t`.
 ///
 /// Borrows the stream it scanned: every [`ScannedStream::access_unit`] span points into that

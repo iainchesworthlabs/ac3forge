@@ -1,4 +1,4 @@
-//! E-AC-3 encode and decode — `iclforge::eac3::FrameEncoder`/`AccessUnitEncoder`/`iclforge::Eac3Decoder`
+//! E-AC-3 encode and decode — `iclforge::ac3::eac3::FrameEncoder`/`AccessUnitEncoder`/`iclforge::ac3::Eac3Decoder`
 //! via their C mirrors: the single-substream pair, the wide-layout access-unit pair
 //! ([`AccessUnitEncoder`]/[`DecodedAccessUnit`]), and the OAMD/JOC object-audio accessors on
 //! both decoded types. The object ENCODER lives in [`crate::atmos`].
@@ -181,7 +181,7 @@ impl Eac3FrameMetadata {
     }
 }
 
-/// An E-AC-3 encoder (single, standalone substream) — `iclforge::eac3::FrameEncoder` via
+/// An E-AC-3 encoder (single, standalone substream) — `iclforge::ac3::eac3::FrameEncoder` via
 /// `iclforge_eac3_encoder_t`.
 pub struct Eac3Encoder {
     raw: ptr::NonNull<sys::iclforge_eac3_encoder_t>,
@@ -275,7 +275,7 @@ impl Drop for Eac3Encoder {
     }
 }
 
-/// An E-AC-3/Atmos decoder — `iclforge::Eac3Decoder` via `iclforge_eac3_decoder_t`.
+/// An E-AC-3/Atmos decoder — `iclforge::ac3::Eac3Decoder` via `iclforge_eac3_decoder_t`.
 pub struct Eac3Decoder {
     raw: ptr::NonNull<sys::iclforge_eac3_decoder_t>,
 }
@@ -357,7 +357,7 @@ impl Drop for Eac3Decoder {
     }
 }
 
-/// One decoded E-AC-3 substream — `iclforge::DecodedSubstream` via `iclforge_decoded_substream_t`.
+/// One decoded E-AC-3 substream — `iclforge::ac3::DecodedSubstream` via `iclforge_decoded_substream_t`.
 pub struct DecodedSubstream {
     raw: ptr::NonNull<sys::iclforge_decoded_substream_t>,
 }
@@ -509,7 +509,7 @@ impl DecodedSubstream {
     }
 }
 
-/// One encoded access unit — `iclforge::eac3::AccessUnit` via `iclforge_eac3_access_unit_t`: the
+/// One encoded access unit — `iclforge::ac3::eac3::AccessUnit` via `iclforge_eac3_access_unit_t`: the
 /// bytes plus per-substream boundaries, which a caller demuxing substreams individually (or
 /// re-deriving crc2) needs and a plain byte buffer cannot carry.
 pub struct AccessUnit {
@@ -555,7 +555,7 @@ impl Drop for AccessUnit {
     }
 }
 
-/// Wide layouts — `iclforge::eac3::AccessUnitEncoder` via `iclforge_eac3_access_unit_encoder_t`: one
+/// Wide layouts — `iclforge::ac3::eac3::AccessUnitEncoder` via `iclforge_eac3_access_unit_encoder_t`: one
 /// independent substream (the bed) plus up to eight dependents that widen it (7.1, 5.1.2,
 /// 5.1.4, 7.1.4...), encoded together into one access unit per frame.
 ///
@@ -658,7 +658,7 @@ impl Drop for AccessUnitEncoder {
     }
 }
 
-/// One decoded, fully-rendered programme — `iclforge::DecodedAccessUnit` via
+/// One decoded, fully-rendered programme — `iclforge::ac3::DecodedAccessUnit` via
 /// `iclforge_decoded_access_unit_t`: the bed plus every dependent's channels rendered into one
 /// layout, which is what [`Eac3Decoder::decode_access_unit`] produces for a multi-substream
 /// unit and what a wide-layout round trip has to be checked against.

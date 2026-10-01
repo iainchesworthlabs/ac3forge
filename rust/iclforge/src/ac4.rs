@@ -466,7 +466,7 @@ impl AdditionalPair {
 
 /// Mirrors `iclforge_ac4_output_config_t` (`iclforge::ac4::OutputConfig`). Construct with
 /// [`OutputConfig::default`] (which calls the raw `iclforge_ac4_output_config_init()` -
-/// same "call the real _init(), never derive it" reasoning as `iclforge::EncoderConfig`) and
+/// same "call the real _init(), never derive it" reasoning as `iclforge::ac3::EncoderConfig`) and
 /// override only the fields you need.
 #[derive(Debug, Clone, PartialEq)]
 pub struct OutputConfig {

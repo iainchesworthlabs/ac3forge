@@ -1,4 +1,4 @@
-//! Loudness metering — `iclforge::meta::LoudnessMeter` via `iclforge_loudness_meter_t`: BS.1770
+//! Loudness metering — `iclforge::ac3::meta::LoudnessMeter` via `iclforge_loudness_meter_t`: BS.1770
 //! integrated/momentary/short-term loudness, loudness range and true peak, fed incrementally
 //! over a whole programme.
 
