@@ -55,9 +55,9 @@ what the first release made after the rename calls them:
   is a public repository. Its `Formula/ac3forge.rb` and `Casks/ac3gui.rb` are both at
   `v0.10.0-beta.1`. The formula was added on 2026-08-18, and the bumps to `v0.8.0-beta.2`,
   `v0.9.0-beta.1` and `v0.10.0-beta.1` are the tap's merged pull requests #1 to #3.
-- **vcpkg:** not in the registry. The port was submitted to `microsoft/vcpkg` as pull request
-  #53470 on 2026-08-18, under the name `ac3forge`; it is a draft with changes requested and has not
-  been updated since 2026-08-19.
+- **vcpkg:** not in the registry. The port was submitted to `microsoft/vcpkg` as
+  pull request #53470 on 2026-08-18, under the name `ac3forge`; it is a draft with changes requested
+  and has not been updated since 2026-08-19.
 - **winget:** not in the registry. The only submission is `microsoft/winget-pkgs` #419594, for
   `0.8.0-beta.1` as `iainchesworthlabs.ac3forge`, opened on 2026-08-18 from the
   `iainchesworthlabs/winget-pkgs` fork. A reviewer
