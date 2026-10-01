@@ -1182,9 +1182,13 @@ portable types: 0.2 to 0.3% fewer instructions than the scalar loops and 4.2 KB 
 
 The first five rows are the figures of D14a's third part. Measured again with D14a4 in the tree
 they give the same counts to within half a per cent (54.5 M, 57.8 M, 117.1 M, 124.2 M and 205.5 M
-instructions a frame), an image of 485,056 bytes, and the same PCM hashes.
+instructions a frame), an image of 485,056 bytes, and the same PCM hashes. With D14a5 in the tree the
+counts agree to within 0.01% (54.5 M, 57.8 M, 117.1 M, 124.2 M, 205.5 M and 58.6 M), the peak heap, the
+stack and the hashes are the same, and the image is 683,480 bytes, 196,464 of them the sample rate
+converter's three `float` tables, which the compiler builds into it.
 
-The image is 486,192 bytes (483,540 `.text`, 392 `.data`, 2,260 `.bss`), the ceiling 535,000; the
+The image is 683,488 bytes (680,836 `.text`, 392 `.data`, 2,260 `.bss`; 197,296 bytes of `.text` more than
+before D14a5, for the converter's tables), the ceiling 750,000; the
 stack ceiling is 21,500 here and 28,500 on the host, whose frames are larger (24.7 to 26.0 KB read
 there); retained bytes after teardown 0, the ceiling 1,024. The ceilings are the runner's
 (`ICOUNT_CEILING_AC4`, `CHURN_CEILING_AC4`, `PEAK_CEILING_AC4`), each a tenth or so over its figure
