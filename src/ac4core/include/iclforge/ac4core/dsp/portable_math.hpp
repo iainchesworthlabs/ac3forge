@@ -138,8 +138,7 @@ struct Reduced {
 //
 // The argument is taken to the nearest multiple n of pi / 2 and what is left, r, by a Cody-Waite
 // reduction with pi / 2 in three pieces (above), where the first two multiply exactly; sin(x) is
-// then
-// +-sin(r) or +-cos(r) as n modulo 4 says, each a short series.
+// then +-sin(r) or +-cos(r) as n modulo 4 says, each a short series.
 [[nodiscard]] constexpr double sin(double x) noexcept {
     if (!(x >= -detail::kReduceLimit && x <= detail::kReduceLimit)) {
         return std::numeric_limits<double>::quiet_NaN();

@@ -58,11 +58,12 @@
 // double) and the same coefficients are on every platform. The copy is for a
 // part that executes from flash behind a cache, where reading a table the
 // cache cannot hold from the constants is several times slower than reading it
-// from the heap (src/ac4core/src/dsp/resampler.cpp has the figures). They hold phases 0 to
-// up / 2: phase up - p is phase p read from its last coefficient to its first,
-// so that is half the table, 188 KB at 1001/960, and phase() says which way to
-// read (planning/ac4.md, D14a5). Any other ratio at float is designed when the
-// filter is made, with the same functions, and kept the same way.
+// from the heap (src/ac4core/src/dsp/resampler.cpp has the figures). The tables
+// hold phases 0 to up / 2: phase up - p is phase p read from its last coefficient
+// to its first, so that is half of each, 188 KB at 1001/960, and phase() says
+// which way to read (planning/ac4.md, D14a5). Any other ratio at float is
+// designed when the filter is made, with the same functions, and kept the same
+// way.
 
 namespace iclforge::ac4::detail::dsp {
 

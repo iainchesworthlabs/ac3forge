@@ -436,7 +436,7 @@ TEST_CASE("the converter's table rounded to float is the same on every platform"
 }
 
 TEST_CASE(
-    "the converter's float table, built by the compiler, is what the design makes at run time",
+    "the converter's float table built by the compiler is what the design makes at run time",
     "[ac4core][dsp][src]") {
     // The compiler evaluates the design with no library, and this machine runs it: the same
     // function in IEEE double arithmetic, so the same bits. The ratios here are small, for the
