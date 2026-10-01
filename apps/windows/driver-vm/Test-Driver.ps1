@@ -72,9 +72,9 @@ if (-not $ReportOnly) {
     # how the solution was driven, so find the package by its INF rather
     # than a fixed path.
     $driverRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\driver')).Path
-    $inf = Get-ChildItem $driverRoot -Recurse -Filter 'Ac3ForgeNullSink.inf' |
+    $inf = Get-ChildItem $driverRoot -Recurse -Filter 'IclForgeNullSink.inf' |
         Where-Object { $_.FullName -match 'Release\\package\\' } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-    if (-not $inf) { throw "no built package (Ac3ForgeNullSink.inf under a Release\package) in $driverRoot; build the driver first" }
+    if (-not $inf) { throw "no built package (IclForgeNullSink.inf under a Release\package) in $driverRoot; build the driver first" }
     $packageDir = $inf.Directory.FullName
     foreach ($script in 'install.ps1', 'remove.ps1', 'NullSinkDevice.ps1') {
         & $vmrun @guest copyFileFromHostToGuest $vmx (Join-Path $driverRoot $script) "C:\Users\atmos\$script" | Out-Null
@@ -90,7 +90,7 @@ if (-not $ReportOnly) {
     Invoke-Guest @'
 "testsigning: " + ((bcdedit /enum '{current}' | Select-String testsigning) -join '')
 "hvci: " + (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios\HypervisorEnforcedCodeIntegrity' -ErrorAction SilentlyContinue).Enabled
-"package: " + ((Get-Item C:\Users\atmos\package\Ac3ForgeNullSink.sys).LastWriteTime)
+"package: " + ((Get-Item C:\Users\atmos\package\IclForgeNullSink.sys).LastWriteTime)
 & C:\Users\atmos\install.ps1 -PackageDir C:\Users\atmos\package
 '@ 'install' | ForEach-Object { "  $_" }
     Start-Sleep -Seconds 15
@@ -104,10 +104,10 @@ Get-PnpDevice -Class MEDIA | Select-Object Status, FriendlyName, InstanceId | Fo
 "--- audio endpoints ---"
 Get-PnpDevice -Class AudioEndpoint | Select-Object Status, FriendlyName | Format-Table -AutoSize | Out-String
 "--- driver ---"
-driverquery /v | Select-String -Pattern 'Ac3ForgeNullSink' | ForEach-Object { $_.Line }
-Get-Service Ac3ForgeNullSink -ErrorAction SilentlyContinue | Select-Object Name, Status | Format-Table -AutoSize | Out-String
+driverquery /v | Select-String -Pattern 'IclForgeNullSink' | ForEach-Object { $_.Line }
+Get-Service IclForgeNullSink -ErrorAction SilentlyContinue | Select-Object Name, Status | Format-Table -AutoSize | Out-String
 "--- the driver's own note (written when a device-building step fails) ---"
-$note = Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\Ac3ForgeNullSink\Parameters' -ErrorAction SilentlyContinue
+$note = Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\IclForgeNullSink\Parameters' -ErrorAction SilentlyContinue
 if ($note -and $note.LastFailedStep) { "failed step: " + $note.LastFailedStep; "status: 0x{0:X8}" -f $note.LastFailedStatus } else { "no failure noted" }
 "--- bugchecks since the clean install ---"
 Get-WinEvent -FilterHashtable @{LogName='System'; Id=1001; ProviderName='Microsoft-Windows-WER-SystemErrorReporting'} -ErrorAction SilentlyContinue | Select-Object TimeCreated, Message | Format-List | Out-String

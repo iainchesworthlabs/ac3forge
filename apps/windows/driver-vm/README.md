@@ -23,10 +23,10 @@ guest that never leaves this machine.
 | `Wait-DriverTestVm.ps1` | Polls until Tools is running and the first-logon marker exists, then takes the `clean-install` snapshot. |
 | `Test-Driver.ps1` | Reverts to `clean-install`, copies the working tree's package and scripts into the guest, runs `install.ps1` there, and reports: test signing and HVCI state, MEDIA devices and audio endpoints, whether the driver service is loaded, the driver's own note of a failed device-building step (`LastFailedStep`/`LastFailedStatus` under its service key, which the ACX driver writes before it returns a failure from AddDevice), any bugchecks and minidumps, and the tail of `setupapi.dev.log`. `-NoRevert` skips the revert, `-ReportOnly` just reports. |
 | `Deploy-Desk.ps1 -BuildDir <dir>` | Puts the built window and its Qt runtime into the guest, installs the VC++ runtime there, and starts the window on the guest's desktop (auto-logged in as `atmos`), so the demo runs end to end against the installed driver; `-Shot out.png -Page output` also captures a page inside the guest. `-KeyFile <path>` copies a signing key into the guest and points crucible's own settings at it (in the registry, not an env var — see the script's header comment for why) so captures show Atmos mode; `-ExtraPages room,output,settings,room3d -ShotDir <dir>` captures several pages in one run; `-Place 'Name=x,y,z'` (repeatable) places a running application before each capture. Combine with `guest\Set-DefaultToNullSink.ps1` first to also move the guest's default output to the driver, so "applications play to" reads the real endpoint. Run after `Test-Driver.ps1`. |
-| `Verify-Driver.ps1` | Reverts to `clean-install`, arms Driver Verifier (the standard checks, DDI compliance and code-integrity checking) and the KMDF framework verifier for the driver, reboots, installs, exercises it (default role, playback, the idle power-down and return, a format change on the endpoint, device restarts idle and under a stream, three concurrent streams, removal and driver unload under a stream, reinstall from scratch) and reports the verifier state, the service and device, and any bugcheck or minidump. `-Kasan` does the same with the KASAN-instrumented package on the KASAN kernel; `-NoDdi`, `-NoVerifier`, `-NoExercise` and `-ReportOnly` are described in `..\driver\README.md`. |
+| `Verify-Driver.ps1` | Reverts to `clean-install`, arms Driver Verifier (the standard checks, DDI compliance and code-integrity checking) and the KMDF framework verifier for the driver, reboots, installs, exercises it (default role, playback, the idle power-down and return, a format change on the endpoint, device restarts idle and under a stream, three concurrent streams, removal and driver unload under a stream, reinstall from scratch) and reports the verifier state, the service and device, and any bugcheck or minidump. `-Kasan` does the same with the KASAN-instrumented package on the KASAN kernel; `-NoDdi`, `-NoVerifier`, `-NoExercise`, `-NoRevert` and `-ReportOnly` are described in `..\driver\README.md`. |
 | `Build-Iso.ps1` | Writes an ISO from a directory with Windows' own IMAPI2 (ISO 9660 + Joliet, or UDF with an EFI boot image); the other scripts use it. |
 | `guest_console.py` | Screenshots (`shot out.png`), key presses (`key space`, `combo Super_L+r`) and typing (`type text`) on the guest console over Workstation's VNC server, for the stretch before Tools is running when `vmrun` cannot see the guest. Needs Python with Pillow. The VNC server maps keys by the US layout, so the guest is installed with a US keyboard and the helper adds Shift for capitals and symbols itself. |
-| `guest/Set-DefaultToNullSink.ps1` | Runs inside the guest (copied there by `Verify-Driver.ps1`): makes "Speakers (Desktop Atmos)" the default output the way the demo does, so the endpoint is exercised as a default without the demo installed there; `-TryFormat <rate>` instead asks the endpoint to take another sample rate and reports the answer. |
+| `guest/Set-DefaultToNullSink.ps1` | Runs inside the guest (copied there by `Verify-Driver.ps1`): makes "Speakers (Crucible Silent Output)" the default output the way the demo does, so the endpoint is exercised as a default without the demo installed there; `-TryFormat <rate>` instead asks the endpoint to take another sample rate and reports the answer. |
 
 `autounattend.xml` does the rest: bypasses the TPM, Secure Boot and RAM checks, partitions and
 installs, creates the local administrator `atmos` (password `atmos`, auto-logon), skips OOBE,
@@ -66,13 +66,47 @@ allocations, the KASAN proof with its `0x50` and `0x1F2` signatures) is on the p
 the KASAN pass is repeated against the ACX driver and recorded on
 [docs/platforms/windows-driver-acx.md](../../../docs/platforms/windows-driver-acx.md).
 
+Verified 2026-10-01 against the renamed driver (`IclForgeNullSink`, the endpoint "Speakers
+(Crucible Silent Output)"), in the same guest from the same snapshot, with the package built under
+the EWDK (kit 10.0.28000, `/W4 /WX`, no warnings, 32 s). `Test-Driver.ps1` staged the package;
+`install.ps1` created `ROOT\MEDIA\0000` with the hardware id `ROOT\IclForgeNullSink`; the endpoint
+appeared, the service ran, the driver noted no failed step, and the staged package lists "ICL Forge"
+as its provider. The endpoint took the console, multimedia and communications roles (set through the
+policy-config call and read back through `IMMDeviceEnumerator`), twelve system sounds and three
+spoken passages played into it, and the guest stayed up. `Deploy-Desk.ps1` ran a Crucible built from
+the branch against the installed driver, and the window found the endpoint by its new name (Settings:
+"The silent device is installed: an endpoint named like "Crucible Silent Output""). `remove.ps1` took
+3 s and left no device, endpoint or staged package; the reinstall took 1 s. `Verify-Driver.ps1` ran
+the exercise to its end twice, once on a guest that had finished its update restarts (`-NoRevert`,
+454 s) and once from a revert (482 s): no bugcheck, no minidump, special pool accounted for 132 of
+132 allocations, none untagged, untracked or failed, six loads and five unloads with the sixth still
+running (the numbers of 2026-09-04), and a 44.1 kHz format request refused with
+`AUDCLNT_E_UNSUPPORTED_FORMAT` while rendering went on. A run from a revert between them bugchecked
+the guest in the middle of the exercise, after the device had been restarted under a live stream:
+`0x124` (`WHEA_UNCORRECTABLE_ERROR`, error source 0x10, a device driver), `100126-25046-01.dmp`,
+455,886 bytes, no frame of the driver on the crashing CPU's stack. The VM's own log puts the cause on
+the host: the virtual NVMe disk's writes took up to 14.5 s in the two minutes before it
+(`nvme0:0: Command WRITE(10) took 14.507 seconds`), and the guest's NVMe driver reset the
+controller at 06:22:04 and again at 06:22:22 UTC, with a partial reset of its queues between. The renamed `.sys` and the old one have the same code (`.text`, `.data` and `INIT` match
+byte for byte; `PAGE` differs by four bytes of name literals), and the two clean runs are of the
+renamed one.
+
 Things learned the hard way, all encoded in the scripts: a hand-written VMX needs the PCIe
 root-port bridges; do not set `bios.bootOrder` (it overrides the NVRAM entry Setup registers
 to continue from the disk); Microsoft's media needs the no-prompt EFI boot image; Workstation
 26's Tools ISO carries `setup.exe`, not `setup64.exe`; the VNC server types by the US layout;
 `vmrun` reports a running Tools as "installed"; `vmrun`'s guest programs are elevated but
-`Import-Certificate` is still refused where `certutil` is not; and `runScriptInGuest` needs an
-empty interpreter passed as `'""'` from PowerShell.
+`Import-Certificate` is still refused where `certutil` is not; `runScriptInGuest` needs an
+empty interpreter passed as `'""'` from PowerShell; and a guest reverted to `clean-install`
+installs the updates it had downloaded when the snapshot was taken over its first restarts (two,
+minutes apart, with "Updates are underway" on the console) while Tools already reports running,
+so a step that lands inside one comes back with no output and no error. `Verify-Driver.ps1`
+waits for the guest to settle after every restart and repeats the install until a device exists;
+`-NoRevert` runs it on a guest that has been through them. The guest's disks are files on `D:`, so
+a stall of the host's disk (writes of 14 s, seen once on 2026-10-01 while other builds ran) makes
+the guest's NVMe driver reset its controller and bugcheck with `0x124`; the VM's `vmware.log`
+(`nvme0:0: Command WRITE(10) took ...`) says so, and is the first place to look before blaming a
+driver for a `0x124` in this guest.
 
 The guest's credentials are deliberately trivial and the guest is NAT-only; do not put anything
 on it you care about.

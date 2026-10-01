@@ -103,6 +103,12 @@ class Problems(unittest.TestCase):
         self.assertTrue(any("name already used" in p for p in found), found)
         self.assertTrue(any("preset 'linux-a' already used" in p for p in found), found)
 
+    def test_a_leg_cannot_take_the_name_of_a_satellite_job(self):
+        for job in pl.SATELLITES:
+            with self.subTest(job=job):
+                cat = catalogue(windows=[leg("Win", job, runner_slot="windows_runner_1")])
+                self.assertTrue(any("satellite job" in p for p in pl.problems(cat)))
+
     def test_runner_labels_must_be_a_nonempty_list_of_strings(self):
         for bad in ([], "ubuntu-latest", [""], [1]):
             with self.subTest(runner=bad):
@@ -156,6 +162,18 @@ class Select(unittest.TestCase):
         self.assertIn("fast", msg)
         self.assertIn("slow", msg)
 
+    def test_a_satellite_job_is_a_known_name_that_picks_no_leg(self):
+        chosen = pl.select(self.cat, "all", ["windows-driver"])
+        self.assertEqual(self.names(chosen), {"linux": [], "windows": [], "macos": []})
+        both = pl.select(self.cat, "all", ["fast", "windows-driver"])
+        self.assertEqual(self.names(both)["linux"], ["Fast"])
+
+    def test_the_message_for_an_unknown_name_lists_the_jobs_as_well_as_the_legs(self):
+        with self.assertRaises(pl.CatalogueError) as ctx:
+            pl.select(self.cat, "all", ["windows-drivr"])
+        self.assertIn("windows-driver", str(ctx.exception))
+        self.assertIn("fast", str(ctx.exception))
+
     def test_an_unknown_tier_is_an_error(self):
         with self.assertRaises(pl.CatalogueError):
             pl.select(self.cat, "nightly")
@@ -206,7 +224,10 @@ class Plan(unittest.TestCase):
         out = pl.plan(catalogue(), {**ENV, "TIER": "t2"})
         self.assertEqual(
             sorted(out),
-            sorted(f"{p}_{k}" for p in pl.PLATFORMS for k in ("matrix", "any")),
+            sorted(
+                [f"{p}_{k}" for p in pl.PLATFORMS for k in ("matrix", "any")]
+                + [job.replace("-", "_") for job in pl.SATELLITES]
+            ),
         )
         include = json.loads(out["linux_matrix"])["include"]
         self.assertEqual([x["name"] for x in include], ["Linux A"])
@@ -233,6 +254,30 @@ class Plan(unittest.TestCase):
             (only["linux_any"], only["windows_any"], only["macos_any"]),
             ("true", "false", "false"),
         )
+
+    def test_a_satellite_job_runs_with_its_lane_unless_the_run_names_others_and_not_it(self):
+        def driver(env):
+            return pl.plan(catalogue(), {**ENV, **env})["windows_driver"]
+
+        for env in ({}, {"TIER": "t2"}, {"TIER": "deep"}, {"LEGS": "windows-driver"}):
+            with self.subTest(env=env):
+                self.assertEqual(driver(env), "true")
+        self.assertEqual(driver({"LEGS": "linux-a, windows-driver"}), "true")
+        self.assertEqual(driver({"LEGS": "linux-a"}), "false")
+        self.assertEqual(driver({"TIER": "t2", "LEGS": "win-a"}), "false")
+
+    def test_naming_only_a_satellite_job_runs_it_and_none_of_the_legs(self):
+        out = pl.plan(catalogue(), {**ENV, "LEGS": "windows-driver"})
+        for platform in pl.PLATFORMS:
+            with self.subTest(platform=platform):
+                self.assertEqual(out[f"{platform}_any"], "false")
+                self.assertEqual(json.loads(out[f"{platform}_matrix"]), {"include": []})
+        self.assertEqual(out["windows_driver"], "true")
+
+    def test_naming_a_satellite_job_beside_a_leg_runs_both(self):
+        out = pl.plan(catalogue(), {**ENV, "LEGS": "win-a,windows-driver"})
+        self.assertEqual((out["windows_any"], out["linux_any"]), ("true", "false"))
+        self.assertEqual(out["windows_driver"], "true")
 
     def test_the_run_after_a_merge_drops_deep_only_flags_and_the_others_keep_them(self):
         cat = catalogue(
@@ -279,6 +324,21 @@ class Lanes(unittest.TestCase):
         got = pl.lanes(cat, {"TIER": "t2"})
         self.assertEqual([lane for lane, on in got.items() if on], ["windows", "linux"])
 
+    def test_a_satellite_job_alone_turns_on_its_platform_and_nothing_else(self):
+        # The platform has no leg in the run, but the job needs `run_windows` to reach _build.yml.
+        got = pl.lanes(catalogue(), {"LEGS": "windows-driver"})
+        self.assertEqual(sorted(got), sorted(classify_changes.LANES))
+        self.assertEqual([lane for lane, on in got.items() if on], ["windows"])
+
+    def test_a_satellite_job_beside_a_leg_adds_its_platform_to_the_legs(self):
+        got = pl.lanes(catalogue(), {"LEGS": "linux-a,windows-driver"})
+        self.assertEqual([lane for lane, on in got.items() if on], ["windows", "linux"])
+
+    def test_a_leg_of_the_platform_does_not_turn_on_the_satellite_job_by_itself(self):
+        got = pl.lanes(catalogue(), {"LEGS": "win-a"})
+        self.assertEqual([lane for lane, on in got.items() if on], ["windows"])
+        self.assertEqual(pl.plan(catalogue(), {**ENV, "LEGS": "win-a"})["windows_driver"], "false")
+
     def test_the_command_line_prints_one_line_per_lane(self):
         out = io.StringIO()
         with (
@@ -292,6 +352,20 @@ class Lanes(unittest.TestCase):
         self.assertIn("linux=true", lines)
         self.assertIn("core=false", lines)
         self.assertIn("windows=false", lines)
+
+    def test_the_command_line_accepts_the_driver_job_by_name(self):
+        out = io.StringIO()
+        with (
+            mock.patch.dict("os.environ", {"LEGS": "windows-driver"}, clear=False),
+            contextlib.redirect_stdout(out),
+        ):
+            code = pl.main(["plan_legs.py", "--lanes"])
+        self.assertEqual(code, 0)
+        lines = out.getvalue().splitlines()
+        self.assertIn("windows=true", lines)
+        for lane in classify_changes.LANES:
+            if lane != "windows":
+                self.assertIn(f"{lane}=false", lines)
 
 
 class RealCatalogue(unittest.TestCase):
@@ -416,6 +490,43 @@ class RealCatalogue(unittest.TestCase):
                     f"matrix: ${{{{ needs.plan-legs.outputs.{platform}_matrix }}}}", build
                 )
                 self.assertIn(f"needs.plan-legs.outputs.{platform}_any == 'true'", build)
+
+    @staticmethod
+    def _job(text: str, name: str) -> str:
+        """The lines of one top-level job of a workflow file, from its id to the next job's."""
+        match = re.search(rf"(?ms)^  {re.escape(name)}:\n(.*?)(?=^  [\w-]+:\n|\Z)", text)
+        assert match, f"no job {name!r}"
+        return match.group(1)
+
+    def test_every_satellite_job_is_a_job_that_reads_the_planner_output_of_its_name(self):
+        build = (WORKFLOWS / "_build.yml").read_text(encoding="utf-8")
+        for job in pl.SATELLITES:
+            output = job.replace("-", "_")
+            with self.subTest(job=job):
+                body = self._job(build, job)
+                self.assertRegex(body, r"(?m)^    needs: plan-legs$")
+                self.assertIn(f"needs.plan-legs.outputs.{output} == 'true'", body)
+                self.assertNotIn("inputs.legs", body)
+                self.assertIn(f"{output}: ${{{{ steps.plan.outputs.{output} }}}}", build)
+
+    def test_naming_only_the_driver_job_runs_it_and_none_of_the_legs(self):
+        env = {
+            **{f"LINUX_RUNNER_{n}": '["ubuntu-latest"]' for n in range(1, 5)},
+            "WINDOWS_RUNNER_1": '["windows-latest"]',
+            "WINDOWS_RUNNER_2": '["windows-latest"]',
+        }
+        only_driver = pl.plan(self.cat, {**env, "LEGS": "windows-driver"})
+        self.assertEqual([only_driver[f"{p}_any"] for p in pl.PLATFORMS], ["false"] * 3)
+        self.assertEqual(only_driver["windows_driver"], "true")
+        self.assertEqual(
+            [lane for lane, on in pl.lanes(self.cat, {"LEGS": "windows-driver"}).items() if on],
+            ["windows"],
+        )
+        a_leg = pl.plan(self.cat, {**env, "LEGS": "windows-msvc"})
+        self.assertEqual((a_leg["windows_any"], a_leg["windows_driver"]), ("true", "false"))
+        for tier in ("all", "t2", "deep"):
+            with self.subTest(tier=tier):
+                self.assertEqual(pl.plan(self.cat, {**env, "TIER": tier})["windows_driver"], "true")
 
     def test_the_platform_workflows_take_the_matrix_as_an_input(self):
         for workflow in ("_ci-linux.yml", "_ci-windows.yml", "_ci-macos.yml"):

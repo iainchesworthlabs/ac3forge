@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="12.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <!--
-    Ac3ForgeNullSink on ACX: a KMDF driver against ACX 1.1, built by the
+    IclForgeNullSink on ACX: a KMDF driver against ACX 1.1, built by the
     WindowsKernelModeDriver10.0 toolset (the EWDK). The project keeps the
     GUID, target name and package reference the PortCls version had, so
-    Ac3ForgeNullSink.sln, Package\package.VcxProj and the analysis and
+    IclForgeNullSink.sln, Package\package.VcxProj and the analysis and
     VM scripts see no change. No WPP: the driver has no tracing.
   -->
   <ItemGroup Label="ProjectConfigurations">
@@ -27,7 +27,7 @@
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{E4DF0EEE-D35B-47F2-A9B1-41EA97C465FF}</ProjectGuid>
-    <RootNamespace>Ac3ForgeNullSink</RootNamespace>
+    <RootNamespace>IclForgeNullSink</RootNamespace>
     <ACX_VERSION_MAJOR>1</ACX_VERSION_MAJOR>
     <ACX_VERSION_MINOR>1</ACX_VERSION_MINOR>
     <KMDF_VERSION_MAJOR>1</KMDF_VERSION_MAJOR>
@@ -74,7 +74,7 @@
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <PropertyGroup>
     <OutDir>$(IntDir)</OutDir>
-    <TargetName>Ac3ForgeNullSink</TargetName>
+    <TargetName>IclForgeNullSink</TargetName>
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
   </PropertyGroup>
   <ImportGroup Label="PropertySheets">
@@ -100,7 +100,7 @@
     <ClCompile Include="driver.cpp" />
     <ClCompile Include="NewDelete.cpp" />
     <ClCompile Include="stream.cpp" />
-    <ResourceCompile Include="Ac3ForgeNullSink.rc" />
+    <ResourceCompile Include="IclForgeNullSink.rc" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="nullsink.h" />
@@ -115,7 +115,7 @@
       "yesterday" in UTC, so the default (the local date, "*") fails between
       midnight and 10:00 local. The version part is left alone (the .inx owns it).
     -->
-    <Inf Include="Ac3ForgeNullSink.inx">
+    <Inf Include="IclForgeNullSink.inx">
       <DateStamp>$([System.DateTime]::UtcNow.ToString("MM/dd/yyyy"))</DateStamp>
       <SpecifyDriverVerDirectiveVersion>false</SpecifyDriverVerDirectiveVersion>
     </Inf>

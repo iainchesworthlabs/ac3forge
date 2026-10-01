@@ -12,9 +12,10 @@ after a review of the options (recorded under
 | | |
 |---|---|
 | Driver | An ACX driver on KMDF in `apps/windows/driver/`; [its README](https://github.com/iainchesworthlabs/iclforge/blob/main/apps/windows/driver/README.md) says what each file does |
+| Names | `IclForgeNullSink` (the hardware id `ROOT\IclForgeNullSink`, the service, the file names) and the endpoint "Speakers (Crucible Silent Output)", since 2026-10-01; `Ac3ForgeNullSink` and "Speakers (Desktop Atmos)" before. [The rename](#the-rename-2026-10-01) |
 | Signing | **Test-signed only.** It loads with test signing on and memory integrity off. The EV certificate and the attestation submission are not done |
-| CI | The `windows-driver` job builds and test-signs the package and runs Code Analysis at the driver rule set. It installs nothing |
-| Verification | Static tier and dynamic tier (Driver Verifier with DDI compliance and code-integrity checking, the KMDF verifier, KASAN) clean in a throwaway VMware guest on 2026-09-04. A guest sleep and resume is not done |
+| CI | The `windows-driver` job builds and test-signs the package, runs Code Analysis at the driver rule set and uploads the package as `iclforge-nullsink-driver-testsigned`. It installs nothing. A `ci.yml` dispatch with `-f legs=windows-driver` runs it alone |
+| Verification | Static tier and dynamic tier (Driver Verifier with DDI compliance and code-integrity checking, the KMDF verifier, KASAN) clean in a throwaway VMware guest on 2026-09-04; the static tier and the dynamic tier without KASAN clean again on the renamed driver on 2026-10-01. A guest sleep and resume is not done |
 | Under HVCI | Not exercised. The guest runs with memory integrity off, so the first test under HVCI is a signed build on a default install |
 | Distribution | Not a release asset. Crucible's Windows archive carries the install scripts and no driver |
 
@@ -22,7 +23,9 @@ after a review of the options (recorded under
 from the plan (the install API, the header version, the timing simulation lifted into a
 testable header) and the verification record are under [Progress](#progress) at the end. The
 plan's file names did not survive: `Source/Main/` holds `driver.cpp`, `device.cpp`,
-`circuit.cpp`, `stream.cpp`, `stream.h`, `position.h`, `nullsink.h` and `NewDelete.cpp`.*
+`circuit.cpp`, `stream.cpp`, `stream.h`, `position.h`, `nullsink.h` and `NewDelete.cpp`. The
+names it uses for the driver and its endpoint (`Ac3ForgeNullSink`, "Desktop Atmos") are those of
+2026-09-04; [the rename of 2026-10-01](#the-rename-2026-10-01) changed them.*
 
 ## Why ACX, in three sentences
 
@@ -359,3 +362,98 @@ its endpoint probe lists "Speakers (Desktop Atmos)" beside the guest's HD Audio 
 the Output page's signal path reads as it did on 2026-09-03 (applications still on the real
 device, the one-click move to the silent device offered, stereo on the HD Audio endpoint as
 the best the guest can carry).
+
+### The rename, 2026-10-01
+
+The driver took its own names in change N1D, after the programs took theirs (N1A) and the family
+became ICL Forge. `Ac3ForgeNullSink` is now `IclForgeNullSink`: the hardware id
+`ROOT\IclForgeNullSink`, the service, the `.sln`, `.inx`, `.rc`, `.sys`, `.inf` and `.cat` names,
+the scripts that build, install, remove, analyse and verify it, and the artifact the CI job
+uploads, `iclforge-nullsink-driver-testsigned`. The device description, and so the endpoint, went
+from "Desktop Atmos" to "Crucible Silent Output". The INF's provider and manufacturer read "ICL
+Forge"; N1A had recorded them as changed, and its pass had not read the `.inx`, which is UTF-16
+with a byte-order mark. `tools/n1b/n1d_driver_names.py` makes the change from three tables of
+names, so a later change of a name is one row and one run. The code of the driver is the same: the
+sections that hold it (`.text`, `.data`, `INIT`, `.reloc`) match the old build byte for byte,
+`PAGE` differs by four bytes of name literals, and the data sections differ by the names, the PDB
+path and the version resource.
+
+*Why it could be done now.* The plan above holds the names until attestation signing, because
+they sit inside the package that gets signed (a rename afterwards means submitting and paying
+again) and because a new hardware id leaves every installed copy orphaned. Neither held on
+2026-10-01: the driver had never been signed and had been installed only in the throwaway guest,
+and the owner decided that day that the names could change. The endpoint's old name was the other
+reason. "Desktop Atmos" used Dolby's trademark to name a system-wide device, which [the promotion
+plan](../crucible/design/promotion.md#the-name) names as the sharper of the two problems with the
+demo's name.
+
+*Why the endpoint is "Crucible Silent Output" and not "Crucible".* The Output page's signal path
+has three stations. The first is titled with the endpoint, the second is the application ("2 ·
+CRUCIBLE") and the third is the device you hear. With the bare word the first two would carry the
+same name, and the first-run dialog would say that the default output becomes "Crucible". The name
+is one constant in the application (`kWindowsSilentDeviceName`,
+`apps/crucible/engine/virtual_device.hpp`) and one string in the INF. A test pins that the
+engine's and the output stage's defaults are that constant, that it begins with "Crucible", is not
+the bare word and has no "Atmos" in it. The cost is on the Room page, whose narrow rail elides the
+station's title ("Speakers (Crucible Silent Outp..."). The full name is in the line under it.
+
+**Verification in the guest.** The package was built with the EWDK (kit 10.0.28000) at `/W4 /WX`
+in 32 seconds with no warnings; `IclForgeNullSink.sys` is 32,824 bytes, as before. In the guest,
+from the `clean-install` snapshot:
+
+- `Test-Driver.ps1`: the device `ROOT\MEDIA\0000` ("Crucible Silent Output") and the endpoint
+  "Speakers (Crucible Silent Output)" are `OK`, the service `IclForgeNullSink` runs, the driver's
+  own failure note is empty and there is no bugcheck. `setupapi.dev.log` records the hardware id
+  `ROOT\IclForgeNullSink`.
+- The endpoint takes the console, multimedia and communications roles (set through the call the
+  window makes and read back through `IMMDeviceEnumerator`), twelve system sounds and three
+  spoken passages play into it, and the guest stays up.
+- `Deploy-Desk.ps1` runs a Crucible built from the branch against the installed driver. Its
+  Settings page reads "The silent device is installed: an endpoint named like "Crucible Silent
+  Output"", so the window finds the device by its new name, and the Output page's first station
+  is titled "Speakers (Crucible Silent Output)" beside "2 · CRUCIBLE".
+- `remove.ps1` leaves no device, endpoint or staged package, and the reinstall lists "ICL Forge"
+  as the package's provider.
+- `Verify-Driver.ps1` (Driver Verifier's standard checks, DDI compliance and code-integrity
+  checking, and the KMDF verifier) ran the whole exercise twice, once from a revert (482 seconds)
+  and once on a guest that had finished its update restarts (`-NoRevert`, 454 seconds). Special
+  pool accounted for 132 of 132 allocations in both, the driver loaded six times and unloaded
+  five, a 44.1 kHz format request was refused with `AUDCLNT_E_UNSUPPORTED_FORMAT` and rendering
+  went on, and there was no bugcheck and no minidump. These are the numbers of 2026-09-04.
+- The static tier (`Analyze-Driver.ps1`, with CodeQL): Code Analysis reports five files and no
+  defects, CodeQL's `mustfix` and `recommended` suites report nothing and need no waiver, and the
+  DVL is produced.
+
+One run from a revert bugchecked the guest, and the driver was not the cause. It stopped after
+"restarted the device under a live stream" with `0x124` (`WHEA_UNCORRECTABLE_ERROR`, error source
+type `0x10`, a device driver), and the crashing CPU's stack has no frame of the driver. The VM's
+own log (`vmware.log`) puts the cause on the host: writes to the guest's virtual NVMe disk took up
+to 14.5 seconds in the two minutes before it, and the guest's NVMe driver reset its controller at
+06:22:04 and again at 06:22:22 UTC, when the blue screen came up. The guest's disks are files on
+the host's `D:`, which other builds were using; what stalled it is not known. The two clean runs
+above bracket it. Whether the old-named driver would have been hit as well was not measured. The
+log is the first place to look before blaming the driver for a `0x124` in this guest.
+
+Two earlier runs were lost to the guest. A guest reverted to `clean-install` installs the updates
+it had downloaded before the snapshot over its first restarts, while Tools already reports
+running, so a step that lands inside one comes back with no output and no error.
+`Verify-Driver.ps1` now waits for the guest to settle after every restart, repeats the install
+until a device exists, and takes `-NoRevert`.
+
+**CI.** The `windows-driver` job could not be run on its own: its condition skipped it for any
+dispatch that named legs, so its first run would have been the push to `main`. A `ci.yml`
+dispatch now accepts `-f legs=windows-driver` ([the legs](../ci-agentic.md#the-legs)). On the
+branch the job ran for two minutes: the package builds and is test-signed with
+`IclForgeNullSink.sys`, `IclForgeNullSink.inf` and `iclforgenullsink.cat` and the test certificate
+beside them, Code Analysis reports five files and no defects, and the artifact
+`iclforge-nullsink-driver-testsigned` is uploaded with four files. The pull-request gate with
+Windows MSVC added, and the `windows-msvc`, `windows-llvm` and `linux-llvm` legs of `ci.yml` (the
+legs that build Crucible, run its Qt Quick suites and check its package), passed on the branch as
+well.
+
+**Not done.** Signing for release: the package is test-signed with the certificate the build
+makes. A run on a physical machine and under memory integrity. The KASAN pass, which was not
+repeated on the renamed driver. A guest sleep and resume. The move of the driver under
+`apps/crucible/`, which Phase 7 of [the recasting
+plan](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/recasting.md) allowed and
+nobody took.

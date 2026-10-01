@@ -203,7 +203,7 @@ belongs to one platform skips on the others.
 | room::test_splitTakesTwoSlotsAndMonoGivesOneBack | Split gives an application a width of 2 and a slot, mono gives it a width of 1, and the placed count stays the same. An object's size reads back as set and is clamped to 1. |
 | room::test_placementRoundTripsForALiveApplication | Placing an application at (0.25, 0.75) reads back within 0.02, and returning it puts it back in the bed. |
 | room::test_pairSidesPlaceOnTheirOwnAndResetToTheSpread | A split pair starts at the standard spread. Placing one side makes the pair custom, and resetting the pair returns it to the standard spread. |
-| settings::test_defaults | A fresh store gives pin `auto`, low latency off, codec bypass off, bitrate 0, theme `system`, palette `signal`, silent-device name "Desktop Atmos", keep running on, move on launch off, no key path and the first-run dialog not yet seen. |
+| settings::test_defaults | A fresh store gives pin `auto`, low latency off, codec bypass off, bitrate 0, theme `system`, palette `signal`, silent-device name "Crucible Silent Output", keep running on, move on launch off, no key path and the first-run dialog not yet seen. |
 | settings::test_settingsRoundTripAndNotify | Written settings read back and each write emits `settingsChanged`. Writing the same value again does not. |
 | settings::test_signingKeyPathIsRememberedNotTheKey | Loading a key file stores a local path (not a `file:` URL), and clearing the key empties it. |
 | settings::test_driverBlockReadsTheMachine | The silent-device facts the page shows are the right types. Where no silent device is needed, none is packaged or creatable. A driver folder is set and no driver action is in progress. |

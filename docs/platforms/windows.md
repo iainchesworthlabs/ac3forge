@@ -454,5 +454,5 @@ macOS legs and the coverage and FFmpeg-validation jobs, is in
 [Verified configuration](../building.md#verified-configuration). CI runs the CLI and GUI on both
 x64 Windows legs; the ARM64 leg runs the CLI only (see above) and fails no run while it proves
 itself out. A separate `windows-driver` job builds Crucible's null-sink driver, test-signed, on
-GitHub's `windows-latest` whenever the Windows lane runs (see [the driver
-page](windows-driver-acx.md)).
+GitHub's `windows-latest` whenever the Windows lane runs, and alone when a `ci.yml` dispatch names
+it (`-f legs=windows-driver`; see [the driver page](windows-driver-acx.md)).

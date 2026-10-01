@@ -51,7 +51,7 @@ Both are machine-wide security settings, appropriate for a development machine b
 you depend on. Once the driver is attestation-signed, it travels in the package, installs with
 the application, and needs neither setting.
 
-With the driver installed, "Speakers (Desktop Atmos)" appears in your sound settings.
+With the driver installed, "Speakers (Crucible Silent Output)" appears in your sound settings.
 Crucible's Settings page then shows the silent device as present.
 
 ### Without the driver
@@ -219,8 +219,8 @@ Developer ID certificate. On a hosted runner an unsigned binary was given a tap 
 ## First run
 
 The first time Crucible opens, a dialog says what it is about to do to your sound settings
-before it does it. It names the silent device this platform uses ("Desktop Atmos" on Windows,
-"Crucible (silent)" on Linux), says that your default output will move to it so that every
+before it does it. It names the silent device this platform uses ("Crucible Silent Output" on
+Windows, "Crucible (silent)" on Linux), says that your default output will move to it so that every
 application plays into it and Crucible taps each one there, and that the previous default is put
 back when Crucible quits. If there is no silent device yet, it says how this platform gets one,
 and on Windows repeats what stands in the way of loading the driver.

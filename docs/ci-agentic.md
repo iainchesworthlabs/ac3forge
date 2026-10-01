@@ -91,7 +91,8 @@ question), dispatch the full matrix on the branch: `gh workflow run ci.yml --ref
 run holds a dozen or more hosted runners for most of an hour, and the gate of every other pull
 request waits behind them, so when a change touches only how some builds are made, name the
 legs instead: `gh workflow run ci.yml --ref <branch> -f legs=linux-llvm,macos-llvm`. Only those
-builds run. The names are the presets in `.github/ci/legs.jsonc`.
+builds run. The names are the presets in `.github/ci/legs.jsonc`, and `windows-driver`, which runs
+the Windows null-sink driver job (it is not a leg of the matrix).
 `gh workflow run pr-gate.yml --ref <branch> -f windows=true` adds Windows MSVC to a gate run.
 
 A pull request that was open when this arrived still shows the old `CI Status`. The merge queue
@@ -208,7 +209,11 @@ Each leg has a `tier`: `t2` for the legs of the run on main after a merge, `deep
 the nightly run has. A `t2` leg can list `deep_only` flags, the slow extra passes its steps test,
 and the run after a merge drops them from the leg. The planner's inputs are `TIER` (`all`, `t2` or
 `deep`) and `LEGS`, a comma-separated list of presets such as `linux-gcc,windows-msvc` that runs
-exactly those legs whatever their tier, with all their passes unless `TIER` is `t2`.
+exactly those legs whatever their tier, with all their passes unless `TIER` is `t2`. `LEGS` can
+also name a job that is not a leg, listed in `SATELLITES` in `plan_legs.py`: today `windows-driver`,
+the Windows null-sink driver job. The planner prints a `windows_driver` output that is `true` unless
+`LEGS` names something and does not name it, and `--lanes` turns the Windows lane on for a run that
+names only that job, so `build-windows` is skipped for want of a leg and the driver job runs.
 
 To add a leg, add it to the catalogue with either `runner` (labels as written) or `runner_slot` (a
 `check-runners` output, for a leg that may run on the fleet). `python3 tools/ci/plan_legs.py
@@ -253,7 +258,7 @@ builds without it and says so in a warning.
 | `pr-gate.yml` input `windows` | Adds Windows MSVC to a dispatched run. |
 | `pr-gate.yml` input `save_cache` | Saves the compiler caches from a dispatched run. |
 | `pr-gate.yml` inputs `compare`, `compare_base`, `compare_pr` | Runs the performance and memory comparisons on a dispatched run, against `compare_base` (empty means main), reading the approval labels of pull request `compare_pr` (empty means none does). |
-| `ci.yml` input `legs` | Comma-separated presets. A dispatch runs exactly those build legs and nothing else. |
+| `ci.yml` input `legs` | Comma-separated presets, and `windows-driver` for the driver job. A dispatch runs exactly those and nothing else. |
 | `ci.yml` input `tier` | `all` (the default) or `t2`: the legs of the run after a merge, without their nightly-only passes. With `legs`, `t2` runs those legs that way. |
 | label `ci:deep` on a pull request | Runs `ci.yml` (tier `all`) on the pull request's branch. Add it again to run it again. The label has to exist in the repository. |
 

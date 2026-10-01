@@ -188,7 +188,7 @@ on:
         options: [ all, t2 ]
         default: all
       legs:
-        description: "Only these build legs, comma-separated presets (linux-gcc,windows-msvc). Nothing else runs. Empty runs the full matrix."
+        description: "Only these build legs, comma-separated presets (linux-gcc,windows-msvc), and windows-driver for the Windows null-sink driver job. Nothing else runs. Empty runs the full matrix."
         type: string
         default: ""
 

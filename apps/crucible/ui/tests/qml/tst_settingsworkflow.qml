@@ -35,7 +35,7 @@ TestCase {
         CrucibleController.textScale = "100";
         CrucibleController.roomLayout = "auto";
         CrucibleController.moveDefaultOnLaunch = false;
-        CrucibleController.nullSinkName = "Desktop Atmos";
+        CrucibleController.nullSinkName = "Crucible Silent Output";
         CrucibleController.clearKey();
         LanguageManager.setLanguage("en");
     }
@@ -44,7 +44,7 @@ TestCase {
         CrucibleController.stop();
         TestServices.clear();
         CrucibleController.textScale = "100";
-        CrucibleController.nullSinkName = "Desktop Atmos";
+        CrucibleController.nullSinkName = "Crucible Silent Output";
         CrucibleController.clearKey();
         LanguageManager.setLanguage("en");
     }
@@ -249,7 +249,7 @@ TestCase {
             skip("the scripted machine is not available in this harness");
         }
         const page = makePage();
-        compare(CrucibleController.nullSinkPresent, true, "the scripted machine has a Desktop Atmos device");
+        compare(CrucibleController.nullSinkPresent, true, "the scripted machine has a Crucible Silent Output device");
         const toggle = findChild(page, "advancedToggle");
         click(toggle);
         compare(findChild(page, "advancedSection").open, true, "a click opens Advanced");
@@ -289,7 +289,7 @@ TestCase {
         click(create);
         tryVerify(function() { return CrucibleController.driverMessage.indexOf("installed") === 0; }, 3000,
                   CrucibleController.driverMessage);
-        verify(CrucibleController.driverMessage.indexOf("created Desktop Atmos") > 0, CrucibleController.driverMessage);
+        verify(CrucibleController.driverMessage.indexOf("created Crucible Silent Output") > 0, CrucibleController.driverMessage);
         compare(CrucibleController.driverBusy, false);
         tryCompare(CrucibleController, "nullSinkPresent", true);
         tryCompare(create, "visible", false);

@@ -1,6 +1,6 @@
 /*++
 
-Ac3ForgeNullSink: the Desktop Atmos Demo's silent output device, on ACX.
+IclForgeNullSink: Crucible's silent output device, on ACX.
 
 Derived from Microsoft's ACX AudioCodec sample (audio/Acx/Samples in
 microsoft/Windows-driver-samples, MS-PL; see ../../LICENSE and ../../README.md
@@ -96,7 +96,7 @@ DEFINE_GUID(NULLSINK_RENDER_COMPONENT_GUID,
             0x7c2f1c6e, 0x5a8d, 0x4d3b, 0x9e, 0x0a, 0x2f, 0x6b, 0x1c, 0x9d, 0x4a, 0x17);
 
 // The circuit name is the KS filter's reference string and must match
-// KSNAME_Speaker in Ac3ForgeNullSink.inx.
+// KSNAME_Speaker in IclForgeNullSink.inx.
 DECLARE_CONST_UNICODE_STRING(NULLSINK_RENDER_CIRCUIT_NAME, L"Speaker0");
 
 // ---- contexts ---------------------------------------------------------------

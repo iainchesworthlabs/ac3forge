@@ -23,13 +23,13 @@ if ($BootImage -and -not (Test-Path $BootImage)) { throw "no such boot image: $B
 # lines of C# because PowerShell cannot call IStream::Read with the byref
 # count the interface wants. Reads are 1 MB at a time: the stream is a
 # few blocks for a data disc and four million for install media.
-if (-not ('Ac3Forge.IsoWriter' -as [type])) {
+if (-not ('IclForge.IsoWriter' -as [type])) {
     Add-Type -TypeDefinition @'
 using System;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
-namespace Ac3Forge {
+namespace IclForge {
     public static class IsoWriter {
         public static long Write(string path, object imageStream) {
             IStream stream = (IStream)imageStream;
@@ -91,7 +91,7 @@ $image.Root.AddTree((Resolve-Path $Source).Path, $false)
 $result = $image.CreateResultImage()
 $target = [System.IO.Path]::GetFullPath($Out)
 $started = Get-Date
-$bytes = [Ac3Forge.IsoWriter]::Write($target, $result.ImageStream)
+$bytes = [IclForge.IsoWriter]::Write($target, $result.ImageStream)
 $expected = [long]$result.BlockSize * $result.TotalBlocks
 if ($bytes -ne $expected) { throw "short write: $bytes of $expected bytes" }
 Write-Host ("wrote {0} ({1:N1} MB, label {2}, {3:N0}s)" -f $target, ($bytes / 1MB), $Label, ((Get-Date) - $started).TotalSeconds)

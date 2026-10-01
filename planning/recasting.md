@@ -1,14 +1,15 @@
 # Recasting ac3forge as a family: the library, Forge and Crucible
 
-!!! success "Status as of 2026-09-30: phases 1 to 6 largely built, phase 7 not started; the naming decisions were overtaken"
+!!! success "Status as of 2026-10-01: phases 1 to 7 largely built; the naming decisions were overtaken"
     Written and decided 2026-09-05. **Phases 2 to 5 are in.** Phase 1 is in except the
     `AC3DESK_*` fold (49 uses remain under `apps/crucible`) and one sentence of Crucible's About
     dialog. Phase 4's display strings are in; Crucible's bundle identifier and a configure
     summary grouped by member are not. Phase 6 is partly in: the `ac3forge-crucible-*` packages,
     the release-doc rows and an extended DEB description for the Crucible and Hearth components
-    exist, and the one-line synopsis `apt show` opens with still names the library. **Phase 7 has
-    not started**: it is sequenced by the driver signing session, and the driver's INF still
-    declares the endpoint as "Desktop Atmos". Each phase below carries its own status line.
+    exist, and the one-line synopsis `apt show` opens with still names the library. **Phase 7 was
+    done early**, on 2026-10-01 as change N1D, before the driver was signed: the driver is
+    `IclForgeNullSink` and its INF declares the endpoint as "Crucible Silent Output". Attestation
+    is still to be paid for. Each phase below carries its own status line.
 
     **The naming decisions on this page were overtaken by the AC-4 programme.** On 2026-09-25 the
     user chose to rename the programs (decision 35 of [the AC-4 plan](ac4.md#decisions-of-2026-09-25)),
@@ -676,9 +677,21 @@ dry run's assets finds both patterns it looks for.
 
 ### Phase 7: the driver, at signing time
 
-**Status, 2026-09-30: not started.** `Ac3ForgeNullSink.inx` still declares the device, its
-service and its speaker as "Desktop Atmos", the endpoint-match string is unchanged, and the driver
-is still test-signed. The phase waits for the signing session.
+**Status, 2026-10-01: done early, as change N1D, before the driver was ever signed.** On
+2026-09-30 `Ac3ForgeNullSink.inx` still declared the device, its service and its speaker as
+"Desktop Atmos" and the phase waited for the signing session. The owner then decided that the
+driver could change at once, since it had never been signed and had been installed only in the
+test guest, so nothing signed held its names and no installed copy would be orphaned. The change
+renamed the identity as well as the strings (the plan below keeps the ids): `Ac3ForgeNullSink` is
+`IclForgeNullSink` (hardware id, service, files, scripts, artifact), the device, service and
+speaker declare "Crucible Silent Output", the INF's provider and manufacturer read "ICL Forge",
+and the endpoint-match string is one constant, `kWindowsSilentDeviceName`. The endpoint is
+"Speakers (Crucible Silent Output)" and not "Speakers (Crucible)": the Output page's first station
+carries the endpoint's name beside the application's own station, "2 · CRUCIBLE". The renamed
+driver was built, Code-Analysed and run under Driver Verifier in the guest, and the
+`windows-driver` job was run on the branch. Not done: attestation, which is still to be submitted
+once, and the move of the driver under `apps/crucible/`, which was not taken. [The driver's
+page](../docs/platforms/windows-driver-acx.md#the-rename-2026-10-01) has the record.
 
 Sequenced by [the promotion plan](../docs/crucible/design/promotion.md#coordination-with-the-driver-signing-session),
 and by decision 14. In one change after the signing session lands: the four INF strings
@@ -780,8 +793,9 @@ moves). Built as decided: 1, 4 (in part, see Phase 4), 8 (with the differences n
 [The docs](#the-docs)), 9 (then superseded by the 2026-09-17 roadmap) and 13. Taken and built
 differently: 11 (the WebAssembly pages sit under Platforms in the nav, not under Library). Taken
 and not carried out: 10 (the Shield app's display name is still "Shield Atmos Demo" and its
-`versionName` is still hardcoded), 12 (Crucible has no bundle identifier yet) and 14 (Phase 7 has
-not started). Unchanged: 15.
+`versionName` is still hardcoded) and 12 (Crucible has no bundle identifier yet). Unchanged: 15.
+Decision 14 was carried out the next day, on 2026-10-01, as change N1D (Phase 7), with the ids
+changed as well as the strings.
 
 1. **What Forge covers.** (a) the CLI alone; (b) `ac3cli` + `ac3gui` + `apps/common`; (c) the
    pair plus the bindings. **Recommend (b)**: it is the boundary the build, install rules,

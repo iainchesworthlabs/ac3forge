@@ -25,7 +25,7 @@ Which files a run answers for:
 |---|---|---|
 | Push to main | everything merged since the `verified` ref | from the files; a satellite lane only for a change in its own tree ([The fan-out rule](#the-fan-out-rule)) |
 | Nightly (`schedule`) | none | every lane on |
-| Dispatch | none | every lane on, or only the platforms of the legs named with `legs` |
+| Dispatch | none | every lane on, or only the platforms of the legs and jobs named with `legs` (`windows-driver` is a job) |
 
 ## Current status
 
