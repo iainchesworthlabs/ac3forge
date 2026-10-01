@@ -17,6 +17,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "../exit_codes.hpp"
@@ -32,7 +33,8 @@
 #include "iclforge/ac3/meta/drc.hpp"
 #include "iclforge/ac3/meta/loudness.hpp"
 #include "iclforge/ac3/meta/qc.hpp"
-#include "iclforge/ac3/oba/joc.hpp"
+#include "iclforge/base/layout.hpp"
+#include "iclforge/objects/joc_domain.hpp"
 #include "iclforge/objects/oamd.hpp"
 #include "iclforge/iec61937/iec61937.hpp"
 #include "iclforge/render/spatial.hpp"

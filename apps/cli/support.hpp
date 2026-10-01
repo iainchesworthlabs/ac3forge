@@ -114,6 +114,11 @@ struct PositionSourceSpec {
 // same trailing-options surface (parse_options) the way dialnorm2= already
 // shares it despite being layout-1+1-specific - a command that has no use
 // for a field simply never sets it.
+//
+// One instance exists per process, filled in by parse_options, so the padding the analyzer
+// counts costs nothing; the fields sit in the order of the option groups their comments
+// describe, which reordering for padding would scatter.
+// NOLINTNEXTLINE(clang-analyzer-optin.performance.Padding)
 struct Options {
     // Decoder side, for 'decode'.
     double drc_scale = 0.0;
@@ -1172,8 +1177,9 @@ class TakeEncoder {
     // The encoder `plan` asks for, and for AC-4 `ac4` in place of
     // ac4_config_for(plan) where given (its channels, rate and bitrate taken
     // from the plan all the same). Empty where it opens, else why not.
-    [[nodiscard]] std::string open(const iclforge::ac3::plan::Plan& plan,
-                                   std::optional<iclforge::ac4::EncoderConfig> ac4 = std::nullopt);
+    [[nodiscard]] std::string open(
+        const iclforge::ac3::plan::Plan& plan,
+        const std::optional<iclforge::ac4::EncoderConfig>& ac4 = std::nullopt);
     [[nodiscard]] std::size_t coded_channels() const { return coded_channels_; }
 
     // A frame of the plan's coded channels (plan::coded_channels' order),

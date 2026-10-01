@@ -10,10 +10,10 @@
 #include <fstream>
 #include <ios>
 #include <iterator>
-#include <limits>
 #include <numbers>
 #include <optional>
 #include <fmt/base.h>
+#include <fmt/format.h>
 #include <span>
 #include <string>
 #include <string_view>
@@ -27,16 +27,17 @@
 #include "iclforge/ac3/core/tables.hpp"
 #include "iclforge/ac3/encoder/assignment.hpp"
 #include "iclforge/ac3/core/eac3_tables.hpp"  // blocks_per_syncframe
+#include "iclforge/ac3/encoder/plan.hpp"
 #include "iclforge/ac3/io/elementary.hpp"
 #include "iclforge/ac3/io/object_strip.hpp"
 #include "iclforge/ac3/io/wav.hpp"
 #include "iclforge/ac3/oba/atmos.hpp"
 #include "iclforge/objects/motion.hpp"
 #include "iclforge/objects/oamd.hpp"
+#include "iclforge/objects/placement.hpp"
 #include "iclforge/objects/scene.hpp"
 #include "iclforge/signing/emdf_atmos_signer.hpp"
 #include "iclforge/signing/signing_key.hpp"
-#include "iclforge/ac4/ac4.hpp"
 #include "ac4_encode_core.hpp"
 #include "ac4_objects_core.hpp"
 #include "iclforge/ac4enc/encoder.hpp"

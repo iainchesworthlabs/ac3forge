@@ -21,6 +21,7 @@
 #include "iclforge/ac3/detail/decode_scalar.hpp"
 #include "iclforge/base/detail/profiling.hpp"
 #include "iclforge/ac3/oba/joc_tables.hpp"
+#include "iclforge/objects/joc_domain.hpp"
 
 namespace iclforge::ac3::oba::joc {
 

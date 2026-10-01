@@ -10,7 +10,6 @@
 #include <fmt/base.h>
 #include <fstream>
 #include <ios>
-#include <memory>
 #include <optional>
 #include <random>
 #include <span>
@@ -36,8 +35,6 @@
 #include "iclforge/ac3/core/eac3_tables.hpp"
 #include "iclforge/ac3/core/tables.hpp"
 #include "iclforge/ac3/decoder/decoder.hpp"
-#include "iclforge/ac3/encoder/eac3_frame.hpp"
-#include "iclforge/ac3/encoder/encoder.hpp"
 #include "iclforge/ac3/encoder/plan.hpp"
 #include "iclforge/iec61937/iec61937.hpp"
 #include "iclforge/render/identify.hpp"
