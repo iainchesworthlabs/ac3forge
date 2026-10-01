@@ -21,6 +21,7 @@ Each script's header says what it does and takes. This page says in what order.
 | S4, packages and identifiers | `n1b_apply.py --scope packages` and `n1b_paths.py` (the package directories and the files named for the brand), `n1b_sendspin.py`, `n1b_idents.py`, `n1b_reflow.py`, and then `cargo fmt` and `cargo update --workspace --offline` in `rust/`. Each is committed alone (below). |
 | N1A, the programs' names | `python tools/n1b/n1b_programs.py --root <worktree> --phase all --json <table.json>` (the moves are staged, the text is not), `n1b_reflow.py`, and then `lupdate` and `gen_pseudo_locale.py` over the renamed sources. The settings migration, the JNI check and what the driver keeps are by hand. Each is committed alone (below). |
 | S5, the pages and the addresses | `python tools/n1b/n1b_docs.py --root <worktree> --phase text`, then `--phase urls`, then `--phase words`, each committed alone (below). The install routes, the library pages, the code that names the repository, the status of the plans and the changelog are by hand. |
+| S6, the AC-3 codec's names | `python tools/n1b/n1b_ac3ns.py --root <worktree> --phase decl`, then `--phase uses`, then the compiler's loop (`--phase loop`, recorded as `ac3ns_sites.json` and made again by `--phase sites`), `n1b_reflow.py --until-stable`, and `--phase shadows --apply` with a reflow; each is committed alone (below). The namespace aliases, the variants of the library that only another configuration compiles, the allowlists, the lock and the pages are by hand. |
 
 The plan a stage writes is what the build-file pass reads, since the pass runs after the files have moved.
 All the passes are idempotent: a second run on a finished tree changes nothing.
@@ -481,6 +482,150 @@ symbols under `iclforge::ac3`; the comments and strings of the C and C++ sources
 `ac3audio`; the Windows driver's identity (N1D); and the owner's steps outside the repository: the repository, the tap
 and the SonarCloud project key are renamed, the pending publisher of the PyPI project `iclforge` is created, and the
 first release is made under the new names.
+
+## S6, start to finish
+
+In a worktree of `main` with S5 merged and `<work>` a directory outside the tree. Each script arrives in a commit of its own
+just before the pass that uses it, so the parent of a scripted commit holds the script that made it. The table the passes
+read, `ac3ns_symbols.json`, comes from the compiler, and is made again only when `main` has moved under the AC-3 library:
+
+    # an export of the commit the table describes, a scratch repository (the census reads tracked files), and any
+    # configured tree for clang's command line (it borrows the include directories of one test unit)
+    git -c core.autocrlf=false archive <parent> | tar -x -C <export>; git -C <export> init -q; git -C <export> add -A
+    python tools/n1b/ac3ns_census.py --root <export> --compile-commands <tree>/compile_commands.json --work <work>/census \
+        --out tools/n1b/ac3ns_symbols.json -I <the library's variant and private directories>    # 26 namespaces, 779 names, 5 s
+
+    python tools/n1b/n1b_ac3ns.py --root . --phase decl                                    # 133 files, 135 blocks
+    git add -A && git commit -m "S6: the library's namespaces open under iclforge::ac3"
+    python tools/n1b/n1b_ac3ns.py --root . --phase uses --report <work>/uses-report.tsv    # 449 files, 9,796 places, 5 s
+    git add -A && git commit -m "S6: qualified names of the library say iclforge::ac3"
+    python tools/n1b/n1b_ac3ns.py --root . --phase loop --build <clang-cl tree> --work <work>/loop    # 4 builds
+    python tools/n1b/n1b_ac3ns.py --root . --phase record --base HEAD --sites <work>/sites.json      # 414 hunks, 41 files
+    git checkout -- . ; (commit the record as tools/n1b/ac3ns_sites.json)
+    python tools/n1b/n1b_ac3ns.py --root . --phase sites --sites tools/n1b/ac3ns_sites.json          # the same 414 hunks, no build
+    git add -A && git commit -m "S6: what the compiler finds"
+    python tools/n1b/n1b_reflow.py --root . --base <the tools commit> --until-stable               # 735 lines, 157 files
+    git add -A && git commit -m "S6: wrap the lines the namespace pass pushed past 100 columns"
+    python tools/n1b/n1b_ac3ns.py --root . --phase shadows                                        # 4 names, 18 spellings
+    python tools/n1b/n1b_ac3ns.py --root . --phase shadows --apply                                # 18 spellings in 5 files
+    python tools/n1b/n1b_reflow.py --root . --base HEAD --until-stable                            # 1 line
+    git add -A && git commit -m "S6: the library says which half of a shared namespace it means"
+
+Each of the five scripted commits is what its script gives on its parent: a scratch repository made from `git -c
+core.autocrlf=false archive` of the parent, with the pass run there from the scratch tree itself, has the blobs of the commit,
+and a second run changes nothing (the replay of the loop's record says "the tree has the 414 hunks already"). The loop is
+the one that needs a build: its first run writes the record, and the record is what the commit is made from afterwards.
+
+### What `n1b_ac3ns.py` decides
+
+The table says, for each namespace the library declares into, who else does (`ac3ns_census.py`: a clang AST dump of one unit
+that includes every public header and the library's private ones, and a scanner over everything else).
+
+| kind | namespaces | what moves |
+|---|---|---|
+| exclusive (19) | `analysis`, `coupling`, `eac3` with `chanmap`, `fixed_detail` and `seat`, `encoder`, `encoder_detail`, `gf2`, `io` with `detail`, `meta` with `detail` and `level`, `plan`, `quality`, `tables`, `verify`, `internal::avx2` | everything under `iclforge::<path>`, by its prefix |
+| shared (7) | the root, `detail`, `emdf`, `internal`, `oba`, `oba::joc`, `render` | the names the library declares there, one by one: 145 in the root, 66 in `internal`, 30 in `oba::joc` ... |
+
+A file outside the library that defines one of the library's own names in one of its namespaces follows it (the two
+`tests/ac3/core/avx2/absent/` files, which define `avx2_probe_matches_expected` for a build with no AVX2 tier); the block of
+`iclforge::test::avx2` in the same files stays. The history, the Rust crate (whose own module is `ac3`), CMake (whose
+`iclforge::<library>` is a target) and the ABI allowlists (which a build writes) are not read. 26 changes are inside a string
+(`--report` lists them): six test names, nine docstrings of the Python extension, eleven messages and templates.
+
+### What the compiler's loop decides
+
+A use written from outside the library inside a namespace that was in the root (`iclforge::hearth`, `iclforge::signing`), or
+after `using namespace iclforge;`, reached the library's name through the root, and the loop writes `ac3::` there, with the
+part of the path the chain does not name (`ac3::oba::AtmosEncoder`), or the library's `using namespace iclforge::ac3;` beside
+the directive. A use inside the library of a name another library declares in a namespace the two share found the library's
+own copy first, which `iclforge::ac3::internal` makes of `iclforge::internal`: the loop writes the anchor `iclforge::`, with
+the part of the path the chain does not name (`iclforge::internal::Fixed32`, `iclforge::oba::joc::Domain`). A chain that
+starts at a namespace alias is left for a person (the one in `test_block_norm.cpp`), and so is every diagnostic the table
+cannot explain; an error that follows from another goes with it. The loop reads clang's diagnostics (a tree built with
+`-ferror-limit=0 -fno-spell-checking`, so that every error of a unit is printed and clang does not guess), and also reads
+GCC's and MSVC's, which this stage did not need.
+
+The tree the loop builds must have asserts on. A Release build (NDEBUG) compiles nothing inside `assert(...)`, and S6's loop,
+which ran on Release trees, left `assert(domain != Domain::kQmf || ...)` of `joc.cpp` for the Debug build of another job to
+find. `ir_compare.py compile --asserts --tests` compiles every unit of a configured tree with `-UNDEBUG` and lists the errors,
+without a build, and an MSVC tree's commands with `/UNDEBUG /Od /Zs` do the same: one line on this tree, in both.
+
+### What no compiler reports: a name that still builds
+
+The loop edits where a name is no longer found. The nine tests of the first full run, which failed on both compilers, showed the
+other kind. `frame_layout.cpp` is in `iclforge::emdf`, which the objects library and the AC-3 library both declared into, and
+it wrote `kSyncWord` for the EMDF container's 0x5838, the objects library's constant. The library's half is
+`iclforge::ac3::emdf` now, which is not inside `iclforge::emdf`, so the name was found in a wider scope, where the library's
+own AC-3 sync word 0x0B77 is. It built, `walk_frame` found no container, and nothing was signed. A name resolves differently
+after the move when
+
+- code in a namespace both libraries declare into found the other library's name there (the halves were one namespace), and
+  the library declares the same name in the same or a wider scope, which it finds now;
+- both halves of one namespace declare a name (overloads), and the nearer scope now hides the wider;
+- it is spelled through a shared namespace (`emdf::build_container`, `render::PcmBlock`, `internal::arch`) and finds the
+  other library's name only while the library's own `iclforge::ac3::emdf` is not declared in the translation unit, so that
+  what a file includes first decides, and the compiler says so only when it declares it.
+
+`n1b_ac3ns.py --phase shadows` lists the first two from the table alone and finds the third in the library's files and its
+tests: on this tree four names (`emdf::kSyncWord`, `oba::describe`, `render::BlockSink`, `render::PcmBlock`) and 18 spellings
+in 5 files, and `--apply` writes `iclforge::` before the spellings. A person looks at each name: `kSyncWord` was the bug (fixed
+by writing `iclforge::emdf::kSyncWord`), no code in the library's `oba` calls `describe`, and the two `render` names are
+`using` of the same types. `test_ac3ns_shadows.py` holds the list of four, so a table that gains a name has to be looked at,
+and holds the library's files to no spelling left.
+
+Those two lists are of what the table knows. `ir_compare.py` is the check that does not depend on a list: two trees, the
+parent's and the commit's (a source archive of each, configured with the Clang 22 preset and not built), compiled unit by unit to
+unoptimised LLVM IR, which is what a unit means written down, and compared with the names read alike (the mangled names
+demangled, `iclforge::ac3::` read as `iclforge::`, the path of the tree replaced). A unit that means something else shows as a
+changed constant, callee or overload. With `kSyncWord` put back it shows frame_layout.cpp's unit differing by one line,
+`icmp eq i32 %x, 22584` against `2935`. On the S6 tree (the Clang preset with Hearth and the GUI on, tests included) 679 of 693
+units are the same, 13 are the same but for the white space of an assertion's text (a reflow wraps an expression Catch2
+stringifies as written), and one test unit has a `call` where the other tree has an `invoke` of a Catch2 helper, which the order
+of emission decides.
+
+### What the passes cannot decide, by hand
+
+- The alias of `test_block_norm.cpp`, the JOC generator's namespace lines, the mangled name in a footprint test, 27 Rust
+  doc comments that name the C++ class a wrapper wraps, 11 CMake comments, the fixed-point scalar's `Fixed32` (a variant of
+  the library that only an `ICLFORGE_DECODE_SCALAR=fixed` build compiles), and the pages (the namespace paragraph of the
+  library index, the row of `docs/renamed.md`, `CONTRIBUTING.md`).
+- The ABI allowlists hold demangled names: `check_abi_symbols.py --update` over the shared tree writes them, and
+  `abi_compare.py --map identity --rewrite ac3ns` holds each to the old file rewritten as text.
+- The `<location>` lines of the Qt catalogues: the reflow adds lines above some `tr()` and `qsTr()` texts, and the three
+  `*_lupdate` targets write them again (five lines of two sources this time, in each of six languages); CI's lupdate gates
+  fail on a stale one.
+- Nothing names a mangled name of the library: `check_shared_forge_binding.sh` matches `8iclforge`, which the library's
+  `_ZN8iclforge3ac3...` still starts with, and its one exclusion and the ESP-IDF link flag name `iclforge::internal::cpu` and
+  `iclforge::internal::profiling`, which are the base library's.
+- The lock: `tools/checks/check_namespaces.py` and its table, a step of the static job and a line of `precheck.py`. A public
+  header may open the namespaces of its library only, and none may declare into `iclforge` itself, except the three headers the
+  table lists as debts (`BitReader`, `BitWriter`, `dft512`).
+
+### The proof
+
+    python tools/n1b/baseline.py compare <before> <after> --only hashes,cli                       # identical
+    python tools/n1b/export_diff.py --old <before>/symbols-msvc.json --new <after>/symbols-msvc.json \
+        --rewrite ac3ns                                                                           # every library the same
+    python tools/n1b/abi_compare.py <the parent's allowlists> tools/ci/abi-allowlist \
+        --map identity --rewrite ac3ns                                                            # every library -0 +0
+    python tools/checks/check_namespaces.py                                                      # 176 headers, 0 failures, 3 debts
+    python tools/n1b/ir_compare.py compile <old tree>/build <work>/ll-old --tests                # a source archive of the parent and
+    python tools/n1b/ir_compare.py compile <new tree>/build <work>/ll-new --tests                # of the commit, each configured, not built
+    python tools/n1b/ir_compare.py compare <work>/ll-old <work>/ll-new \
+        --old-root <old tree>/src --new-root <new tree>/src                                       # 693 units: 679 same, 13 the same but for the white space of an assertion, 1 differs
+    python tools/n1b/ir_compare.py compile <new tree>/build <work>/ll-asserts --tests --asserts  # builds with asserts on: no error
+
+The registered tests are the parent's 3,278 modulo six names that carry a qualified name of the library
+(`ctest -N` before and after, the before rewritten by the pass).
+
+### What S6 leaves
+
+The vocabulary of `wav`, `loudness` and `analysis` (decision 5(a): recorded, not paid; they are `iclforge::ac3::io::read_wav`,
+`iclforge::ac3::meta::LoudnessMeter` and `iclforge::ac3::analysis` now); the S1 cuts' re-exports in the library's headers
+(`iclforge::ac3::PcmBlock` is `iclforge::render::PcmBlock`, `iclforge::ac3::DownmixTarget` and
+`iclforge::ac3::eac3::chanmap::Location` are `iclforge::base`'s: 308 uses that could name the origin); the three headers the lock
+lists; the ESP-IDF component's 173 names, which declare into the root; and the version names of the generated `version.hpp`
+(`iclforge::ac3::version_details()`), the family's build identity declared by the AC-3 library.
 
 ## Proof
 

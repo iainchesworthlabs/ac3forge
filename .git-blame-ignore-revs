@@ -37,3 +37,15 @@ af6b96212eae0a22514aec67bd68c4a061854a41  # S4: paths in text follow the moved p
 612ea09cc349ebdf6078bfa0d792e1b4161cff5b  # S5: every address names the repository iclforge
 ce3c449eaebecbf6bc3d59bb3b0be701bb8fba7b  # S5: build and tool text names the libraries as it should
 ff7ea00f4fe8872158ec97fc3418f2bedc5d637f  # S5: wrap the eight Python lines the rename pushed past 100 columns
+
+# N1B stage S6, the AC-3 codec's names under iclforge::ac3: what n1b_ac3ns.py gives on its parent in each of its phases
+# (the namespaces a file opens, the qualified names, what the compiler's loop recorded, the spellings of the other
+# library's half of a shared namespace), the lines n1b_reflow.py wrapped after the first three, what lupdate wrote and what
+# check_abi_symbols.py wrote (the tools commits and the hand-written ones are not listed)
+847d446bd2fc7c1a7b500750e8fd74c7aa813ac4  # S6: the AC-3 library's namespaces open under iclforge::ac3
+4359fcafe3de4c188dddfd3811ef8c87245e6a03  # S6: qualified names of the AC-3 library say iclforge::ac3
+283ada85f7eff3c0483b4c2ed1f32d814e583cb5  # S6: what the compiler finds
+1f97315f7a11527f56c92d938bd83c3443cea7df  # S6: wrap the lines the namespace pass pushed past 100 columns
+37f0c179db705baf33a91885fb4522158894b2e9  # S6: the library says which half of a shared namespace it means
+634beb7d11b5e32c0d8e1648c0d42dedf0e8d1c5  # S6: lupdate restamps the locations of the Forge GUI's and Hearth's catalogues
+4de9f7433238bf3d10f99a7b3a4cf4e0810b0967  # S6: the ABI allowlist of libiclforge_ac3.so, written again from the shared tree
