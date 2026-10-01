@@ -1,6 +1,7 @@
 """Reflow, stage 3b of the plan: wrap the lines the namespace rewrite pushed past the column limit.
 
     n1b_reflow.py --root <worktree> [--base HEAD] [--limit 100] [--clang-format <exe>] [--dry-run]
+                  [--until-stable]
 
 n1b_names.py makes lines longer (`ac3::` becomes `iclforge::`, `mp4::` becomes `iclforge::mp4::`).
 The style is the ColumnLimit of `.clang-format`; nothing in CI checks a C++ line (CONTRIBUTING.md
@@ -14,11 +15,15 @@ clang-format off` table, a long token) is listed, for a person to wrap.
 `--base` is the tree before the pass: `HEAD` while the pass is uncommitted, its parent once it is.
 The result depends on the clang-format that runs (the README names the version of the S3 run), so
 the reflow commit is the output of this script on the same machine and not a promise about another.
-Files keep their line endings: clang-format derives them from the file.
+Files keep their line endings: clang-format derives them from the file. Given one line of a
+statement that wraps over several, clang-format can leave the wrap of its neighbour for the next
+pass; `--until-stable` runs the pass again while it changes a file (S6: two lines of 733 needed it),
+so that a second run of the reflow on its own output changes nothing.
 """
 
 from __future__ import annotations
 
+import argparse
 import os
 import re
 import subprocess
@@ -27,6 +32,7 @@ from pathlib import Path
 
 from n1b_lib import CPP_EXT, base_parser
 
+MAX_PASSES = 5
 DEFAULT_CLANG_FORMAT = r"C:\Program Files\LLVM\bin\clang-format.exe"
 HUNK_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@")
 PATHSPEC = [f"*{ext}" for ext in sorted(CPP_EXT)]
@@ -102,8 +108,23 @@ def main() -> int:
     ap.add_argument("--limit", type=int, default=100, help=".clang-format's ColumnLimit")
     ap.add_argument("--clang-format", default=os.environ.get("CLANG_FORMAT", DEFAULT_CLANG_FORMAT))
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument(
+        "--until-stable",
+        action="store_true",
+        help="run again while a pass changed a file (clang-format given one line at a time can "
+        f"leave a neighbour's wrap for the next pass), up to {MAX_PASSES} passes",
+    )
     a = ap.parse_args()
-    root = Path(a.root)
+    for n in range(1, MAX_PASSES + 1):
+        changed = reflow_once(Path(a.root), a)
+        if not a.until_stable or a.dry_run or not changed or n == MAX_PASSES:
+            return 0
+        print(f"pass {n} changed {changed} files; again")
+    return 0
+
+
+def reflow_once(root: Path, a: argparse.Namespace) -> int:
+    """One pass; the number of files it changed."""
     diff = subprocess.run(
         ["git", "-C", str(root), "diff", "-U0", "--no-color", a.base, "--", *PATHSPEC],
         capture_output=True,
@@ -139,7 +160,7 @@ def main() -> int:
         print(f"{len(residual)} of them are still over the limit, at:")
         for where in residual:
             print(f"  {where}")
-    return 0
+    return changed
 
 
 if __name__ == "__main__":
