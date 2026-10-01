@@ -114,7 +114,7 @@ pre-1.0, no ABI-compatibility promise holds across any two releases, so there is
 "compatible" range narrower than an exact match. Flipping every library's `SOVERSION` to just the
 major component (`SOVERSION "${PROJECT_VERSION_MAJOR}"`) is the literal moment this project starts
 promising that a `libiclforge_ac3.so.1` built at `1.3.0` loads fine against a binary linked at
-`1.0.0` — that promise should ship *with* `v1.0.0`, once the ABI gate (`AP4`, already merged and
+`1.0.0` — that promise should ship *with* `v1.0.0`, once the ABI gate (already merged and
 running `abidiff` + `check_abi_symbols.py` advisory on every build) is promoted from advisory to
 required. Flipping the version scheme first and promoting the gate later would let a real ABI
 break through in the gap between the two; the gate's own promotion switch (flip one
@@ -123,7 +123,7 @@ can't happen. Until then, the sequencing is:
 
 1. This page and its Public/Internal/Diagnostic split are in place.
 2. The `v1.0.0` release candidate is cut against the Public tier only, mechanically checked by
-   promoting `AP4`'s `abi-gate` to required.
+   promoting the `abi-gate` job to required.
 3. `SOVERSION` flips to major-only in the same PR that flips `abi-gate`'s `ABI_ENFORCE` to
    `'true'`, so both changes are reviewed and tagged together.
 
@@ -191,7 +191,7 @@ IAMF writer, is Experimental as a new module.
 
 `iclforge::adm` and `iclforge::admbridge` are a different case: also opt-in
 (`-DICLFORGE_BUILD_ADM=ON`), but consumed for real by the ADM→Atmos bridging path and stable in
-shape since `IM2`/`IM7`. They're Public, not Experimental — opt-in build gating and API maturity
+shape since the ADM writer and the scene timeline landed. They're Public, not Experimental — opt-in build gating and API maturity
 are independent axes, and conflating "off by default" with "not yet stable" would understate how
 settled `iclforge::adm`'s reader actually is.
 
@@ -202,7 +202,7 @@ settled `iclforge::adm`'s reader actually is.
 1. Every header above is tagged Public, Internal, Diagnostic or Experimental, and nothing new has
    been added to `ac3/` without that decision being made at merge time (a review checklist item,
    not a CI gate — there's no mechanical way to detect "this header needs a tier").
-2. `AP4`'s `abi-gate` is required, not advisory, and `SOVERSION`/the inline namespace have flipped
+2. The `abi-gate` job is required, not advisory, and `SOVERSION`/the inline namespace have flipped
    together (see [SOVERSION](#soversion)).
 3. `CHANGELOG.md`'s `## [Unreleased]` → the release's own `### Known gaps` section contains
    nothing that reads as "the API isn't finished" — a platform-verification gap (exclusive-mode
@@ -210,7 +210,7 @@ settled `iclforge::adm`'s reader actually is.
    for `v1.0.0` the same way it has been for every prerelease; an incomplete or about-to-move
    Public header is not. Distinguishing the two is a judgment call made when that release's Known
    gaps section is actually drafted, not a rule this page can fully anticipate today.
-4. `AP5`/`AP6` (C API and Python completeness) are either finished or their remaining gaps are
+4. The C API and Python binding completeness passes are either finished or their remaining gaps are
    themselves re-classified as Experimental/Known-gap rather than silently left off the Public
    surface both bindings claim to mirror.
 

@@ -17,7 +17,7 @@ order and handed over as PCM.
 **Two routes to the same ecosystem.** [ADM / BW64 writing](adm.md)'s `write_bw64()` already opens
 an *indirect* one: AOM's own `iamf-tools` encoder accepts ADM-BWF input, so a decoded programme
 written as an ADM master already reaches IAMF via a second, external encoder — but
-only for IM2's own scope (dynamic-object-only programmes, cartesian positions). `iclforge::iamf`
+only for the ADM writer's own scope (dynamic-object-only programmes, cartesian positions). `iclforge::iamf`
 writes the IAMF bitstream directly, for any 7.1.4-coded programme this decoder can render, with
 nothing else in the chain.
 
