@@ -1186,9 +1186,43 @@ WHY: tuple[tuple[str, str], ...] = (
     ("docs/history.md", "a page that narrates the old names"),
     ("docs/crucible/design/promotion.md", "a page that narrates the old names"),
     ("docs/platforms/windows-demo.md", "a page that narrates the old names"),
-    ("apps/windows/driver", "the Windows driver's installed identity"),
+    ("apps/windows/", "the Windows driver's installed identity"),
+    ("docs/platforms/windows-driver-acx.md", "the Windows driver's installed identity"),
+    (
+        "apps/crucible/engine/platform/windows/driver_tools.cpp",
+        "the Windows driver's installed identity",
+    ),
+    ("apps/crucible/notices/fragments/driver.txt", "the Windows driver's installed identity"),
+    ("tools/ci/check_crucible_package.py", "the Windows driver's installed identity"),
+    ("tools/ci/test_check_crucible_package.py", "the Windows driver's installed identity"),
+    (".github/workflows/_build.yml", "the Windows driver's installed identity"),
     ("apps/gui/settings_migration.", "the old settings store, read on purpose"),
     ("tests/gui/test_settings_migration.cpp", "the old settings store, read on purpose"),
+    ("apps/gui/main.cpp", "the old settings store, read on purpose"),
+    ("apps/crucible/ui/main.cpp", "the old settings store, read on purpose"),
+    ("apps/hearth/ui/main.cpp", "the old settings store, read on purpose"),
+    ("tests/CMakeLists.txt", "the old settings store, read on purpose"),
+    ("packaging/conan/conandata.yml", "the URL of a release that exists"),
+    ("packaging/homebrew/Formula/", "the URL of a release that exists"),
+    ("packaging/homebrew/tap_migrations.json", "the old names the tap maps to the new ones"),
+    (".github/workflows/manifest-bump.yml", "the old names the tap maps to the new ones"),
+    ("tools/checks/check_packaging_versions.sh", "the winget identity of the staged versions"),
+    ("tools/release/bump_manifests.py", "the winget identity of the staged versions"),
+    ("tools/checks/check_android_jni.py", "the former Android package, which the check refuses"),
+    (
+        "tools/checks/test_check_android_jni.py",
+        "the former Android package, which the check refuses",
+    ),
+    ("sonar-project.properties", "the SonarCloud project key, the owner's"),
+    (".github/workflows/sonarcloud.yml", "the SonarCloud project key, the owner's"),
+    ("docs/ci-self-hosted-runners.md", "the SonarCloud project key, the owner's"),
+    ("python/pyproject.toml", "the PyPI description, 'formerly ac3forge'"),
+    ("rust/iclforge/tests/", "a Rust module path, not a C++ namespace"),
+    ("examples/object_signing.cpp", "the bytes of an example signing key"),
+)
+
+_OLD_ASSET_NAME = re.compile(
+    r"ac3forge-(?:dev-|shield-v|conformance-vectors-)?\d+\.\d+\.\d+|ac3forge-signing-key"
 )
 
 # the old names, by family; each pattern finds a place
@@ -1231,12 +1265,32 @@ def residual(root: Path, listing: str | None = None) -> list[str]:
         text = read_text(root, f)
         if text is None:
             continue
-        why = why_of(f)
+        file_why = why_of(f)
+        former = FORMER_NAME_LINES.get(f, ())
         for number, line in enumerate(text.split("\n"), 1):
+            why = file_why
+            if file_why == "other":
+                if f in FORMER_NAME_FILES or any(x in line for x in former):
+                    why = "said about the past on purpose"
+                elif "iainchesworthlabs_ac3forge" in line:
+                    why = "the SonarCloud project key, the owner's"
+                elif "Ac3ForgeNullSink" in line:
+                    why = "the Windows driver's installed identity"
+                elif _OLD_ASSET_NAME.search(line):
+                    why = "the file name of a release that exists"
+                elif "manifests/i/iainchesworthlabs/ac3forge/" in line:
+                    why = "the directory of the staged winget versions"
+                elif any(x in line for x in HISTORICAL_LINES.get(f, ())):
+                    why = "a past event, in the name of its time"
+                elif re.search(r"ac3(?:adm|iab)\.hpp", line):
+                    why = "the file name of a header that is still called that"
             for family, rx in FAMILIES:
                 for m in rx.finditer(line):
-                    places.setdefault((family, why), Counter())[f] += 1
-                    if listing == family and why == "other":
+                    reason = why
+                    if family == "library name" and why == "other" and f.endswith(tuple(CPP_EXT)):
+                        reason = "the comments and strings of C and C++ sources"
+                    places.setdefault((family, reason), Counter())[f] += 1
+                    if listing == family and reason == "other":
                         lines.append(f"{f}:{number}: [{m.group(0)}] {line.strip()[:140]}")
     if listing:
         return lines
