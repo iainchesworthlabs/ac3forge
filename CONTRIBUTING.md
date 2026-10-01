@@ -77,11 +77,17 @@ If you cannot cite where something came from, it does not go in.
 
 ## Repository layout
 
-**`src/` is the installable library; `apps/` consumes it, never the reverse.** `src/ac3` is
-the AC-3, E-AC-3 and Atmos codec. `src/ac4`, `src/ac4core`, `src/ac4dec` and `src/ac4enc` are the
-AC-4 codec, in namespace `ac4`, and link nothing from `src/ac3`. `src/arithmetic` is the
-header-only target both codecs link for their scalar types (`Fixed32`, the project's own float
-functions) and the SIMD seam; it is not installed.
+**`src/` is the installable library; `apps/` consumes it, never the reverse.** `src/` holds 22
+libraries. Each is a directory with its own CMake target (`iclforge::<name>`), its own public
+headers (`iclforge/<name>/`) and its own row in `tools/checks/layering.json`, which lists the
+libraries it may include from; `check_layering.py` fails an include its row does not list.
+`src/ac3` is the AC-3, E-AC-3 and Atmos codec. `src/ac4`, `src/ac4core`, `src/ac4dec` and
+`src/ac4enc` are the AC-4 codec, in namespace `iclforge::ac4`, and link nothing from `src/ac3`.
+The two codecs stand on libraries that know no codec: `src/base` (bit I/O, the speaker
+vocabulary, the CPU probe), `src/arithmetic` (header-only: `Fixed32`, the project's own float
+functions and the SIMD seam; it is not installed), `src/dsp` (the transforms more than one
+library uses), `src/objects` (the object-audio model and the Object Audio Metadata payload),
+`src/render` (layouts, routing and the renderer) and `src/iec61937` (burst packing).
 `apps/{cli,gui,crucible,hearth,android,wasm,baremetal}` consume them (Crucible and the Shield app
 use the AC-3, E-AC-3 and Atmos codec only), and `apps/common` is shared application code,
 compiled directly into its consumers. `apps/windows` holds Crucible's separately licensed
@@ -91,39 +97,41 @@ anything under `apps/`.
 
 **The tree holds four products, and the directories say which is which.** `src/`
 other than `src/audio` and `src/sendspin`, the bindings under `python/`, `js/` and `rust/`, and
-`examples/`, `fuzz/` and `apps/baremetal` are **the library** — `iclforge` and `iclforge::ac3` name
-it, and those identifiers name its packages too. `apps/cli`, `apps/gui` and `apps/common` are
-**Forge**, the tooling pair, built and packaged as one thing. `apps/crucible`, with the driver
-in `apps/windows`, is **Crucible**. `apps/hearth`, `src/sendspin` and the `hearth_sink` example
-are **Hearth**. `apps/android` and `apps/wasm` are library demonstrations. `src/audio`, `tests/`,
-`tools/`, `cmake/`, `packaging/` and the version line are shared and owned by no one product.
+`examples/`, `fuzz/` and `apps/baremetal` are **the library**; `iclforge` names it, and names its
+packages too. `apps/cli`, `apps/gui` and `apps/common` are **Forge**, the tooling pair, built and
+packaged as one thing. `apps/crucible`, with the driver in `apps/windows`, is **Crucible**.
+`apps/hearth`, `src/sendspin` and the `hearth_sink` example are **Hearth**. `apps/android` and
+`apps/wasm` are library demonstrations. `src/audio`, `tests/`, `tools/`, `cmake/`, `packaging/`
+and the version line are shared and owned by no one product.
 [The naming and scope plan](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/recasting.md)
-records what each member owns, down to the targets, packages and CI legs.
+records what each member owns, down to the targets, packages and CI legs, under the names it was
+written with; [Renamed](https://github.com/iainchesworthlabs/iclforge/blob/main/docs/renamed.md) maps them
+to the present ones.
 
-**These naming rules govern prose and code.** `iclforge` and
-`iclforge::ac3` name the library and the family's identifiers — the CMake project, the packages,
-the namespace, the C symbol prefix; **Forge**, capitalised and standing alone, names the
-`forge` + `forge-gui` pair. "ICL Forge" is the family in prose, every identifier stays lowercase,
-and "ICL Forge Forge" is never written. `forge --version` keeps printing `iclforge <version>`
-(`src/ac3/src/version.cpp`), because that is the library's version line and the published
-Homebrew formula's test asserts it.
+**These naming rules govern prose and code.** In prose, "ICL Forge" is the family, and **Forge**,
+capitalised and standing alone, is the `forge` + `forge-gui` pair; Hearth and Crucible are named
+as themselves, and "ICL Forge Forge" is never written. In code, `iclforge` names the library and
+the family's identifiers: the CMake package, the packages of each language, the namespace root,
+the header root and the C symbol prefix (`iclforge_`), with `ICLFORGE_` for macros, options and
+environment variables. Every identifier stays lowercase but those. `forge --version` prints
+`iclforge <version>` (`src/ac3/src/version.cpp`), because that is the library's version line and
+the Homebrew formula's test asserts it.
 
-**The `ac3/` header prefix marks a dependency on `iclforge::ac3`, not just anything codec-adjacent.**
-A module installs its public headers under `include/ac3/<name>/` exactly when it depends on or
-extends `iclforge::ac3`'s own model: `forge` itself (`ac3/core`, `ac3/encoder`, ...), `admbridge`
-(`ac3/admbridge`), `audio` (`ac3/audio`), `signing` (`ac3/signing`). A bare `include/<name>/`
-(no `ac3/` prefix) marks a module as deliberately codec-blind: `ac3adm` (ADM/BW64 file parsing),
-`matroska`, `mp4`, `mpegts` (container muxing) — none of these know AC-3, E-AC-3 or Atmos exist,
-and should stay that way. The AC-4 libraries are bare too, for a different reason: `ac4/`
-(`iclforge::ac4`, the inspector), `ac4dec/` (`iclforge::ac4dec`) and `ac4enc/` (`iclforge::ac4enc`) are a
-separate codec that shares no bitstream syntax with `iclforge::ac3` and depends on nothing in it.
-`ac4core` is the static library the decoder and the encoder share, and has no public headers.
+**A library's headers are `include/iclforge/<name>/`, and the name is the library.** The second
+component of an include path says which library a header belongs to: `iclforge/ac3/decoder/decoder.hpp`
+is in `src/ac3/include/iclforge/ac3/decoder/`, `iclforge/render/layout.hpp` in
+`src/render/include/iclforge/render/`. A library includes headers only of the libraries its row of
+`layering.json` lists. `base`, `dsp`, `objects`, `render` and `iec61937` list no codec, nor do the
+containers (`matroska`, `mp4`, `mpegts`, `iamf`) and the readers (`adm`, `iab`): none of them knows
+AC-3, E-AC-3 or Atmos exist, and they should stay that way. The AC-4 libraries list none of
+`ac3`'s: a separate codec that shares no bitstream syntax with it. `ac4core` is the static library
+the decoder and the encoder share, and has no public headers.
 
-The one deliberate exception is `capi`: it installs under `include/iclforge_c/`, not `ac3/`,
-even though it depends on the codec directly (it wraps `iclforge::ac3_static`). The `ac3/` tree is
-a C++ namespace; `capi` is a C-callable surface, and a C or non-C++ consumer has no reason to
-see, or accidentally `#include`, a C++ header. Don't read "not under `ac3/`" as "codec-blind"
-here — it's a different axis (language surface, not dependency) that happens to look similar.
+The one deliberate exception to the header root is `capi`: it installs under
+`include/iclforge_c/`, not `iclforge/`, even though it depends on the codecs directly (it wraps
+`iclforge::ac3_static` and the AC-4 libraries). The `iclforge/` tree is C++; `capi` is a C-callable
+surface, and a C or non-C++ consumer has no reason to see, or accidentally `#include`, a C++
+header.
 
 **One subdirectory per platform audio backend, selected by CMake, never `#ifdef`.**
 `src/audio/src/backend/{alsa,pipewire,android,macos,posix,windows}` — adding a backend means a

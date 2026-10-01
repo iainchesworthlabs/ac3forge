@@ -175,8 +175,8 @@ sets both, and doubles as exactly that.
 
 ## What's reused, what's new
 
-`iclforge::ac3` (`src/ac3/`) — the codec, `FrameDecoder`/`Eac3Decoder`, elementary-stream scanning — is
-fully platform-independent and is linked into both demos **unmodified**, the same way `apps/wasm/CMakeLists.txt`
+`iclforge::ac3` (`src/ac3/`) — the codec, `FrameDecoder`/`Eac3Decoder`, elementary-stream scanning — and
+the libraries it links are fully platform-independent and are linked into both demos **unmodified**, the same way `apps/wasm/CMakeLists.txt`
 links it as any other consumer would: `add_executable` + `target_link_libraries(... iclforge::ac3 ...)`,
 no fork, no `#ifdef`. Unlike `apps/android/`, this doesn't need a separate build system reached
 from the other direction — WASM is a plain CMake cross-compile, so `apps/wasm/` is a normal
@@ -220,7 +220,7 @@ visualizations ported from `apps/gui/qml/SoundfieldView.qml` and Main.qml's Obje
 one remaining piece specific to the demo, and are now a *consumer* of `js/` - they hold no decode
 logic, no WASM-module loading, and no hand-rolled fold. The object visualization/audio is a thin
 JS-facing surface over `Eac3Decoder`'s own real `object_metadata` (OAMD positions/gain,
-`iclforge::ac3#168`) and `object_audio` (JOC-reconstructed per-object audio, `iclforge::ac3#169`) fields,
+`iclforge#168`) and `object_audio` (JOC-reconstructed per-object audio, `iclforge#169`) fields,
 reached through the package rather than directly.
 
 The encode demo follows the identical shape, one level down: `encoder_bindings.cpp` is a second,

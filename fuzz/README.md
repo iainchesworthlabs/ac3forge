@@ -214,7 +214,7 @@ coverage number that quietly stopped improving.
 ## Status: the IAB and AC-4 harnesses, instrumented
 
 `fuzz_iab_parse` and `fuzz_ac4_parse` were added without their libraries in
-`fuzz/CMakeLists.txt`'s instrumented set: `ac3iab_objects` and `ac4_objects`
+`fuzz/CMakeLists.txt`'s instrumented set: `iclforge_iab_objects` and `iclforge_ac4_objects`
 compiled with no ASan, UBSan or coverage flags. The harness executable still
 carried the sanitizer runtime, so a segfault, a timeout or an oversized
 allocation stopped a run, but nothing the parser did within its own memory was
@@ -275,7 +275,7 @@ escape through `variable_bits()` could overflow.
 `fuzz_ac4_decode` and `fuzz_ac4_encode` are in `fuzz/run.sh`'s default list, so
 `fuzz-regress`, `fuzz-short` and `fuzz-nightly` run them with the others.
 `fuzz/CMakeLists.txt` instruments `ac4core`, `ac4dec_objects` and
-`ac4enc_objects` for them, as it does `ac4_objects` for `fuzz_ac4_parse`.
+`ac4enc_objects` for them, as it does `iclforge_ac4_objects` for `fuzz_ac4_parse`.
 `fuzz_ac4_decode` starts from `fuzz_ac4_parse`'s seeds and keeps regressions of
 its own, four so far:
 
@@ -311,7 +311,7 @@ merge.
 
 `fuzz_adm_parse` was the last harness whose library sat outside the instrumented
 set, and the only one that needed a change to a dependency before it could join.
-libbw64 is header-only, so instrumenting `ac3adm_objects` instruments the libbw64
+libbw64 is header-only, so instrumenting `iclforge_adm_objects` instruments the libbw64
 code it compiles, and UBSan stopped the harness a few hundred executions in,
 inside `UnknownChunk`'s constructor.
 
@@ -320,7 +320,7 @@ inside `UnknownChunk`'s constructor.
 Same caveat as the sections above — a point-in-time result, not a standing
 guarantee. Measured on WSL2 Ubuntu 26.04, Clang 22.1.2, `RelWithDebInfo` +
 ASan/UBSan, 300 s per build from an empty grown corpus. "Before" is
-`ac3adm_objects` uninstrumented, as it shipped; "after" is instrumented, with a
+`iclforge_adm_objects` uninstrumented, as it shipped; "after" is instrumented, with a
 patch for the constructor above and the fixes below applied. The replay column
 feeds each grown corpus, plus the committed seeds and regressions, through the
 same instrumented binary with `-runs=0`:
@@ -334,12 +334,12 @@ The committed seeds and regressions replay at 1,379 / 1,573 on their own, so tha
 is the floor each grown corpus is adding to.
 
 The uninstrumented build's `cov` counts the harness translation unit alone: with
-no counters inside `ac3adm` or libbw64, an input reaching a new path in the reader
+no counters inside `iclforge::adm` or libbw64, an input reaching a new path in the reader
 did not register as new, and was not kept. Its execution rate was the higher one
 until the findings below were fixed — several of them cost whole seconds per
 execution, and the instrumented run reached 489 exec/s once they were gone.
 
-**What it found.** Two in libbw64, patched at the time; the rest in `ac3adm`'s
+**What it found.** Two in libbw64, patched at the time; the rest in `iclforge::adm`'s
 own code. Each has a reproducer under `fuzz/regressions/fuzz_adm_parse/`:
 
 - **`&buffer[0]` of an empty `std::vector<char>`**, in libbw64's `UnknownChunk`
@@ -352,7 +352,7 @@ own code. Each has a reproducer under `fuzz/regressions/fuzz_adm_parse/`:
   buffer is sized from the wrapped value and decoded against the real one. WAVE's
   own `nBlockAlign` field is 16 bits too, so the file's declared value matches the
   wrapped one and libbw64's sanity check passes. The 32,768-channel form divides
-  by the wrapped 0 instead. An uninstrumented `ac3adm` runs the overread as a
+  by the wrapped 0 instead. An uninstrumented `iclforge::adm` runs the overread as a
   clean execution and returns it as audio. (`block-align-wraps-to-zero`.)
 - **A 1.7 GB allocation**, from an RF64 `<data>` declaring more bytes than the
   file holds: `chunk_sizes_fit()` allows that, since a truncated recording is an
@@ -421,7 +421,7 @@ reasoning and for the upstream PRs proposing the same fixes, which would let
 each half of this patch be deleted once it lands.
 
 Re-measured the same way as the first pass, with this instrumented build now
-the sole build (there is no meaningful "before" any more - `ac3adm_objects` has
+the sole build (there is no meaningful "before" any more - `iclforge_adm_objects` has
 been instrumented since the first pass, and the library underneath it changed,
 not the instrumentation):
 
@@ -502,7 +502,7 @@ caller's own buffer, and a caller signs a stream it just encoded.
 ### The ADM harness is opt-in
 
 `fuzz_adm_parse` is the one harness here not built by default, and not in
-`fuzz/run.sh`'s default target list. `ac3adm` is the one library in this
+`fuzz/run.sh`'s default target list. `iclforge::adm` is the one library in this
 build with a third-party dependency footprint beyond {fmt}: `ICLFORGE_BUILD_ADM`
 is OFF by default, and turning it on additionally needs vcpkg's `adm` feature
 for libadm's Boost headers plus network access for the `FetchContent` pulls of
@@ -512,7 +512,7 @@ on and appends the harness to the default list.
 
 It is also the one harness whose reports may not land in ICL Forge's own code:
 BW64 chunk-walking is libbw64's and ADM XML is libadm's. That is worth
-knowing either way - the bytes reach them through an `ac3adm::` API this
+knowing either way - the bytes reach them through an `iclforge::adm::` API this
 project ships - but it changes what "fix it" means for a finding here.
 
 `iclforge::io::read_wav` takes a path rather than a byte span, so

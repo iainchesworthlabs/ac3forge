@@ -29,9 +29,9 @@ The decode and the audio both come from `iclforge::ac3`'s own decode path, runni
 The per-channel bed energy drives the two speaker rings (solid = ear-level, dashed = ceiling —
 ported from the desktop GUI's `SoundfieldView.qml`). For a stream carrying Atmos objects, each
 object's decoded position (OAMD,
-[`iclforge::ac3#168`](https://github.com/iainchesworthlabs/iclforge/pull/168)) moves in the
+[`iclforge#168`](https://github.com/iainchesworthlabs/iclforge/pull/168)) moves in the
 top-down/elevation room view, and a "solo object" control plays that object's own
-JOC-reconstructed audio ([`iclforge::ac3#169`](https://github.com/iainchesworthlabs/iclforge/pull/169)) —
+JOC-reconstructed audio ([`iclforge#169`](https://github.com/iainchesworthlabs/iclforge/pull/169)) —
 its isolated waveform, decoded from the bitstream, rather than a re-panned approximation of its
 slice of the bed. Drop in your own `.ac3`, `.ec3` or `.eac3` file to decode something other than
 the bundled fixture; a plain (non-Atmos) stream simply has zero objects.

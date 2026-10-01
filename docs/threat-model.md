@@ -76,7 +76,7 @@ guarantee:
   than touching memory; parsers check the flag at a frame or payload boundary instead of guarding
   each read. A truncated or hostile frame therefore decays into a `kTruncated`
   (`DecodeError::kTruncated`; `iclforge::ac4::Error::kTruncated` from the AC-4 inspector) rather than an
-  over-read. The IAB reader (`ac3iab`) is the exception to the design: its reader returns a
+  over-read. The IAB reader (`iclforge::iab`) is the exception to the design: its reader returns a
   `std::expected` from every read.
 - **Every fallible path returns a value, not an exception.** `std::expected<T, DecodeError>`
   throughout (`iclforge::ac4::DecodeError` for the AC-4 decoder). The codec core does not throw; the only
@@ -327,7 +327,7 @@ is still clamped to the bytes actually present.
 
 ### ADM XML and BW64
 
-`atmos-adm` and `ac3adm::` are **off by default** (`-DICLFORGE_BUILD_ADM=ON`) and, unlike every
+`atmos-adm` and `iclforge::adm::` are **off by default** (`-DICLFORGE_BUILD_ADM=ON`) and, unlike every
 other parser here, are not this project's own code: the XML and BW64/RF64 reading is vendored
 libadm and libbw64, plus Boost headers. That means:
 

@@ -45,8 +45,8 @@ adb -s <shield-ip>:5555 shell am start -n com.iclforge.shield/.MainActivity
 
 ## What's reused, what's new
 
-`iclforge::ac3` (`src/ac3/`) — the codec, `AtmosEncoder`, IEC 61937 framing — is fully
-platform-independent and is linked into the app **unmodified**, via a thin wrapper
+`iclforge::ac3` (`src/ac3/`) — the codec and `AtmosEncoder` — and the libraries it links, among them
+`iclforge::iec61937` for the IEC 61937 framing, are fully platform-independent and are linked into the app **unmodified**, via a thin wrapper
 `CMakeLists.txt` (`apps/android/app/src/main/cpp/CMakeLists.txt`) that `add_subdirectory()`s
 the real repo root rather than duplicating its target definitions. `iclforge::audio` (`src/audio/`)
 gains its own backend, `src/audio/src/backend/android/`, alongside `windows`/`alsa`/`pipewire`/

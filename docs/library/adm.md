@@ -175,7 +175,7 @@ via CMake `FetchContent` (see [`src/adm/CMakeLists.txt`](https://github.com/iain
 libadm is the EBU/BBC/IRT team's own repository, the same team that authored the underlying ITU-R
 Recommendations (BS.2088-1, BS.2076-2) themselves; libbw64's fork carries that team's original
 code forward with fixes of its own on top. Using both means this module's own code only has to
-translate an already-validated object graph into `ac3adm`'s own types
+translate an already-validated object graph into `iclforge::adm`'s own types
 ([`src/adm/src/adm_model.cpp`](https://github.com/iainchesworthlabs/iclforge/blob/main/src/adm/src/adm_model.cpp)), rather than re-implementing container-walking and XML/schema
 validation this project has no comparative advantage in getting exactly right on the first try.
 An earlier attempt at exactly that hand-rolled approach is what prompted switching to these
@@ -186,8 +186,9 @@ Neither library's own types appear in `iclforge::adm`'s public headers
 the boundary and stay an implementation detail, the same way this project keeps every other
 vendored dependency (e.g. Catch2 in `tests/`) out of its own public API. One practical reason
 beyond the usual "don't leak a dependency's API" one: libadm's own public C++ namespace is `adm`,
-which is why this module is `ac3adm` and not simply `adm` — the two would otherwise collide
-(`adm::AudioObject`, `adm::TypeDefinition`, `adm::Position`, ... are all defined by both).
+which is why this module's namespace is `iclforge::adm`, nested under the family's root, and every
+unqualified use of libadm's names in this project is written `::adm::` (`adm::AudioObject`,
+`adm::TypeDefinition`, `adm::Position`, ... are all defined by both).
 
 ## Why opt-in
 

@@ -19,7 +19,7 @@ target_link_libraries(your_target PRIVATE iclforge::c)
 
 `iclforge::c` resolves to whichever of the static or shared build the enclosing project's
 `BUILD_SHARED_LIBS` asks for, same as `iclforge::ac3`; an installed package exports both variants
-explicitly as `iclforge::c_static`/`iclforge::c_shared` — see [Using iclforge::ac3](index.md) for
+explicitly as `iclforge::c_static`/`iclforge::c_shared` — see [Using the libraries](index.md) for
 the equivalent `iclforge::ac3` linking recipe. Unlike `iclforge::ac3`, **both** `iclforge_c` variants
 statically embed the codec core, and the AC-4 libraries where `ICLFORGE_BUILD_AC4` is on,
 regardless of `BUILD_SHARED_LIBS`: a binding or embedder reaching
@@ -38,12 +38,12 @@ because the archive holds C++ objects: enable the CXX language beside C
 the C++ runtime and libm. With only C enabled the link goes through the C driver and stops at C++
 runtime symbols such as `operator new`. `iclforge::c_shared` carries its own runtime dependency
 and links from a C-only project as it is. Neither variant needs {fmt}, and
-[Using iclforge::ac3](index.md) says why.
+[Using the libraries](index.md) says why.
 
 A build that finds libraries through pkg-config runs
 `pkg-config --static --cflags --libs iclforge_c` for a static-only install. The line it prints
 names `libiclforge_ac3_static.a` and the C++ runtime along with `libiclforge_c_static.a`; the
-pkg-config paragraph of [Using iclforge::ac3](index.md) has the details.
+pkg-config paragraph of [Using the libraries](index.md) has the details.
 
 ## Conventions
 

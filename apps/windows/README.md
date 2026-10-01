@@ -29,7 +29,7 @@ The renaming of the programs (stage N1A of the re-layout) left the driver's iden
 for the same reason and because copies of it are installed: the hardware id `ROOT\Ac3ForgeNullSink`,
 the service `Ac3ForgeNullSink`, the INF, SYS and CAT file names, the endpoint and device names
 ("Desktop Atmos"), the names in the scripts that install and remove it, and the .NET namespace
-`ForgeGui` those scripts compile for themselves. A new hardware id would leave every installed
+`Ac3Forge` those scripts compile for themselves. A new hardware id would leave every installed
 copy orphaned, and Crucible finds the device by its names. What stage N1A did change is text that
 no code reads and no installed device is matched by: the INF's provider and manufacturer strings,
 the version resource's description and copyright line, and the notices, which now say "ICL Forge".

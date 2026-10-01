@@ -383,7 +383,7 @@ This header is pure, portable, zero-socket, zero-thread code — no I/O of any k
 fuzzed (`fuzz/fuzz_osc_parse.cpp`) and unit-tested (`tests/objects/test_scene_osc.cpp`) accordingly.
 The actual UDP listener, `iclforge::audio::LivePositionSource`, is a separate, app-serving-only piece
 and is **not** part of this installed library, for the same reason the rest of `iclforge::audio`
-isn't (see [Using iclforge::ac3](index.md)'s note on live audio); `forge live mode=atmos
+isn't (see [Using the libraries](index.md)'s note on live audio); `forge live mode=atmos
 positions=osc:[<bind>:]<port>` is where a reader can see it wired up end to end over a real
 socket.
 

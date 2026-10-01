@@ -24,7 +24,7 @@ nothing else in the chain.
 Default-on (`ICLFORGE_BUILD_IAMF`), installed/exported the same way as the container writers —
 unlike `iclforge::adm`, it has no third-party dependency to opt in around. The vcpkg port and
 the Conan recipe install it where asked for, off by default: `vcpkg install iclforge[iamf]`, or
-`-o "iclforge/*:iamf=True"` (see [Using iclforge::ac3](index.md)).
+`-o "iclforge/*:iamf=True"` (see [Using the libraries](index.md)).
 
 ```cpp
 iclforge::iamf::AudioTrack track{.samples_per_frame = iclforge::kSamplesPerFrame};

@@ -72,8 +72,8 @@ layout the stream is rendered onto.
 
 ## Running it
 
-On a board, with an I2S DAC wired to the three pins under `ICL Forge stream
-player` in `idf.py menuconfig` (BCLK, WS, DOUT — defaults 5, 6, 7):
+On a board, with an I2S DAC wired to the three pins under `iclforge hearth sink`
+in `idf.py menuconfig` (BCLK, WS, DOUT — defaults 5, 6, 7):
 
 ```bash
 . $IDF_PATH/export.sh

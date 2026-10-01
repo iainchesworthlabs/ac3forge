@@ -17,12 +17,12 @@ it directly. Four tiers, assigned per header below:
 
 - **Public** — the frozen surface once `v1.0.0` ships. Breaking one of these needs a major
   version bump afterward.
-- **Internal** — installed (`forge_objects` needs them visible, and a split install tree isn't
+- **Internal** — installed (`iclforge_ac3_objects` needs them visible, and a split install tree isn't
   worth building yet) but never covered by a compatibility promise, frozen or not. Free to
   change, rename, or disappear in any release.
 - **Diagnostic** — instrumentation and self-check machinery: real public symbols, but explicitly
   out of scope for both bindings already (`docs/library/header-map.md` already says as much for
-  `verify/*`, and [Using iclforge::ac3](index.md)'s pimpl note says the same for the `trace`
+  `verify/*`, and [Using the libraries](index.md)'s pimpl note says the same for the `trace`
   pointers a few config structs carry). Formalizing that existing intent as its own tier rather
   than leaving it implicit.
 - **In-tree only** — never installed or exported at all (`iclforge::audio`); already stated per-header
@@ -98,9 +98,9 @@ anything to deprecate *from*. The policy going forward:
   in `CHANGELOG.md` like any other change — a deprecation cycle promises a grace period this
   project isn't promising yet.
 - **At and after `v1.0.0`:** drop `DEFINE_NO_DEPRECATED` from every `generate_export_header()`
-  call (thirteen libraries — `forge`, `capi`, `matroska`, `mp4`, `mpegts`, `ac3adm`, `ac3iab`,
-  `admbridge`, `signing`, `iamf`, `ac4`, `ac4dec`, `ac4enc`; `forge_minimal` has no `SOVERSION`
-  promise to protect and can keep it).
+  call (eighteen libraries — `base`, `dsp`, `objects`, `render`, `iec61937`, `ac3`, `capi`,
+  `matroska`, `mp4`, `mpegts`, `adm`, `iab`, `admbridge`, `signing`, `iamf`, `ac4`, `ac4dec`,
+  `ac4enc`; `iclforge::ac3_minimal` has no `SOVERSION` promise to protect and can keep it).
   A symbol scheduled for removal gets `ICLFORGE_DEPRECATED` (or its module's equivalent) in the
   same minor release its replacement ships, stays for at least one further minor release, and is
   only removed in a major release. No symbol needs this yet, so no macro use is being added by
@@ -178,9 +178,9 @@ scoped as "an explicitly experimental module" gated behind its own `ICLFORGE_BUI
 page's policy just confirms that plan rather than overriding it; real interoperability, `IM6`,
 stays separately blocked on MLP/FBA source material that isn't public). A new module defaults to
 Experimental from its first merge, and only leaves that tier through a deliberate, documented
-decision on this page, the same way `ac3iab` will. `iclforge::render` is one: it moved into
-`iclforge::ac3` from the ESP32 player to serve the desktop player as well, and its speaker
-management is new with it.
+decision on this page, the same way `iclforge::iab` will. `iclforge::render` is one: it began in
+the ESP32 player and serves the desktop player as well, it has been a library of its own since the
+re-layout, and its speaker management is new with it.
 
 The AC-4 inspector, decoder and encoder (`iclforge::ac4`, `iclforge::ac4dec`, `iclforge::ac4enc`,
 [AC-4](ac4.md)) are Experimental too. Their API has the form
@@ -193,7 +193,7 @@ IAMF writer, is Experimental as a new module.
 (`-DICLFORGE_BUILD_ADM=ON`), but consumed for real by the ADM→Atmos bridging path and stable in
 shape since `IM2`/`IM7`. They're Public, not Experimental — opt-in build gating and API maturity
 are independent axes, and conflating "off by default" with "not yet stable" would understate how
-settled `ac3adm`'s reader actually is.
+settled `iclforge::adm`'s reader actually is.
 
 ## Release criteria
 

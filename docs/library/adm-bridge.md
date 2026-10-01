@@ -16,7 +16,7 @@ directions live here:
   programme is an `iclforge::Eac3Decoder`'s (its OAMD automation) or an `iclforge::ac4::Decoder`'s (each object's
   Annex F properties and updates). Driven end to end by `forge decode ... adm_out`.
 
-Both directions are the same "one place `ac3adm` and `iclforge::ac3`/`iclforge::oba` are allowed to meet"
+Both directions are the same "one place `iclforge::adm` and `iclforge::ac3`/`iclforge::oba` are allowed to meet"
 seam this module has always been, see [Commands](../forge/cli/commands.md) for both commands.
 
 **Opt-in, gated by the same flag as `iclforge::adm`.** `iclforge::admbridge` depends on both
@@ -49,7 +49,7 @@ Two hard constraints rule out folding this into either side it bridges:
   keep it with zero dependency on `iclforge::ac3`/`iclforge::oba`, and that does not change here.
 - `src/ac3` (`iclforge::ac3`, `iclforge::oba::AtmosEncoder`) is always built, unconditionally, by every
   configuration of this project. It cannot gain a dependency on the opt-in, Boost-requiring
-  `ac3adm` without breaking every default build.
+  `iclforge::adm` without breaking every default build.
 
 `iclforge::admbridge` is therefore its own module (`src/admbridge/`), PUBLIC-linking both — the same
 shape `iclforge::signing` uses for its own `iclforge::ac3` dependency. Like `iclforge::adm` itself
@@ -58,7 +58,7 @@ but shared-only: `iclforge::admbridge_shared`/the bare `iclforge::admbridge` ali
 `build_iab()` (`iclforge/admbridge/iab_bridge.hpp`) maps a whole parsed `iclforge::iab::IABitstreamFrame`
 sequence — from either of `iclforge::iab`'s two readers (`src/iab`: a bare elementary `.iab`
 file or a real MXF Track File) — onto this same `ObjectPath` layer, driven end to end by `forge
-atmos-iab` (see [Commands](../forge/cli/commands.md)). `iclforge::adm::AdmDocument` and `ac3iab::
+atmos-iab` (see [Commands](../forge/cli/commands.md)). `iclforge::adm::AdmDocument` and `iclforge::iab::
 IABitstreamFrame` are therefore both input shapes here, sharing the coordinate-conversion and
 `ObjectPath`-construction logic this module exists to keep independent of either container's own
 parsing — see "Bridging IAB" below for exactly what differs between the two.
@@ -129,10 +129,10 @@ an object in the downmix would have the receiving renderer spread it a second ti
 
 ## What does not get mapped
 
-- **`diffuse`** (§10.1) is parsed by `ac3adm` and dropped. It is a direct-versus-diffuse balance,
+- **`diffuse`** (§10.1) is parsed by `iclforge::adm` and dropped. It is a direct-versus-diffuse balance,
   not an extent; OAMD has no field for it, and folding it into `object_size` would misreport a
   decorrelation instruction as a physical size.
-- **`zoneExclusion`** (§10.4) and **`objectDivergence`** (§10.5) are not parsed by `ac3adm` at all
+- **`zoneExclusion`** (§10.4) and **`objectDivergence`** (§10.5) are not parsed by `iclforge::adm` at all
   — `iclforge::adm::AudioBlockFormat` has no field for either, so nothing is dropped so much as never
   read. Both have a partial image in OAMD (`zone_constraints_idx`, and `obj_div_block` in the
   `extended_object_element`), but neither is a clean mapping: BS.2076-2 excludes arbitrary

@@ -398,7 +398,7 @@ target_link_libraries(your_target PRIVATE iclforge::ac4dec)   # brings iclforge:
 target_link_libraries(your_target PRIVATE iclforge::ac4enc)   # likewise
 ```
 
-**Installed package** (`find_package(iclforge)`, see [Using iclforge::ac3](index.md)):
+**Installed package** (`find_package(iclforge)`, see [Using the libraries](index.md)):
 
 ```cmake
 find_package(iclforge REQUIRED)
@@ -421,7 +421,7 @@ c++ -std=c++23 packager.cpp $(pkg-config --cflags --libs ac4enc)
 
 `ICLFORGE_BUILD_AC4`, on by default, builds the AC-4 libraries. The vcpkg port and the Conan
 recipe install them where asked for, off by default: `vcpkg install iclforge[ac4]`, or
-`-o "iclforge/*:ac4=True"` (see [Using iclforge::ac3](index.md)). The C API, Python, Rust and
+`-o "iclforge/*:ac4=True"` (see [Using the libraries](index.md)). The C API, Python, Rust and
 WebAssembly bindings wrap the decoder and the encoder, the object encoder included ([C
 API](c-api.md#ac-4), [Python API](python-api.md#ac-4), [Rust API](rust-api.md#ac-4) and
 [WebAssembly](../platforms/wasm.md#ac-4-module)). Android's CMake build compiles the libraries and

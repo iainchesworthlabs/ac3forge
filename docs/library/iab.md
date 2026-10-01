@@ -41,7 +41,7 @@ cmake --preset config-windows-msvc-debug   # ICLFORGE_BUILD_IAB=ON by default
 
 The vcpkg port and the Conan recipe install it where asked for, off by default:
 `vcpkg install iclforge[iab]`, or `-o "iclforge/*:iab=True"` (see
-[Using iclforge::ac3](index.md)).
+[Using the libraries](index.md)).
 
 `forge atmos-iab` (needs `-DICLFORGE_BUILD_ADM=ON` — the same flag `iclforge::admbridge` itself rides,
 since that is the module with a consumer for this graph) is this module's own real-world driver,

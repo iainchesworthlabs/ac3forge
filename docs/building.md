@@ -185,7 +185,7 @@ profile builds has a third-party dependency. See
 platform/compiler pair. It inherits a `coverage` fragment setting
 `ICLFORGE_ENABLE_COVERAGE=ON` (see `cmake/Coverage.cmake`: gcov's `--coverage` on GCC and Clang,
 and on clang-cl LLVM's source-based coverage; MSVC just warns and skips it),
-`ICLFORGE_BUILD_ADM=ON` with vcpkg's `adm` feature (so the opt-in ADM pair — `ac3adm` and its
+`ICLFORGE_BUILD_ADM=ON` with vcpkg's `adm` feature (so the opt-in ADM pair — `iclforge::adm` and its
 bridge — is measured alongside the always-on library components) and `ICLFORGE_BUILD_CLI=ON`,
 since `apps/cli` is gated too. Only `ICLFORGE_BUILD_EXAMPLES` stays off, as a build-time saving: `examples/` is
 documentation that happens to compile, over an API surface `tests/` already covers, and each one
@@ -338,7 +338,7 @@ the failures of the last run; add `--output-on-failure` to any run to see a fail
 | `ICLFORGE_BUILD_MP4` | `ON` | Build `iclforge::mp4` (`src/mp4`), the standalone MP4/ISOBMFF container writer. Same all-off constraint as `ICLFORGE_BUILD_MATROSKA`. |
 | `ICLFORGE_BUILD_MPEGTS` | `ON` | Build `iclforge::mpegts` (`src/mpegts`), the standalone MPEG-TS container writer. Same all-off constraint as `ICLFORGE_BUILD_MATROSKA`. |
 | `ICLFORGE_BUILD_IAB` | `ON` | Build `iclforge::iab` (`src/iab`), the standalone SMPTE ST 2098-2 Immersive Audio Bitstream reader. Like the three container writers above it needs no opt-in third-party library, so it defaults on the same way; unlike them nothing in `apps/` or `examples/` links it yet, so there is no all-off guard — `tests/CMakeLists.txt` simply adds its test file when this is on. |
-| `ICLFORGE_BUILD_IAMF` | `ON` | Build `iclforge::iamf` (`src/iamf`), the standalone IAMF v1.1 OBU and ISOBMFF writer. Same zero-third-party-dependency shape as `ac3iab`, and like it linked by nothing in `apps/` (`examples/mux_iamf.cpp` builds when this is on). The vcpkg port's `iamf` feature and the Conan recipe's `iamf` option install it, off by default. |
+| `ICLFORGE_BUILD_IAMF` | `ON` | Build `iclforge::iamf` (`src/iamf`), the standalone IAMF v1.1 OBU and ISOBMFF writer. Same zero-third-party-dependency shape as `iclforge::iab`, and like it linked by nothing in `apps/` (`examples/mux_iamf.cpp` builds when this is on). The vcpkg port's `iamf` feature and the Conan recipe's `iamf` option install it, off by default. |
 | `ICLFORGE_BUILD_AC4` | `ON` | Build the AC-4 libraries: the inspector `iclforge::ac4` (`src/ac4`), the decoder `iclforge::ac4dec` (`src/ac4dec`), the encoder `iclforge::ac4enc` (`src/ac4enc`) and the core the decoder and the encoder share (`src/ac4core`) — see [AC-4](library/ac4.md). The inspector, the decoder and the encoder are installed and exported, and the core with the static libraries that call into it. `OFF` needs the CLI, the GUI and the tests off too, and Hearth unless it is the ESP-IDF player half (the root `CMakeLists.txt` guards), since they link them. The Python wheel binds them (`iclforge.ac4`), the WebAssembly preset builds them for the `iclforge_wasm_ac4` module, and the Android app builds them without linking them yet; the ESP-IDF component and the minimum-footprint presets turn the option off and take the decoder alone through `ICLFORGE_MINIMAL_AC4`. The vcpkg port's `ac4` feature and the Conan recipe's `ac4` option install them, off by default. |
 | `ICLFORGE_BUILD_CAPI` | `ON` | Build `iclforge::c` (`src/capi`), the C API over the encode/decode core — see [C API](library/c-api.md). Depends on nothing but `iclforge::ac3_static`, so unlike `ICLFORGE_BUILD_ADM` there is no extra dependency footprint to opt out of. |
 | `ICLFORGE_BUILD_PYTHON` | `OFF` | Build the pybind11 extension module (`python/`). Off by default for the same reason as `ICLFORGE_BUILD_ADM`: nothing under `src/`, `apps/`, `tests/` or `examples/` links it, so a normal C++ build is unaffected either way. `python/pyproject.toml` turns it on itself via scikit-build-core when `pip install`/cibuildwheel drives the configure. |
@@ -1030,7 +1030,7 @@ second `iclforge-dev-*` archive alongside the usual end-user one, for a third pa
 codec via `find_package(iclforge)` rather than running it as a program; on Linux, `library`/
 `libruntime` also become real `libFOO`/`libFOO-dev`-style DEB/RPM packages rather than only an
 archive. See
-[Using iclforge::ac3](library/index.md) for the CMake side and
+[Using the libraries](library/index.md) for the CMake side and
 [docs/releasing.md](releasing.md#what-gets-published) for exactly what ships where.
 `iclforge::audio` (live capture/monitor/passthrough, `src/audio/`) stays link-only and unpackaged -
 a CLI/GUI implementation detail, not part of either component.
@@ -1064,7 +1064,7 @@ staged Conan recipe at `packaging/conan/` has an option for each of the same.
 [docs/releasing.md](releasing.md#vcpkg-port) records why — a
 curated-registry port's default features may only enable behaviors, not additional public
 APIs/targets. A consumer uses the installed package via `find_package(iclforge)` exactly as
-[Using iclforge::ac3](library/index.md) documents. The per-release submission flow is in
+[Using the libraries](library/index.md) documents. The per-release submission flow is in
 [docs/releasing.md](releasing.md#vcpkg-port).
 
 ## The standards documents
@@ -1272,7 +1272,7 @@ The codec's hot kernels are vectorised, and the vector types they are written ag
 a directory CMake chooses — never from an `#ifdef`. `src/arithmetic/variants/` holds
 `arch-generic/`, `arch-x86_64/` and `arch-aarch64/`, each carrying one identically-pathed
 `iclforge/arithmetic/detail/simd.hpp`; `src/arithmetic/CMakeLists.txt` puts exactly one of them on
-`iclforge::arithmetic`'s include path, which `forge_objects` and `src/ac4core` link, so every `#include "iclforge/arithmetic/detail/simd.hpp"` in the
+`iclforge::arithmetic`'s include path, which `iclforge_ac3_objects` and `src/ac4core` link, so every `#include "iclforge/arithmetic/detail/simd.hpp"` in the
 core resolves to it and no translation unit ever asks what it is being compiled for. This is the
 same mechanism `src/base/variants/profiling-tracy_{enabled,disabled}/` uses for the
 profiling seam and `src/audio/src/backend/<backend>/` uses for the operating system, and it is what
