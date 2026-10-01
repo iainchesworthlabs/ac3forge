@@ -60,7 +60,7 @@ namespace {
 constexpr bool kProbeSevenOne = ICLFORGE_PROBE_SEVEN_ONE != 0;
 
 // --- heap accounting -------------------------------------------------------
-// The same global replacement probe.cpp uses, and for the same reason: PF7's
+// The same global replacement probe.cpp uses, and for the same reason: this profile's
 // requirement is no heap traffic in the codec loop, and the honest way to
 // report progress against it is a number per frame that a CI leg can hold.
 //

@@ -8,7 +8,7 @@
 #include "iclforge/ac3/export.hpp"
 
 // Named loudness/true-peak delivery gates a decoded stream's measurement can
-// be checked against - roadmap items C2 (`forge qc`) and IO11. Each preset
+// be checked against (`forge qc`). Each preset
 // states a target integrated loudness, how that target is enforced, a true
 // peak ceiling, and the document/clause/date it was read out of - see
 // qc_preset()'s own comment on each case for the exact wording cited; every

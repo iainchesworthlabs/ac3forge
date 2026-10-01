@@ -98,7 +98,7 @@ test('encodes a known stereo tone, QC verdict matches it, and it round-trip deco
         const integratedLkfs = qc.integratedLkfs();
         const truePeakDbtp = qc.truePeakDbtp();
 
-        // Ported to UX5's scanStream()+PushDecoder surface (the whole-file
+        // Ported to the scanStream()+PushDecoder surface (the whole-file
         // Decoder class no longer exists): push every scanned access unit
         // and take the format from the last non-held-back frame.
         const scanned = decodeModule.scanStream(streamBytes);

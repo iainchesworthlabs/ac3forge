@@ -285,8 +285,8 @@ run_ffmpeg_check enc_bsi_timecode.ac3
 run encode bootstrap_51.wav enc_fastmdct_off.ac3 256 51 fast-mdct=off
 run decode enc_fastmdct_off.ac3 enc_fastmdct_off.wav
 run_ffmpeg_check enc_fastmdct_off.ac3
-# fast-imdct=off: the decode-side half of the same choice, and until roadmap
-# VX10 the only one of the two with no matrix row at all. Every other `run
+# fast-imdct=off: the decode-side half of the same choice, and until the
+# reference-mode gate the only one of the two with no matrix row at all. Every other `run
 # decode` in this script runs the default §7.9.4 fast inverse, so this is what
 # keeps the direct step-3 evaluation - the form every fast-IMDCT test is
 # validated against - walked under the sanitizers too. The E-AC-3 counterpart
@@ -504,7 +504,7 @@ run eac3-encode bootstrap_51.wav eac3_mixdef_reserved.ec3 192 none mono \
 run decode eac3_mixdef_reserved.ec3 eac3_mixdef_reserved.wav
 run_ffmpeg_check eac3_mixdef_reserved.ec3
 
-# --- E-AC-3 short syncframes (E-AC-3 short syncframes): numblkscod 0/1/2, each a real
+# --- E-AC-3 short syncframes: numblkscod 0/1/2, each a real
 # stream through both decoders for the first time - the decoder's own
 # numblkscod != 3 path existed only because it is spec-derived, never because
 # a real stream had driven it. "cpl+numblkscod:1" covers an explicit tool
@@ -517,7 +517,7 @@ run_ffmpeg_check eac3_mixdef_reserved.ec3
 # shortest frame too, not just the bed alone. ------------------------------
 # Rates scale with 6/blocks so every leg carries the same real bytes per
 # frame the six-block 192 kbit/s leg does. These used to say 192 across the
-# board and only encoded because of the EQ11-era sizing defect this branch
+# board and only encoded because of the short-syncframe sizing defect this branch
 # fixes (every short frame silently carried the full six-block byte budget):
 # at an HONEST budget, 192 kbit/s in a one-block frame is 128 bytes, which
 # 5.1's side information alone exceeds - the encoder now correctly refuses
@@ -895,7 +895,7 @@ run levels bootstrap_51.wav
 run levels enc_stereo.ac3
 run levels eac3enc_none.ec3
 run loudness bootstrap_51.wav
-# qc (bitstream-aware loudness QC): bitstream-aware loudness QC over an already-encoded
+# qc: bitstream-aware loudness QC over an already-encoded
 # stream. Measure-only (no preset=) always exits 0 on a clean decode, same
 # as every other `run` call in this script. preset=/preset=all additionally
 # gate the measurement against a named delivery spec - a real PASS/FAIL

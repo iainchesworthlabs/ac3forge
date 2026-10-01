@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  Roadmap UX2's macOS leg: a custom Info.plist (CMake's own default one,
+  The macOS leg of the desktop integration: a custom Info.plist (CMake's own default one,
   MacOSXBundleInfo.plist.in, carries none of the document-type keys below,
   and CFBundleDocumentTypes/UTExportedTypeDeclarations can only be added by
   supplying a template of our own via MACOSX_BUNDLE_INFO_PLIST). Every

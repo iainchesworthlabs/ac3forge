@@ -552,7 +552,7 @@ TEST_CASE("oba::joc::reconstruct recovers well-separated objects through the rea
 
 TEST_CASE("QMF-domain JOC reconstructs objects at least as well as the MDCT-band path",
           "[atmos][joc][decoder][qmf]") {
-    // legacy item DC10's actual question, measured rather than argued: the same
+    // The actual question, measured rather than argued: the same
     // objects, the same placements, the same real encoded bytes, differing
     // only in which domain the matrix is estimated and applied in. Both legs
     // run encoder and decoder in the SAME domain, because that is the only

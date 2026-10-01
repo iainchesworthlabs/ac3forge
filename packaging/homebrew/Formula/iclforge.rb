@@ -48,7 +48,7 @@ class Iclforge < Formula
     system "cmake", "--install", "build"
 
     # `cmake --install` already placed the generated man page and the four
-    # shell completion scripts (roadmap IO8 - see apps/cli/CMakeLists.txt,
+    # shell completion scripts (see apps/cli/CMakeLists.txt,
     # which generates them by running the freshly built forge) under
     # #{prefix}/share. Homebrew links share/man/man1 and
     # share/zsh/site-functions itself, so those two need nothing here. bash
@@ -67,7 +67,7 @@ class Iclforge < Formula
     # silently stops shipping them is the failure worth catching here.
     assert_path_exists man1/"forge.1"
     assert_match "_forge", (bash_completion/"forge").read
-    # Per-command help, and the documented exit-code scheme (roadmap IO8):
+    # Per-command help, and the documented exit-code scheme:
     # a usage error is 1, not an undifferentiated non-zero.
     assert_match "forge encode", shell_output("#{bin}/forge help encode")
     shell_output("#{bin}/forge encode 2>&1", 1)

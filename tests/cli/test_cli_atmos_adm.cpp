@@ -17,8 +17,8 @@
 #include "iclforge/ac3/core/tables.hpp"
 #include "iclforge/ac3/decoder/decoder.hpp"
 
-// forge's 'atmos-adm' command (ADM BWF reader phase 3 of 3 - 's "ADM BWF reader
-// feeding the JOC encoder" entry; apps/cli/main.cpp's run_atmos_adm). Real, subprocess-level
+// forge's 'atmos-adm' command (ADM BWF reader, phase 3 of 3, feeding the JOC
+// encoder; apps/cli/main.cpp's run_atmos_adm). Real, subprocess-level
 // integration tests: the same "run the actual built binary, inspect what it wrote" shape
 // tests/cli/test_cli.cpp's own atmos-encode test uses, and for the same reason - main.cpp compiles
 // everything into one anonymous-namespace binary with no library surface run_atmos_adm's own

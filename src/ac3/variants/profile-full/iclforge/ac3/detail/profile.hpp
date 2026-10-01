@@ -1,7 +1,7 @@
 #pragma once
 
 // Build-profile facts, in the variant every ORDINARY build compiles
-// (minimum-footprint decoder profile). The minimum-footprint decoder profile compiles the
+// (the full profile). The minimum-footprint decoder profile compiles the
 // identically-pathed header under src/internal/profile/minimal/ instead;
 // src/ac3/CMakeLists.txt picks the directory, so no source file here asks
 // which profile it is in with a preprocessor conditional

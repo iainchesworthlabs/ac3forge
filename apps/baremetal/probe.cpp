@@ -51,7 +51,7 @@ namespace {
 // --- heap accounting -------------------------------------------------------
 // Global replacement, so every allocation the archive makes is seen and not
 // only the ones this file makes. The counters are the point of the exercise:
-// PF7's requirement is "no heap traffic in the decode loop", and the honest
+// The profile's requirement is "no heap traffic in the decode loop", and the honest
 // way to report progress against it is a number, per frame, that a CI leg can
 // hold to a ceiling.
 std::size_t g_alloc_calls = 0;
@@ -91,7 +91,7 @@ std::size_t g_largest_alloc = 0;
 // to change, so the exact sizes are worth the eighteen words of storage.
 //
 // Only allocations at or above the threshold are tracked - the small ones are
-// the per-block churn PF7's gap is about, and their sizes are not the question.
+// the per-block churn the profile's gap is about, and their sizes are not the question.
 constexpr std::size_t kLargeAllocBytes = 8192;
 constexpr std::size_t kLargeSlots = 12;
 std::array<std::size_t, kLargeSlots> g_large_size{};
@@ -123,7 +123,7 @@ void note_large_alloc(std::size_t size, bool freeing) {
 // Every allocation ever made, by size bucket - a COUNT, not a live total, and
 // never decremented. The other two bucket arrays answer "how much is resident"
 // (at the peak, and at the end); this one answers "how much traffic", which is
-// the question PF7's open gap is actually about. A buffer allocated and freed
+// the question the profile's open gap is actually about. A buffer allocated and freed
 // every frame never appears in a live figure at all and is exactly the thing
 // worth finding.
 //

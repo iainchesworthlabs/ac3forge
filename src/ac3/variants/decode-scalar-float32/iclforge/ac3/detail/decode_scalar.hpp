@@ -1,7 +1,7 @@
 #pragma once
 
 // The type the DECODER carries its coefficients, transform scratch and
-// overlap-add history in (minimum-footprint decoder profile's float32 gap), in the FLOAT variant.
+// overlap-add history in (float32 for the minimum-footprint profile), in the FLOAT variant.
 // See the double variant under src/internal/scalar/float64/ for what this seam
 // is and why it is separate from ac3/internal/profile.hpp.
 

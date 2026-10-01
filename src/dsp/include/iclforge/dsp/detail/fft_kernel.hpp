@@ -59,7 +59,7 @@ namespace iclforge::internal {
 // complex multiply (which carries j-1 accumulated rounding steps by its j-th
 // butterfly).
 //
-// Scalar (minimum-footprint decoder profile's float32 gap): the type the twiddles are STORED in.
+// Scalar (float32 for the minimum-footprint profile): the type the twiddles are STORED in.
 // They are still COMPUTED in double - see the angle comment in the constructor
 // below, which is an argument about std::cos of a reduced angle and does not
 // survive being restated in float - and narrowed once on the way into the

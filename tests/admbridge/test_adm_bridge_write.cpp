@@ -19,7 +19,7 @@
 #include "iclforge/objects/motion.hpp"
 #include "iclforge/adm/ac3adm.hpp"
 
-// Roadmap item IM2 ("JOC -> ADM BWF writer") - the write-direction counterpart of this
+// The JOC -> ADM BWF writer - the write-direction counterpart of this
 // directory's own test_adm_bridge.cpp flagship test, and driven the same real way: a real
 // AtmosEncoder/Eac3Decoder round trip, not a mocked one. Where that file starts from a
 // byte-level ADM fixture and ends at a decoded bitstream, this one starts from a decoded

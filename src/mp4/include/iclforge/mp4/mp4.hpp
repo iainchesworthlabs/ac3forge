@@ -39,7 +39,7 @@
 // fragment() below (ROADMAP.md's A2) is the fMP4/CMAF follow-up mux() itself
 // used to defer: an initialization segment plus one or more media segments,
 // built from the same opaque AudioTrack/frame shape - see its own comment
-// further down. FragmentWriter beside it (IO4) is the incremental form of the
+// further down. FragmentWriter beside it is the incremental form of the
 // same thing, for a session whose length is not known up front. mp4/hls.hpp
 // and mp4/dash.hpp build the HLS media playlist and DASH MPD that point at
 // what either produces.
@@ -288,7 +288,7 @@ struct FragmentedOutput {
     const AudioTrack& track, std::span<const std::vector<std::byte>> frames,
     const FragmentOptions& options = {});
 
-// iclforge::matroska::Writer's and iclforge::mpegts::Writer's sibling (ROADMAP.md's IO4), for a
+// iclforge::matroska::Writer's and iclforge::mpegts::Writer's sibling, for a
 // session whose length is not known up front - a live capture, where
 // fragment() above cannot help: it needs every frame before it can group them
 // into fragments at all. A fragmented movie is the one container shape this

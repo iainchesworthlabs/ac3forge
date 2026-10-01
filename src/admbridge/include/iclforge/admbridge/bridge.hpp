@@ -211,7 +211,7 @@ struct BridgeResult {
 [[nodiscard]] ICLFORGE_ADMBRIDGE_EXPORT std::expected<BridgeResult, BridgeError> build(
     const iclforge::adm::AdmDocument& document, std::string_view programme_id = {});
 
-// --- Write direction: roadmap item IM2 ("JOC -> ADM BWF writer") ---------------------------
+// --- Write direction: the JOC -> ADM BWF writer ---------------------------
 //
 // The mirror image of build() above: instead of mapping an already-parsed
 // iclforge::adm::AdmDocument onto AtmosEncoder's input shape, this maps a DECODED E-AC-3/Atmos

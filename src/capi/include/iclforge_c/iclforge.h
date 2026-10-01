@@ -6,7 +6,7 @@
 #include "iclforge_c/export.h"
 #include "iclforge_c/version.h"
 
-/* iclforge's C API — C API: a stable, minimal C-callable surface
+/* iclforge's C API: a stable, minimal C-callable surface
  * over the encode/decode core, for bindings and embedding by callers that
  * cannot or do not want to link C++23.
  *

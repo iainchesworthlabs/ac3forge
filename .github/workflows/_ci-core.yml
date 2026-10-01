@@ -576,7 +576,7 @@ jobs:
         env:
           STATUS: ${{ job.status }}
         run: echo "status=$STATUS" >> "$GITHUB_OUTPUT"
-  # legacy item AP4: an ABI gate for the shared libraries, over the
+  # An ABI gate for the shared libraries, over the
   # linux-llvm-shared build. Two independent checks, both against
   # config-linux-llvm-shared (already Debug - has DWARF - and
   # BUILD_SHARED_LIBS=ON):
