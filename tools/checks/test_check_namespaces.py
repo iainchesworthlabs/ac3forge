@@ -58,10 +58,10 @@ class Namespaces(unittest.TestCase):
         self.assertIn("2 public headers in 1 libraries: 0 failures", out)
 
     def test_a_header_in_another_librarys_namespace_fails_and_names_it(self) -> None:
-        write(self.root, header("ac3"), "namespace iclforge::meta {\nstruct A {};\n}\n")
+        write(self.root, header("ac3"), "namespace iclforge::mp4 {\nstruct A {};\n}\n")
         code, out = self.run_check({"ac3": ["ac3"]})
         self.assertEqual(code, 1)
-        self.assertIn("src/ac3/include/iclforge/ac3/x.hpp: opens iclforge::meta", out)
+        self.assertIn("src/ac3/include/iclforge/ac3/x.hpp: opens iclforge::mp4", out)
 
     def test_a_library_may_have_several_namespaces_when_the_table_says_so(self) -> None:
         write(
@@ -104,7 +104,7 @@ class Namespaces(unittest.TestCase):
 
     def test_comments_and_strings_do_not_count(self) -> None:
         text = (
-            '// namespace iclforge { int x; }\nconst char* s = "namespace iclforge::meta {";\n'
+            '// namespace iclforge { int x; }\nconst char* s = "namespace iclforge::mp4 {";\n'
             "/* namespace iclforge::render { */\nnamespace iclforge::ac3 {\n}\n"
         )
         write(self.root, header("ac3"), text)
@@ -170,9 +170,9 @@ class Namespaces(unittest.TestCase):
 
     def test_the_census_lists_what_each_library_opens_and_what_declares_into_the_root(self) -> None:
         write(self.root, header("ac3"), "namespace iclforge {\nint f();\n}\n")
-        write(self.root, header("ac3", "io.hpp"), "namespace iclforge::io {\n}\n")
+        write(self.root, header("ac3", "io.hpp"), "namespace iclforge::mp4 {\n}\n")
         out = cn.census(self.root, cn.tracked(self.root))
-        self.assertIn("ac3: 2 headers open io (1)", out)
+        self.assertIn("ac3: 2 headers open mp4 (1)", out)
         self.assertIn("declares into the root: src/ac3/include/iclforge/ac3/x.hpp", out)
 
 
