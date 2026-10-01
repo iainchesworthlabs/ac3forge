@@ -30,3 +30,8 @@ af6b96212eae0a22514aec67bd68c4a061854a41  # S4: paths in text follow the moved p
 758ac01b8ac625a49c0973d04c1a124dd0bac294  # N1A: wrap the lines the program-names pass pushed past 100 columns
 377c3d5ef3811d2ba334bc762c4500eb3bb180fc  # N1A: lupdate and the pseudo-locale generator on the renamed sources
 5b9ada431ba1c655ed9eb13f45bd71dd5d9ca772  # N1A: clang-format the settings migration and its tests
+
+# N1D, the Windows driver's names: what n1d_driver_names.py gives on its parent, and the lines clang-format wrapped
+# after it (the commit that moves the three files, the tool's commit and the hand-written one are not listed)
+49bb386eb117413cb36188e47f244c3cbe48a1e9  # N1D: the driver's identity and its endpoint's name, as the script rewrites them
+33e125f2ac71c33f3fac7b08feca8b52916e85e9  # N1D: wrap the lines the endpoint's new name pushed past 100 columns
