@@ -38,7 +38,7 @@ This directory is derived from Microsoft's **AudioCodec** ACX sample (`audio/Acx
 [microsoft/Windows-driver-samples](https://github.com/microsoft/Windows-driver-samples)), which
 is licensed under the **Microsoft Public License (MS-PL)**, reproduced in [LICENSE](LICENSE). The
 MS-PL is a free licence but the FSF lists it as incompatible with the GPL, under which the rest
-of this repository is licensed. That is fine here because this driver is a separate work: a kernel-mode
+of ICL Forge is licensed. That is fine here because this driver is a separate work: a kernel-mode
 binary that shares no code with the GPL application, is not linked into it, and is reached only
 through public Windows APIs. The modifications in this directory are offered under the same
 MS-PL terms as the sample. Nothing in here is `#include`d or linked anywhere else in the

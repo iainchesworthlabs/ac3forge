@@ -8,7 +8,7 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/GitVersionDerivation.cmake")
 project(iclforge
     VERSION ${DERIVED_VERSION_SEMVER}
     DESCRIPTION "Clean-room AC-3 (ATSC A/52), E-AC-3 and AC-4 encoder and decoder with a spatial object layer"
-    HOMEPAGE_URL "https://github.com/iainchesworthlabs/ac3forge"
+    HOMEPAGE_URL "https://github.com/iainchesworthlabs/iclforge"
     LANGUAGES CXX)
 
 # CMake's project() VERSION field can only hold M.M.P, so a tag's prerelease
@@ -168,19 +168,19 @@ option(ICLFORGE_BUILD_AC4 "Build the standalone AC-4 bitstream inspector, decode
 
 # iclforge::iab (src/iab) - IAB reader, phase 1: a standalone reader for SMPTE
 # ST 2098-2's Immersive Audio Bitstream. Like the three container writers above, it needs no
-# opt-in third-party library (unlike ac3adm, see its own option() below), so it defaults ON the
+# opt-in third-party library (unlike iclforge::adm, see its own option() below), so it defaults ON the
 # same way; unlike them, nothing in apps/cli, apps/gui or examples/ links it yet (IAB reader's
 # phase 3 is what will eventually give it a consumer), so there is no matching FATAL_ERROR
-# guard here - tests/CMakeLists.txt only adds ac3iab's own test file and links iclforge::iab
+# guard here - tests/CMakeLists.txt only adds iclforge::iab's own test file and links iclforge::iab
 # when this option is on, the same conditional shape it already uses for iclforge::adm/
 # ICLFORGE_BUILD_ADM.
 option(ICLFORGE_BUILD_IAB "Build the standalone Immersive Audio Bitstream reader (src/iab)" ON)
 
 # iclforge::iamf (src/iamf) - IAMF writer, phase 1: a standalone OBU/ISOBMFF writer for AOM's
 # IAMF (Immersive Audio Model and Formats) v1.1.0, emitting `ipcm` substreams for a channel-based
-# 7.1.4 element. Same zero-third-party-dependency shape as ac3iab immediately above (unlike
-# ac3adm, see its own option() below), so it defaults ON the same way and for the same reason;
-# also like ac3iab, nothing in apps/cli, apps/gui or examples/ links it unconditionally yet (only
+# 7.1.4 element. Same zero-third-party-dependency shape as iclforge::iab immediately above (unlike
+# iclforge::adm, see its own option() below), so it defaults ON the same way and for the same reason;
+# also like iclforge::iab, nothing in apps/cli, apps/gui or examples/ links it unconditionally yet (only
 # examples/mux_iamf.cpp does, guarded on this option) - see src/iamf/CMakeLists.txt's own header
 # comment.
 option(ICLFORGE_BUILD_IAMF "Build the standalone IAMF OBU/ISOBMFF writer (src/iamf)" ON)
@@ -556,7 +556,7 @@ endif()
 # ICLFORGE_BUILD_ADM (default OFF, unlike the three above - see the option() itself for why).
 if(ICLFORGE_BUILD_ADM)
     # IAB reader bridge, phase 3: iclforge::admbridge's own IAB mapping (src/admbridge/src/iab_bridge.cpp)
-    # names ac3iab::IABitstreamFrame in a public header, so it needs the src/iab add_subdirectory()
+    # names iclforge::iab::IABitstreamFrame in a public header, so it needs the src/iab add_subdirectory()
     # above to have actually run. ICLFORGE_BUILD_IAB defaults ON, unlike ICLFORGE_BUILD_ADM, so this
     # is the one combination that can silently fail to configure without an explicit guard - every
     # other ICLFORGE_BUILD_ADM consequence below only ever depends on flags that are already
@@ -568,8 +568,8 @@ if(ICLFORGE_BUILD_ADM)
 
     add_subdirectory(src/adm)
 
-    # iclforge::admbridge - ADM BWF → JOC bridge, phase 2: maps ac3adm's parsed ADM graph onto
-    # ac3::oba::AtmosEncoder. Depends on iclforge::ac3 (added above), iclforge::adm (just added) and
+    # iclforge::admbridge - ADM BWF → JOC bridge, phase 2: maps iclforge::adm's parsed ADM graph onto
+    # iclforge::oba::AtmosEncoder. Depends on iclforge::ac3 (added above), iclforge::adm (just added) and
     # (IAB reader phase 3) iclforge::iab (added earlier, guarded above), so it is meaningless
     # without ICLFORGE_BUILD_ADM - gated by the same flag rather than a new option of its own; see
     # src/admbridge/CMakeLists.txt's own header comment for the full reasoning, including why this
@@ -595,7 +595,7 @@ endif()
 # exist), before include(Packaging) (CPack's library component packages exactly what gets
 # install()'d here). Deliberately not iclforge::audio - see cmake/InstallLibrary.cmake's own header
 # comment for why. iclforge::adm and iclforge::admbridge ARE installed/exported here (ICLFORGE_BUILD_ADM
-# block) but SHARED ONLY, unlike every other component - ac3adm PRIVATE-embeds the third-party
+# block) but SHARED ONLY, unlike every other component - iclforge::adm PRIVATE-embeds the third-party
 # libbw64/libadm (FetchContent'd, never installed/exported by this project in their own right,
 # see src/adm/CMakeLists.txt's header comment), which only a self-contained SHARED library can
 # absorb without either re-exporting them or shipping a STATIC archive with genuinely unresolved

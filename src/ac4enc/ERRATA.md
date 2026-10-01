@@ -434,12 +434,12 @@ output level's gain and no DRC, so an object presentation refuses DRC gains.
 
 ## The MP4 sample entry's dac4
 
-`ac4::build_dac4()` in `src/ac4` writes Annex E.6's `ac4_dsi_v1()` from a table of contents, for the
-encoder's MP4 output and for `ac3cli mp4` alike. Every presentation of a bitstream_version 2 table of
+`iclforge::ac4::build_dac4()` in `src/ac4` writes Annex E.6's `ac4_dsi_v1()` from a table of contents, for the
+encoder's MP4 output and for `forge mp4` alike. Every presentation of a bitstream_version 2 table of
 contents is derived whole (Annex E.10 and E.11): a single substream group, each configuration of Table
 53, channel-coded, A-JOC and direct-coded object groups, and an alternative presentation's name and
-targets where the writer gives them (an encoder knows them; `ac3cli mp4` reads them with the decoder);
-what it cannot derive whole it refuses, and `ac4::dac4_refusal()` says why. These are the readings it
+targets where the writer gives them (an encoder knows them; `forge mp4` reads them with the decoder);
+what it cannot derive whole it refuses, and `iclforge::ac4::dac4_refusal()` says why. These are the readings it
 takes. Where the evidence is DEE's MP4 muxer, the box it writes is the box `build_dac4()` writes, byte for
 byte (`tests/ac4/test_ac4.cpp`, `tools/checks/check_ac4_encode_readers.py`): for the committed DEE
 streams and the encoder's single-presentation streams (but for the 3/2/2 layout's top front pair, below),
@@ -503,7 +503,7 @@ every configuration's substream groups as written.
   stream's table of contents alone leaves out the closing byte that holds them, as its `pres_bytes`
   allows.
 - **Evidence:** Streams, for the encoder's output: DEE's muxer writes the same. For DEE's streams it
-  writes mode 2 and sets `de_indicator`, which `ac3cli mp4` cannot see from the table of contents. Text
+  writes mode 2 and sets `de_indicator`, which `forge mp4` cannot see from the table of contents. Text
   for configuration 6.
 
 ### A presentation's channel mode, core and channel groups
@@ -556,11 +556,11 @@ every configuration's substream groups as written.
 
 ## Manifests and CMAF tracks
 
-`ac3cli fmp4`, and `record` and `live` with `container=fmp4`, fragment AC-4 into a CMAF track (Part 2
+`forge fmp4`, and `record` and `live` with `container=fmp4`, fragment AC-4 into a CMAF track (Part 2
 Annex H) with an HLS playlist and a DASH MPD (Annex G). `src/ac4` reads what the manifests say off the
-table of contents (`ac4::signalled_presentation()`, `ac4::rfc6381_codec_string()`,
-`ac4::dash_channel_configuration()`, `ac4::dash_supplemental_properties()`,
-`ac4::presentation_channel_count()`), and `src/mp4` writes the track, each fragment starting at a sync
+table of contents (`iclforge::ac4::signalled_presentation()`, `iclforge::ac4::rfc6381_codec_string()`,
+`iclforge::ac4::dash_channel_configuration()`, `iclforge::ac4::dash_supplemental_properties()`,
+`iclforge::ac4::presentation_channel_count()`), and `src/mp4` writes the track, each fragment starting at a sync
 sample (E.3) and listing each sample's flags where a fragment holds a frame that is not an I-frame
 (E.2). These are the readings.
 
@@ -611,7 +611,7 @@ sample (E.3) and listing each sample's flags where a fragment holds a frame that
 ### dialnorm_bits
 
 - **Where:** Part 1 4.3.12.2.1: the dialogue level in 0.25 dB steps from 0 to -31.75 dBFS.
-- **Reading:** `dialnorm_bits` is the level's magnitude over 0.25, rounded; `ac3cli ac4-encode`'s
+- **Reading:** `dialnorm_bits` is the level's magnitude over 0.25, rounded; `forge ac4-encode`'s
   `dialnorm=` takes it in steps of 0.25 dB from 0 to 31.75, as the field is coded.
 - **Evidence:** Readers.
 
@@ -720,7 +720,7 @@ these:
   group, carries a `presentation_id` in every frame, no two the same; a configuration 6 presentation,
   EMDF payloads alone, has no field for one. The writer takes configuration 6 as Part 2's syntax has it,
   and an MP4 that is not fragmented carries it (Annex E.10). A CMAF track cannot, since "every
-  presentation" includes it: `ac4::cmaf_refusal()` refuses a stream with one, and `ac3cli fmp4` with it
+  presentation" includes it: `iclforge::ac4::cmaf_refusal()` refuses a stream with one, and `forge fmp4` with it
   (phase E7). A writer that wants a CMAF track carries the payloads in a presentation that plays audio,
   in the EMDF payloads substream its `emdf_info()` names.
 - **Evidence:** Text. DEE's muxer, given the encoder's EMDF stream, warns that its second presentation "is

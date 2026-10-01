@@ -2,7 +2,7 @@
 # iclforge::mpegts - a minimal MPEG-2 Transport Stream muxer.
 #
 # Deliberately standalone: it links nothing from iclforge::ac3 and knows nothing
-# about AC-3 beyond the two stream_type/descriptor choices ac3::io::StreamKind
+# about AC-3 beyond the two stream_type/descriptor choices iclforge::io::StreamKind
 # maps onto. It packetizes PAT + PMT + one PES-wrapped elementary stream into
 # 188-byte TS packets, taking every access unit as opaque bytes, so it can be
 # reasoned about, tested and reused on its own - the same shape as
@@ -56,8 +56,8 @@ set_target_properties(iclforge_mpegts_objects PROPERTIES
     VISIBILITY_INLINES_HIDDEN ON)
 
 # MSVC's C4251 for the PRIVATE STL-typed members of ICLFORGE_MPEGTS_EXPORT classes
-# (mpegts::Writer's PSI section buffers) - the identical, identically-reasoned
-# suppression src/matroska/CMakeLists.txt applies for matroska::Writer; see
+# (iclforge::mpegts::Writer's PSI section buffers) - the identical, identically-reasoned
+# suppression src/matroska/CMakeLists.txt applies for iclforge::matroska::Writer; see
 # its comment for why PUBLIC and why here rather than header pragmas.
 target_compile_options(iclforge_mpegts_objects PUBLIC "$<$<CXX_COMPILER_ID:MSVC>:/wd4251>")
 

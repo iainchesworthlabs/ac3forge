@@ -1,6 +1,6 @@
 # QC a stream
 
-The same verification `ac3cli qc` runs on the command line, reachable from the window itself.
+The same verification `forge qc` runs on the command line, reachable from the window itself.
 Everything else in this guide configures and runs an **encode** — a source loaded, a plan built,
 Encode writing a new file. QC is the opposite shape: an **already-encoded** `.ac3`, `.ec3` or
 `.ac4` file is opened, decoded and measured against its own embedded `dialnorm` (and `compr`, for
@@ -20,7 +20,7 @@ never interact.
 **Containers** (`*.mkv *.webm *.mp4 *.m4a *.mov *.ts *.m2ts`) and **All files**. The filters are a
 convenience for the picker only: `QcController` sniffs the actual bytes rather than trusting the
 extension, so a container works whatever the name says.
-Picking one starts the measurement immediately, the same way `ac3cli qc <file>` runs the moment
+Picking one starts the measurement immediately, the same way `forge qc <file>` runs the moment
 it is invoked — there is no separate "Run" step. A long file measures off the window's own event
 loop (the same background-worker pattern every encode in this app already uses), so the dialog
 stays responsive and shows a spinner beside the path while it works.
@@ -29,7 +29,7 @@ stays responsive and shows a spinner beside the path while it works.
 
 Once a file has been measured, the dialog fills with:
 
-- **A summary line** — codec, layout, sample rate, unit count and duration, `ac3cli qc`'s own
+- **A summary line** — codec, layout, sample rate, unit count and duration, `forge qc`'s own
   opening line restated (`AC-3 · 5.1 · 48000 Hz · 500 frame(s) · 16.00 s`).
 - **One card per programme** — one, except for a `1+1` dual-mono stream, which reports Ch1 and
   Ch2 independently (§E1.3: two unrelated programmes sharing a syncframe, never averaged
@@ -47,10 +47,10 @@ Once a file has been measured, the dialog fills with:
     - **A dialnorm check** — the stream's own `dialnorm` restated as the LKFS it claims
       (`§5.4.2.8`: dialnorm is how far dialogue sits below digital 100%), the measured-minus-claimed
       delta, and what dialnorm the measurement itself would imply — exactly the three lines
-      `ac3cli qc` prints under "dialnorm check", plus `compr` (§5.4.2.9/§7.7.2) when the stream
+      `forge qc` prints under "dialnorm check", plus `compr` (§5.4.2.9/§7.7.2) when the stream
       carries one.
     - **A verdict row per delivery preset** — EBU R 128 s2, ATSC A/85, ATSC A/85 streaming,
-      Netflix and Apple Music Atmos (the same five `ac3::meta::kQcPresetIds` names, each preset's
+      Netflix and Apple Music Atmos (the same five `iclforge::meta::kQcPresetIds` names, each preset's
       target/tolerance/ceiling cited from its own primary source — see `qc.hpp`'s own comment for
       the exact clauses), each showing its own loudness PASS/FAIL, true-peak PASS/FAIL and an
       overall chip. `QcController::programmes()` iterates the whole table, so this list grows with
@@ -59,7 +59,7 @@ Once a file has been measured, the dialog fills with:
 ## Delivery preset
 
 A segmented control — **All presets**, **EBU R 128 s2**, **ATSC A/85**, **ATSC A/85 streaming**,
-**Netflix** and **Apple Music Atmos** — mirrors `ac3cli qc`'s own `preset=<name>|all` argument. It
+**Netflix** and **Apple Music Atmos** — mirrors `forge qc`'s own `preset=<name>|all` argument. It
 is built from `QcController.presetNames`, "All presets" and then `kQcPresetIds` in order, so a
 preset added to that table reaches it without a change to the dialog:
 
@@ -74,7 +74,7 @@ preset added to that table reaches it without a change to the dialog:
 ## AC-4
 
 An AC-4 file, raw (`*.ac4`, which has a filter of its own) or in an MP4, is recognised by its sync
-word and measured the way `ac3cli qc` measures one: the presentation decoded as the stream codes
+word and measured the way `forge qc` measures one: the presentation decoded as the stream codes
 it, with no output level and so no DRC, dialogue enhancement or downmix, metered over its 1/0,
 2/0, 3/0 or 3/2 bed (a 7.X element's last pair left out). The card's dialnorm check reads AC-4's
 dialnorm, in quarter-dB steps (ETSI TS 103 190-1 clause 4.3.12.2.1), and adds the integrated
@@ -82,10 +82,10 @@ loudness the stream states in its further loudness information where it sends on
 `compr`, so that line is left out.
 
 A **Presentation** picker appears for an AC-4 file. Its first entry is the decoder's own choice
-with no preference, `ac3cli qc`'s default; the others are the table of contents' presentations
+with no preference, `forge qc`'s default; the others are the table of contents' presentations
 by position, each labelled with its channels as coded, its language and its `presentation_id`
 where the stream sends them, and picking one measures that presentation, as
-`ac3cli qc presentation=<n>` does. Opening another file starts at the decoder's choice again.
+`forge qc presentation=<n>` does. Opening another file starts at the decoder's choice again.
 
 ## What it does not do
 

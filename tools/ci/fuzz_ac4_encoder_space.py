@@ -192,7 +192,7 @@ NAMES = ["Deutsch", "Commentary", "Director", "Stadium", "Home team"]
 FRAME_BYTES_CAP = 400
 
 # Refusals a case may end in, by the text forge prints for each: the encoder's reasons
-# (ac4::Encoder::refusal_reason()) and forge's own.
+# (iclforge::ac4::Encoder::refusal_reason()) and forge's own.
 REFUSALS = {
     "rate out of range": "a rate outside 8 to 3 000 kbps",
     # A rate whose frames cannot hold the least frame of a substream, or the presentation and EMDF

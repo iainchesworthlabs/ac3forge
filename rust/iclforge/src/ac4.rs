@@ -1,4 +1,4 @@
-//! AC-4 encode and decode - `ac4::Decoder`/`ac4::Encoder` via
+//! AC-4 encode and decode - `iclforge::ac4::Decoder`/`iclforge::ac4::Encoder` via
 //! `iclforge_ac4_decoder_t`/`iclforge_ac4_encoder_t` (ETSI TS 103 190-1/-2).
 //!
 //! Mirrors the surface the C API itself mirrors (see
@@ -82,7 +82,7 @@ impl Speaker {
     }
 }
 
-/// Mirrors `iclforge_ac4_object_kind_t` (`ac4::ObjectKind`): a bed object, a dynamic
+/// Mirrors `iclforge_ac4_object_kind_t` (`iclforge::ac4::ObjectKind`): a bed object, a dynamic
 /// object, or an intermediate spatial format object (rendered into channels, not
 /// listed - see [`DecodedFrame::objects`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -103,7 +103,7 @@ impl ObjectKind {
     }
 }
 
-/// Mirrors `iclforge_ac4_downmix_target_t` (`ac4::DownmixTarget`): the layout
+/// Mirrors `iclforge_ac4_downmix_target_t` (`iclforge::ac4::DownmixTarget`): the layout
 /// [`Decoder::decode`] renders to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum DownmixTarget {
@@ -141,7 +141,7 @@ impl DownmixTarget {
     }
 }
 
-/// Mirrors `iclforge_ac4_drc_mode_t` (`ac4::DrcMode`, Part 1 Table 161).
+/// Mirrors `iclforge_ac4_drc_mode_t` (`iclforge::ac4::DrcMode`, Part 1 Table 161).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum DrcMode {
     Off,
@@ -170,7 +170,7 @@ impl DrcMode {
     }
 }
 
-/// Mirrors `iclforge_ac4_decoding_mode_t` (`ac4::DecodingMode`, Part 2 clause 4.7).
+/// Mirrors `iclforge_ac4_decoding_mode_t` (`iclforge::ac4::DecodingMode`, Part 2 clause 4.7).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum DecodingMode {
     #[default]
@@ -187,7 +187,7 @@ impl DecodingMode {
     }
 }
 
-/// Mirrors `iclforge_ac4_concealment_policy_t` (`ac4::ConcealmentPolicy`).
+/// Mirrors `iclforge_ac4_concealment_policy_t` (`iclforge::ac4::ConcealmentPolicy`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum ConcealmentPolicy {
     #[default]
@@ -212,7 +212,7 @@ impl ConcealmentPolicy {
     }
 }
 
-/// Mirrors `iclforge_ac4_concealment_action_t` (`ac4::ConcealmentAction`): what a
+/// Mirrors `iclforge_ac4_concealment_action_t` (`iclforge::ac4::ConcealmentAction`): what a
 /// concealed frame actually got.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ConcealmentAction {
@@ -232,7 +232,7 @@ impl ConcealmentAction {
     }
 }
 
-/// Mirrors `iclforge_ac4_associated_type_t` (`ac4::AssociatedType`, Part 1 Table 92).
+/// Mirrors `iclforge_ac4_associated_type_t` (`iclforge::ac4::AssociatedType`, Part 1 Table 92).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum AssociatedType {
     #[default]
@@ -261,7 +261,7 @@ impl AssociatedType {
     }
 }
 
-/// Mirrors `iclforge_ac4_codec_mode_t` (`ac4::CodecMode`, Part 1 clause 4.3.6.1).
+/// Mirrors `iclforge_ac4_codec_mode_t` (`iclforge::ac4::CodecMode`, Part 1 clause 4.3.6.1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum CodecMode {
     #[default]
@@ -307,7 +307,7 @@ impl CodecMode {
     }
 }
 
-/// Mirrors `iclforge_ac4_rate_mode_t` (`ac4::RateMode`, Part 1 Table 81's `wait_frames`).
+/// Mirrors `iclforge_ac4_rate_mode_t` (`iclforge::ac4::RateMode`, Part 1 Table 81's `wait_frames`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum RateMode {
     #[default]
@@ -326,7 +326,7 @@ impl RateMode {
     }
 }
 
-/// Mirrors `iclforge_ac4_bed_channel_t` (`ac4::BedChannel`): the loudspeaker a bed object plays
+/// Mirrors `iclforge_ac4_bed_channel_t` (`iclforge::ac4::BedChannel`): the loudspeaker a bed object plays
 /// from (Part 2 Table 66's `nonstd_bed_channel_assignment`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BedChannel {
@@ -381,7 +381,7 @@ impl BedChannel {
     }
 }
 
-/// Mirrors `iclforge_ac4_object_coding_t` (`ac4::ObjectCoding`): how an object substream's
+/// Mirrors `iclforge_ac4_object_coding_t` (`iclforge::ac4::ObjectCoding`): how an object substream's
 /// objects are coded.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum ObjectCoding {
@@ -405,7 +405,7 @@ impl ObjectCoding {
     }
 }
 
-/// Mirrors `iclforge_ac4_ajoc_downmix_t` (`ac4::AjocDownmix`): A-JOC's downmix, which Part 2
+/// Mirrors `iclforge_ac4_ajoc_downmix_t` (`iclforge::ac4::AjocDownmix`): A-JOC's downmix, which Part 2
 /// leaves to the encoder.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum AjocDownmix {
@@ -435,7 +435,7 @@ impl AjocDownmix {
     }
 }
 
-/// Mirrors `iclforge_ac4_additional_pair_t` (`ac4::AdditionalPair`, Part 1 Table 88): the 7.X
+/// Mirrors `iclforge_ac4_additional_pair_t` (`iclforge::ac4::AdditionalPair`, Part 1 Table 88): the 7.X
 /// element's pair beyond L, R, C, Ls and Rs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum AdditionalPair {
@@ -464,9 +464,9 @@ impl AdditionalPair {
 
 // --- decoder configuration ---------------------------------------------------
 
-/// Mirrors `iclforge_ac4_output_config_t` (`ac4::OutputConfig`). Construct with
+/// Mirrors `iclforge_ac4_output_config_t` (`iclforge::ac4::OutputConfig`). Construct with
 /// [`OutputConfig::default`] (which calls the raw `iclforge_ac4_output_config_init()` -
-/// same "call the real _init(), never derive it" reasoning as `ac3::EncoderConfig`) and
+/// same "call the real _init(), never derive it" reasoning as `iclforge::EncoderConfig`) and
 /// override only the fields you need.
 #[derive(Debug, Clone, PartialEq)]
 pub struct OutputConfig {
@@ -525,7 +525,7 @@ impl Default for OutputConfig {
     }
 }
 
-/// Mirrors `iclforge_ac4_presentation_choice_t` (`ac4::PresentationChoice`). Every field's
+/// Mirrors `iclforge_ac4_presentation_choice_t` (`iclforge::ac4::PresentationChoice`). Every field's
 /// `Default` (`None`/empty/`Any`/`false`) already matches
 /// `iclforge_ac4_presentation_choice_init()`'s own defaults, so unlike [`OutputConfig`] this
 /// derives it rather than calling that function - there is no `unsafe` value it would need to
@@ -573,7 +573,7 @@ impl PresentationChoice {
     }
 }
 
-/// Mirrors `iclforge_ac4_decoder_config_t` (`ac4::DecoderConfig`, less its syntax
+/// Mirrors `iclforge_ac4_decoder_config_t` (`iclforge::ac4::DecoderConfig`, less its syntax
 /// trace - an internal diagnostic hook with no C surface, same omission as
 /// `iclforge_ac4_decoder_config_t` itself). Construct with [`DecoderConfig::default`] (which
 /// calls the raw `iclforge_ac4_decoder_config_init()`, same "never derive a default with a
@@ -640,7 +640,7 @@ impl DecoderConfig {
 
 // --- decoder -------------------------------------------------------------
 
-/// An AC-4 decoder - `ac4::Decoder` via `iclforge_ac4_decoder_t`.
+/// An AC-4 decoder - `iclforge::ac4::Decoder` via `iclforge_ac4_decoder_t`.
 pub struct Decoder {
     raw: ptr::NonNull<sys::iclforge_ac4_decoder_t>,
 }
@@ -802,7 +802,7 @@ impl Decoder {
     }
 
     /// The loudness metadata of the presentation the last [`Decoder::decode`] call
-    /// selected, as the frames read so far have sent it (`ac4::LoudnessInfo`'s "big four" -
+    /// selected, as the frames read so far have sent it (`iclforge::ac4::LoudnessInfo`'s "big four" -
     /// see `iclforge_ac4_loudness_info_t`'s own comment on the DRC/dialogue-enhancement/
     /// downmix detail this omits).
     pub fn metadata_loudness(&self) -> LoudnessInfo {
@@ -823,7 +823,7 @@ impl Drop for Decoder {
     }
 }
 
-/// `ac4::PresentationInfo`'s core surface (see [`Decoder::presentations`]'s own comment on
+/// `iclforge::ac4::PresentationInfo`'s core surface (see [`Decoder::presentations`]'s own comment on
 /// what is omitted: `AlternativeTarget`s, `PresentationMember`s and `substream_groups`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct PresentationInfo {
@@ -840,7 +840,7 @@ pub struct PresentationInfo {
     pub speakers: Vec<Speaker>,
 }
 
-/// Mirrors `iclforge_ac4_loudness_info_t` (`ac4::LoudnessInfo`'s "big four").
+/// Mirrors `iclforge_ac4_loudness_info_t` (`iclforge::ac4::LoudnessInfo`'s "big four").
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct LoudnessInfo {
     pub dialnorm_dbfs: Option<f64>,
@@ -849,7 +849,7 @@ pub struct LoudnessInfo {
     pub loudness_range_lu: Option<f64>,
 }
 
-/// Mirrors `iclforge_ac4_object_properties_t` (`ac4::ObjectProperties`, Part 2 Annex F.2 to
+/// Mirrors `iclforge_ac4_object_properties_t` (`iclforge::ac4::ObjectProperties`, Part 2 Annex F.2 to
 /// F.10 and `add_per_object_md()`'s data): what one block update of an object's metadata sets.
 /// The decoder reports it and the encoder takes it in these terms; `iclforge.h` gives each
 /// field's range and the steps its code has (an encoder rounds to the nearest and refuses a
@@ -889,7 +889,7 @@ impl Default for ObjectProperties {
     fn default() -> Self {
         let mut raw = unsafe { std::mem::zeroed() };
         // SAFETY: iclforge_ac4_object_properties_init() unconditionally overwrites every field
-        // of `raw` with ac4::ObjectProperties{}'s defaults (room centre, unity gain, priority 1,
+        // of `raw` with iclforge::ac4::ObjectProperties{}'s defaults (room centre, unity gain, priority 1,
         // depth exponent 1) - a struct-level derive would give priority 0 and depth exponent 0,
         // which the encoder refuses.
         unsafe { sys::iclforge_ac4_object_properties_init(&mut raw) };
@@ -946,7 +946,7 @@ impl ObjectProperties {
     }
 }
 
-/// One block update of an object's metadata within a frame - `ac4::ObjectUpdate` (Part 2 Annex
+/// One block update of an object's metadata within a frame - `iclforge::ac4::ObjectUpdate` (Part 2 Annex
 /// F.11) via `iclforge_ac4_object_update_t`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ObjectUpdate {
@@ -958,7 +958,7 @@ pub struct ObjectUpdate {
     pub properties: ObjectProperties,
 }
 
-/// One decoded object of a [`DecodedFrame`] - `ac4::DecodedObject` (Part 2 clause 4.8.3.4).
+/// One decoded object of a [`DecodedFrame`] - `iclforge::ac4::DecodedObject` (Part 2 clause 4.8.3.4).
 #[derive(Debug, Clone, PartialEq)]
 pub struct DecodedObject {
     pub kind: ObjectKind,
@@ -972,7 +972,7 @@ pub struct DecodedObject {
     pub updates: Vec<ObjectUpdate>,
 }
 
-/// What a concealed frame's decode did - `ac4::Concealment`.
+/// What a concealed frame's decode did - `iclforge::ac4::Concealment`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Concealment {
     pub action: ConcealmentAction,
@@ -980,7 +980,7 @@ pub struct Concealment {
     pub error: Error,
 }
 
-/// One decoded AC-4 frame - `ac4::DecodedFrame` via `iclforge_ac4_decoded_frame_t`. Owns its
+/// One decoded AC-4 frame - `iclforge::ac4::DecodedFrame` via `iclforge_ac4_decoded_frame_t`. Owns its
 /// PCM and object audio; every accessor borrows from `&self`.
 pub struct DecodedFrame {
     raw: ptr::NonNull<sys::iclforge_ac4_decoded_frame_t>,
@@ -1130,7 +1130,7 @@ impl Drop for DecodedFrame {
 
 // --- encoder -------------------------------------------------------------
 
-/// Mirrors `iclforge_ac4_object_config_t` (`ac4::ObjectConfig`): one object of an
+/// Mirrors `iclforge_ac4_object_config_t` (`iclforge::ac4::ObjectConfig`): one object of an
 /// [`ObjectsConfig`], the input channel at its index. Construct with
 /// [`ObjectConfig::default`], a dynamic object at the room's centre.
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -1157,7 +1157,7 @@ impl ObjectConfig {
     }
 }
 
-/// Mirrors `iclforge_ac4_objects_config_t` (`ac4::ObjectsConfig`): the objects of the one
+/// Mirrors `iclforge_ac4_objects_config_t` (`iclforge::ac4::ObjectsConfig`): the objects of the one
 /// object substream a stream can have, and how they are coded. The limits (1 to
 /// `ICLFORGE_AC4_MAX_OBJECTS` objects, at most one the LFE, a computed downmix of at most
 /// `ICLFORGE_AC4_MAX_DOWNMIX_SIGNALS` signals, `frame_rate_index` 13 only, and the rest) are the
@@ -1183,7 +1183,7 @@ pub struct ObjectsConfig {
     pub bed_object_chan_distribute: bool,
 }
 
-/// Mirrors `iclforge_ac4_experimental_t` (`ac4::EncoderConfig::Experimental`): syntax only this
+/// Mirrors `iclforge_ac4_experimental_t` (`iclforge::ac4::EncoderConfig::Experimental`): syntax only this
 /// project's readers have read from this encoder, off unless asked for. Not mirrored:
 /// `drc_gains` and `three_zero`, which need the DRC modes and the substream list this crate does
 /// not carry.
@@ -1225,11 +1225,11 @@ impl Experimental {
     }
 }
 
-/// Mirrors `iclforge_ac4_encoder_config_t` (`ac4::EncoderConfig`, less what this module's own doc
+/// Mirrors `iclforge_ac4_encoder_config_t` (`iclforge::ac4::EncoderConfig`, less what this module's own doc
 /// comment leaves out). Construct with [`EncoderConfig::default`].
 #[derive(Debug, Clone, PartialEq)]
 pub struct EncoderConfig {
-    /// 1, 2, 5, 6, 9 or 10 - see `ac4::EncoderConfig::channels`'s own comment; ignored with
+    /// 1, 2, 5, 6, 9 or 10 - see `iclforge::ac4::EncoderConfig::channels`'s own comment; ignored with
     /// `objects`.
     pub channels: i32,
     /// 48000, or 44100 (`frame_rate_index` 13 only).
@@ -1337,7 +1337,7 @@ impl Default for EncoderConfig {
             codec_mode: CodecMode::from_raw(raw.codec_mode),
             iframe_interval: raw.iframe_interval,
             dialnorm_db: raw.dialnorm_db,
-            // Every flag of ac4::EncoderConfig::Experimental is off by default, as is the
+            // Every flag of iclforge::ac4::EncoderConfig::Experimental is off by default, as is the
             // additional pair (iclforge_ac4_encoder_config_init()), which Experimental::default()
             // spells - no value in `raw` a derive would get wrong.
             iframes: Vec::new(),
@@ -1348,7 +1348,7 @@ impl Default for EncoderConfig {
     }
 }
 
-/// Mirrors `iclforge_ac4_object_metadata_update_t` (`ac4::ObjectMetadataUpdate`): a change to an
+/// Mirrors `iclforge_ac4_object_metadata_update_t` (`iclforge::ac4::ObjectMetadataUpdate`): a change to an
 /// object's metadata, given with the input it belongs to (see [`Encoder::encode_objects`]).
 /// Construct with [`ObjectMetadataUpdate::default`].
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
@@ -1374,7 +1374,7 @@ impl ObjectMetadataUpdate {
     }
 }
 
-/// One encoded AC-4 frame - `ac4::EncodedFrame` via `iclforge_ac4_encoded_frame_t`. What an
+/// One encoded AC-4 frame - `iclforge::ac4::EncodedFrame` via `iclforge_ac4_encoded_frame_t`. What an
 /// MP4 sample holds as it is; [`sync_frame`] wraps it for a raw `.ac4` file or MPEG-2 TS.
 pub struct EncodedFrame {
     raw: ptr::NonNull<sys::iclforge_ac4_encoded_frame_t>,
@@ -1413,14 +1413,14 @@ impl Drop for EncodedFrame {
 }
 
 /// TS 103 190-2 Table E.1: the media time scale an ISOBMFF track of the stream counts in,
-/// and each sample's duration in it - `ac4::MediaTiming`.
+/// and each sample's duration in it - `iclforge::ac4::MediaTiming`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MediaTiming {
     pub timescale: u32,
     pub sample_delta: u32,
 }
 
-/// An owned copy of an encoder's table of contents - `ac4::Toc` via `iclforge_ac4_toc_t`,
+/// An owned copy of an encoder's table of contents - `iclforge::ac4::Toc` via `iclforge_ac4_toc_t`,
 /// for the dac4 box a container muxer needs.
 pub struct Toc {
     raw: ptr::NonNull<sys::iclforge_ac4_toc_t>,
@@ -1429,7 +1429,7 @@ pub struct Toc {
 unsafe impl Send for Toc {}
 
 impl Toc {
-    /// The 'dac4' box payload (`ac4_dsi_v1`, Annex E.6, box header excluded) - `ac4::build_dac4`.
+    /// The 'dac4' box payload (`ac4_dsi_v1`, Annex E.6, box header excluded) - `iclforge::ac4::build_dac4`.
     /// Empty where [`Toc::dac4_refusal`] names what this cannot describe whole.
     pub fn build_dac4(&self) -> Result<Bytes, Error> {
         let mut out: *mut sys::iclforge_bytes_t = ptr::null_mut();
@@ -1480,7 +1480,7 @@ impl Drop for Toc {
     }
 }
 
-/// An AC-4 encoder - `ac4::Encoder` via `iclforge_ac4_encoder_t`.
+/// An AC-4 encoder - `iclforge::ac4::Encoder` via `iclforge_ac4_encoder_t`.
 pub struct Encoder {
     raw: ptr::NonNull<sys::iclforge_ac4_encoder_t>,
 }
@@ -1506,7 +1506,7 @@ impl Encoder {
 
     /// Why [`Encoder::new`] refuses `config`: the first rule it breaks, such as "objects at a
     /// frame_rate_index other than 13"; empty where it makes an encoder of it
-    /// (`ac4::Encoder::refusal_reason`). It does `new()`'s work to find out.
+    /// (`iclforge::ac4::Encoder::refusal_reason`). It does `new()`'s work to find out.
     pub fn refusal_reason(config: &EncoderConfig) -> String {
         config.with_raw(|raw_config| {
             // SAFETY: `raw_config` is valid for the duration of this call; the result is
@@ -1555,7 +1555,7 @@ impl Encoder {
     /// PCM per object, all the same length. An update for an object the configuration lacks,
     /// before this input's first sample, or with a property off its range is
     /// [`Error::Ac4EncodeInvalidInput`], and so is any update to an encoder without an object
-    /// substream (`ac4::Encoder::encode`'s overload with updates).
+    /// substream (`iclforge::ac4::Encoder::encode`'s overload with updates).
     pub fn encode_objects(
         &mut self,
         objects: &[&[f32]],

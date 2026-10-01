@@ -19,7 +19,7 @@ the float32 path worth having and real-time decode worth measuring.
 | Atmos bed | Correct, decoded bed-only via `DecoderConfig::skip_object_reconstruction`. 11 allocations per frame |
 | Atmos objects | **Correct, reconstructed on target.** 22 allocations per frame — see [Objects](#objects). **And placed**: the `eac3_atmos_render` row pans a height-object stream onto 7.1.4 through the block form, every level the host's — see [Placed on loudspeakers](#placed-on-loudspeakers) |
 | Encode | AC-3 and E-AC-3, six rows: 5.1 and 2/0 through each encoder, 2/0 with coupling, spectral extension and AHT, and 2/0 §E3.5 enhanced coupling - six frames of synthesised programme each, byte count and FNV-1a hash checked against `apps/baremetal/encode_fixture.hpp`, peak heap per row. One substream at a time; see [Encoding](#encoding) for what does not fit |
-| AC-4 | **Not built for this part yet**: that is phase D14c of [`planning/ac4.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/ac4.md#d14-ac-4-on-the-esp32s). No CI leg builds, runs or measures the AC-4 decoder for an S3, and there is no QEMU row or board figure. `CONFIG_AC3FORGE_AC4` is offered here because the part has an FPU, but the decoder peaks at 432 KB of heap at 2.0 on the Cortex-M3 leg, more than the 304,680 bytes of internal SRAM free here, so a build would need PSRAM. The [ESP32-P4](esp32-p4.md#ac-4) is the part that decodes AC-4. No ESP32 sink takes AC-4 in a Sendspin group |
+| AC-4 | **Not built for this part yet**: that is phase D14c of [`planning/ac4.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/ac4.md#d14-ac-4-on-the-esp32s). No CI leg builds, runs or measures the AC-4 decoder for an S3, and there is no QEMU row or board figure. `CONFIG_ICLFORGE_AC4` is offered here because the part has an FPU, but the decoder peaks at 432 KB of heap at 2.0 on the Cortex-M3 leg, more than the 304,680 bytes of internal SRAM free here, so a build would need PSRAM. The [ESP32-P4](esp32-p4.md#ac-4) is the part that decodes AC-4. No ESP32 sink takes AC-4 in a Sendspin group |
 | Standalone probe fits internal SRAM | Yes, without PSRAM. 195,025-byte peak heap (`eac3_atmos_render`; 194,655 with Atmos objects reconstructed, 173,794 for the 7.1.4 fixture folded to stereo, 167,386 as coded) against 304,680 free under QEMU on 2026-09-29. The board reported 316,196 free on 2026-09-11, when the peak was 237,206 — see [Memory](#memory) |
 | Retained after teardown | 12 bytes, one `__cxa_thread_atexit` record, the spectrum scratch's pointer; 23,552 bytes while §E3.5 is in use |
 | Audio output | Two examples drive real peripherals — see [Examples](#examples) |
@@ -63,17 +63,17 @@ this part. The x figures are fractions of a 32 ms frame.
 ## Building
 
 ESP-IDF owns the top-level build, as Gradle does for [Android](../android.md), so there is no
-ac3forge preset for this target and no entry in `cmake/toolchains/`.
+ICL Forge preset for this target and no entry in `cmake/toolchains/`.
 
 ### The ESP-IDF component
 
-[`esp-idf/iclforge/`](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/iclforge/README.md)
+[`esp-idf/iclforge/`](https://github.com/iainchesworthlabs/iclforge/blob/main/esp-idf/iclforge/README.md)
 is the profile packaged as a component. A project outside this repository
 builds against it in two lines, without vendoring the source list:
 
 ```cmake
-set(EXTRA_COMPONENT_DIRS "/path/to/ac3forge/esp-idf")
-set(AC3FORGE_ESP_PROFILE "decoder")   # or "encoder"
+set(EXTRA_COMPONENT_DIRS "/path/to/iclforge/esp-idf")
+set(ICLFORGE_ESP_PROFILE "decoder")   # or "encoder"
 ```
 
 The component pre-seeds the root's `option()`s and `add_subdirectory()`s the repo root, the same
@@ -84,8 +84,8 @@ copies of a source list drift, and the drift surfaces as a link error rather tha
 The decode arithmetic follows the part unless the project chooses: `float` where ESP-IDF's
 `SOC_CPU_HAS_FPU` capability says the part has a floating-point unit, as this one does, and the
 fixed-point tier where it has none, as on an [ESP32-C3](esp32-c3.md). To build the other one,
-set `AC3FORGE_DECODE_SCALAR` to `float` or `fixed` above `project()`, or pass
-`-DAC3FORGE_DECODE_SCALAR=...` to `idf.py`.
+set `ICLFORGE_DECODE_SCALAR` to `float` or `fixed` above `project()`, or pass
+`-DICLFORGE_DECODE_SCALAR=...` to `idf.py`.
 
 `idf_component.yml` carries registry metadata and the list of targets, each of which
 `tools/packaging/pack_esp_component.py --verify` builds against the packed archive. **It is not
@@ -95,7 +95,7 @@ main that changes the ESP32 trees or a tree its component ships, and nightly
 ([the lane table](../../ci-lanes.md#lane-table)). Its `compote component upload` job is gated to a
 manual `workflow_dispatch` on a `v` tag — a published version cannot be replaced, so the upload is
 a decision rather than a consequence of merging. Add `--with-ac4` to the packer and the archive
-also carries the AC-4 decoder's sources, for `CONFIG_AC3FORGE_AC4`
+also carries the AC-4 decoder's sources, for `CONFIG_ICLFORGE_AC4`
 ([ESP32-P4](esp32-p4.md#building-with-ac-4)).
 
 ### The probes
@@ -135,7 +135,7 @@ Both live under `esp-idf/iclforge/examples/` and are built by CI.
 the decoder's §7.8 output stage, and writes it to an I2S DAC at 48 kHz, 16-bit, on a loop. It
 proves the codec works; it is not how anything real gets its audio.
 
-Three GPIOs under `ac3forge I2S player` in `idf.py menuconfig`, defaulting to BCLK 5, WS 6,
+Three GPIOs under `iclforge I2S player` in `idf.py menuconfig`, defaulting to BCLK 5, WS 6,
 DOUT 7 — chosen to avoid the strapping pins, the USB pair and the console UART. No MCLK is
 configured, so a DAC needing one has to have it added. Written against a MAX98357A and a PCM5102.
 
@@ -154,17 +154,17 @@ neither a partition nor I2S:
 | `fatfs` — a FAT volume in flash | `capture` — converts and checks; what CI runs |
 | `http` — an HTTP body over WiFi | `null` — counts blocks |
 
-Chosen under *ac3forge hearth sink* in `idf.py menuconfig`, along with the output layout — a
+Chosen under *iclforge hearth sink* in `idf.py menuconfig`, along with the output layout — a
 name such as `5.1.4` or a speaker list — that the player renders every stream onto
 (`src/render/include/iclforge/render/layout.hpp`, `render.hpp`). The `i2s` sink chooses standard or TDM
-mode from the layout in force (`ac3forge/sink_plan.hpp`) and reconfigures between plays, so
+mode from the layout in force (`iclforge/sink_plan.hpp`) and reconfigures between plays, so
 `PUT /layout` needs no rebuild. One S3 line carries four 32-bit or eight 16-bit slots and a second
 line doubles that, to sixteen 16-bit slots ([Slot widths](../../hearth/sink-esp32-s3.md#slot-widths)).
-The example decodes AC-3 and E-AC-3 here; its AC-4 decoder is a `CONFIG_AC3FORGE_AC4` build that
+The example decodes AC-3 and E-AC-3 here; its AC-4 decoder is a `CONFIG_ICLFORGE_AC4` build that
 only the [ESP32-P4](esp32-p4.md#ac-4) has run.
 
-It exists to exercise the incremental input path. `ac3::split_frames` takes a span over a whole
-stream, which nothing streaming can produce; `ac3::io::AccessUnitAccumulator` applies the same
+It exists to exercise the incremental input path. `iclforge::split_frames` takes a span over a whole
+stream, which nothing streaming can produce; `iclforge::io::AccessUnitAccumulator` applies the same
 boundary rule over a caller-owned buffer, allocating nothing. It hands the decoder access units
 rather than syncframes, because `decode_access_unit_by_block` wants an independent substream together
 with the dependents that extend it (§E3.8.2).
@@ -198,7 +198,7 @@ they produce:
   the control surface through a port forward: `GET /status`, `POST /volume` with 0.5, a replay
   through `POST /play` whose levels must come out at half, and `POST /stop`. A further step drives
   the board's web page against the same build with Playwright.
-- `sdkconfig.ci-http` with `sdkconfig.ci-http714`: the [stream set](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/iclforge/examples/hearth_sink/www/README.md)
+- `sdkconfig.ci-http` with `sdkconfig.ci-http714`: the [stream set](https://github.com/iainchesworthlabs/iclforge/blob/main/esp-idf/iclforge/examples/hearth_sink/www/README.md)
   over the same network onto 7.1.4 in twelve slots, one `POST /play` a stream, each slot's level
   held to `www/streams.json` (`tools/checks/check_stream_set.py`); a stream the manifest marks
   refused has to fail for the reason it names.
@@ -215,10 +215,10 @@ previous block left is what the DAC clocks out. The queue model the `i2s` sink k
 `sink.*` line (`esp-idf/iclforge/include/iclforge/dac_queue_model.hpp`) is unit-tested on the host
 as well (`tests/ac3/io/test_dac_queue_model.cpp`), against a simulated DMA. The sink itself has run on
 two S3 boards, in standard mode and in TDM on eight 16-bit slots, with no DAC on the pins
-([On two boards](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/iclforge/examples/hearth_sink/README.md#on-two-boards)).
+([On two boards](https://github.com/iainchesworthlabs/iclforge/blob/main/esp-idf/iclforge/examples/hearth_sink/README.md#on-two-boards)).
 
 CI compares the sink's per-channel RMS against the host's answer for the same file through the
-same configuration (`ac3cli decode … downmix=loro drcmode=line`). A `result=pass` alone would be
+same configuration (`forge decode … downmix=loro drcmode=line`). A `result=pass` alone would be
 satisfied by a stream decoding to silence.
 
 Nor does `result=pass` say the run was clean. QEMU runs on until a timeout, the HTTP step plays the
@@ -238,16 +238,16 @@ and why the floor sits where it does.
 #### As a Sendspin sink
 
 `sdkconfig.sendspin`, over the hardware and PSRAM overlays, makes the example a Sendspin player on
-Wi-Fi ([the Hearth plan](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/hearth-reference-player.md), B3). It has:
+Wi-Fi ([the Hearth plan](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/hearth-reference-player.md), B3). It has:
 
 - the Noise responder;
 - pairing by token, or by a code shown on the console and the page;
 - Sendspin's time filter;
 - `player@v1`, for Music Assistant's stereo PCM;
-- Hearth's `_ac3forge_player@v1`, whose AC-3 and E-AC-3 bursts the component decodes and renders
+- Hearth's `_iclforge_player@v1`, whose AC-3 and E-AC-3 bursts the component decodes and renders
   onto the board's layout. The player advertises `ac3` and `eac3` as its data types and not `ac4`:
   no ESP32 sink takes AC-4 in a Sendspin group yet (phase I6 of
-  [`planning/ac4.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/ac4.md#i6-the-esp32-sinks)).
+  [`planning/ac4.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/ac4.md#i6-the-esp32-sinks)).
 
 [An ESP32-S3 sink](../../hearth/sink-esp32-s3.md) sets a board up.
 
@@ -257,7 +257,7 @@ model of ESP-IDF v6.1's DMA ring (`esp-idf/iclforge/include/iclforge/playout.hpp
 the decoded PCM, by dropping or repeating one frame in 256.
 
 On 2026-09-16 two ESP32-S3-DevKitC-1-N16R8 boards on the same Wi-Fi, with no DAC wired, played the
-E-AC-3 JOC fixture for ten minutes as one group from `ac3hearth-testserver`. Each burst holds
+E-AC-3 JOC fixture for ten minutes as one group from `hearth-testserver`. Each burst holds
 32 ms of audio.
 
 | | 2.0, 32-bit standard I2S | 5.1, eight 16-bit TDM slots |
@@ -270,10 +270,10 @@ At each of the 602 seconds the server compared, the boards' reported play times 
 549 µs of each other. The 2.0 board's levels were the test sink's to the digit. Four things on
 the boards broke playback, and no host test or QEMU run showed any of them: Wi-Fi modem sleep,
 Nagle's algorithm on the player's sockets, lwIP's task on the decoder's core, and clock replies
-delayed behind a stream's chunks. [The example's README](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/iclforge/examples/hearth_sink/README.md#on-two-boards) describes each.
+delayed behind a stream's chunks. [The example's README](https://github.com/iainchesworthlabs/iclforge/blob/main/esp-idf/iclforge/examples/hearth_sink/README.md#on-two-boards) describes each.
 
 CI runs the same player on QEMU's Ethernet (`sdkconfig.ci-sendspin`) in `hearth-esp32s3`, a job
-that runs after `build-esp32s3`. `tools/checks/run_sendspin_qemu.sh` has `ac3hearth-testserver`
+that runs after `build-esp32s3`. `tools/checks/run_sendspin_qemu.sh` has `hearth-testserver`
 pair with the emulated board, set it to 2.0, and play it the fixture in one group with a test
 sink. It then holds the board's levels to the test sink's WAV
 (`tools/checks/check_sendspin_levels.py`), and its console to one clean boot and the stream set's
@@ -406,15 +406,15 @@ The instruction cache stayed at its default 16 KB for all of this, and in the
 probe that held. In the Hearth sink's network shape, where WiFi and the
 rest of the player run beside the decoder, it did not: at 32 KB a 7.1.4 frame
 decoded 3.1 ms faster folded to 2.0 and 3.8 ms faster onto twelve slots
-([7.1.4 in real time](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-714-realtime.md)).
+([7.1.4 in real time](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/esp32-714-realtime.md)).
 The probe has not been measured at 32 KB.
 
 ### Where the time went
 
 Nothing in the table says which stage is slow, and the estimates that had been
 made about it were wrong. So before changing anything the decoder was
-profiled on the board, through the `AC3_ZONE_SCOPED_N()` markers it already
-carries for Tracy: `-DAC3FORGE_STAGE_TIMERS=ON` routes them to an accumulator
+profiled on the board, through the `ICLFORGE_ZONE_SCOPED_N()` markers it already
+carries for Tracy: `-DICLFORGE_STAGE_TIMERS=ON` routes them to an accumulator
 in the probe (`apps/baremetal/stage_timers.cpp`, the application half of
 `src/base/variants/profiling-stage_timers/`) and each fixture then prints a
 `<fixture>.stage[<zone>]` line per stage with its inclusive and self time per
@@ -461,7 +461,7 @@ software floating point alike. It was visible only here.
 ### What changed
 
 The arithmetic between bitstream and coefficient store now runs in the store's
-own type, `ac3::internal::decode_scalar_t`: `float` under this profile, `double`
+own type, `iclforge::internal::decode_scalar_t`: `float` under this profile, `double`
 in every other build, which is why no gold reference, bitstream hash or test
 moved (the full Windows suite passes as before, 1,345 tests). The exported
 `double` functions - `dequantize_mantissa`, `decode_coordinate`,
@@ -484,7 +484,7 @@ difference the float store already accepted at the transform; the probe's
 RMS figures, printed to six digits, did not move on any of the eight fixtures.
 
 The second lever is the optimiser. This profile compiles at `-Os`, and a board
-run with the decode-critical sources at `-O2` (`AC3FORGE_MINIMAL_HOT_O2`, on
+run with the decode-critical sources at `-O2` (`ICLFORGE_MINIMAL_HOT_O2`, on
 for this project, off in the profile's default) showed which files it pays for
 and which it does not: bit allocation 4.55 to 2.09 ms and the JOC mixing 11.0
 to 8.2 ms per frame, against nothing at all for the float32 IMDCT, which ran
@@ -664,7 +664,7 @@ line mode without a fold, the one fixture where line mode has work to do.
 On 2026-09-10 the E-AC-3 5.1 fold cost 3.2 ms here where the Cortex-M3
 leg counted 10% of the frame, and the sink folding 7.1.4 to stereo
 over WiFi fell behind
-([`planning/esp32-stream-set.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-stream-set.md),
+([`planning/esp32-stream-set.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/esp32-stream-set.md),
 "On a board"). The
 output stage had no stage-timer zones of its own. With zones inside
 `OutputStage::apply` and around both decoders' §7.7 gain, stage-timed on
@@ -760,7 +760,7 @@ this change and run one after the other on one board on 2026-09-11: the
 network shape (`sdkconfig.defaults;sdkconfig.hw;sdkconfig.psram` with
 WiFi), the stream set's `714-walk.ec3` served over the LAN, 2.0 on the I2S
 sink in line mode - the play that fell behind in
-[`planning/esp32-stream-set.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-stream-set.md)'s
+[`planning/esp32-stream-set.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/esp32-stream-set.md)'s
 "On a board":
 
 | | Before | After |
@@ -823,7 +823,7 @@ to `float`, and 0.34x after - with a wider gap. The
 #### Where the encode time goes
 
 The same board, the same day, the front end still `double`, built with
-`AC3FORGE_STAGE_TIMERS=ON` (the encode probe reporting its stages as the
+`ICLFORGE_STAGE_TIMERS=ON` (the encode probe reporting its stages as the
 decode probe does; 2.4 us a timed pair). Self time per frame, the stages that
 matter, with the whole row for scale:
 
@@ -856,7 +856,7 @@ not one hot loop.
 
 The two stages that dominated - and the block gather and analysis window in
 front of them - now run in the profile's scalar
-(`ac3/internal/encode_scalar.hpp`, `float` here; [Building](../../building.md#minimum-footprint-decoder-profile)
+(`iclforge/ac3/detail/encode_scalar.hpp`, `float` here; [Building](../../building.md#minimum-footprint-decoder-profile)
 has the axis), the coefficients widened to `double` for the rest of the
 encoder, which is unchanged. The same board, the same day, plain build:
 
@@ -967,7 +967,7 @@ question about the planner - 28 ms for six streams - and the number of
 allocation candidates, not about arithmetic; or the second core. The next
 section is what that question was worth.
 
-The same float encoder is a full build with `-DAC3FORGE_ENCODE_SCALAR=float`,
+The same float encoder is a full build with `-DICLFORGE_ENCODE_SCALAR=float`,
 which CI's `linux-gcc` leg builds beside the float decoder, in the nightly run's
 extra passes, to run its streams through the gold-reference gate and hold its
 worst channel to within 0.5 dB of the double encoder's
@@ -1041,7 +1041,7 @@ own cold start, and its 32 ms is the allocation and the mantissa counts.
 
 **The first effort level.** The search is where a platform can be given a
 choice, and the choice this branch adds is `delta_allocation`
-(`ac3::EncoderConfig` and `ac3::eac3::FrameConfig`, on by default; the CLI
+(`iclforge::EncoderConfig` and `iclforge::eac3::FrameConfig`, on by default; the CLI
 spells it `delta=off`, or `nodelta` in `eac3-encode`'s tools string). Off, the
 encoder chooses no §7.2.2.6 segments and runs no second search to weigh
 them; the stream is a legal one with `dbaflde` clear. What that removes on
@@ -1050,7 +1050,7 @@ this part is the segments' own stage and the second pass - 4.8 ms and about
 between them - and what it costs on the five gold streams, decoded and
 compared with the source, is 0.01 dB on the worst channel of the two E-AC-3
 streams and nothing on the AC-3 ones: the race was already dropping the
-segments on most of their frames. [The arithmetic-tiers plan](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/arithmetic-tiers.md)
+segments on most of their frames. [The arithmetic-tiers plan](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/arithmetic-tiers.md)
 is where the axis this is the first point of is written down.
 
 What the part cannot encode, measured on the host profile ([Building](../../building.md#what-the-encode-direction-costs)
@@ -1102,7 +1102,7 @@ run, under QEMU on 2026-09-29.
   twelve-slot DMA queue competes with WiFi for
   internal RAM; and at 0.90x the second core stops being optional for anything
   that decodes 7.1.4 and does something else
-  ([`planning/esp32-714-realtime.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-714-realtime.md)).
+  ([`planning/esp32-714-realtime.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/esp32-714-realtime.md)).
 - **The second core** was the lever the earlier estimates ranked first. It was
   not needed for stereo or 5.1, and the breakdown says why it would have
   disappointed: the stages that dominated were serial software floating point,
@@ -1128,7 +1128,7 @@ run, under QEMU on 2026-09-29.
 
 with `SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.hw"` if the board is
 reached through its native USB connector rather than the UART bridge - see
-`sdkconfig.hw` for what that changes and why. Add `-DAC3FORGE_STAGE_TIMERS=ON`
+`sdkconfig.hw` for what that changes and why. Add `-DICLFORGE_STAGE_TIMERS=ON`
 to the build for the per-stage lines, from either probe.
 
 On a DevKitC-1 the host cannot reset the part into the application over
@@ -1181,7 +1181,7 @@ failed with `out_of_memory bytes=6144`, while objects on a clean heap passed. Th
 `eac3_tools.cpp`'s 32,768-byte spectrum scratch and 1,440-byte bin-angle vector, both
 `thread_local` so §E3.5 neither allocates per call nor puts 32 KB on the stack. On a hosted
 platform they are released at thread exit; here the only thread never exits.
-`ac3::eac3::release_ecpl_scratch()` hands them back, and the probe calls it between fixtures.
+`iclforge::eac3::release_ecpl_scratch()` hands them back, and the probe calls it between fixtures.
 Retained at exit went from 34,232 bytes to 24, and to 12 once the bin-angle vector became a
 stack array and the scratch took its float form, 23,552 bytes.
 
@@ -1198,7 +1198,7 @@ pan them onto its loudspeakers, and since 2026-09-10 it can, on the target: `spa
 the profile's source list, and the block form's `PcmBlock` carries the objects beside the bed -
 a view per object onto the unit's own reconstruction, cut to the block, with the metadata that
 places them ([Decoding](../../library/decoding.md#block-granular-output)). The probe's
-`eac3_atmos_render` row is the sink a player would write: `ac3::spatial::pan_direction` for
+`eac3_atmos_render` row is the sink a player would write: `iclforge::spatial::pan_direction` for
 each object's gains onto the eleven panned targets, once per unit, the bed's LFE passed through
 as the twelfth slot, and a block of float sums per target - twelve channels of one 256-sample
 block, static. Its stream is the Atmos rows' source with three objects raised to the ceiling and
@@ -1206,7 +1206,7 @@ one half way (`tools/generators/atmos_height_scene.txt`), because the Atmos rows
 sit on the listener plane and a render of them would leave the four height targets silent.
 
 Every one of its twelve levels is the host's to the digit on both emulated legs, which is what
-the row can say: no `ac3cli` path writes a rendered layout to a WAV for the generator to
+the row can say: no `forge` path writes a rendered layout to a WAV for the generator to
 measure, so `render_fixture.hpp` is the host shape's own numbers and the row is a regression
 reference, the standing the encode fixtures already have; `tests/render/` is what says the
 panner is right. What it costs, on the Cortex-M3 leg's count on 2026-09-29: 28,945,000
@@ -1261,11 +1261,11 @@ wider than anything downstream can use, and memory was the binding constraint: t
 the per-block store, as [Objects](#objects) says).
 `src/ac3/variants/decode-scalar-{float32,float64}/` carries `decode_scalar_t` — `float` under the
 minimum-footprint profile, `double` by default elsewhere, and selectable in any build with
-`-DAC3FORGE_DECODE_SCALAR=float`. Which profile a build is and which scalar its decoder carries
+`-DICLFORGE_DECODE_SCALAR=float`. Which profile a build is and which scalar its decoder carries
 are independent CMake axes. The option's third value, `fixed`, is the tier for a part with no FPU
 at all - an ESP32-C3 or C6 - and the one value the profile honours over its own `float`
 default; [docs/building.md](../../building.md#minimum-footprint-decoder-profile) and
-[`planning/arithmetic-tiers.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/arithmetic-tiers.md)
+[`planning/arithmetic-tiers.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/arithmetic-tiers.md)
 say what it is and what it measured. It is not this part's tier:
 the S3's FPU makes `float` the right arithmetic here. Since 2026-09-09 the arithmetic between the bitstream and those
 buffers — mantissa dequantisation, dither, coordinates, decoupling, spectral extension, the AHT

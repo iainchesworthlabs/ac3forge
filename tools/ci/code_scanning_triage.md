@@ -17,20 +17,20 @@ count open alerts by tool and rule before and after the bump PR lands.
 
 ### fmt
 
-{fmt} is compiled into libac3forge and libmp4 (a private header-only copy in the namespace
-`fmt::ac3_private`, set up in `cmake/Fmt.cmake`) and into ac3cli, ac3gui, Hearth, Crucible and the
+{fmt} is compiled into libiclforge and libmp4 (a private header-only copy in the namespace
+`fmt::ac3_private`, set up in `cmake/Fmt.cmake`) and into forge, forge-gui, Hearth, Crucible and the
 WebAssembly modules. The minimum-footprint profile, which the ESP-IDF and ESPHome components and the
 arm-none-eabi build use, links no {fmt}.
 
 It is pinned in three places, all at 12.2.0:
 
 - the `builtin-baseline` in `vcpkg.json`, which resolves `fmt` to 12.2.0 for the desktop builds;
-- `AC3FORGE_FMT_VERSION` in `cmake/Fmt.cmake`, the version of the FetchContent copy that builds
+- `ICLFORGE_FMT_VERSION` in `cmake/Fmt.cmake`, the version of the FetchContent copy that builds
   without vcpkg take (WebAssembly, Android, the Python wheels, the Rust crate);
 - `fmt/12.2.0` in `packaging/conan/conanfile.py`.
 
 `cmake/Fmt.cmake` also accepts a {fmt} already installed on the machine from 11.1.0
-(`AC3FORGE_FMT_MINIMUM_VERSION`), and a build that uses one carries that version.
+(`ICLFORGE_FMT_MINIMUM_VERSION`), and a build that uses one carries that version.
 
 OSV-Scanner v2.6.0 reads no file that names {fmt}. Its scan of `main` on 2026-09-25 parsed the
 lockfiles and requirements files for npm, PyPI, Gradle, NuGet, uv and Cargo, and none of

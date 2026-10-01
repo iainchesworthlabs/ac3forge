@@ -53,7 +53,7 @@ set_target_properties(iclforge_matroska_objects PROPERTIES
     VISIBILITY_INLINES_HIDDEN ON)
 
 # MSVC's C4251 ("class X needs to have dll-interface...") fires for every
-# PRIVATE STL-typed member of a ICLFORGE_MATROSKA_EXPORT class (matroska::Writer's own
+# PRIVATE STL-typed member of a ICLFORGE_MATROSKA_EXPORT class (iclforge::matroska::Writer's own
 # std::vector<std::byte> buffers) - pure implementation detail, never touched
 # by a caller except through the class's own (exported) methods. Suppressed
 # here rather than by scattering non-portable #pragma warning(disable:)

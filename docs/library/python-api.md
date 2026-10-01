@@ -1,32 +1,35 @@
 # Python bindings
 
 A pybind11 module (`python/src/iclforge_ext/bindings.cpp`) bound straight onto
-`ac3::FrameEncoder`, `ac3::FrameDecoder`, `ac3::Eac3Decoder`, `ac3::eac3::FrameEncoder`,
-`ac3::eac3::AccessUnitEncoder` and `ac3::oba::AtmosEncoder`, and, in the `ac3forge.ac4` submodule,
-`ac4::Decoder` and `ac4::Encoder` — pybind11-direct, not layered on a separate C API. Install from
-PyPI:
+`iclforge::FrameEncoder`, `iclforge::FrameDecoder`, `iclforge::Eac3Decoder`, `iclforge::eac3::FrameEncoder`,
+`iclforge::eac3::AccessUnitEncoder` and `iclforge::oba::AtmosEncoder`, and, in the `iclforge.ac4` submodule,
+`iclforge::ac4::Decoder` and `iclforge::ac4::Encoder` — pybind11-direct, not layered on a separate C API. From the
+first release made after the rename, install from PyPI:
 
 ```bash
-pip install ac3forge
+pip install iclforge
 ```
 
-or, from a source checkout of this repository, build against the same CMake tree everything else
-here uses:
+The two pre-releases on PyPI, 0.9.0b1 and 0.10.0b1, are the project `ac3forge` with the module `ac3forge`
+(`pip install ac3forge`); the project `iclforge` has no release until one made after the rename publishes it
+([Renamed](../renamed.md#what-a-release-carries)). Or, from a source checkout of this repository, build
+against the same CMake tree everything else here uses:
 
 ```bash
 pip install ./python
 ```
 
-A wheel built from a release that predates the AC-4 module has no `ac3forge.ac4`: the wheels for
+A wheel built from a release that predates the AC-4 module has no `iclforge.ac4`: the wheels for
 0.10.0b1 and earlier are of that kind, and a build from a checkout has the module. PyPI carries
-0.10.0b1's wheels for Windows x64, Linux x86_64 and macOS on Apple Silicon, for Python 3.10 to 3.14.
+0.10.0b1's wheels, as the project `ac3forge`, for Windows x64, Linux x86_64 and macOS on Apple Silicon,
+for Python 3.10 to 3.14.
 `wheels.yml` also builds Linux aarch64 and macOS Intel wheels, which no release has carried, and
 PyPI has no source archive, so on those two `pip install ./python` from a checkout is the way in.
 
 The package's own readme — layout, build notes and examples not duplicated here — lives at
-[`python/README.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/python/README.md).
+[`python/README.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/python/README.md).
 
-`ac3forge.__version__` reports the installed package's own PEP 440 version string, derived from
+`iclforge.__version__` reports the installed package's own PEP 440 version string, derived from
 the nearest `git describe` tag the same way `PROJECT_VERSION_FULL` is on the C++ side (see
 [docs/releasing.md](../releasing.md#versioning)) but rendered by `setuptools_scm` rather than
 `cmake/GitVersionDerivation.cmake` — independently, on the Python-packaging side. A tag like
@@ -36,7 +39,7 @@ the tagged commit; that is PEP 440's normal rendering of a SemVer prerelease tag
 ## Encoding AC-3
 
 ```python
-import ac3forge as ac3
+import iclforge as ac3
 
 encoder = ac3.FrameEncoder(ac3.EncoderConfig(bitrate_kbps=448, acmod=ac3.Acmod.k3_2, lfe=True))
 stream = bytearray()
@@ -45,7 +48,7 @@ for frame in range(31):
     stream += encoder.encode_frame(channels)
 ```
 
-Full program: [`examples/python/encode_decode_roundtrip.py`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/python/encode_decode_roundtrip.py).
+Full program: [`examples/python/encode_decode_roundtrip.py`](https://github.com/iainchesworthlabs/iclforge/blob/main/examples/python/encode_decode_roundtrip.py).
 
 `encode_frame` takes either a 2-D `(n_channels, n_samples)` array or a sequence of 1-D
 `float32`-convertible arrays (any array-like `numpy` accepts — a list also works), one per
@@ -55,7 +58,7 @@ samples. It returns one syncframe as `bytes`. See [Zero-copy numpy and buffer
 reuse](#zero-copy-numpy-and-buffer-reuse) below for what "zero-copy" means here and the one
 caveat it comes with.
 
-`ac3.EncoderConfig` mirrors the coding and metadata fields of `ac3::EncoderConfig`
+`ac3.EncoderConfig` mirrors the coding and metadata fields of `iclforge::EncoderConfig`
 (`encoder/encoder.hpp`): `sample_rate`, `bitrate_kbps`, `dialnorm`, `dialnorm2`, `chbwcod`, `acmod`,
 `lfe`, `coupling`, `cplbegf`, `cplendf`, `fast_mdct`, `drc`, `heavy`, `drc2`, `heavy2`, `cmixlev`
 and `surmixlev`. `fgaincod`, `dither`, `delta_allocation`, `search`, `info` (the bsi fields),
@@ -72,7 +75,7 @@ config = ac3.EncoderConfig(
 )
 ```
 
-`ac3.profile_for(id)` is `ac3::meta::profile(ProfileId)` — the conventional Dolby DRC curves;
+`ac3.profile_for(id)` is `iclforge::meta::profile(ProfileId)` — the conventional Dolby DRC curves;
 `ac3.Profile(...)` is available directly for a fully custom curve, same shape as the C++
 `meta::Profile` struct.
 
@@ -92,7 +95,7 @@ Table 5.8/Table E2.5 names as plain strings (`["L", "C", "R", "Ls", "Rs", "LFE"]
 the C++ `DecodedFrame`/`DecodedSubstream` structs themselves, added here purely for convenience.
 
 `ac3.split_frames`/`ac3.split_access_units` wrap the free functions of the same name in
-`ac3/decoder/decoder.hpp` — splitting a raw elementary stream (or one already known to be E-AC-3)
+`iclforge/ac3/decoder/decoder.hpp` — splitting a raw elementary stream (or one already known to be E-AC-3)
 into individual syncframes or access units before decoding each one.
 
 ## Zero-copy numpy and buffer reuse
@@ -152,9 +155,9 @@ empty either way — read the PCM back from `out`.
 
 ## Scanning a stream
 
-`ac3.scan()` wraps `ac3::io::scan` (`ac3/io/elementary.hpp`) — reading an
+`ac3.scan()` wraps `iclforge::io::scan` (`iclforge/ac3/io/elementary.hpp`) — reading an
 elementary stream's shape (channel layout, every programme, every access unit's byte range)
-without decoding any audio, the same walk `ac3cli probe`/a muxer's own input stage does:
+without decoding any audio, the same walk `forge probe`/a muxer's own input stage does:
 
 ```python
 result = ac3.scan(stream)
@@ -177,9 +180,9 @@ since two programmes are never one spliced timeline.
 
 `ac3.access_unit_timing(result, index)` and `ac3.stream_duration_samples`/`stream_duration_seconds`/
 `access_unit_at_sample`/`access_unit_at_seconds`/`uniform_access_unit_samples` mirror
-`ac3::io::access_unit_timing` and its neighbours — all free functions taking a `ScannedStream`,
+`iclforge::io::access_unit_timing` and its neighbours — all free functions taking a `ScannedStream`,
 matching the C++ shape, useful for a container muxer computing where to cut. `ac3.read_frame_header`
-(`ac3::io::read_frame_header`) reads one syncframe's header — everything `scan()` reports about
+(`iclforge::io::read_frame_header`) reads one syncframe's header — everything `scan()` reports about
 the first frame, without walking the rest of the stream.
 
 A malformed stream raises `ac3.Ac3ScanError` (`.error: ac3.ScanError`) — same exception-translation
@@ -205,20 +208,20 @@ for frame in range(FRAME_COUNT):
     csv_text += ac3.verify.trace_to_csv(trace, frame_index=frame)
 ```
 
-Full program: [`examples/python/trace_export.py`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/python/trace_export.py).
+Full program: [`examples/python/trace_export.py`](https://github.com/iainchesworthlabs/iclforge/blob/main/examples/python/trace_export.py).
 
 `kind` distinguishes the per-*bin* `exponent`/`bap` curves from the per-*band* `mask` curve and
 the per-stream `snr_offset` scalar — different index spaces, named rather than forced together.
 Load the CSV/JSON Lines text with `pandas.read_csv`/`read_json(lines=True)` and call
 `.to_parquet()` from there for Parquet; this binding has no Parquet writer of its own; see
-`ac3/verify/trace_export.hpp` for why.
+`iclforge/ac3/verify/trace_export.hpp` for why.
 
 ## Encoding E-AC-3
 
-`ac3.eac3.FrameEncoder`/`AccessUnitEncoder` wrap `ac3::eac3::FrameEncoder`/
+`ac3.eac3.FrameEncoder`/`AccessUnitEncoder` wrap `iclforge::eac3::FrameEncoder`/
 `AccessUnitEncoder` directly (pybind11-direct, like everything else in this binding) — a real
-submodule rather than a flat `Eac3FrameEncoder` name, since `ac3::FrameEncoder` and
-`ac3::eac3::FrameEncoder` share a name across C++ namespaces; `ac3.FrameEncoder`
+submodule rather than a flat `Eac3FrameEncoder` name, since `iclforge::FrameEncoder` and
+`iclforge::eac3::FrameEncoder` share a name across C++ namespaces; `ac3.FrameEncoder`
 (AC-3) and `ac3.eac3.FrameEncoder` (E-AC-3) keep that collision out of the Python surface too.
 
 ```python
@@ -227,7 +230,7 @@ encoder = ac3.eac3.FrameEncoder(config)
 frame = encoder.encode_frame(channels)  # channels: encoder.channel_count arrays, AC-3 order
 ```
 
-`ac3.eac3.FrameConfig` mirrors `ac3::eac3::FrameConfig`'s core surface — sample rate (including
+`ac3.eac3.FrameConfig` mirrors `iclforge::eac3::FrameConfig`'s core surface — sample rate (including
 the three `fscod2` reduced rates), bitrate, `numblkscod`, `acmod`/`lfe`, the Annex E tools
 (`auto_tools` and the individual `coupling`/`spx`/`aht` flags it overrides), substream identity
 (`strmtyp`/`substreamid`/`chanmap`/`last_dependent`), and `drc`/`heavy`/`drc2`/`heavy2` (the same
@@ -249,7 +252,7 @@ unit = encoder.encode_access_unit(channels)  # channels: encoder.channel_count a
 stream += unit.bytes
 ```
 
-`ac3.eac3.LayoutId` names the same eight layouts `ac3::plan::LayoutId` does (`kMono`, `kStereo`,
+`ac3.eac3.LayoutId` names the same eight layouts `iclforge::plan::LayoutId` does (`kMono`, `kStereo`,
 `kDualMono`, `k51`, `k71`, `k512`, `k514`, `k714`); `dependent_bitrate_kbps` (default half of
 `bitrate_kbps`, applied to every dependent) overrides the per-dependent rate. Building an
 `AccessUnitConfig` by hand works too — `independent`/`dependents` are plain
@@ -259,7 +262,7 @@ doesn't name, or full control over each substream's own fields.
 `unit` is an `ac3.eac3.AccessUnit`: `.bytes` is the whole access unit, `.substream_bytes` is each
 substream's byte length (independent first, summing to `len(unit.bytes)`).
 
-Full program: [`examples/python/encode_eac3.py`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/python/encode_eac3.py).
+Full program: [`examples/python/encode_eac3.py`](https://github.com/iainchesworthlabs/iclforge/blob/main/examples/python/encode_eac3.py).
 
 ## E-AC-3 and Atmos objects
 
@@ -291,7 +294,7 @@ C++ `DecodedSubstream`/`DecodedAccessUnit` structs.
 
 Every fallible call translates the C++ side's `std::expected` error branch into a Python
 exception rather than a Result-like return — idiomatic for a Python API, even though the C++
-core itself never throws (see [CONTRIBUTING.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/CONTRIBUTING.md)'s
+core itself never throws (see [CONTRIBUTING.md](https://github.com/iainchesworthlabs/iclforge/blob/main/CONTRIBUTING.md)'s
 "no exceptions for stream-level failure" rule, which is a C++-core policy this binding layer
 does not need to import wholesale).
 
@@ -302,7 +305,7 @@ does not need to import wholesale).
 | `ac3.Ac3ScanError` | `ac3.scan`, `ac3.read_frame_header` | `ac3.ScanError` |
 
 All three derive from `ac3.Ac3Error(RuntimeError)`. Each message is the C++ `describe()` text of
-the error after a prefix such as `ac3forge encode failed:`; `ac3.describe` is overloaded for
+the error after a prefix such as `iclforge encode failed:`; `ac3.describe` is overloaded for
 `FrameError`, `DecodeError` and `ScanError`, so the same text is available without an exception.
 
 A wrong-length or wrong-count channel array (not `ac3.SAMPLES_PER_FRAME` samples, or not
@@ -338,7 +341,7 @@ result types are read-only.
 | `meta.QcPresetId`, `QcLoudnessLimit`, `QcPreset`, `QcVerdict` | `meta.qc_preset(id)` returns a `QcPreset` (`target_lkfs`, `tolerance_lu`, `max_true_peak_dbtp`, `loudness_limit` of `kBand` or `kCeiling`, `source`); `meta.evaluate_qc_gate` returns a `QcVerdict` (`loudness_delta_lu`, `loudness_pass`, `true_peak_margin_dbtp`, `true_peak_pass`, `passed`) |
 | `signing.VerifySummary` | `signing.verify_atmos_stream`'s counts: `valid`, `mismatch`, `no_container` and `all_valid` |
 | `containers.TsCodec`, `TsProfile` | `TsTrack.codec` (`kAc3`, `kEac3`, `kAc4`) and `mux_mpegts`'s `profile` (`kDvb`, `kAtsc`) |
-| `ac4.Speaker`, `ObjectKind`, `DownmixTarget`, `DrcMode`, `AssociatedType`, `ConcealmentPolicy`, `ConcealmentAction`, `DecodingMode`, `CodecMode`, `RateMode`, `BedChannel`, `ObjectCoding`, `AjocDownmix`, `AdditionalPair`, `DecodeError`, `EncodeError` | The enums of `ac4::` behind the [AC-4](ac4.md) controls, under their C++ enumerator names |
+| `ac4.Speaker`, `ObjectKind`, `DownmixTarget`, `DrcMode`, `AssociatedType`, `ConcealmentPolicy`, `ConcealmentAction`, `DecodingMode`, `CodecMode`, `RateMode`, `BedChannel`, `ObjectCoding`, `AjocDownmix`, `AdditionalPair`, `DecodeError`, `EncodeError` | The enums of `iclforge::ac4` behind the [AC-4](ac4.md) controls, under their C++ enumerator names |
 | `ac4.OutputConfig`, `PresentationChoice`, `DecoderConfig`, `Concealment`, `PresentationInfo`, `LoudnessInfo`, `EncodedFrame` | `OutputConfig` has `output_level_dbfs`, `drc`, `headphones`, `dialogue_enhancement_db`, `downmix`, `mix_lfe`, `dialogue_gain_db` and `associated_gain_db`; `PresentationChoice` `presentation_id`, `index`, `language`, `associated`, `associated_type` and `headphones`; `DecoderConfig` `output`, `concealment`, `presentation`, `level` and `decoding`; `Concealment` the `error` and `action` of a frame the decoder made in place of one that did not decode; `PresentationInfo` `index`, `presentation_id`, `md_compat`, `enabled`, `alternative`, `pre_virtualized`, `name`, `language`, `decodable`, `selectable` and `speakers`; `LoudnessInfo` `dialnorm_dbfs`, `integrated_lkfs`, `true_peak_dbtp` and `loudness_range_lu`, each `None` until the stream sends it; `EncodedFrame` `data`, `samples` and `iframe`. A `DecodedFrame` also has `sample_rate_hz`, `sequence_counter`, `presentation_index`, `presentation_id` and `concealed` |
 
 ## Containers, metering, QC and signing
@@ -346,26 +349,26 @@ result types are read-only.
 Three more submodules, each pybind11-direct over the same C++ classes every other binding here
 wraps, and a context manager:
 
-- **`ac3forge.containers`** — the three container writers and the batch read side, bytes in /
+- **`iclforge.containers`** — the three container writers and the batch read side, bytes in /
   bytes out: `mux_matroska`/`mux_mp4`/`mux_mpegts` over `MatroskaTrack`/`Mp4Track`/`TsTrack`
   (kwargs constructors, the same convention every config class here uses), and
   `demux_matroska`/`demux_mp4`/`demux_mpegts` bringing frames back out. `Mp4Track.codec_config`
-  takes the `dac3`/`dec3` payload `ac3forge.build_codec_config_box(stream)` produces — built
+  takes the `dac3`/`dec3` payload `iclforge.build_codec_config_box(stream)` produces — built
   straight off the bitstream, never off whatever a source container declared, exactly like
-  `ac3cli mp4`. AC-4 goes through in part: `containers.TsCodec.kAc4` for MPEG-TS (DVB only), and
+  `forge mp4`. AC-4 goes through in part: `containers.TsCodec.kAc4` for MPEG-TS (DVB only), and
   `Mp4Track(codec_id="ac-4", codec_config=...)` with the `dac4` payload of
   `ac4.Encoder.toc.build_dac4()`; `demux_mp4` and `demux_mpegts` read AC-4 tracks back. `Mp4Track`
   has no `timescale` and `mux_mp4` no sync-sample list, so every sample is marked a sync sample and
   a frame rate whose frames alternate in length (29.97, 59.94 and 119.88 fps) has no
-  `samples_per_frame` to give; `ac3cli` or the C++ `mp4::mux` writes those. The incremental
+  `samples_per_frame` to give; `forge` or the C++ `iclforge::mp4::mux` writes those. The incremental
   `Reader`/`Writer` classes and the fragmented-MP4/HLS/DASH surface are C++-only, by design.
-- **`ac3forge.meta`** — `LoudnessMeter` (BS.1770; every gated measurement is `None` until it
-  can mean anything), the cited `qc_preset()` table, and `evaluate_qc_gate()` — `ac3cli qc`'s
+- **`iclforge.meta`** — `LoudnessMeter` (BS.1770; every gated measurement is `None` until it
+  can mean anything), the cited `qc_preset()` table, and `evaluate_qc_gate()` — `forge qc`'s
   own machinery, callable from a notebook.
-- **`ac3forge.signing`** — `SigningKey` (base64 or raw, the single decode every front end
+- **`iclforge.signing`** — `SigningKey` (base64 or raw, the single decode every front end
   shares), `sign_atmos_stream` (returns a signed copy — Python bytes are immutable),
   `has_authenticity_tag` and `verify_atmos_stream`.
-- **`Eac3Decoder` is a context manager** — `with ac3forge.Eac3Decoder() as d:` drains the §3.7
+- **`Eac3Decoder` is a context manager** — `with iclforge.Eac3Decoder() as d:` drains the §3.7
   hold-back on scope exit (discarding it; call `flush()` yourself to keep it).
 
 The hand-written stubs in `__init__.pyi` cover all of it, and wheels.yml's `stubtest` step
@@ -373,9 +376,9 @@ holds them to the compiled module on every push.
 
 ## AC-4
 
-`ac3forge.ac4` is one of the extension's optional submodules, with `containers` and `signing`: it
-exists only in a build that also built the libraries behind it (`AC3FORGE_BUILD_AC4`), and the
-wheel build turns them all on. It is pybind11-direct on `ac4::Decoder`/`ac4::Encoder` (ETSI TS
+`iclforge.ac4` is one of the extension's optional submodules, with `containers` and `signing`: it
+exists only in a build that also built the libraries behind it (`ICLFORGE_BUILD_AC4`), and the
+wheel build turns them all on. It is pybind11-direct on `iclforge::ac4::Decoder`/`iclforge::ac4::Encoder` (ETSI TS
 103 190-1 V1.4.1, TS 103 190-2 V1.3.1), not layered on the C API, and binds a deliberate subset of
 both C++ headers:
 decoder output config, presentation selection, concealment, decoded PCM/speakers/objects (with the
@@ -405,14 +408,14 @@ for frame in encoder.encode(channels):  # 6 arrays of any equal length
 ```
 
 `Encoder.create` raises `Ac4EncodeError` with the first rule a configuration breaks
-(`ac4::Encoder::refusal_reason`, also `Encoder.refusal_reason(config)`) — every enumerator here keeps its C++ name verbatim
+(`iclforge::ac4::Encoder::refusal_reason`, also `Encoder.refusal_reason(config)`) — every enumerator here keeps its C++ name verbatim
 (`ac4.DrcMode.kDefault`, not `.Default`), same as the rest of this binding's enums. `encoder.encode`
 takes a 2-D array or a sequence of 1-D arrays, one per `EncoderConfig.channels`, any equal length
 — the encoder buffers input to its own frame length internally, unlike `FrameEncoder.encode_frame`'s
 fixed `SAMPLES_PER_FRAME`. `encoder.flush()` pads to the end of the last frame and returns whatever
 the delay still held; `encoder.toc` reads back a `Toc` snapshot whose `build_dac4()`/
 `dac4_refusal()`/`media_timing()`/`samples_per_frame()` feed a container muxer the same way the
-C API's `ac3forge_ac4_toc_t` accessors do, and `ac4.sync_frame(raw_frame, crc)` wraps a raw frame
+C API's `iclforge_ac4_toc_t` accessors do, and `ac4.sync_frame(raw_frame, crc)` wraps a raw frame
 for a `.ac4` file or MPEG-2 TS. `encoder.codec_mode` is what `kAuto` chose, and
 `encoder.delay_samples` and `encoder.decoder_delay_samples` say where an input sample lands in the
 decoded output.
@@ -433,7 +436,7 @@ C++ decoder's own.
 each: a bed object from a loudspeaker, a dynamic object, or the LFE, with an `ObjectProperties` in
 force from the first sample), how they are coded (`coding`: A-JOC, the default, or direct-coded;
 `downmix`, `downmix_signals`, `decorrelation`, `parameter_bands` and the rest of
-`ac4::ObjectsConfig`), and the object substream is experimental, so `experimental.objects` has to
+`iclforge::ac4::ObjectsConfig`), and the object substream is experimental, so `experimental.objects` has to
 be set as well. `ObjectProperties` is the class `DecodedObject.properties` returns, and the
 Encoder takes the same fields: `x`, `y`, `z`, `gain_db`, `priority`, `width_x`/`width_y`/`width_z`,
 `zone_mask`, `screen_factor`, `depth_exponent`, `distance`, `divergence`, `headphone_render_mode`
@@ -479,7 +482,7 @@ failures were plain `ValueError`s before they had types, and `except ValueError`
 every one. `Decoder.decode()` raises `Ac4DecodeError` for a frame that will not decode, unless
 `DecoderConfig.concealment` supplies a frame in its place; `Encoder.create()`, `encode()` and
 `flush()` raise `Ac4EncodeError` for a configuration or input the encoder refuses. Each carries the
-C++ enumerator as `.error` (`ac4.DecodeError`, `ac4.EncodeError`) and `ac4::describe()` of it, or
+C++ enumerator as `.error` (`ac4.DecodeError`, `ac4.EncodeError`) and `iclforge::ac4::describe()` of it, or
 for `create()` the refusal reason, as its message. They sit beside `Ac3Error` and are not under
 it, since `Ac3Error` derives from `RuntimeError`. An argument the binding cannot read (a channel
 that is not a 1-D array) stays a plain `ValueError`.
@@ -494,11 +497,11 @@ sample comes out; the limits, the I-frame lists and the experimental flags); `te
 
 ## What isn't exposed
 
-`FrameEncoder`/`AtmosEncoder`'s self-check `trace` hook (`ac3::verify::FrameTrace`) and
+`FrameEncoder`/`AtmosEncoder`'s self-check `trace` hook (`iclforge::verify::FrameTrace`) and
 `AtmosEncoder`'s `bed()`/`parameters()` introspection accessors are internal verification
 tooling, not part of this binding's surface — the DECODE-side `trace`/`eac3_trace` on
 `DecoderConfig` above is a different thing (the research export, not the
-encoder/decoder mirror self-check `ac3::verify::MirrorEncoder`/`Eac3MirrorEncoder` drive
+encoder/decoder mirror self-check `iclforge::verify::MirrorEncoder`/`Eac3MirrorEncoder` drive
 in-repo) and is exposed. `DecodedAccessUnit`/`DecodedSubstream`'s full Table E2.5 channel-map
 machinery (`chanmap`, `location_map()`, `layout`) is likewise not exposed beyond the convenience
 `channel_labels` list above — deliberately unsupported, and said so here, the "say so and say why"
@@ -519,14 +522,14 @@ design behind it (see [Encoding E-AC-3](#encoding-e-ac-3) above); `AccessUnitCon
 
 There is no `Eac3Decoder.decode_substream_into` — only the two forms that assemble a full
 programme (`FrameDecoder.decode_frame_into`, `Eac3Decoder.decode_access_unit_into`) have a
-caller-buffer form, because that is the only pair `ac3::FrameDecoder`/`ac3::Eac3Decoder`
+caller-buffer form, because that is the only pair `iclforge::FrameDecoder`/`iclforge::Eac3Decoder`
 themselves expose one for (see [Zero-copy numpy](#zero-copy-numpy-and-buffer-reuse) above); a
 single substream's own PCM is always freshly allocated.
 
-`ac3::oba::ObjectScene` (the object-scene timeline behind `ac3cli atmos-path` and the GUI's
-export - see [Spatial & Atmos objects](spatial-and-atmos.md#the-scene-ac3obaobjectscene)) is not
+`iclforge::oba::ObjectScene` (the object-scene timeline behind `forge atmos-path` and the GUI's
+export - see [Spatial & Atmos objects](spatial-and-atmos.md#the-scene-iclforgeobaobjectscene)) is not
 here either. Its shape has settled: `SceneCursor` is the seam a live position source plugs into,
-and the OSC wire form ([`ac3/oba/scene_osc.hpp`](spatial-and-atmos.md#the-osc-wire-form)), a
+and the OSC wire form ([`iclforge/objects/scene_osc.hpp`](spatial-and-atmos.md#the-osc-wire-form)), a
 sibling header, changed nothing about `scene.hpp`. It is left out because this surface is a
 candidate for the coming API freeze, where an experimental type would be a lasting commitment, and
 exposing half of it - the serialisation without the type, say - would be worse than exposing none,

@@ -1,23 +1,23 @@
-# IAB (SMPTE ST 2098-2) reading: `ac3iab::ac3iab`
+# IAB (SMPTE ST 2098-2) reading: `iclforge::iab`
 
-`ac3iab/ac3iab.hpp`, `ac3iab/mxf.hpp`, library `ac3iab::ac3iab`. A standalone reader for the
+`iclforge/iab/ac3iab.hpp`, `iclforge/iab/mxf.hpp`, library `iclforge::iab`. A standalone reader for the
 Immersive Audio Bitstream (IAB, SMPTE ST 2098-2:2022) — the format Dolby Atmos cinema masters
 carry, and that Netflix's IMF pipeline (SMPTE ST 2067-201) delivers inside MXF track files. Like
-`ac3adm::ac3adm`, `matroska::matroska`, `mp4::mp4` and `mpegts::mpegts`, it links nothing from
-`ac3::forge` — it has no idea AC-3, E-AC-3 or the JOC/Atmos object layer exist.
+`iclforge::adm`, `iclforge::matroska`, `iclforge::mp4` and `iclforge::mpegts`, it links nothing from
+`iclforge::ac3` — it has no idea AC-3, E-AC-3 or the JOC/Atmos object layer exist.
 
 The bitstream reader is `ac3iab.hpp` and the MXF Track File extraction is `mxf.hpp`, both covered
-here. Mapping the parsed bed/object graph onto `ac3::oba::AtmosEncoder` is a separate module,
-`ac3::admbridge`'s `build_iab()` — see [ADM → Atmos bridging](adm-bridge.md#bridging-iab) — driven
-end to end by `ac3cli atmos-iab` (see [Commands](../forge/cli/commands.md)).
+here. Mapping the parsed bed/object graph onto `iclforge::oba::AtmosEncoder` is a separate module,
+`iclforge::admbridge`'s `build_iab()` — see [ADM → Atmos bridging](adm-bridge.md#bridging-iab) — driven
+end to end by `forge atmos-iab` (see [Commands](../forge/cli/commands.md)).
 
 ```cpp
-const auto frames = ac3iab::parse_iabitstream(path);   // a bare elementary .iab file
+const auto frames = iclforge::iab::parse_iabitstream(path);   // a bare elementary .iab file
 // or:
-const auto frames = ac3iab::parse_mxf_iab(path);       // a real IAB Track File (MXF)
+const auto frames = iclforge::iab::parse_mxf_iab(path);       // a real IAB Track File (MXF)
 if (!frames) {
-    fmt::printf("parse failed: %.*s\n", static_cast<int>(ac3iab::describe(frames.error()).size()),
-                ac3iab::describe(frames.error()).data());
+    fmt::printf("parse failed: %.*s\n", static_cast<int>(iclforge::iab::describe(frames.error()).size()),
+                iclforge::iab::describe(frames.error()).data());
     return 1;
 }
 for (const auto& entry : *frames) {
@@ -26,26 +26,26 @@ for (const auto& entry : *frames) {
 }
 ```
 
-Full program: [`examples/read_iab.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/read_iab.cpp) —
+Full program: [`examples/read_iab.cpp`](https://github.com/iainchesworthlabs/iclforge/blob/main/examples/read_iab.cpp) —
 writes the same small IAB fixture both as a bare elementary file and wrapped in a synthetic MXF
 Track File, parses both, and prints that they agree.
 
-**Defaults on**, unlike `ac3adm::ac3adm`. `AC3FORGE_BUILD_IAB` defaults **ON** — IAB's own
+**Defaults on**, unlike `iclforge::adm`. `ICLFORGE_BUILD_IAB` defaults **ON** — IAB's own
 Plex(n)-coded bitstream and its MXF/KLV wrapper both need nothing beyond this module's own bit
 reader (`src/iab/src/bitreader.hpp`), no third-party dependency at all, so it builds the same
 way the three container writers do:
 
 ```bash
-cmake --preset config-windows-msvc-debug   # AC3FORGE_BUILD_IAB=ON by default
+cmake --preset config-windows-msvc-debug   # ICLFORGE_BUILD_IAB=ON by default
 ```
 
 The vcpkg port and the Conan recipe install it where asked for, off by default:
-`vcpkg install ac3forge[iab]`, or `-o "ac3forge/*:iab=True"` (see
-[Using ac3::forge](index.md)).
+`vcpkg install iclforge[iab]`, or `-o "iclforge/*:iab=True"` (see
+[Using the libraries](index.md)).
 
-`ac3cli atmos-iab` (needs `-DAC3FORGE_BUILD_ADM=ON` — the same flag `ac3::admbridge` itself rides,
+`forge atmos-iab` (needs `-DICLFORGE_BUILD_ADM=ON` — the same flag `iclforge::admbridge` itself rides,
 since that is the module with a consumer for this graph) is this module's own real-world driver,
-writing E-AC-3 or, with `codec=ac4`, AC-4 objects; nothing else in this build (`ac3gui`, the other
+writing E-AC-3 or, with `codec=ac4`, AC-4 objects; nothing else in this build (`forge-gui`, the other
 examples) consumes it.
 
 ## What gets parsed
@@ -55,8 +55,8 @@ examples) consumes it.
   recursive `ObjectDefinition`/`ObjectZoneDefinition19` children), plus `AudioDataPCM`,
   `AuthoringToolInfo` and `UserData`. Positions (§5.4's `DistanceXY`/`DistanceZ` formulas), gains
   and spreads (§5.5) are resolved to their final linear/physical values on the way in, the same
-  "plain aggregate, already-resolved" shape [`ac3adm/model.hpp`](adm.md) uses for ADM — see
-  [`ac3iab/model.hpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/iab/include/iclforge/iab/model.hpp)
+  "plain aggregate, already-resolved" shape [`iclforge/adm/model.hpp`](adm.md) uses for ADM — see
+  [`iclforge/iab/model.hpp`](https://github.com/iainchesworthlabs/iclforge/blob/main/src/iab/include/iclforge/iab/model.hpp)
   for the full struct-by-struct citation trail.
 - **`AudioDataDLC`** (§9.6/§10.7, Annex B) is read only by identity — its forward-adaptive lattice
   predictor plus entropy-coded residual is left as an opaque `std::vector<std::byte>` rather than
@@ -78,7 +78,7 @@ examples) consumes it.
   skips everything that is not a match by that KLV's own declared Length, and hands the one KLV
   whose Key matches ST 2067-201 Table 4.2's registered value straight to `parse_iabitstream`'s
   `std::istream` overload, unmodified. See
-  [`src/iab/src/mxf_reader.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/iab/src/mxf_reader.cpp)'s
+  [`src/iab/src/mxf_reader.cpp`](https://github.com/iainchesworthlabs/iclforge/blob/main/src/iab/src/mxf_reader.cpp)'s
   own header comment for the full clause-by-clause trail, including why Header Metadata's
   Preface/ContentStorage/Package object graph is never parsed at all (locating essence is a
   KLV-Key matter, not an object-graph one).
@@ -120,18 +120,18 @@ once they have stripped their own respective framing away.
 
 ## Bridging to Atmos
 
-`ac3::admbridge`'s `build_iab()` maps this module's parsed graph onto `ac3::oba::AtmosEncoder`'s
-input shape — one `ac3::oba::ObjectPath` plus one mono PCM buffer per Bed channel or Object, ready
-to drive `encode_frame()` in a loop, the same destination shape `ac3::admbridge::build()` produces
+`iclforge::admbridge`'s `build_iab()` maps this module's parsed graph onto `iclforge::oba::AtmosEncoder`'s
+input shape — one `iclforge::oba::ObjectPath` plus one mono PCM buffer per Bed channel or Object, ready
+to drive `encode_frame()` in a loop, the same destination shape `iclforge::admbridge::build()` produces
 for ADM. See [ADM → Atmos bridging](adm-bridge.md#bridging-iab) for what gets
-mapped (Table 19 → `ac3::oba::BedLabel`, position conversion, MetaID-based cross-frame identity)
+mapped (Table 19 → `iclforge::oba::BedLabel`, position conversion, MetaID-based cross-frame identity)
 and what does not (spread, the 9-zone `ObjectZoneControl`).
-[`examples/encode_iab.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/encode_iab.cpp)
-is the full read → bridge → encode pipeline; `ac3cli atmos-iab` drives the identical pipeline from
+[`examples/encode_iab.cpp`](https://github.com/iainchesworthlabs/iclforge/blob/main/examples/encode_iab.cpp)
+is the full read → bridge → encode pipeline; `forge atmos-iab` drives the identical pipeline from
 the command line.
 
 ---
 
-See also: [ADM → Atmos bridging](adm-bridge.md) — `ac3::admbridge`, which maps this graph onto
-`ac3::oba::AtmosEncoder`; [ADM / BW64 reading](adm.md) — the sibling codec-blind reader this
+See also: [ADM → Atmos bridging](adm-bridge.md) — `iclforge::admbridge`, which maps this graph onto
+`iclforge::oba::AtmosEncoder`; [ADM / BW64 reading](adm.md) — the sibling codec-blind reader this
 module's shape and documentation follow.

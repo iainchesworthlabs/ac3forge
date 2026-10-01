@@ -1,20 +1,20 @@
-# ac3forge as an ESP-IDF component
+# ICL Forge as an ESP-IDF component
 
 Dolby Digital (AC-3) and Dolby Digital Plus (E-AC-3) decoding for the ESP32-S3, ESP32-C3,
 ESP32-C6 and ESP32-P4 (the manifest's targets), and encoding, which only the S3 has run, in the
 library's minimum-footprint profile: a static archive built without exceptions or RTTI, sized to
 run out of internal SRAM with no PSRAM. The decode arithmetic is `float` on a part with a
 floating-point unit and fixed point on one without. On a part with a floating-point unit and
-PSRAM the component can also decode AC-4, behind `CONFIG_AC3FORGE_AC4` ([AC-4](#ac-4)); only the
+PSRAM the component can also decode AC-4, behind `CONFIG_ICLFORGE_AC4` ([AC-4](#ac-4)); only the
 ESP32-P4 has run it.
 
 This directory is the component. For the codec it is a wrapper: `CMakeLists.txt` pre-seeds the
-repository's options, `add_subdirectory()`s the repository root and links `ac3::forge_minimal`,
+repository's options, `add_subdirectory()`s the repository root and links `iclforge::ac3_minimal`,
 so the library is built from the same target definitions every other platform uses and nothing
 here can drift from `src/ac3/minimal.cmake`. What it adds of its own is the layer that cannot
 live in the library because it is made of FreeRTOS:
 
-- **`ac3forge::Player`** ([`include/iclforge/player.hpp`](include/iclforge/player.hpp)): a fetch
+- **`iclforge::Player`** ([`include/iclforge/player.hpp`](include/iclforge/player.hpp)): a fetch
   task reading a `ByteSource` into a ring buffer, a decode task draining it through the
   incremental framer and both decoders a block at a time, rendering each block onto the
   configured speaker layout, and a `PcmSink` taking one block of planar float per output slot.
@@ -22,7 +22,7 @@ live in the library because it is made of FreeRTOS:
   whether it sits in PSRAM are `PlayerConfig`. It reports frames, decode time, the worst frame,
   how low the ring ran, and why a run ended. An integrator implements the two seams for their
   transport and their DAC and gets the rest.
-- **`ac3forge::Control`** ([`include/iclforge/control.hpp`](include/iclforge/control.hpp)): a REST
+- **`iclforge::Control`** ([`include/iclforge/control.hpp`](include/iclforge/control.hpp)): a REST
   surface over whatever owns a player - `GET /status`, `GET /hardware`, `POST /play` with a
   location, `POST /stop`, `POST /volume`, `GET`/`PUT /layout` - on `esp_http_server`, with
   callbacks the owner supplies so the server's task never touches the player itself. The board's
@@ -34,9 +34,9 @@ live in the library because it is made of FreeRTOS:
   from two files in [`ui/`](ui) sent from flash as they are
   ([`planning/esp32-device-ui.md`](../../planning/esp32-device-ui.md)). `GET /api` lists the
   routes.
-- **`ac3forge/interleave.hpp`**: planar float to interleaved 16-bit or 24-in-32 with slot padding,
+- **`iclforge/interleave.hpp`**: planar float to interleaved 16-bit or 24-in-32 with slot padding,
   free of ESP-IDF and tested on the host. Library code with a temporary home; see the plan below.
-- **`ac3forge::DacQueueModel`**
+- **`iclforge::DacQueueModel`**
   ([`include/iclforge/dac_queue_model.hpp`](include/iclforge/dac_queue_model.hpp)): what an I2S
   DAC heard, worked out from the one fact the hardware guarantees - its DMA drains at exactly
   the sample rate. A sink tells it when each block arrives and when its write has returned, by a
@@ -45,16 +45,16 @@ live in the library because it is made of FreeRTOS:
   `i2s_wide` sinks keep one each for their `sink.*` line. Free of ESP-IDF and tested on the host
   against a simulated DMA (`tests/ac3/io/test_dac_queue_model.cpp`).
 
-The player renders through the library's `ac3::render` headers, which began in this component
+The player renders through the library's `iclforge::render` headers, which began in this component
 and moved to `src/render/include/iclforge/render/` so that the desktop player and its test sink render
 with the same code ([`planning/hearth-reference-player.md`](../../planning/hearth-reference-player.md)).
-**`ac3::render::OutputLayout`**
+**`iclforge::render::OutputLayout`**
 ([`layout.hpp`](../../src/render/include/iclforge/render/layout.hpp)) is the speakers a player has, one
 per slot, from a name (`2.0`, `5.1`, `7.1.4`, `9.2.4`) or a speaker list (`L,R,C,LFE,Ls,Rs`, or
-angles). **`ac3::render::LayoutRenderer`** ([`render.hpp`](../../src/render/include/iclforge/render/render.hpp))
+angles). **`iclforge::render::LayoutRenderer`** ([`render.hpp`](../../src/render/include/iclforge/render/render.hpp))
 turns the decoder's block - the coded channels and, when the stream has them, the objects with
 their positions - into one block per slot: a stereo or mono layout is the decoder's own §7.8
-fold; anything else has the bed placed channel by channel through `ac3::spatial::pan_direction`,
+fold; anything else has the bed placed channel by channel through `iclforge::spatial::pan_direction`,
 and a layout with height speakers has the objects placed by their own positions instead. Both
 are tested on the host (`tests/render/test_layout.cpp`).
 
@@ -67,8 +67,8 @@ Two lines in a project's top-level `CMakeLists.txt`, both **before** the include
 `project.cmake`, because the component is read during IDF's component scan:
 
 ```cmake
-set(EXTRA_COMPONENT_DIRS "/path/to/ac3forge/esp-idf")   # the directory CONTAINING components
-set(AC3FORGE_ESP_PROFILE "decoder")                      # or "encoder"
+set(EXTRA_COMPONENT_DIRS "/path/to/iclforge/esp-idf")   # the directory CONTAINING components
+set(ICLFORGE_ESP_PROFILE "decoder")                      # or "encoder"
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 ```
 
@@ -82,10 +82,10 @@ the component's own CMake finds the library either way.
 
 ## AC-4
 
-`CONFIG_AC3FORGE_AC4` (`idf.py menuconfig`, off by default, and offered only on a part with a
+`CONFIG_ICLFORGE_AC4` (`idf.py menuconfig`, off by default, and offered only on a part with a
 floating-point unit) builds the AC-4 inspector, core and decoder into the component, in single
 precision, and lets the player read a stream that opens with an AC-4 sync word: the same ring,
-renderer and sinks, and `ac4::SyncFrameSplitter` and `ac4::Decoder` in place of the AC-3 and
+renderer and sinks, and `iclforge::ac4::SyncFrameSplitter` and `iclforge::ac4::Decoder` in place of the AC-3 and
 E-AC-3 framer and decoders. With it off the component builds as it always did. It needs PSRAM,
 since the decoder alone peaks at 432 KB of heap at 2.0 and 1.93 MB at 5.1.4 on the footprint
 probe's streams, and a decode task with a stack of 40 KB, which `examples/hearth_sink/sdkconfig.ac4`

@@ -1,10 +1,10 @@
 # Concepts
 
-This section explains the audio formats used by AC3Forge. It assumes no codec or digital-signal
+This section explains the audio formats used by ICL Forge. It assumes no codec or digital-signal
 processing knowledge.
 
 The rest of the documentation ([Library](../library/index.md), [CLI](../forge/cli/index.md),
-[GUI](../forge/gui/index.md)) shows you how ac3forge implements these ideas in software. This
+[GUI](../forge/gui/index.md)) shows you how ICL Forge implements these ideas in software. This
 section only explains what the ideas *are*.
 
 ## Why compress multichannel audio at all?
@@ -22,7 +22,7 @@ uncompressed tracks.
 
 ## One family, three names
 
-The first three formats ac3forge implements form a single lineage, each one building on the last:
+The first three formats ICL Forge implements form a single lineage, each one building on the last:
 
 - **AC-3** — better known by its trademarked name **Dolby Digital**. The original: a 1990s
   standard for cinema, DVD, and broadcast, supporting up to 5.1 channels (left, centre,
@@ -53,10 +53,10 @@ chain; [Atmos & JOC](atmos-joc.md) covers the third.
 TS 103 190, so an AC-3 or E-AC-3 decoder cannot read it. A stream can carry several
 **presentations**, such as a choice of language or audio description. Its loudness model has the
 listening system set the output level, and it codes objects in two ways. The [AC-4](ac4.md) page
-covers what it is and how much of it ac3forge implements.
+covers what it is and how much of it ICL Forge implements.
 
 !!! note "Trademarks and standards"
-    "Dolby", "Dolby Digital" and "Dolby Atmos" are trademarks of Dolby Laboratories. ac3forge
+    "Dolby", "Dolby Digital" and "Dolby Atmos" are trademarks of Dolby Laboratories. ICL Forge
     implements the openly published standards behind them — ATSC A/52:2018 (of which E-AC-3
     is normative Annex E), ETSI TS 102 366, ETSI TS 103 420, and ETSI TS 103 190 (AC-4) — using
     the technical names AC-3, E-AC-3 and AC-4 throughout its code and docs. It is not
@@ -64,7 +64,7 @@ covers what it is and how much of it ac3forge implements.
 
 ## Why this project exists
 
-ac3forge is a clean-room implementation: it is built entirely from the published standards
+ICL Forge is a clean-room implementation: it is built entirely from the published standards
 above, not by studying or reusing any existing codec's code. It links no other codec library —
 not even to decode. During development, FFmpeg is used only as an independent, external pair
 of eyes: AC-3 and E-AC-3 encoder output gets checked against FFmpeg's own decoder as a sanity

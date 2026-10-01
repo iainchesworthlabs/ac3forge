@@ -1,23 +1,23 @@
 # Linux
 
-ac3forge builds and is tested on Linux on both GCC and Clang, CLI and GUI alike: Linux GCC in
+ICL Forge builds and is tested on Linux on both GCC and Clang, CLI and GUI alike: Linux GCC in
 every pull request, and the other legs in the run after a merge to main or the nightly run (see
 [CI for many agents](../ci-agentic.md)). This page covers what is specific to Linux; for the full
 preset reference, options list and troubleshooting, see [Building from source](../building.md). Crucible's Linux-only host tooling
-(live under [`apps/linux/README.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/apps/linux/README.md))
+(live under [`apps/linux/README.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/apps/linux/README.md))
 is separate from the application in `apps/crucible/`.
 
 ## Status
 
 | | |
 |---|---|
-| What runs here | The library, `ac3cli`, `ac3gui` and Crucible. Hearth (`ac3hearth`) builds and is packaged, and has not been run on Linux |
+| What runs here | The library, `forge`, `forge-gui` and Crucible. Hearth (`hearth`) builds and is packaged, and has not been run on Linux |
 | Build | GCC and Clang on x64, GCC on arm64: Linux GCC in the pull-request gate, all three after each merge to main. Clang on arm64, the two sanitizer legs and the AppImage run nightly |
-| GUI | Opt-in at build time (`-DAC3FORGE_BUILD_GUI=ON`), not on by default as it is on Windows |
+| GUI | Opt-in at build time (`-DICLFORGE_BUILD_GUI=ON`), not on by default as it is on Windows |
 | Audio backends | ALSA or PipeWire, selected at configure time. Crucible requires PipeWire |
 | Bitstream to a real receiver | Confirmed on one machine, a Raspberry Pi 4B: over ALSA on 2026-08-20, and over PipeWire on 2026-09-05, the receiver's own front panel read both times |
 | Other Linux hardware | Untried. Treat the Pi as two confirmed configurations on one box, not as Linux generally |
-| AC-4 | Decoded and encoded by `ac3cli` and `ac3gui`, decoded by Hearth. ALSA carries AC-4 bursts (IEC 61937-14), tested against ALSA's null device; PipeWire has no AC-4 codec, and no receiver is known to accept AC-4 — see [AC-4](#ac-4) |
+| AC-4 | Decoded and encoded by `forge` and `forge-gui`, decoded by Hearth. ALSA carries AC-4 bursts (IEC 61937-14), tested against ALSA's null device; PipeWire has no AC-4 codec, and no receiver is known to accept AC-4 — see [AC-4](#ac-4) |
 | Packaging | TGZ, DEB and RPM, plus an x86_64 AppImage — see [Packaging](#packaging). v0.10.0-beta.1, the latest release, predates the AC-4 decoder and encoder |
 
 The table below separates x86_64 from aarch64 and records where the evidence comes from. The
@@ -47,19 +47,19 @@ rather than trusting whatever is first on `PATH`.
 
 ## Audio backend: ALSA, or PipeWire
 
-On Linux, live capture (`ac3cli devices`/`record`), monitor playback (`ac3cli monitor`) and IEC
-61937 bitstream passthrough (`ac3cli outputs`/`play`) are implemented over **ALSA** when its
+On Linux, live capture (`forge devices`/`record`), monitor playback (`forge monitor`) and IEC
+61937 bitstream passthrough (`forge outputs`/`play`) are implemented over **ALSA** when its
 headers are present, and over **PipeWire**'s native `pw_stream` API (not its ALSA-compatibility
 shim) when they are not but PipeWire's are. Everything else is file I/O and needs no audio stack
-at all — `ac3cli spdif` in particular reaches an AV receiver by writing a WAV, on any machine,
-and `ac3cli unspdif` reads one back the same way.
+at all — `forge spdif` in particular reaches an AV receiver by writing a WAV, on any machine,
+and `forge unspdif` reads one back the same way.
 
 Capture in the other direction — an S/PDIF or HDMI **input** carrying somebody else's bitstream
 — is ordinary PCM as far as ALSA and PipeWire are concerned, exactly as passthrough output is
 (see [Why ALSA still comes first](#why-alsa-still-comes-first) for why that is the shape of the
-problem on Linux). Nothing in either API says "this is Dolby Digital", so `ac3cli record`
+problem on Linux). Nothing in either API says "this is Dolby Digital", so `forge record`
 recognises the IEC 61937 burst framing itself and writes the elementary stream rather than
-encoding the bursts as audio; `ac3cli live` detects the same thing and stops. Neither is
+encoding the bursts as audio; `forge live` detects the same thing and stops. Neither is
 hardware-confirmed — see [What has and has not been verified](#what-has-and-has-not-been-verified)
 below — but the burst framing they rely on is verified both ways against FFmpeg's `spdif` muxer.
 
@@ -79,8 +79,8 @@ sudo apt-get install libpipewire-0.3-dev
 comes first](#why-alsa-still-comes-first). No PulseAudio development headers, vcpkg port, or
 runtime daemon are ever needed by either. Without either set of headers, configure succeeds
 anyway and the build selects a no-backend fallback whose entry points return `kNoBackend`;
-`ac3cli` marks the affected commands `UNAVAILABLE HERE` in its usage rather than pretending they
-exist. `AC3FORGE_WITH_ALSA` and `AC3FORGE_WITH_PIPEWIRE` both default to `AUTO` (build the one
+`forge` marks the affected commands `UNAVAILABLE HERE` in its usage rather than pretending they
+exist. `ICLFORGE_WITH_ALSA` and `ICLFORGE_WITH_PIPEWIRE` both default to `AUTO` (build the one
 that's found); set either to `ON` to make its own missing headers a configure error instead,
 which is what a packaging build wants.
 
@@ -122,10 +122,10 @@ which needs the eight-channel high-bit-rate link neither opens. The ALSA path is
 ALSA's `null` device (`tests/audio/test_alsa_null_backend.cpp`); no receiver found so far accepts
 AC-4, so none has been tried.
 
-So `ac3cli play` decodes an AC-4 stream and plays it as PCM, the way `monitor` does, and `ac3cli
-live` with `codec=ac4` gives a bitstream output a 5.1 AC-3 leg. `ac3cli spdif` writes AC-4's
+So `forge play` decodes an AC-4 stream and plays it as PCM, the way `monitor` does, and `forge
+live` with `codec=ac4` gives a bitstream output a 5.1 AC-3 leg. `forge spdif` writes AC-4's
 bursts to a WAV and `unspdif` reads them back. In the other direction the capture-side detector
-recognises AC-4 bursts as it does AC-3's, and `ac3cli record` then writes the AC-4 elementary
+recognises AC-4 bursts as it does AC-3's, and `forge record` then writes the AC-4 elementary
 stream; that is tested on synthetic carriers, and no capture device or receiver has produced one.
 
 ### What has and has not been verified
@@ -133,8 +133,8 @@ stream; that is tested on synthetic carriers, and no capture device or receiver 
 !!! note "ALSA and PipeWire are each hardware-confirmed once, on one Raspberry Pi"
     The development loop itself — WSL2 Ubuntu 26.04 with GCC 16 and Clang 22.1 — is headless:
     ALSA with libasound present and absent and under ASan+UBSan with leak detection; PipeWire
-    (libpipewire-0.3 1.6.2) with the selection forced via `-DAC3FORGE_WITH_ALSA=OFF
-    -DAC3FORGE_WITH_PIPEWIRE=ON`, since WSL2's image has both sets of headers and ALSA wins by
+    (libpipewire-0.3 1.6.2) with the selection forced via `-DICLFORGE_WITH_ALSA=OFF
+    -DICLFORGE_WITH_PIPEWIRE=ON`, since WSL2's image has both sets of headers and ALSA wins by
     default. The full test suite passes in every configuration tried. ALSA's device-independent
     halves (device-name construction, channel-status derivation, negotiation, the render/capture
     threads, start/stop, error mapping) were additionally driven end to end against ALSA's
@@ -153,13 +153,13 @@ stream; that is tested on synthetic carriers, and no capture device or receiver 
     The receiver's own front panel was read the same evening: "5.1 DD+" from a pre-encoded
     fixture, and "Atmos/DD+" at 7.1 from Crucible's live engine with a placed object, so this is
     confirmed rather than merely delivered. Whether a given output accepts a bitstream is
-    per-device anyway; `ac3cli outputs` probes each one and reports what it finds, and since the
+    per-device anyway; `forge outputs` probes each one and reports what it finds, and since the
     PipeWire run it reports a bitstream format only on a sink whose `iec958.codecs` lists it,
     because the connect alone said yes on a headphone jack. No other Linux hardware has been tried.
 
 ## Crucible requires PipeWire
 
-The library's ALSA and PipeWire backends are used by `ac3cli` and `ac3gui`
+The library's ALSA and PipeWire backends are used by `forge` and `forge-gui`
 ([Forge](../forge/index.md)). [Crucible](../crucible/index.md) requires PipeWire for
 per-application capture. Its build rejects ALSA configurations.
 
@@ -170,12 +170,12 @@ compatible hardware exists, for PipeWire's, which needs the session manager to h
 
 ## Reading a sink's own EDID/ELD
 
-`ac3cli play`, given a `device_index`, asks the sink what it actually accepts before committing
+`forge play`, given a `device_index`, asks the sink what it actually accepts before committing
 to a format — see [CLI → Following the sink](../forge/cli/commands.md#following-the-sink). On ALSA
 the HD-audio kernel driver populates
 `/proc/asound/<card>/eld#<dev>.<port>` with the sink's own CEA-861 Short Audio Descriptors,
 already decoded into text fields, for every HDMI/DisplayPort output — a documented, stable
-kernel interface, not a private one this project reaches around. `ac3::audio::read_sink_capabilities()`
+kernel interface, not a private one this project reaches around. `iclforge::audio::read_sink_capabilities()`
 locates the right card/device the same way `enumerate_render_devices()` already does
 (`src/audio/src/backend/alsa/candidates.hpp`, shared between the two) and reads that file.
 
@@ -199,14 +199,14 @@ look once multi-port hardware is available to test against.
 
 ## GUI: opt-in, not on by default
 
-Unlike Windows, where `AC3FORGE_BUILD_GUI` defaults **ON**, both Linux presets default it
+Unlike Windows, where `ICLFORGE_BUILD_GUI` defaults **ON**, both Linux presets default it
 **OFF** — not because the GUI can't be built on Linux (`cmake/FindQt6.cmake` resolves a Linux Qt
-kit the same way it resolves a Windows one, and `ac3gui` builds clean and passes its headless
+kit the same way it resolves a Windows one, and `forge-gui` builds clean and passes its headless
 `--smoke` run under both Linux presets in CI), but because a Qt kit isn't assumed to be present
 on every Linux machine that builds this project. Opt in explicitly once Qt 6.5+ is installed:
 
 ```bash
-cmake --preset config-linux-gcc-debug -DAC3FORGE_BUILD_GUI=ON
+cmake --preset config-linux-gcc-debug -DICLFORGE_BUILD_GUI=ON
 ```
 
 On Debian/Ubuntu:
@@ -218,7 +218,7 @@ sudo apt install qt6-base-dev qt6-base-dev-tools qt6-declarative-dev qt6-declara
 Other distros need the equivalent Qt6 base + declarative (QML/Quick) packages (Fedora:
 `qt6-qtbase-devel` / `qt6-qtdeclarative-devel`). Hearth's and Crucible's windows need Qt 6.8 or
 later and are skipped with a warning on an older kit; Hearth builds by default when Qt is found,
-and Crucible needs `-DAC3FORGE_BUILD_CRUCIBLE=ON` and PipeWire. See [GUI on Linux](../building.md#gui-on-linux)
+and Crucible needs `-DICLFORGE_BUILD_CRUCIBLE=ON` and PipeWire. See [GUI on Linux](../building.md#gui-on-linux)
 for the CMake warnings you'll see about unlinked QML plugins (harmless — a property of how
 distro-packaged Qt6 is built, not a missing dependency).
 
@@ -232,7 +232,7 @@ ctest --preset test-linux-gcc-debug
 ```
 
 Substitute `linux-llvm` for `linux-gcc` to build with Clang instead. Add
-`-DAC3FORGE_BUILD_GUI=ON` to either configure line to build `ac3gui` too, once Qt is installed
+`-DICLFORGE_BUILD_GUI=ON` to either configure line to build `forge-gui` too, once Qt is installed
 (see [GUI](#gui-opt-in-not-on-by-default) above). `VCPKG_ROOT` must point at a vcpkg checkout —
 it supplies Catch2 and {fmt}, mbedTLS, cpp-httplib, libFLAC, Opus and mdns through the `hearth`
 feature the desktop presets select, and Boost and Tracy only if you opt into the
@@ -249,20 +249,20 @@ cpack --preset pack-linux-gcc
 plain tarball, plus DEB/RPM on top when the corresponding packaging tool is on `PATH`. A local
 run packages whatever the tree was configured with — the GUI only if you opted in. Tagged
 releases run `pack-linux-gcc` and `pack-linux-gcc-arm64`, and CI configures those legs
-with `-DAC3FORGE_BUILD_GUI=ON`, so released Linux packages include `ac3gui`; an arm64 `.deb`
+with `-DICLFORGE_BUILD_GUI=ON`, so released Linux packages include `forge-gui`; an arm64 `.deb`
 has also been produced and inspected on Raspberry Pi hardware (see
 [Raspberry Pi](raspberry-pi.md#verified-configuration)). The packages split by component:
-`ac3forge` (`ac3cli` and `ac3gui`), `libac3forge0`, `libac3forge-dev` (`ac3forge-devel` as an
-RPM) and, from main on, `ac3forge-hearth`; Crucible's `ac3forge-crucible` comes from its own
+`iclforge` (`forge` and `forge-gui`), `libiclforge0`, `libiclforge-dev` (`iclforge-devel` as an
+RPM) and, from main on, `iclforge-hearth`; Crucible's `iclforge-crucible` comes from its own
 PipeWire pass. v0.10.0-beta.1, the latest release, has the first three for both architectures
 and the x86_64 AppImage; the Hearth and Crucible packages are in no release yet. See
 [Packaging](../building.md#packaging).
 
-A GUI-enabled package also installs `ac3gui.desktop` (`Exec=ac3gui %F`), an AppStream metainfo
+A GUI-enabled package also installs `forge-gui.desktop` (`Exec=forge-gui %F`), an AppStream metainfo
 file, and a shared-mime-info fragment declaring the two media types (`audio/ac3` and
 `audio/eac3`) against `*.ac3`/`*.ec3` — `apps/gui/packaging/linux/`, wired into `install()`
-behind `if(LINUX)` in `apps/gui/CMakeLists.txt`. `ac3gui.desktop` claims no media type, because
-Hearth is the default handler: `ac3hearth.desktop` in the `ac3forge-hearth` package
+behind `if(LINUX)` in `apps/gui/CMakeLists.txt`. `forge-gui.desktop` claims no media type, because
+Hearth is the default handler: `hearth.desktop` in the `iclforge-hearth` package
 (`apps/hearth/ui/packaging/linux/`) carries `MimeType=audio/ac3;audio/eac3;`. Nothing declares or
 claims AC-4. Configure/build-verified only: nobody has installed the resulting `.deb`/`.rpm` on a
 desktop and double-clicked an `.ac3` file to confirm the launcher fires.
@@ -272,12 +272,12 @@ desktop and double-clicked an `.ac3` file to confirm the launcher fires.
 The `.deb`/`.rpm` above are only as portable as the host distro's own Qt 6 packaging: a distro
 whose Qt is too old for this project's `find_package(Qt6 6.5 REQUIRED ...)` floor, or whose
 `qml6-module-*` split doesn't match what `qt6-declarative-dev`/`qt6-declarative-dev-tools` expect,
-cannot install one of them. `ac3gui` also ships as a self-contained
+cannot install one of them. `forge-gui` also ships as a self-contained
 AppImage that carries its own Qt 6 and QML modules, so that gap doesn't apply — the two package
 kinds are complementary, not a replacement for each other.
 
-**AppImage, not Flatpak: the decision is settled.** `ac3gui`'s whole
-reason to exist is `ac3::audio`'s IEC 61937 passthrough — locking a device in exclusive/hog mode
+**AppImage, not Flatpak: the decision is settled.** `forge-gui`'s whole
+reason to exist is `iclforge::audio`'s IEC 61937 passthrough — locking a device in exclusive/hog mode
 and writing a raw compressed bitstream straight to an AVR, over ALSA's `iec958:...,AES0=0x06`
 device arguments or PipeWire's native `SPA_MEDIA_SUBTYPE_iec958` (see [Why ALSA still comes
 first](#why-alsa-still-comes-first) above). That is exactly the kind of raw device access
@@ -291,16 +291,16 @@ installed binary — no portal, no opt-out flags, nothing to maintain going forw
 ### Build recipe
 
 ```bash
-cmake --preset config-linux-gcc -DAC3FORGE_BUILD_GUI=ON
+cmake --preset config-linux-gcc -DICLFORGE_BUILD_GUI=ON
 cmake --build --preset build-linux-gcc
 cmake --install build/config-linux-gcc --prefix AppDir/usr --component runtime
-# plus --component library/libruntime too, only if `ldd` on the built ac3gui binary
+# plus --component library/libruntime too, only if `ldd` on the built forge-gui binary
 # shows it dynamically linking a project .so (BUILD_SHARED_LIBS=ON) - see the
 # linux-appimage CI job for the check.
 linuxdeploy-x86_64.AppImage --appdir AppDir \
-  --executable AppDir/usr/bin/ac3gui \
-  --desktop-file AppDir/usr/share/applications/ac3gui.desktop \
-  --icon-file AppDir/usr/share/icons/hicolor/256x256/apps/ac3gui.png \
+  --executable AppDir/usr/bin/forge-gui \
+  --desktop-file AppDir/usr/share/applications/forge-gui.desktop \
+  --icon-file AppDir/usr/share/icons/hicolor/256x256/apps/forge-gui.png \
   --plugin qt --output appimage
 ```
 
@@ -337,7 +337,7 @@ narrow.
 Configure/build/package-verified in CI (the `linux-appimage` job in `.github/workflows/_build.yml`,
 which runs in the nightly run and in a release, never in a pull request or the run after a merge)
 — and, one step further than a plain `.deb`/`.rpm` gets, run: the same job then launches
-the built AppImage headlessly (`ac3gui --smoke`, `QT_QPA_PLATFORM=offscreen`) inside a **second, separate
+the built AppImage headlessly (`forge-gui --smoke`, `QT_QPA_PLATFORM=offscreen`) inside a **second, separate
 container that never had Qt or a single build tool installed** — `debian:12-slim`, reached via
 Docker against the GitHub-hosted runner's own Docker daemon — and asserts it exits 0. That is the
 concrete answer to "does this actually run on a distro whose own Qt packages were never
@@ -362,7 +362,7 @@ access works exactly like a normal installed binary").
 
 The pull-request gate builds and tests `linux-gcc`, and the run after a merge to main runs
 `linux-gcc`, `linux-llvm` and `linux-gcc-arm64` ([CI for many agents](../ci-agentic.md#the-tiers)).
-Each of those installs a Qt6 kit and builds and smoke-tests `ac3gui` in addition to the CLI. The
+Each of those installs a Qt6 kit and builds and smoke-tests `forge-gui` in addition to the CLI. The
 nightly run adds the rest. Two sanitizer legs, `linux-llvm-asan-ubsan` (AddressSanitizer +
 UndefinedBehaviorSanitizer) and `linux-llvm-tsan` (ThreadSanitizer, over the `concurrency` ctest
 label only — `tests/audio/` plus `tests/cli/test_cli_live.cpp`), run only in the nightly run, and
@@ -381,7 +381,7 @@ Quick suite and its `.deb` are built and checked on aarch64 as well as on x86_64
 the architecture Crucible's Linux half was verified on in the first place.
 
 A separate job, `linux-appimage`, is nightly-only as well: an `ubuntu:22.04` container
-(deliberately older than `ubuntu:26.04`) building `ac3gui`'s AppImage and then launching it inside
+(deliberately older than `ubuntu:26.04`) building `forge-gui`'s AppImage and then launching it inside
 a second container that never had Qt installed at all — see [AppImage](#appimage) above for what
 it builds and why.
 

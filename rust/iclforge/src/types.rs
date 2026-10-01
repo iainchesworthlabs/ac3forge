@@ -1,5 +1,5 @@
 //! Shared value types mirroring the enums and small structs `iclforge.h` uses across both
-//! codecs (`ac3::SampleRate`, `ac3::Acmod`, the DRC presets, the mix-level tables, latency).
+//! codecs (`iclforge::SampleRate`, `iclforge::Acmod`, the DRC presets, the mix-level tables, latency).
 
 use iclforge_sys as sys;
 
@@ -162,7 +162,7 @@ impl DrcProfile {
 }
 
 /// `iclforge_centre_mix_level_t` — A/52 Table 5.9 (§5.4.2.4). The default is −4.5 dB, the
-/// library's own (`iclforge_encoder_config_init()`, `ac3::EncoderConfig::cmixlev`) - not the
+/// library's own (`iclforge_encoder_config_init()`, `iclforge::EncoderConfig::cmixlev`) - not the
 /// first variant.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum CentreMixLevel {
@@ -197,7 +197,7 @@ impl CentreMixLevel {
 }
 
 /// `iclforge_surround_mix_level_t` — A/52 Table 5.10 (§5.4.2.5). The default is −6 dB, the
-/// library's own (`iclforge_encoder_config_init()`, `ac3::EncoderConfig::surmixlev`) - not the
+/// library's own (`iclforge_encoder_config_init()`, `iclforge::EncoderConfig::surmixlev`) - not the
 /// first variant.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum SurroundMixLevel {
@@ -235,7 +235,7 @@ impl SurroundMixLevel {
     }
 }
 
-/// `iclforge_heavy_config_t` — `ac3::meta::HeavyConfig` verbatim (§7.7.2).
+/// `iclforge_heavy_config_t` — `iclforge::meta::HeavyConfig` verbatim (§7.7.2).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct HeavyConfig {
     pub dialogue_target_dbfs: f64,

@@ -279,13 +279,13 @@ export function makeFakeAc4Module({
  * of every object's PCM, its properties in force at the frame's first sample
  * and the updates within the frame) and a decoder that reads them back, with
  * every property quantised to the steps its code has (Part 2 Annex F, as
- * ac4::ObjectProperties documents them) and an inactive object sending none.
+ * iclforge::ac4::ObjectProperties documents them) and an inactive object sending none.
  * Objects come out in the decoder's order: the LFE, then the bed objects, then
  * the dynamic objects, each in the order they were listed. There is no delay,
  * and no refusal of any configuration: what it tests is the wrapper's traffic
  * with the native module (the options in, the updates in, the frames and the
  * objects out), not the codec, which is the C API's, Rust's and Python's tests'
- * to hold to ac4::Encoder and this module's C++ side's to a real Emscripten
+ * to hold to iclforge::ac4::Encoder and this module's C++ side's to a real Emscripten
  * build. It implements only what a round trip calls: encode(), flush(),
  * decodeFrame() and delete().
  */

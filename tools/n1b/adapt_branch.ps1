@@ -12,9 +12,9 @@
 #      hand-written commits that follow it are the only changes the branch has to reconcile.
 #
 # The scripts Run-Scripts runs are S2's and S3's (n1b_apply.py, n1b_cmake.py, n1b_paths.py, n1b_names.py). S4's
-# (n1b_idents.py, n1b_sendspin.py) and N1A's (n1b_programs.py) are not in it: a branch that predates them runs those
-# by hand, in the order of the start-to-finish sections of README.md, and records each stage's scripted commits as
-# merged the same way (steps 3 and 4).
+# (n1b_idents.py, n1b_sendspin.py), N1A's (n1b_programs.py) and S5's (n1b_docs.py, three phases) are not in it: a
+# branch that predates them runs those by hand, in the order of the start-to-finish sections of README.md, and
+# records each stage's scripted commits as merged the same way (steps 3 and 4).
 #
 #   -Apply    does steps 1 to 4 in the worktree -Root, which must be clean and on the branch.
 #   -Measure  counts, without touching the branch, the files `git merge-tree` reports as conflicted when the

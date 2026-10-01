@@ -1,18 +1,18 @@
-# Object signing: `ac3::signing`
+# Object signing: `iclforge::signing`
 
-`ac3/signing/emdf_atmos_signer.hpp`, `signing_key.hpp` — a separate library, `ac3::signing`, not
-part of `ac3::forge`: signing is an optional step a front end applies to already-encoded frames, so
+`iclforge/signing/emdf_atmos_signer.hpp`, `signing_key.hpp` — a separate library, `iclforge::signing`, not
+part of `iclforge::ac3`: signing is an optional step a front end applies to already-encoded frames, so
 the codec itself has no dependency on it. See [Object signing](../concepts/object-signing.md) for
 what this is *for* — a licensed decoder treats the EMDF container's `emdf_protection` field as a
 commitment to object decoding and refuses the whole stream if the tag does not check out; this
 computes the keyed tag that satisfies it.
 
 ```cpp
-const ac3::signing::SigningKey key{key_bytes};   // the operator's own, at runtime
-const int signed_count = ac3::signing::sign_atmos_stream(stream, key);
+const iclforge::signing::SigningKey key{key_bytes};   // the operator's own, at runtime
+const int signed_count = iclforge::signing::sign_atmos_stream(stream, key);
 ```
 
-Full program: [`examples/object_signing.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/object_signing.cpp)
+Full program: [`examples/object_signing.cpp`](https://github.com/iainchesworthlabs/iclforge/blob/main/examples/object_signing.cpp)
 — encodes a two-object Atmos stream, then signs it. The key used there is a literal stand-in so the
 example needs nothing outside itself; no decoder accepts it. A key is always the operator's to
 provision at runtime (an environment variable or a `signing-key=<path>` file in the CLI), never
@@ -23,7 +23,7 @@ compiled in.
 `sign_atmos_stream` signs, in place, every syncframe in a stream that carries an EMDF object
 container — frames without one are left untouched — and returns how many it signed.
 `sign_atmos_frame` does the same for one syncframe at a time, returning true when that frame
-carried a container and was signed. Scope is narrow: the ac3forge "atmos" output (a single
+carried a container and was signed. Scope is narrow: the ICL Forge "atmos" output (a single
 independent 5.1 substream, frame-level exponent strategy and SNR, no coupling). A frame outside
 that subset is left unsigned rather than signed wrong, the same answer a frame with no container
 gets.
@@ -32,7 +32,7 @@ gets.
 
 `SigningKey` owns its bytes and zeroizes them on destruction, so a supplied key does not linger in
 freed heap after signing finishes. `load_signing_key(explicit_path)` resolves one from, in order,
-an explicit path, `$AC3FORGE_SIGNING_KEY_FILE`, then `$AC3FORGE_SIGNING_KEY` — the same resolution
+an explicit path, `$ICLFORGE_SIGNING_KEY_FILE`, then `$ICLFORGE_SIGNING_KEY` — the same resolution
 the CLI's `signing-key=<path>` uses — and returns a `std::expected<SigningKey, KeyLoadError>`.
 `KeyLoadError::kind` is one of `KeyErrorKind::kAbsent` (no source offered a key, which a caller
 that did not ask to sign can treat as fine), `kUnreadable`, `kMalformed` or `kEmpty`.
@@ -67,11 +67,11 @@ because that decoder's own check uses a key and scheme this library does not hav
 (or the two environment variables above):
 
 ```bash
-ac3cli atmos-encode in.wav out.ec3 448 0 paths.json sign-objects signing-key=/path/to/key
+forge atmos-encode in.wav out.ec3 448 0 paths.json sign-objects signing-key=/path/to/key
 ```
 
 `decode`, `monitor` and `spatial` accept `verify-objects`, which checks every frame against the key
-and refuses the whole command on a mismatch. `ac3cli probe` reports whether an authenticity tag is
+and refuses the whole command on a mismatch. `forge probe` reports whether an authenticity tag is
 present, with no key. There is no CLI command that signs an existing stream after encoding.
 
 Signing is E-AC-3 only: it protects the EMDF container of a DD+ JOC stream. AC-4 objects are not
@@ -82,7 +82,7 @@ errors.
 
 The HMAC-SHA-256 construction (RFC 2104 / FIPS 180-4) and the choice of which frame regions are
 authenticated are clean-room: derived from this codec's own public container layout
-(`ac3::emdf`, `ETSI TS 103 420`) and built on this project's own parsing primitives. The key is the
+(`iclforge::emdf`, `ETSI TS 103 420`) and built on this project's own parsing primitives. The key is the
 one piece never carried here, the same posture a licensed tool takes with its own (iLok-provisioned)
 key.
 

@@ -1,4 +1,4 @@
-/* AC3Forge homepage hero — renders inside Material's {% block hero %},
+/* ICL Forge homepage hero — renders inside Material's {% block hero %},
    which sits above the normal tabs/sidebar/content, not inside .md-typeset.
    Everything here is namespaced ac3f- to avoid colliding with Material's
    own classes. Colors come from Material's own --md-* variables (already

@@ -18,7 +18,7 @@ group; an ESP32-P4 built with `sdkconfig.ac4` decodes it from an HTTP source
 ([ESP32-P4](../platforms/bare-metal/esp32-p4.md#ac-4)).
 
 A stereo group of a C6 and an S3 has played ten minutes with no underrun on either board
-([example README](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/iclforge/examples/hearth_sink/README.md#on-the-esp32-c6)).
+([example README](https://github.com/iainchesworthlabs/iclforge/blob/main/esp-idf/iclforge/examples/hearth_sink/README.md#on-the-esp32-c6)).
 `idf.py qemu` does not support the C6, so CI builds its image but only a board runs it.
 
 Pairing, groups and firmware updates work the same as on the S3; see
@@ -52,11 +52,11 @@ uses the larger partition table.
 
 `sdkconfig.c6` and `sdkconfig.sendspin-c6` record why each setting has the value it has, from
 measurements on a board: the ring size, the DMA queue and WiFi's code kept in flash. The example's
-[README](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/iclforge/examples/hearth_sink/README.md#on-the-esp32-c6)
+[README](https://github.com/iainchesworthlabs/iclforge/blob/main/esp-idf/iclforge/examples/hearth_sink/README.md#on-the-esp32-c6)
 covers running it on a C6.
 
 ## Related pages
 
 - [ESP32-C6 platform](../platforms/bare-metal/esp32-c6.md) — decode timing and memory, with and
   without WiFi
-- [ESP-IDF component README](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/iclforge/README.md)
+- [ESP-IDF component README](https://github.com/iainchesworthlabs/iclforge/blob/main/esp-idf/iclforge/README.md)

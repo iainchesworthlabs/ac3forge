@@ -6,9 +6,9 @@
 //
 // Everything on this page is real: a dropped .wav is decoded by the
 // browser's own Web Audio API, encoded frame-by-frame by the actual AC-3/
-// E-AC-3 encoder (ac3::FrameEncoder/ac3::eac3::FrameEncoder, compiled to
+// E-AC-3 encoder (iclforge::FrameEncoder/iclforge::eac3::FrameEncoder, compiled to
 // WASM), measured by the actual BS.1770 loudness meter
-// (ac3::meta::LoudnessMeter) used for `forge qc`, and the "round-trip
+// (iclforge::meta::LoudnessMeter) used for `forge qc`, and the "round-trip
 // preview" plays back the actual encoded bytes through the actual decoder -
 // not the source audio replayed directly.
 
@@ -21,10 +21,10 @@ const LAYOUTS = {
     2: { wasmLayout: 1, label: 'stereo' },
     6: { wasmLayout: 2, label: '5.1' },
     // The wide layouts (E-AC-3 only - a 5.1 bed plus dependent substreams)
-    // route through ac3::plan INSIDE the module: encodeFrame() takes these in
+    // route through iclforge::plan INSIDE the module: encodeFrame() takes these in
     // plain WAV order and the binding owns the channel-order knowledge, so no
     // JS-side reorder table exists for them. Ambiguous counts read the way
-    // ac3::plan::generic_wav_layout reads them: 8 as 7.1, 10 as 5.1.4, 12 as
+    // iclforge::plan::generic_wav_layout reads them: 8 as 7.1, 10 as 5.1.4, 12 as
     // 7.1.4.
     8: { wasmLayout: 3, label: '7.1', wide: true },
     10: { wasmLayout: 4, label: '5.1.4', wide: true },

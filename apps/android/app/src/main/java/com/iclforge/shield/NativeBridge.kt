@@ -59,7 +59,7 @@ object NativeBridge {
     external fun registerPassthroughBridge(bridge: Any)
 
     /**
-     * Smoke test: runs ac3::audio::enumerate_render_devices() end to end
+     * Smoke test: runs iclforge::audio::enumerate_render_devices() end to end
      * (native -> PassthroughBridge -> AudioTrack.isDirectPlaybackSupported)
      * and returns a human-readable report. Requires
      * [registerPassthroughBridge] to have run first. See jni_entry.cpp.
@@ -226,7 +226,7 @@ object NativeBridge {
     /**
      * OBJECTS OFF: strips the object layer out of every access unit before it
      * is wrapped for output, live, leaving everything else about the stream
-     * alone (`ac3::io::strip_objects`). The bed decodes identically - it is
+     * alone (`iclforge::io::strip_objects`). The bed decodes identically - it is
      * the same coded bed either way - so what changes is that a licensed
      * decoder stops seeing an object programme and drops to plain DD+.
      *
@@ -240,7 +240,7 @@ object NativeBridge {
     /**
      * Two floats: the energy vector's azimuth (degrees counterclockwise from
      * front) and its magnitude in [0,1], over the REAL encoded 5.1 bed
-     * (`ac3::analysis::energy_vector`).
+     * (`iclforge::analysis::energy_vector`).
      *
      * Distinct from the object positions [nativeGetObjectState] reports: those
      * are where the demo asked the object to go, this is where a 5.1 decoder's

@@ -1,6 +1,6 @@
-# Measuring quality: `ac3::quality`
+# Measuring quality: `iclforge::quality`
 
-`ac3/quality/distortion.hpp` and `ac3/quality/perceptual.hpp` are the encoder's measuring
+`iclforge/ac3/quality/distortion.hpp` and `iclforge/ac3/quality/perceptual.hpp` are the encoder's measuring
 instruments. They answer two questions an encoder has to be able to answer before it can choose
 anything: **how much error will the decoder reconstruct**, and **how much of that error can the
 signal hide**.
@@ -35,11 +35,11 @@ decoder's), and the bit allocation pointers — and produces signal and noise po
 decode is involved: §7.3's quantizers are deterministic functions of those three.
 
 ```cpp
-ac3::quality::BandNoise measured;
-for (int block = 0; block < ac3::kBlocksPerFrame; ++block) {
-    ac3::quality::accumulate_block(fixed, exponents, bap, start, end, measured);
+iclforge::quality::BandNoise measured;
+for (int block = 0; block < iclforge::kBlocksPerFrame; ++block) {
+    iclforge::quality::accumulate_block(fixed, exponents, bap, start, end, measured);
 }
-const double snr = ac3::quality::snr_db(measured);
+const double snr = iclforge::quality::snr_db(measured);
 ```
 
 The banding is A/52 Table 7.13's own 50 bands, not a separate critical-band partition, so a
@@ -57,7 +57,7 @@ segment can correct.
 `accumulate_block` evaluates `dequantize_mantissa(quantize_mantissa(m, bap), bap)` in closed form
 rather than calling the pair, which is what makes a per-candidate measurement affordable inside
 the frame loop. That is a second copy of the §7.3 quantizer arithmetic — the shape of bug
-`ac3/verify/mirror.hpp` exists to catch — so it is pinned rather than trusted:
+`iclforge/ac3/verify/mirror.hpp` exists to catch — so it is pinned rather than trusted:
 `tests/ac3/quality/test_distortion.cpp` sweeps every `bap` over the quantizer's decision boundaries
 and the full mantissa range, at every exponent a coefficient can carry, and requires **bit-exact**
 agreement.
@@ -87,11 +87,11 @@ model 2:
 6. **Perceptual entropy** per block — an estimate of the bits needed to code it transparently.
 
 ```cpp
-ac3::quality::PerceptualModel model(ac3::SampleRate::k48000, channels);
-ac3::quality::BlockAnalysis analysis;
+iclforge::quality::PerceptualModel model(iclforge::SampleRate::k48000, channels);
+iclforge::quality::BlockAnalysis analysis;
 model.analyse(channel, coefficients, endmant, analysis);   // once per block, in block order
 
-const auto nmr = ac3::quality::noise_to_mask(measured, threshold);
+const auto nmr = iclforge::quality::noise_to_mask(measured, threshold);
 // nmr.mean_db > 0 means the reconstruction noise is above what the signal can hide.
 ```
 

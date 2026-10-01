@@ -1,8 +1,8 @@
-# Phase 0 spikes: Windows AC3Forge Crucible
+# Phase 0 spikes: Windows Crucible
 
 Throwaway experiments for [docs/platforms/windows-demo.md](../../../docs/platforms/windows-demo.md),
 one question each. They are standalone (not part of the root CMake build; the raw spikes use
-WASAPI directly, while `s1_library_tap` links `ac3::audio` and S4 links `ac3::forge` by
+WASAPI directly, while `s1_library_tap` links `iclforge::audio` and S4 links `iclforge::ac3` by
 pulling the repo root in) and their answers are recorded here and on that page. Nothing in
 this directory is reused as code.
 
@@ -11,15 +11,15 @@ From the repository root, in PowerShell:
 ```powershell
 cmake -S apps/crucible/spikes -B D:/aa-wt-builds/spikes -G Ninja `
       "-DCMAKE_TOOLCHAIN_FILE=$PWD/cmake/toolchains/windows.msvc.toolchain.cmake" `
-      -DAC3FORGE_BUILD_HEARTH=OFF
+      -DICLFORGE_BUILD_HEARTH=OFF
 cmake --build D:/aa-wt-builds/spikes
 ```
 
 The toolchain path has to be absolute: from the repository root, the relative path
-`cmake/toolchains/windows.msvc.toolchain.cmake` is not found. `AC3FORGE_BUILD_HEARTH=OFF` is
+`cmake/toolchains/windows.msvc.toolchain.cmake` is not found. `ICLFORGE_BUILD_HEARTH=OFF` is
 needed because the spikes configure the repository root, where Hearth is on by default and
 asks for libraries that only the vcpkg `hearth` feature supplies (MbedTLS is the first it
-misses). With `-DAC3FORGE_SPIKES_WITH_LIBRARY=OFF` the repository root is not configured and
+misses). With `-DICLFORGE_SPIKES_WITH_LIBRARY=OFF` the repository root is not configured and
 only the four raw spikes (`tone_player`, `s1_taps`, `s5_latency` and `period_probe`) build.
 
 ## S1: process-loopback taps (`s1_taps`, `tone_player`)
@@ -71,8 +71,8 @@ virtual endpoint present and idle.
 
 ### Through the library (`s1_library_tap`), 2026-09-03
 
-Once Phase 1 landed, the same check through `ac3::audio::Capture::start_process_loopback` and
-`ac3::audio::DeviceWatcher` rather than raw WASAPI. `audio_backend()` reported both available;
+Once Phase 1 landed, the same check through `iclforge::audio::Capture::start_process_loopback` and
+`iclforge::audio::DeviceWatcher` rather than raw WASAPI. `audio_backend()` reported both available;
 a process id nobody owns was refused with "no process has the requested id" before anything was
 opened (the raw spike had shown the OS itself activates such a tap and delivers zeros); the
 spawned 440 Hz player read back at -15.1 dBFS and an estimated 434 Hz over four seconds,
@@ -81,7 +81,7 @@ and the watcher started, ran, and stopped with `running()` following it.
 
 ## S4: encoder throughput (`s4_throughput`)
 
-Links the real `ac3::forge` (the spike CMake pulls the repo root in the way the Android app
+Links the real `iclforge::ac3` (the spike CMake pulls the repo root in the way the Android app
 does) and runs, per frame, what the demo engine will run: fold 16 synthetic taps (15 stereo,
 one 7.1) into 10 positioned mono objects and a 5-slot speaker-pinned bed, move the positioned
 objects, `AtmosEncoder::encode_frame` with 15 objects, and wrap the access unit through
@@ -120,7 +120,7 @@ worked.
 Run under Phase 5 rather than Phase 0, and kept here with the others. `s5_latency
 <runner-pid> [null-sink-substring] [seconds]` is an "application": it renders 5 ms tone
 bursts on a pseudo-random schedule (180 to 320 ms apart, so a burst cannot pair with the
-wrong one) into the null sink from its own process, while the demo's runner (`ac3crucible-run`,
+wrong one) into the null sink from its own process, while the demo's runner (`crucible-run`,
 the given pid) taps it, encodes, and plays its output on a real endpoint. A process-loopback
 tap on the runner captures what it rendered, and both sides sit on the QPC clock
 (`IAudioClock` on the render side, the capture packet position on the tap side), so each
@@ -129,7 +129,7 @@ count. `self` in place of the pid taps this process itself and measures the
 render-to-loopback path alone. Neither the endpoint's DAC delay nor a receiver's decode is
 included.
 
-`Measure-Latency.ps1 -Runner <ac3crucible-run.exe> -Spike <s5_latency.exe> [-NullSink FxSound]
+`Measure-Latency.ps1 -Runner <crucible-run.exe> -Spike <s5_latency.exe> [-NullSink FxSound]
 [-Seconds 20] [-Pin stereo]` runs the four configurations: normal and low-latency frames,
 each with the codec in the loop and bypassed (`bypass on` on the runner's stdin), and prints
 one row per configuration with the runner's last status line beside the result.
@@ -173,4 +173,4 @@ not a shared-mode offer.
   one does not; exclusive-mode PCM output would, and that is a new sink, not a flag.
 - The AVR path leaves through the exclusive-mode bitstream sink with none of the PCM-side
   terms; its unknown was the receiver's decode, which waited on S2. S2 has since been confirmed
-  on a receiver, through `ac3cli` ([the Windows demo page](../../../docs/platforms/windows-demo.md)).
+  on a receiver, through `forge` ([the Windows demo page](../../../docs/platforms/windows-demo.md)).

@@ -672,8 +672,8 @@ ApplicationWindow {
     // named .mkv — S/PDIF, MP4, fMP4/CMAF and MPEG-TS are the same shape
     // there, one more forge subcommand (spdif/mp4/fmp4/ts) over the same
     // stream. Only Matroska and fMP4/CMAF get a live container= token: they
-    // are the two with an INCREMENTAL writer behind them (matroska::Writer
-    // and mp4::FragmentWriter — see
+    // are the two with an INCREMENTAL writer behind them (iclforge::matroska::Writer
+    // and iclforge::mp4::FragmentWriter — see
     // EncoderController::openLiveOutputWriters's own comment), and the two
     // forge's own `live` accepts. A live session with MP4 selected falls
     // through to a plain elementary stream below, exactly like S/PDIF and
@@ -883,7 +883,7 @@ ApplicationWindow {
     // A folder picker has no filename field the way FileDialog.SaveFile has,
     // so this picks the PARENT folder and openSaveDialog() below appends the
     // planned name (the same name the FileDialog branch would have used) to
-    // get the actual folder mp4::fragment's output is written into.
+    // get the actual folder iclforge::mp4::fragment's output is written into.
     FolderDialog {
         id: saveFolderDialog
         title: qsTr("Choose a destination for the fMP4/CMAF output")
@@ -935,7 +935,7 @@ ApplicationWindow {
     // (see window.cliLine) is honestly reproducible.
     //
     // Two forms, chosen by the name the user saves under: ".json" writes the
-    // ac3::oba::ObjectScene form (named objects, per-segment interpolation, an
+    // iclforge::oba::ObjectScene form (named objects, per-segment interpolation, an
     // orientation) and anything else the keyframe columns this dialog has
     // always written. forge tells them apart by their first character, not by
     // suffix, so either file works wherever the other does.

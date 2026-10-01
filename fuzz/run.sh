@@ -48,7 +48,7 @@ SECONDS_PER_TARGET="${ICLFORGE_FUZZ_SECONDS:-60}"
 #
 # fuzz_adm_parse is absent for a different reason from the differential
 # pair's: it is not built at all unless ICLFORGE_FUZZ_ADM=1 turns
-# ICLFORGE_BUILD_ADM on (see configure_and_build below), because ac3adm needs
+# ICLFORGE_BUILD_ADM on (see configure_and_build below), because iclforge::adm needs
 # vcpkg's "adm" feature for libadm's Boost headers and nothing else in this
 # build has a vcpkg dependency of any kind. With that variable set it IS part
 # of the default list - see target_list.
@@ -84,7 +84,7 @@ configure_and_build() {
     # bounded time budget). -g still lands full symbols for triage.
     #
     # ICLFORGE_FUZZ_ADM additionally builds fuzz_adm_parse, which needs
-    # ac3adm - and therefore vcpkg's "adm" feature for libadm's Boost
+    # iclforge::adm - and therefore vcpkg's "adm" feature for libadm's Boost
     # headers, plus network access for the FetchContent pulls of libbw64 and
     # libadm themselves. Nothing else in this build touches vcpkg at all, so
     # the toolchain file is named only when that variable is set, and
@@ -92,7 +92,7 @@ configure_and_build() {
     local adm_args=()
     if adm_enabled; then
         if [ -z "${VCPKG_ROOT:-}" ]; then
-            echo "error: ICLFORGE_FUZZ_ADM needs VCPKG_ROOT set - ac3adm's libadm" >&2
+            echo "error: ICLFORGE_FUZZ_ADM needs VCPKG_ROOT set - iclforge::adm's libadm" >&2
             echo "dependency takes its Boost headers from vcpkg's 'adm' feature." >&2
             exit 1
         fi

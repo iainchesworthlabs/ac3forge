@@ -27,7 +27,7 @@ TestCase {
         EncoderController.atmosEnabled = false;
 
         // coded/rendered/dependents measured directly off
-        // ac3::eac3::chanmap::allocate() for each preset's bed+extras mask.
+        // iclforge::eac3::chanmap::allocate() for each preset's bed+extras mask.
         const cases = [
             { preset: "stereo", coded: 2, rendered: 2 },
             { preset: "5.1", coded: 6, rendered: 6 },

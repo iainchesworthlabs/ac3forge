@@ -1,12 +1,12 @@
 # Keyboard, text size and diagnostics
 
-This page is what ac3gui offers a person who is not using a mouse, or who needs the window larger,
+This page is what forge-gui offers a person who is not using a mouse, or who needs the window larger,
 or who is writing a bug report. It also says what is still missing, because most of this landed in
 one pass on 2026-09-06 and the window is large.
 
 Crucible's equivalent page is [Keyboard and screen readers](../../crucible/accessibility.md). The two
 windows share `Theme.qml`, `SegmentedControl.qml` and `FocusRing.qml`, so the type scale, the
-palettes and the focus ring are the same thing in both; the rest of this page is ac3gui's own.
+palettes and the focus ring are the same thing in both; the rest of this page is forge-gui's own.
 
 ## Text size
 
@@ -16,14 +16,14 @@ other.
 
 100% is the default and is the size the window is drawn at. System reads the point size the
 platform's theme reports and counts 9 pt as 100%: 9 pt is the base size on Windows, and the
-desktop's own Text size setting scales it, which is how that setting reaches ac3gui. Several Linux
+desktop's own Text size setting scales it, which is how that setting reaches forge-gui. Several Linux
 desktops report 10 or 11 pt with nothing about text size touched, so System starts the window 11 to
 22% larger there — pick a percentage if that is not what you want.
 
 Every size in the window follows it. That is worth stating plainly because it was claimed before it
 was true: `Theme.qml` said "a literal `pixelSize` in a view is a size that cannot follow the
 person's text-size setting, so there are none", which was true of Crucible and had never been true
-of ac3gui — on 2026-09-06 its QML held 377 literal type sizes (376 `font.pixelSize` values and
+of forge-gui — on 2026-09-06 its QML held 377 literal type sizes (376 `font.pixelSize` values and
 one `SegmentedControl.fontSize`) and there was no text-size setting at all, so the theme's
 `fontScale` sat at 1.0 for the life of the process. All 377 now read from the scale.
 
@@ -54,7 +54,7 @@ with `Space` or `Return`:
 | Input rail | The File / Live capture switch, Choose WAV, Assign, and per source its own Remove and Start offset. |
 | Format tab | The presets, the codec, rate and container controls, the bed chips, the low-frequency chips and the extras. |
 | The tab bar | Format, AC-4, Objects, Live session, Coding tools, Metadata — whichever the current tier and codec show. |
-| Command bar | The `ac3cli` chip (which opens its popover, `Esc` closes it) and the Encode button. |
+| Command bar | The `forge` chip (which opens its popover, `Esc` closes it) and the Encode button. |
 | Runs strip | Each run's own chip, which opens that run's details, and its Cancel, Play, Show in folder, Details and More… buttons. |
 
 Inside a segmented control — the tier switch, the File / Live capture switch, the meters' Coded /
@@ -109,8 +109,8 @@ logged.
 
 It does not carry:
 
-- the signing key, in any form. The report says whether `AC3FORGE_SIGNING_KEY_FILE` and
-  `AC3FORGE_SIGNING_KEY` are set and never what they hold, and any setting under `signing/` is
+- the signing key, in any form. The report says whether `ICLFORGE_SIGNING_KEY_FILE` and
+  `ICLFORGE_SIGNING_KEY` are set and never what they hold, and any setting under `signing/` is
   written as `<withheld>` whatever value reached the renderer;
 - the value of any other environment variable — the environment is never enumerated;
 - one sample of audio, or any part of a file you loaded.
@@ -173,7 +173,7 @@ the tier the window opens in.
 Most of what this page describes is checked by reading the code. The Qt Quick suites hold a named,
 countable part of it, and that part is a good deal smaller than **What can be done without a mouse**
 and **What a screen reader is told** above. They are built where the window is built with
-`AC3FORGE_BUILD_TESTS` on, one ctest entry per `tst_*.qml` (`apps/gui/tests/CMakeLists.txt`), and
+`ICLFORGE_BUILD_TESTS` on, one ctest entry per `tst_*.qml` (`apps/gui/tests/CMakeLists.txt`), and
 they run under the offscreen platform, which has no accessibility bridge, so they read the
 properties a bridge would read and leave what a screen reader does with them untested.
 
@@ -196,7 +196,7 @@ What they hold, in full:
 - `tst_main_shell.qml` asserts that the three tier segments are named and that the first of them
   reports the RadioButton role, and `tst_qc_panel.qml` asserts the gate meter's pass and fail
   wording.
-- `tst_localisation_pipeline.qml` runs with `AC3GUI_LOCALE=xx`, the pseudo-locale that decorates
+- `tst_localisation_pipeline.qml` runs with `ICLFORGE_GUI_LOCALE=xx`, the pseudo-locale that decorates
   every string `lupdate` found, and asserts that the Guided segment's accessible name carries that
   decoration — so that name is the translated label rather than an English copy typed beside it.
   `tst_e2e_settings.qml` makes the same point from the other side: it picks another language in

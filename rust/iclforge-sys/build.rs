@@ -27,7 +27,7 @@ fn main() {
     }
 
     // Same trimmed option set python/pyproject.toml already uses for its own extension-module
-    // build: nothing outside ac3::forge_c and the codec core it embeds is relevant to this
+    // build: nothing outside iclforge::c and the codec core it embeds is relevant to this
     // binding, and turning the rest off keeps this build fast. {fmt} - the one dependency the
     // codec core itself has - resolves via find_package(CONFIG) with a FetchContent fallback
     // (cmake/Fmt.cmake), so no vcpkg toolchain file is needed here.
@@ -61,7 +61,7 @@ fn main() {
     // `dst` is cmake-rs's own OUT_DIR-rooted prefix; the actual CMake build tree (what a plain
     // `cmake -B <dir>` would call the binary dir) lives at `<dst>/build` by cmake-rs convention.
     // Deliberately NOT calling `cmake --install`: the project's install() rules cover the whole
-    // configured project (including ac3::forge_shared's own .dll), not just the one target this
+    // configured project (including iclforge::ac3_shared's own .dll), not just the one target this
     // build actually built, so a full install fails trying to copy artifacts that were never
     // compiled here. The header is plain source (no generation needed) and the compiled
     // artifacts are found directly in the build tree below instead.

@@ -2,14 +2,14 @@
 
 ## Supported versions
 
-ac3forge is pre-1.0 and under active development. Security fixes are made against the
+ICL Forge is pre-1.0 and under active development. Security fixes are made against the
 `main` branch and included in the next release; there are no long-term-support branches
 to backport to yet.
 
 ## Threat model
 
 Before linking this decoder against input you do not control, read the
-[threat model](https://iainchesworthlabs.github.io/ac3forge/threat-model/). It states what is treated as untrusted (AC-3,
+[threat model](https://iainchesworthlabs.github.io/iclforge/threat-model/). It states what is treated as untrusted (AC-3,
 E-AC-3 and AC-4 elementary streams, MP4, Matroska and MPEG-TS containers, EMDF/OAMD/JOC payloads,
 WAV headers, ADM documents, OSC live-position control packets, Sendspin network messages)
 and what is not, the memory-safety
@@ -21,7 +21,7 @@ the ones that are the embedder's to close rather than this project's.
 
 Please report security vulnerabilities privately, not through a public GitHub issue.
 
-Use [GitHub Security Advisories](https://github.com/iainchesworthlabs/ac3forge/security/advisories/new)
+Use [GitHub Security Advisories](https://github.com/iainchesworthlabs/iclforge/security/advisories/new)
 to open a private report. This reaches the maintainer directly and lets us coordinate a
 fix before any details are made public.
 
@@ -34,9 +34,9 @@ Include, where relevant:
 If you found it while embedding the library, two things speed a fix up most: the input itself
 (a fuzzer corpus file is ideal — it becomes a permanent regression case under
 `fuzz/regressions/`), and which entry point you called, since the allocating and `_into` decode
-forms have different contracts. `ac3cli --version` prints the version, commit and toolchain, which
+forms have different contracts. `forge --version` prints the version, commit and toolchain, which
 says whether what you hit is already fixed. See
-[Reporting an issue](https://iainchesworthlabs.github.io/ac3forge/threat-model/#reporting-an-issue).
+[Reporting an issue](https://iainchesworthlabs.github.io/iclforge/threat-model/#reporting-an-issue).
 
 We aim to acknowledge new reports within 7 days and to agree a disclosure timeline once
 the issue is confirmed.

@@ -15,7 +15,7 @@ import Hearth
 // The plan diagram has no per-slot angle from the engine to draw with -
 // only the label and the small-speaker flag. Rather than extend the engine
 // for one diagram, this file keeps its own label-to-angle/elevation table,
-// ported by hand from ac3::spatial::direction_of
+// ported by hand from iclforge::spatial::direction_of
 // (src/render/src/spatial.cpp) - see speakerAngles/directionOf
 // below. Keep the two in sync if that table ever changes.
 ScrollView {
@@ -60,12 +60,12 @@ ScrollView {
         return small ? qsTr("%1 (small)").arg(root.labels[index]) : root.labels[index];
     }
 
-    // ac3::spatial::kHeightThresholdDeg (spatial.hpp): half way to the
+    // iclforge::spatial::kHeightThresholdDeg (spatial.hpp): half way to the
     // nominal height angle, so the plan diagram draws a slot hollow (the
     // height tier) exactly when OutputLayout::has_height() would count it.
     readonly property real heightThresholdDeg: 22.5
 
-    // ac3::spatial::direction_of's own table (spatial.cpp): azimuth
+    // iclforge::spatial::direction_of's own table (spatial.cpp): azimuth
     // counterclockwise from front (left positive), elevation above the
     // listener's plane. Ls/Rs are not here - their azimuth depends on the
     // rest of the layout, same as direction_of's own has_rears/

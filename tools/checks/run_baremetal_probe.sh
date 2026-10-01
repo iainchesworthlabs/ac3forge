@@ -238,7 +238,7 @@ declare -A PEAK_CEILING_AC4=(
 # still declares. (24 while its per-bin angle buffer was a second one; that is
 # a stack array now.)
 #
-# It was 34,232 until the probe started calling ac3::eac3::release_ecpl_scratch()
+# It was 34,232 until the probe started calling iclforge::eac3::release_ecpl_scratch()
 # between fixtures. That difference was enhanced coupling's 32,768-byte spectrum
 # scratch (23,552 in its float form) and the 1,440-byte bin-angle vector, which
 # were thread_local and so resident for the life of a task that never exits. Not a leak - bounded,

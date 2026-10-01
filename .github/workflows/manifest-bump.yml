@@ -2,7 +2,7 @@
 # (manifest bump automation): computes the digests a new release's four staged manifests need
 # (packaging/vcpkg-port, packaging/homebrew, packaging/conan, packaging/winget) straight
 # from the release's own published assets, opens a PR with the bump, and pushes the
-# Homebrew Formula/Cask to the live iainchesworthlabs/homebrew-ac3forge tap. This is what
+# Homebrew Formula/Cask to the live iainchesworthlabs/homebrew-iclforge tap. This is what
 # closes the gap check_packaging_versions.sh's latest-tag advisory now flags - see that
 # script's own header.
 #
@@ -231,7 +231,7 @@ jobs:
               echo "  of this project's CI runners."
               if [ "$HAVE_TAP_TOKEN" != "true" ]; then
                 echo
-                echo "HOMEBREW_TAP_TOKEN is not set, so the live iainchesworthlabs/homebrew-ac3forge"
+                echo "HOMEBREW_TAP_TOKEN is not set, so the live iainchesworthlabs/homebrew-iclforge"
                 echo "tap was NOT pushed - copy packaging/homebrew/Formula/iclforge.rb and"
                 echo "packaging/homebrew/Casks/iclforge.rb into it by hand (see"
                 echo "docs/releasing.md#homebrew-formula-and-cask)."
@@ -247,7 +247,7 @@ jobs:
       # tap's main, justified by "this tap has no build or review gate of its own".
       # That stopped being true on 2026-08-19, when a `main protection` ruleset
       # (deletion + non_fast_forward + pull_request) was added to
-      # iainchesworthlabs/homebrew-ac3forge - a week before this workflow landed, so
+      # iainchesworthlabs/homebrew-iclforge - a week before this workflow landed, so
       # the direct push never once succeeded. v0.10.0-beta.1 was the first release to
       # run it and it failed with:
       #
@@ -258,7 +258,7 @@ jobs:
       # (tap #1 and #2) actually landed.
       #
       # HOMEBREW_TAP_TOKEN must be a fine-grained PAT on
-      # iainchesworthlabs/homebrew-ac3forge only, and now needs TWO permissions:
+      # iainchesworthlabs/homebrew-iclforge only, and now needs TWO permissions:
       # Contents: read and write (to push the branch) AND Pull requests: read and write
       # (to open the PR). Contents alone is what it needed for the old direct push and
       # is no longer sufficient. The built-in GITHUB_TOKEN cannot reach another repo.
@@ -274,7 +274,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          tap=iainchesworthlabs/homebrew-ac3forge
+          tap=iainchesworthlabs/homebrew-iclforge
           tapdir="$(mktemp -d)"
           git clone --quiet --depth 1 \
             "https://x-access-token:${TAP_TOKEN}@github.com/${tap}.git" \

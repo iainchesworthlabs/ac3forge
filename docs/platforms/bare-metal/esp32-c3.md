@@ -1,10 +1,10 @@
 # ESP32-C3
 
 The fixed-point tier's target: an Espressif ESP32-C3, RISC-V at 160 MHz with **no floating-point
-unit at all**. `ac3::forge_minimal` decodes here the same way it does on
-[the Cortex-M3 leg](cortex-m3.md)'s fixed-point build — `-DAC3FORGE_DECODE_SCALAR=fixed`, Q7.24
+unit at all**. `iclforge::ac3_minimal` decodes here the same way it does on
+[the Cortex-M3 leg](cortex-m3.md)'s fixed-point build — `-DICLFORGE_DECODE_SCALAR=fixed`, Q7.24
 integers under a per-block exponent — because that is what a part with no FPU wants
-([the plan](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/arithmetic-tiers.md)).
+([the plan](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/arithmetic-tiers.md)).
 It shares the same `esp-idf/iclforge/` component and manifest as [ESP32-S3](esp32-s3.md); only the
 target and the arithmetic tier differ.
 
@@ -16,7 +16,7 @@ target and the arithmetic tier differ.
 | Memory | Peaks at 195,505 bytes of heap across the twelve fixtures that run (`eac3_atmos_render`). The part reports 246,332 bytes free before a decode in a heap whose largest block is 114,688, so the total is not a budget. The probe skips the two 7.1.4 rows on a budget of 230,000 bytes, against 238,094 and 244,502 recorded for them when the decoder used more memory; the Cortex-M3 leg's fixed tier now peaks at 174,850 and 181,258 bytes on them, and this leg still skips them, so whether they fit here now has not been run |
 | Speed | **Unmeasured.** QEMU is not cycle-accurate and no C3 board has run this. On the [Cortex-M3 leg](../../performance-trend.md#instructions-per-frame-fixed-point-tier) an E-AC-3 5.1 frame is 4.2 M integer instructions against 12.9 M soft-float, AC-3 5.1 3.7 M, AC-3 2/0 1.2 M and mono 0.61 M — against 5.12 M cycles per frame at 160 MHz, but instructions are not cycles and no leg models this part's 16 KB flash cache. The [ESP32-C6](esp32-c6.md), a 160 MHz RISC-V core with no FPU in the same tier, has been timed on a board: AC-3 5.1 at 0.64x a frame, E-AC-3 5.1 at 0.75x, stereo 0.20x and 0.32x, with no network |
 | Encode | Not validated here at all: both encoders are floating-point, which on a part with no FPU means software floating point |
-| AC-4 | Not built for this part. `CONFIG_AC3FORGE_AC4` is offered only where ESP-IDF sets `SOC_CPU_HAS_FPU`, which the C3 does not, and the AC-4 decoder has no fixed-point tier yet: that is phase D14d of [`planning/ac4.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/ac4.md#d14-ac-4-on-the-esp32s), aimed at the [ESP32-C6](esp32-c6.md), with this part's QEMU leg as one of the three its hashes are to be held on. The C3 decodes AC-3 and E-AC-3 only, and no ESP32 sink takes AC-4 in a Sendspin group |
+| AC-4 | Not built for this part. `CONFIG_ICLFORGE_AC4` is offered only where ESP-IDF sets `SOC_CPU_HAS_FPU`, which the C3 does not, and the AC-4 decoder has no fixed-point tier yet: that is phase D14d of [`planning/ac4.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/ac4.md#d14-ac-4-on-the-esp32s), aimed at the [ESP32-C6](esp32-c6.md), with this part's QEMU leg as one of the three its hashes are to be held on. The C3 decodes AC-3 and E-AC-3 only, and no ESP32 sink takes AC-4 in a Sendspin group |
 | Real silicon | None. Correctness is established under `qemu-riscv32` emulation |
 | CI | The `esp32c3` fixed-point leg (`build-esp32c3`, under QEMU) beside `build-esp32s3` in `.github/workflows/_build.yml`, in the `esp` lane of `ci.yml`: after a merge to main that changes the ESP32 trees or a tree its component ships (the [lane table](../../ci-lanes.md#lane-table) lists them), and in the nightly run ([CI for many agents](../../ci-agentic.md#the-tiers)) |
 
@@ -29,10 +29,10 @@ single-precision cosine at ~2,377 cycles on an ESP32-C3 against 121 on an ESP32-
 | Part | Usable RAM | Clock | FPU | Vector unit | Viable |
 |---|---|---|---|---|---|
 | **ESP32-S3** | 341,760 DIRAM | 240 MHz | single | PIE, integer-only; 128-bit float load/store | **Yes** — [the primary target](esp32-s3.md) |
-| **ESP32-P4** | 768 KB L2MEM | 400 MHz (360 on pre-production v1.x silicon) | single | PIE, integer-only; no wide float load | **Not as S3 replacement** — complementary **best** sink module, real time on every fixture in the probe, Wi-Fi through the board's C6 in `hearth_sink`, and the only part here that decodes AC-4 ([ESP32-P4](esp32-p4.md), [sink tiers](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-sink-tiers.md)) |
+| **ESP32-P4** | 768 KB L2MEM | 400 MHz (360 on pre-production v1.x silicon) | single | PIE, integer-only; no wide float load | **Not as S3 replacement** — complementary **best** sink module, real time on every fixture in the probe, Wi-Fi through the board's C6 in `hearth_sink`, and the only part here that decodes AC-4 ([ESP32-P4](esp32-p4.md), [sink tiers](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/esp32-sink-tiers.md)) |
 | ESP32 (LX6) | ~320 KB | 240 MHz | single | none | Plausible, slower |
 | ESP32-S2 | 320 KB | 240 MHz | **none** | none | No — soft-float everything |
-| **ESP32-C3**/C6/C61 | 400/512/320+PSRAM KB | 160 MHz | **none** | none | **Yes, in the fixed-point tier** — this page and [ESP32-C6](esp32-c6.md); C61 proposed, no board ([sink tiers](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-sink-tiers.md)) |
+| **ESP32-C3**/C6/C61 | 400/512/320+PSRAM KB | 160 MHz | **none** | none | **Yes, in the fixed-point tier** — this page and [ESP32-C6](esp32-c6.md); C61 proposed, no board ([sink tiers](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/esp32-sink-tiers.md)) |
 
 Every part with an FPU has a single-precision one, so `double` is soft-float across the whole
 family and `decode_scalar_t` earns its keep on all of them.
@@ -67,7 +67,7 @@ SRAM.
 this die; C61 = good, 5.1 desired / PSRAM-backed, proposed, no board yet; S3 = better ≤7.1.4
 without enhanced coupling / both DACs @ 16-bit, shipped; P4 = best ≤9.1.6 with full tools
 desired / both DACs @ 32-bit). See
-[`planning/esp32-sink-tiers.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-sink-tiers.md).
+[`planning/esp32-sink-tiers.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/esp32-sink-tiers.md).
 Phase P1 of that plan is done: [ESP32-P4](esp32-p4.md) is real time on every fixture on a board
 with no network in the probe, and `hearth_sink` has since played a paired Sendspin stream on it
 over Wi-Fi through the onboard C6 — with a chip-revision trap specific to pre-production silicon
@@ -84,7 +84,7 @@ is the probe target:
 python "$IDF_PATH/tools/idf_tools.py" install qemu-riscv32   # once
 cd apps/baremetal/platform/esp32c3
 idf.py set-target esp32c3
-idf.py build                                  # -DAC3FORGE_DECODE_SCALAR=fixed by default
+idf.py build                                  # -DICLFORGE_DECODE_SCALAR=fixed by default
 idf.py qemu
 ```
 
@@ -95,7 +95,7 @@ one pinned set (`tests/golden/fixed-probe-pcm-hashes.json`). `--scalar=float` bu
 with the S3's tier, which is what the two arithmetics are compared with.
 
 Any other project built for this target against the component gets the fixed-point tier too:
-when a project leaves `AC3FORGE_DECODE_SCALAR` unset, the component sets it from the part, and a
+when a project leaves `ICLFORGE_DECODE_SCALAR` unset, the component sets it from the part, and a
 part with no FPU gets `fixed`
 ([ESP32-S3 → The ESP-IDF component](esp32-s3.md#the-esp-idf-component)).
 

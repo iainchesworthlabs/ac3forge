@@ -953,7 +953,7 @@ run mp4 eac3enc_none.ec3 eac3enc_none.mp4
 run mp4 atmos_4.ec3 atmos_4.mp4
 # fmp4 writes a directory (init segment + media segments + HLS/DASH
 # manifests) rather than one file - atmos_4.ec3 in particular exercises the
-# HLS CHANNELS="<N>/JOC" path (mp4/hls.hpp), since that stream carries Dolby
+# HLS CHANNELS="<N>/JOC" path (iclforge/mp4/hls.hpp), since that stream carries Dolby
 # Atmos objects. Concatenating the init segment with every media segment and
 # strict-decoding the result, and strict-decoding the HLS media playlist
 # directly, both through FFmpeg's own demuxers, is a stronger check than the

@@ -8,7 +8,7 @@ own §7.8 output stage and written to I2S at 48 kHz, 16-bit, on a loop.
 
 ## Wiring
 
-Three pins, set under `ac3forge I2S player` in `idf.py menuconfig`:
+Three pins, set under `iclforge I2S player` in `idf.py menuconfig`:
 
 | Signal | Also called | Default GPIO |
 | --- | --- | --- |
@@ -111,7 +111,7 @@ at `-O2`, and the console on USB-Serial-JTAG (`sdkconfig.hw`):
 The component has compiled the decoder's hot sources at `-O2` by default since
 2026-09-10, as the footprint probe always did (`src/ac3/minimal.cmake` lists
 them): 9.9 ms a frame here against 11.5 at `-Os`, for 7.6 KB of flash and no
-SRAM. A project that needs the flash back sets `AC3FORGE_MINIMAL_HOT_O2` off
+SRAM. A project that needs the flash back sets `ICLFORGE_MINIMAL_HOT_O2` off
 before `project()`.
 
 CI's build of this example, with the default UART console, reads 97,263 bytes
@@ -126,8 +126,8 @@ numbers.
 Two lines, which is what this example's own `CMakeLists.txt` does:
 
 ```cmake
-set(EXTRA_COMPONENT_DIRS "/path/to/ac3forge/esp-idf")
-set(AC3FORGE_ESP_PROFILE "decoder")   # or "encoder"
+set(EXTRA_COMPONENT_DIRS "/path/to/iclforge/esp-idf")
+set(ICLFORGE_ESP_PROFILE "decoder")   # or "encoder"
 ```
 
 Both must appear **before** `include($ENV{IDF_PATH}/tools/cmake/project.cmake)`,

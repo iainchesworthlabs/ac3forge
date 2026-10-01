@@ -10,7 +10,7 @@
 # library-plus-two-thin-wrappers shape as iclforge::ac3 itself - see
 # src/ac3/CMakeLists.txt's header comment for the full reasoning.
 #
-# Unlike iclforge_ac3_static/forge_shared, BOTH variants here statically embed
+# Unlike iclforge_ac3_static/iclforge_ac3_shared, BOTH variants here statically embed
 # iclforge::ac3_static (PRIVATE - forge's own types never appear in this
 # target's public header, so nothing about that leaks to a consumer's
 # include path) rather than tracking BUILD_SHARED_LIBS. A binding or embedder
@@ -29,7 +29,7 @@
 #    (iclforge_capi_objects, below);
 #  - libiclforge_c.so exports the C API and nothing else (the end of this file).
 # Without them iclforge-tests in the BUILD_SHARED_LIBS=ON pass bound none of its
-# ac3:: symbols to libiclforge_ac3.so; tools/checks/check_shared_forge_binding.sh
+# iclforge:: symbols to libiclforge_ac3.so; tools/checks/check_shared_forge_binding.sh
 # checks that it does.
 # ---------------------------------------------------------------------------
 add_library(iclforge_capi_objects OBJECT)
@@ -159,7 +159,7 @@ target_compile_definitions(iclforge_capi_static PUBLIC ICLFORGE_C_STATIC_DEFINE)
 # Compile-time version macros (AP1) - a plain configure_file rather than
 # GenerateVersion.cmake's restamp-every-build machinery, since PROJECT_VERSION
 # only changes on a reconfigure anyway (unlike the git provenance
-# ac3/version.hpp also carries, which this header does not need).
+# iclforge/ac3/version.hpp also carries, which this header does not need).
 string(REGEX MATCH "^([0-9]+)\\.([0-9]+)\\.([0-9]+)" ICLFORGE_C_VERSION_MATCH "${PROJECT_VERSION}")
 set(ICLFORGE_C_VERSION_MAJOR "${CMAKE_MATCH_1}")
 set(ICLFORGE_C_VERSION_MINOR "${CMAKE_MATCH_2}")

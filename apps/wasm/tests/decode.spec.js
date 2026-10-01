@@ -74,7 +74,7 @@ test('decodes the bundled Atmos-in-DD+ fixture with real, moving object position
     expect(result.channelCount).toBe(6);
     expect(result.objectCount).toBe(3);
     expect(result.durationSeconds).toBeCloseTo(8.0, 1);
-    // The real ac3::OutputStage Lo/Ro fold this test asked for.
+    // The real iclforge::OutputStage Lo/Ro fold this test asked for.
     expect(result.foldChannelCount).toBe(2);
 
     // x, y, z are the first three values of each stride-wide frame. A real

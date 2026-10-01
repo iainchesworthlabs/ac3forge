@@ -5,7 +5,7 @@
 # Deliberately standalone: it links nothing from iclforge::ac3 and knows
 # nothing about AC-3, E-AC-3 or Atmos - AC-4 is a peer codec, not an
 # extension of this project's own one, so it gets the same "codec-blind"
-# treatment mpegts::/mp4::/matroska:: do rather than the ac3:: prefix. It
+# treatment iclforge::mpegts, iclforge::mp4 and iclforge::matroska get. It
 # reads TOC/presentation/substream-group framing and reports audio_data and
 # metadata() payloads as byte ranges, never decoding them - see
 # include/ac4/ac4.hpp for the full scope statement. Built as both a static
@@ -83,7 +83,7 @@ set_target_properties(iclforge_ac4_objects PROPERTIES
 
 # MSVC's C4251 for the PRIVATE STL-typed members of ICLFORGE_AC4_EXPORT classes - the
 # identical, identically-reasoned suppression src/mpegts/CMakeLists.txt
-# applies for mpegts::Writer; see its comment for why PUBLIC and why here
+# applies for iclforge::mpegts::Writer; see its comment for why PUBLIC and why here
 # rather than header pragmas.
 target_compile_options(iclforge_ac4_objects PUBLIC "$<$<CXX_COMPILER_ID:MSVC>:/wd4251>")
 

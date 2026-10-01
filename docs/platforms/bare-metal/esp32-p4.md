@@ -6,7 +6,7 @@ the [ESP32-S3](esp32-s3.md) does, from the same `esp-idf/iclforge/` component, w
 lists `esp32p4` beside `esp32s3`, `esp32c3` and `esp32c6`.
 
 It is the "best" tier of the shared C6/S3/P4 sink family
-([`planning/esp32-sink-tiers.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-sink-tiers.md)):
+([`planning/esp32-sink-tiers.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/esp32-sink-tiers.md)):
 closed 2026-09-08 as a replacement for the S3 Wi-Fi Sendspin sink (no on-die radio, the S3 probe
 already real-time), reopened 2026-09-21 as a complementary module once a board existed to measure
 it on. This page is that plan's Phase P1 — the probe and a board timing table, with no network —
@@ -21,7 +21,7 @@ Every figure on this page outside its [AC-4](#ac-4) section was measured on a bo
 | Decode | Correct: all fourteen fixtures, every channel's level within the probe's tolerance, and every float-tier PCM hash matching the values the probe pins for this build. Also all eleven stream-set `714-*` files (a scratch probe copy, not committed — see [Stream set](#stream-set)), levels to the digit against `streams.json`'s own reference |
 | Real time, no network | **Every fixture and every stream-set file**, from 0.027x (`ac3_mono`) to 0.448x (`eac3_714_fold`, 7.1.4 folded to Lo/Ro) among the fixtures, up to 0.700x (`714-ecpl`) among the stream set — comfortably inside a 32 ms frame even at this chip's 360 MHz ceiling, not the part's 400 MHz datasheet maximum (see [The chip revision](#the-chip-revision-and-what-it-blocks)) |
 | Memory | 514,820 bytes free at boot, largest block 385,024; peak heap across every fixture 195,025 (`eac3_atmos_render`), leaving well over half the free total unused at the worst point measured |
-| AC-4 decode | Behind `CONFIG_AC3FORGE_AC4`, off by default. Twenty plays of DEE's streams (2.0, 5.1 and 5.1.4; SIMPLE, A-SPX, A-CPL and S-CPL; the converter's four frame rates) run from an HTTP source with the network up, and the probe's six fixtures decode to its pinned `float` PCM hashes exactly. The board's hash equals the host's (GCC 16, Clang 22 and MSVC) on all twenty plays and on all six core-decoding plays, and the Cortex-M3 leg's on the 24-frame cut of each, since D14a4 took the `float` calls whose last bit differs between C libraries out of libm, see [AC-4](#ac-4) |
+| AC-4 decode | Behind `CONFIG_ICLFORGE_AC4`, off by default. Twenty plays of DEE's streams (2.0, 5.1 and 5.1.4; SIMPLE, A-SPX, A-CPL and S-CPL; the converter's four frame rates) run from an HTTP source with the network up, and the probe's six fixtures decode to its pinned `float` PCM hashes exactly. The board's hash equals the host's (GCC 16, Clang 22 and MSVC) on all twenty plays and on all six core-decoding plays, and the Cortex-M3 leg's on the 24-frame cut of each, since D14a4 took the `float` calls whose last bit differs between C libraries out of libm, see [AC-4](#ac-4) |
 | AC-4 real time | 2.0 streams in SIMPLE mode (0.53 of a frame), in A-SPX mode (0.74) and, through the converter, at 24 fps (0.92) and 25 fps (0.82), played to a 2.0 layout, with D14a's third part in the decoder (0.86 and 1.04 before it) and D14a4's `float` converter (5.6 to 6.6 before it). 5.1 takes 1.4 to 4.1 and 5.1.4 2.8 to 3.7; the converter's 1001/960 rates, 23.976 and 29.97 fps, take 1.25 and 3.65 (1.21 and 1.26 with the 512-byte policy). AC-3 and E-AC-3 5.1 through the same image take 0.20, and E-AC-3 7.1.4 0.38 |
 | AC-4 memory | A peak heap of 0.60 MB at 2.0 to 2.2 MB at 5.1.4, with internal RAM used up under ESP-IDF's default allocation policy (2 to 14 KB free at its least). The decode task uses 20 to 24 KB of a 64 KB stack, from 49 to 50 KB before D14a's third part |
 | Encode | Not measured. Both encoders are floating-point; nothing here rules it out |
@@ -38,7 +38,7 @@ and display, GPIO headers along both edges, no separate UART bridge chip). It ca
 - An ESP32-C6-MINI-1 module wired to the P4 over SDIO (`GPIO14`-`GPIO19`) for Wi-Fi 6 and
   Bluetooth LE, per DFRobot's documentation. This probe does not touch it. `hearth_sink` does: it
   reaches Wi-Fi through `esp_hosted` over that link ([the example's
-  README](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/iclforge/examples/hearth_sink/README.md#on-the-esp32-p4)),
+  README](https://github.com/iainchesworthlabs/iclforge/blob/main/esp-idf/iclforge/examples/hearth_sink/README.md#on-the-esp32-p4)),
   and the [AC-4](#ac-4) figures were measured that way.
 - **Two USB-C connectors**, wired to two different on-die USB peripherals, not one connector
   shared between them: one silkscreened "USB 2.0 OTG", reaching the part's native high-speed
@@ -158,7 +158,7 @@ the code, is what this table is measuring.
 
 A DFRobot FireBeetle 2 ESP32-P4, chip revision v1.3, 16 MB flash read in DIO mode at 80 MHz.
 ESP-IDF v6.1 and GCC esp-15.2.0_20251204, `-Os` with the decode-critical sources at `-O2`
-(`AC3FORGE_MINIMAL_HOT_O2`, the project's default), the task watchdog off, 360 MHz.
+(`ICLFORGE_MINIMAL_HOT_O2`, the project's default), the task watchdog off, 360 MHz.
 
 The probe decodes six frames of each fixture. Its timing is the decoder's own: the level and hash
 accumulation it runs inside the decoder's block callback is timed and subtracted.
@@ -211,7 +211,7 @@ is 357,368 bytes, inside a 1 MB partition with half free.
 
 The fourteen fixtures above are six-frame clips built for this probe alone. The sink-tiers plan's
 exit criterion also asks for the actual stream-set files a real player streams -
-`esp-idf/ac3forge/examples/hearth_sink/www/714-*.ec3`, eleven files, each isolating one Annex E
+`esp-idf/iclforge/examples/hearth_sink/www/714-*.ec3`, eleven files, each isolating one Annex E
 coding-tool combination at 7.1.4 (`planning/esp32-stream-set.md` has the full manifest). These
 were wrapped bit for bit into a scratch copy of the probe - not re-encoded, since the point is to
 decode what a player actually receives - the same shape the ESP32-C6 page's "2/0, 5.1 and 7.1
@@ -252,11 +252,11 @@ This closes the sink-tiers plan's exit criterion 1 in full: fourteen fixtures an
 
 ## AC-4
 
-`CONFIG_AC3FORGE_AC4` (off by default, and offered only on a part with a floating-point unit)
+`CONFIG_ICLFORGE_AC4` (off by default, and offered only on a part with a floating-point unit)
 builds the AC-4 inspector, core and decoder of `src/ac4`, `src/ac4core` and `src/ac4dec` into the
-component, in single precision and in the minimum-footprint profile (`AC3FORGE_MINIMAL_AC4`), and
+component, in single precision and in the minimum-footprint profile (`ICLFORGE_MINIMAL_AC4`), and
 lets the player read a stream that opens with an AC-4 sync word. It takes the ring, the renderer
-and the sinks an AC-3 or E-AC-3 stream takes, with `ac4::SyncFrameSplitter` and `ac4::Decoder` in
+and the sinks an AC-3 or E-AC-3 stream takes, with `iclforge::ac4::SyncFrameSplitter` and `iclforge::ac4::Decoder` in
 place of their framer and decoders. With the switch off the component builds as it did.
 `hearth_sink` plays AC-4 from its HTTP source with `sdkconfig.ac4` in its defaults, and ends each
 play with the lines this section's figures come from ([Building](#building-with-ac-4)).
@@ -284,10 +284,10 @@ one pass, since an HTTP source cannot rewind, and its first frame carries one-of
 time per frame is the play without its first frame and the first frame has a column of its own. The
 hash costs 0.6 ms a frame at 2.0: a play with it off agrees with the same play with it on to 0.1%.
 Heap is `heap_caps_monitor_local_minimum_free_size`, as
-[the stream set's plan](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-stream-set.md)
+[the stream set's plan](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/esp32-stream-set.md)
 has it: the peak of what the play took from internal RAM and PSRAM together, and the least
 internal RAM that was free while it ran. Stack left is the decode task's
-`stream.decode_stack_free`, of 64 KB. The stage timers are those of `AC3FORGE_STAGE_TIMERS`: a
+`stream.decode_stack_free`, of 64 KB. The stage timers are those of `ICLFORGE_STAGE_TIMERS`: a
 marker in the library at each part of the decode, whose self time, a stage's own less the stages
 inside it, the stage table gives.
 
@@ -500,7 +500,7 @@ routines. At 25/24 and 15/16 it takes no longer than any other.
 
 ### Float output on the host, the Cortex-M3 leg and the board
 
-[Decision 26](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/ac4.md#decisions-of-2026-09-25)
+[Decision 26](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/ac4.md#decisions-of-2026-09-25)
 promises identical `float` output everywhere, and the probe's six AC-4 fixtures pin it
 (`tests/golden/ac4-probe-pcm-hashes.json`, held on the x86-64 host and on the Cortex-M3 under QEMU).
 The board's PCM hash (FNV-1a over the sample bit patterns in the order the player delivered them, the
@@ -510,7 +510,7 @@ probe's own) equals all six, played from the same committed streams: `ac4_20_mus
 `5b93c61c57566b0c`, the stream D14a4 added because none of the five before it had companding.
 
 On the twenty ten-second plays above the board's hash equals the host's
-`AC3FORGE_DECODE_SCALAR=float` output (GCC 16 and Clang 22 with glibc, and MSVC) on all twenty and on
+`ICLFORGE_DECODE_SCALAR=float` output (GCC 16 and Clang 22 with glibc, and MSVC) on all twenty and on
 all six core-decoding plays, under either allocation policy, and equals the Cortex-M3 program's
 (arm-none-eabi GCC 14.2.1 and newlib-nano, under QEMU) on the 24-frame cut of each of those 26 plays.
 D14b measured it on 15 of the twenty: it differed on `20-music-96` and the four converter streams,
@@ -525,7 +525,7 @@ do not agree on to the last bit: `pow(level, (1 - alpha) / alpha)` and `exp2(1 /
 last bit scales a companded QMF sample by a different float, and the synthesis bank spreads the
 difference over the frame.
 
-D14a4 took the three through `ac3::internal::scalar_exp2` and `scalar_log2` at `float`, the pair
+D14a4 took the three through `iclforge::internal::scalar_exp2` and `scalar_log2` at `float`, the pair
 `hf_generator.cpp`'s gains already use, and left `std::pow` at `double`. It replaced the `hypotf` of
 Pseudocode 87's prediction limit with a comparison of the squared magnitude, and gave the converter's
 sum the fixed order above. What remains of libm in the `float` decode, read from the symbols of the
@@ -560,12 +560,12 @@ not split further.
 ```bash
 idf.py -DIDF_TARGET=esp32p4 \
   "-DSDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.hw;sdkconfig.p4;sdkconfig.sendspin;sdkconfig.ac4" \
-  -DAC3FORGE_STAGE_TIMERS=ON build
+  -DICLFORGE_STAGE_TIMERS=ON build
 ```
 
-from `esp-idf/iclforge/examples/hearth_sink/`. `sdkconfig.ac4` turns on `CONFIG_AC3FORGE_AC4` and a
-40 KB decode stack. The measurement image adds `AC3FORGE_EXAMPLE_SINK_NULL`,
-`AC3FORGE_EXAMPLE_AC4_PCM_HASH`, `ESP_TASK_WDT_INIT=n`, a 64 KB stack and the network's credentials,
+from `esp-idf/iclforge/examples/hearth_sink/`. `sdkconfig.ac4` turns on `CONFIG_ICLFORGE_AC4` and a
+40 KB decode stack. The measurement image adds `ICLFORGE_EXAMPLE_SINK_NULL`,
+`ICLFORGE_EXAMPLE_AC4_PCM_HASH`, `ESP_TASK_WDT_INIT=n`, a 64 KB stack and the network's credentials,
 and goes to the board with `tools/hearth/ota.py push`. A play's location can carry `?decoding=core`
 for core decoding and `?hash=off` for a play without the hash. A play ends with `ac4.lap` (frames,
 samples, the decoder's time, the worst frame's, the hash), `ac4.heap` and one `play.stage[...]`
@@ -588,7 +588,7 @@ runs nothing, and every figure on this page comes from the board.
 . $IDF_PATH/export.sh
 cd apps/baremetal/platform/esp32p4
 idf.py set-target esp32p4
-idf.py build                                  # -DAC3FORGE_ESP_PROFILE=decoder by default
+idf.py build                                  # -DICLFORGE_ESP_PROFILE=decoder by default
 ```
 
 The decode arithmetic needs no override: the component
@@ -604,7 +604,7 @@ python -m esptool --chip esp32p4 -p <OTG-PORT> -b 460800 \
   --flash-mode dio --flash-size 16MB --flash-freq 80m \
   0x2000 build/bootloader/bootloader.bin \
   0x8000 build/partition_table/partition-table.bin \
-  0x10000 build/ac3probe_esp32p4.bin
+  0x10000 build/iclforge_probe_esp32p4.bin
 idf.py -B build -p <CONSOLE-PORT> monitor
 ```
 
@@ -619,11 +619,11 @@ the same reason (see that step's own comment).
 
 ## Where to go next
 
-- [`planning/esp32-sink-tiers.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-sink-tiers.md) —
+- [`planning/esp32-sink-tiers.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/esp32-sink-tiers.md) —
   the plan this page is Phase P1 of, with the Ethernet shape (P2, for a board that has a PHY,
   which this one does not) and the Wi-Fi shape over the onboard C6 and `esp_hosted` (P3), both
   onto TDM and a pair of ES9080 DACs, and where each stands.
-- [`planning/ac4.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/ac4.md) —
+- [`planning/ac4.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/ac4.md) —
   phase D14b, of which the [AC-4](#ac-4) section is the measurement, D14a's third part, which
   reworks what it found to cost most, and D14a4, which took the converter and the last libm
   disagreements out of the `float` decode.

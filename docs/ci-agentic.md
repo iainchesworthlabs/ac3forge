@@ -30,9 +30,9 @@ Measured over 3.5 days in September 2026, across 300 runs of `ci.yml` and about 
 | Stage | Runs | What | Where |
 |---|---|---|---|
 | Before a push | by hand | `python tools/ci/precheck.py`: the static checks that need no build, and the gate's plan for the diff | your machine |
-| Pull request | every push to the branch | [`pr-gate.yml`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/pr-gate.yml): static checks, then Linux GCC build, every ctest case and the gold-reference gate | GitHub-hosted |
+| Pull request | every push to the branch | [`pr-gate.yml`](https://github.com/iainchesworthlabs/iclforge/blob/main/.github/workflows/pr-gate.yml): static checks, then Linux GCC build, every ctest case and the gold-reference gate | GitHub-hosted |
 | Merge queue | each queue entry | the same on the merged tree, with the Qt GUI always built, plus Windows MSVC | GitHub-hosted |
-| After a merge | every push to main, one at a time | [`ci.yml`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/ci.yml), tier `t2`: the legs and lanes a merge can break (see [The tiers](#the-tiers)), then [`main-health.yml`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/main-health.yml) | the fleet, plus hosted for macOS, arm64 and the satellites |
+| After a merge | every push to main, one at a time | [`ci.yml`](https://github.com/iainchesworthlabs/iclforge/blob/main/.github/workflows/ci.yml), tier `t2`: the legs and lanes a merge can break (see [The tiers](#the-tiers)), then [`main-health.yml`](https://github.com/iainchesworthlabs/iclforge/blob/main/.github/workflows/main-health.yml) | the fleet, plus hosted for macOS, arm64 and the satellites |
 | Nightly | about 19:47 UTC (05:47 in Sydney until daylight saving starts, 06:47 after), and on request | `ci.yml`, tier `all`: every leg with every extra pass, every lane | the same |
 
 A Linux gate cannot see another compiler, another operating system, an architecture, the
@@ -46,7 +46,7 @@ later stage finds is attributed to the merges that could have caused it.
 any job the plan asked for did not succeed. A job that was skipped but was needed counts as a
 failure, so a wiring mistake cannot turn it green.
 
-A planner ([`tools/ci/plan_gate.py`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/ci/plan_gate.py))
+A planner ([`tools/ci/plan_gate.py`](https://github.com/iainchesworthlabs/iclforge/blob/main/tools/ci/plan_gate.py))
 reads the changed files and decides:
 
 - **Documentation only** (`docs/`, `docs-snippets/`, `planning/`, `overrides/`, `assets/`, any
@@ -62,7 +62,7 @@ reads the changed files and decides:
 - **The gate's own files** (`pr-gate.yml`, `_static.yml`, `.github/actions/`, the toolchain
   scripts) build everything, because they are proven by running.
 
-The static checks are one job, [`_static.yml`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/_static.yml):
+The static checks are one job, [`_static.yml`](https://github.com/iainchesworthlabs/iclforge/blob/main/.github/workflows/_static.yml):
 ruff, shellcheck, actionlint, the unit tests of the oracle scripts, the documentation path check,
 the platform-matrix and generated-support-matrix checks, packaging consistency, the fixture
 corpus, the quarantine check, the no-preprocessor-conditional rule, the ESP-IDF settings that
@@ -103,10 +103,10 @@ dispatch `pr-gate.yml` on it.
 Each queue entry runs the gate on its merged tree. Qt is always built there, because the queue is
 where a library change and a GUI caller written against the old API first meet. Windows MSVC runs
 once per entry, on GitHub's `windows-latest`. Entries build in parallel and merge in groups, per
-the `merge-queue-main` ruleset (see [branch protection](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/branch-protection.md)).
+the `merge-queue-main` ruleset (see [branch protection](https://github.com/iainchesworthlabs/iclforge/blob/main/.github/branch-protection.md)).
 
-An entry that changes `src/` also runs two comparisons ([`_compare.yml`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/_compare.yml)):
-the encoder's speed (`ac3bench` and `ac3kernelbench`) and its heap churn (`ac3membench`), built and
+An entry that changes `src/` also runs two comparisons ([`_compare.yml`](https://github.com/iainchesworthlabs/iclforge/blob/main/.github/workflows/_compare.yml)):
+the encoder's speed (`iclforge-bench` and `iclforge-kernelbench`) and its heap churn (`iclforge-membench`), built and
 measured at the commit the entry is queued on, which is main or the entry ahead of it, and at the
 entry's head. A workload that takes twice as long, or whose heap churn at least doubles, fails the
 entry, unless its pull request carries the `perf-regression-approved` or
@@ -128,11 +128,11 @@ A green run moves the `verified` branch to that commit. It only moves forward. `
 verified..main` lists what has merged since main was last proven, and `verified` is a safe commit
 to branch or release from.
 
-[`main-health.yml`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/main-health.yml)
+[`main-health.yml`](https://github.com/iainchesworthlabs/iclforge/blob/main/.github/workflows/main-health.yml)
 reads each finished run:
 
 - **Failed jobs that all match a signature** in
-  [`tools/ci/known_flakes.json`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/ci/known_flakes.json)
+  [`tools/ci/known_flakes.json`](https://github.com/iainchesworthlabs/iclforge/blob/main/tools/ci/known_flakes.json)
   are rerun once (`gh run rerun --failed`). The signatures are error strings that were diagnosed as
   infrastructure: a lost runner, an apt mirror mid-sync, Launchpad 503, a truncated Android SDK
   download, a QEMU segfault at restart, hdiutil busy. When a new flake is diagnosed, add its
@@ -197,9 +197,9 @@ satellite rule in `classify_changes.py`. Moving something between tiers is a cha
 
 ## The legs
 
-The build matrix is data. [`.github/ci/legs.jsonc`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/ci/legs.jsonc)
+The build matrix is data. [`.github/ci/legs.jsonc`](https://github.com/iainchesworthlabs/iclforge/blob/main/.github/ci/legs.jsonc)
 lists every leg of the Linux, Windows and macOS builds, with the flags its steps read and the
-comments that used to sit beside the matrices. [`tools/ci/plan_legs.py`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/ci/plan_legs.py)
+comments that used to sit beside the matrices. [`tools/ci/plan_legs.py`](https://github.com/iainchesworthlabs/iclforge/blob/main/tools/ci/plan_legs.py)
 picks the legs a run needs. The `plan-legs` job in `_build.yml` runs it and passes each platform's
 list to `_ci-linux.yml`, `_ci-windows.yml` or `_ci-macos.yml`, which run it as their matrix. A
 platform with no leg in the run is skipped, because Actions rejects an empty matrix.

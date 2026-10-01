@@ -1,4 +1,4 @@
-/* AC3Forge docs: small, independent, page-scoped enhancements. */
+/* ICL Forge docs: small, independent, page-scoped enhancements. */
 (function () {
   "use strict";
 

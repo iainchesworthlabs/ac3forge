@@ -8,7 +8,7 @@ import Hearth
 // network-group.png): a group's own name, its members with per-member
 // volume/mute and a way to remove one, adding a paired sink to it, the
 // group's own volume, and making it where Hearth plays. Backed by a real
-// ac3::sendspin::Group (NetworkController.selectedGroup), which the engine
+// iclforge::sendspin::Group (NetworkController.selectedGroup), which the engine
 // plays to once it is the output (HearthController.selectOutputGroup(),
 // network_group_sink.hpp); "Late chunks" still says nothing, since no member
 // reports one to this page yet.

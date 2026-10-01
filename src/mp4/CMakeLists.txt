@@ -66,8 +66,8 @@ set_target_properties(iclforge_mp4_objects PROPERTIES
     VISIBILITY_INLINES_HIDDEN ON)
 
 # MSVC's C4251 ("class X needs to have dll-interface...") fires for every
-# PRIVATE STL-typed member of an ICLFORGE_MP4_EXPORT class - mp4::Reader's
-# std::unique_ptr to its parse state, and mp4::FragmentWriter's own
+# PRIVATE STL-typed member of an ICLFORGE_MP4_EXPORT class - iclforge::mp4::Reader's
+# std::unique_ptr to its parse state, and iclforge::mp4::FragmentWriter's own
 # std::vector buffers and segment window - pure implementation detail, never
 # touched by a caller except through the class's own (exported) methods.
 # Suppressed here rather than by scattering non-portable #pragma

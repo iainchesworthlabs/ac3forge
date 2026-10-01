@@ -9,7 +9,7 @@ Nothing here is a promise of invulnerability. It is a statement of posture — w
 boundary sits, what is checked, what is only structurally bounded, and where the gaps are — so
 that an embedder can reason about the remaining risk instead of guessing at it.
 
-The reporting process is in [SECURITY.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/SECURITY.md);
+The reporting process is in [SECURITY.md](https://github.com/iainchesworthlabs/iclforge/blob/main/SECURITY.md);
 [Reporting an issue](#reporting-an-issue) below adds what an embedder specifically should send.
 
 ## Trust boundary
@@ -19,40 +19,40 @@ this repository that must not crash, read out of bounds, or loop unboundedly on 
 
 | Input | Entry point | Fuzzed |
 |---|---|---|
-| AC-3 elementary streams | `ac3::split_frames`, `ac3::FrameDecoder::decode_frame` | yes |
-| E-AC-3 elementary streams, including dependent substreams | `ac3::split_access_units`, `ac3::Eac3Decoder::decode_access_unit` | yes |
-| AC-4 elementary streams: sync frames and the table of contents | `ac4::scan`, `ac4::SyncFrameSplitter`, `ac4::parse_raw_frame` | yes — `fuzz_ac4_parse` |
-| AC-4 substreams: the syntax layer and the reconstruction to PCM | `ac4::Decoder::parse`, `ac4::Decoder::decode`, `decode_by_block` | yes — `fuzz_ac4_decode` |
-| Format sniffing before any decoder commits | `ac3::io::scan` | yes |
-| EMDF containers in a skip field (§H.2.2) | `ac3::emdf::parse_container` | yes — `fuzz_emdf_parse`, plus indirectly through the E-AC-3 harnesses |
-| OAMD object metadata (TS 103 420 §5.5) | `ac3::oba::parse_payload` | yes — `fuzz_oamd_parse`, plus indirectly through the E-AC-3 harnesses |
-| JOC payloads (TS 103 420 §6) | `ac3::oba::joc::parse_payload` | yes — `fuzz_joc_parse`, plus indirectly through the E-AC-3 harnesses |
-| WAV / RIFF headers and PCM | `ac3::io::read_wav`, `ac3::io::WavStreamReader` | yes |
-| IAB (SMPTE ST 2098-2) elementary streams and MXF track files | `ac3iab::parse_iabitstream`, `ac3iab::parse_mxf_iab`, `ac3iab::parse_iaframe` | yes — `fuzz_iab_parse` |
-| IEC 61937 bursts off an S/PDIF or HDMI capture, AC-4's included, and the AC-4 sync frames the AC-4 packer reads | `ac3::iec61937::BurstReader`, `ac3::iec61937::read_ac4_sync_frame` | yes — `fuzz_iec61937_unwrap` |
-| ADM XML + BW64/RF64 (opt-in build) | `ac3adm::parse_bw64`, via vendored libadm/libbw64 | **opt-in only** — `fuzz_adm_parse` exists but is built only under `AC3FORGE_BUILD_ADM`; see [ADM](#adm-xml-and-bw64) |
-| Object authenticity tags | `ac3::signing::verify_atmos_frame` | yes — `fuzz_signing_verify` (the key is part of the fuzzed input) |
-| Matroska/WebM containers | `matroska::demux`, `matroska::Reader` | yes |
-| MP4/ISOBMFF containers | `mp4::demux`, `mp4::Reader` | yes |
-| MPEG-TS containers | `mpegts::demux`, `mpegts::Reader` | yes |
-| OSC control packets (UDP), a live object-position source | `ac3::oba::parse_osc_packet` | yes — `fuzz_osc_parse`, part of `fuzz/run.sh`'s default target list alongside the other object/metadata-layer harnesses |
-| Sendspin's handshake messages from a network peer (Hearth build) | `ac3::sendspin::handshake` | yes — `fuzz_sendspin_handshake` |
-| Sendspin's messages after the handshake, JSON included (Hearth build) | `ac3::sendspin::json::Document::parse`, the readers in `ac3::sendspin::messages`, `pairing_messages`, `ac3forge` and the other roles' namespaces | yes — `fuzz_sendspin_json`, `fuzz_sendspin_messages` |
-| Sendspin's fragments and binary messages: `player@v1`'s audio chunks, `_ac3forge_player@v1`'s bursts, and the artwork, visualizer and source messages (Hearth build) | `ac3::sendspin::Reassembler`, `parse_player_chunk`, `parse_burst_chunk`, `artwork::parse_message`, `visualizer::parse_frame`, `source::parse_chunk` | yes — `fuzz_sendspin_frames` |
-| mDNS packets on the local network (Hearth build) | `ac3::sendspin::discovery::mdns_packets::parse`, over mjansson's `mdns` | **no** — see [Sendspin](#sendspin-hearths-server-and-its-sinks) |
-| WebSocket frames (Hearth build) | cpp-httplib, behind `ac3::sendspin::transport::websocket` | **no** — third-party; see [Sendspin](#sendspin-hearths-server-and-its-sinks) |
+| AC-3 elementary streams | `iclforge::split_frames`, `iclforge::FrameDecoder::decode_frame` | yes |
+| E-AC-3 elementary streams, including dependent substreams | `iclforge::split_access_units`, `iclforge::Eac3Decoder::decode_access_unit` | yes |
+| AC-4 elementary streams: sync frames and the table of contents | `iclforge::ac4::scan`, `iclforge::ac4::SyncFrameSplitter`, `iclforge::ac4::parse_raw_frame` | yes — `fuzz_ac4_parse` |
+| AC-4 substreams: the syntax layer and the reconstruction to PCM | `iclforge::ac4::Decoder::parse`, `iclforge::ac4::Decoder::decode`, `decode_by_block` | yes — `fuzz_ac4_decode` |
+| Format sniffing before any decoder commits | `iclforge::io::scan` | yes |
+| EMDF containers in a skip field (§H.2.2) | `iclforge::emdf::parse_container` | yes — `fuzz_emdf_parse`, plus indirectly through the E-AC-3 harnesses |
+| OAMD object metadata (TS 103 420 §5.5) | `iclforge::oba::parse_payload` | yes — `fuzz_oamd_parse`, plus indirectly through the E-AC-3 harnesses |
+| JOC payloads (TS 103 420 §6) | `iclforge::oba::joc::parse_payload` | yes — `fuzz_joc_parse`, plus indirectly through the E-AC-3 harnesses |
+| WAV / RIFF headers and PCM | `iclforge::io::read_wav`, `iclforge::io::WavStreamReader` | yes |
+| IAB (SMPTE ST 2098-2) elementary streams and MXF track files | `iclforge::iab::parse_iabitstream`, `iclforge::iab::parse_mxf_iab`, `iclforge::iab::parse_iaframe` | yes — `fuzz_iab_parse` |
+| IEC 61937 bursts off an S/PDIF or HDMI capture, AC-4's included, and the AC-4 sync frames the AC-4 packer reads | `iclforge::iec61937::BurstReader`, `iclforge::iec61937::read_ac4_sync_frame` | yes — `fuzz_iec61937_unwrap` |
+| ADM XML + BW64/RF64 (opt-in build) | `iclforge::adm::parse_bw64`, via vendored libadm/libbw64 | **opt-in only** — `fuzz_adm_parse` exists but is built only under `ICLFORGE_BUILD_ADM`; see [ADM](#adm-xml-and-bw64) |
+| Object authenticity tags | `iclforge::signing::verify_atmos_frame` | yes — `fuzz_signing_verify` (the key is part of the fuzzed input) |
+| Matroska/WebM containers | `iclforge::matroska::demux`, `iclforge::matroska::Reader` | yes |
+| MP4/ISOBMFF containers | `iclforge::mp4::demux`, `iclforge::mp4::Reader` | yes |
+| MPEG-TS containers | `iclforge::mpegts::demux`, `iclforge::mpegts::Reader` | yes |
+| OSC control packets (UDP), a live object-position source | `iclforge::oba::parse_osc_packet` | yes — `fuzz_osc_parse`, part of `fuzz/run.sh`'s default target list alongside the other object/metadata-layer harnesses |
+| Sendspin's handshake messages from a network peer (Hearth build) | `iclforge::sendspin::handshake` | yes — `fuzz_sendspin_handshake` |
+| Sendspin's messages after the handshake, JSON included (Hearth build) | `iclforge::sendspin::json::Document::parse`, the readers in `iclforge::sendspin::messages`, `pairing_messages`, `iclforge` and the other roles' namespaces | yes — `fuzz_sendspin_json`, `fuzz_sendspin_messages` |
+| Sendspin's fragments and binary messages: `player@v1`'s audio chunks, `_iclforge_player@v1`'s bursts, and the artwork, visualizer and source messages (Hearth build) | `iclforge::sendspin::Reassembler`, `parse_player_chunk`, `parse_burst_chunk`, `artwork::parse_message`, `visualizer::parse_frame`, `source::parse_chunk` | yes — `fuzz_sendspin_frames` |
+| mDNS packets on the local network (Hearth build) | `iclforge::sendspin::discovery::mdns_packets::parse`, over mjansson's `mdns` | **no** — see [Sendspin](#sendspin-hearths-server-and-its-sinks) |
+| WebSocket frames (Hearth build) | cpp-httplib, behind `iclforge::sendspin::transport::websocket` | **no** — third-party; see [Sendspin](#sendspin-hearths-server-and-its-sinks) |
 
 **Trusted.** These are the caller's own inputs, and a caller that gets them wrong is a bug in the
 caller, not an attack:
 
 - Encoder configuration (`EncoderConfig`, `eac3::FrameConfig`, `AtmosEncoder` settings,
-  `ac4::EncoderConfig`, the `ac3cli` command line). Illegal combinations are rejected with a
+  `iclforge::ac4::EncoderConfig`, the `forge` command line). Illegal combinations are rejected with a
   `FrameError` (AC-4: `EncodeError::kInvalidConfig`, with the rule named by
   `Encoder::refusal_reason()`), but the values are not assumed hostile.
 - PCM handed to the encoder. Any float is legal audio; nothing about it can reach a decision the
   bitstream syntax does not already bound.
 - The signing key, if an operator supplies one. It is never generated, logged or written to disk
-  by this code (`ac3::signing::SigningKey` zeroizes on destruction).
+  by this code (`iclforge::signing::SigningKey` zeroizes on destruction).
 - File paths, output destinations, and the caller-owned spans the `_into` decode forms write
   through — see [Raw-pointer boundaries](#raw-pointer-boundaries).
 
@@ -71,15 +71,15 @@ memory-safe language, so the posture is a set of specific properties rather than
 guarantee:
 
 - **Bit reading cannot run off the end.** The AC-3, E-AC-3 and object-layer parsers share
-  `ac3::BitReader`, and the AC-4 inspector and decoder each have a reader of their own with the
+  `iclforge::BitReader`, and the AC-4 inspector and decoder each have a reader of their own with the
   same design. Reading past the end sets a sticky flag (`overflowed()`) and yields zeros rather
   than touching memory; parsers check the flag at a frame or payload boundary instead of guarding
   each read. A truncated or hostile frame therefore decays into a `kTruncated`
-  (`DecodeError::kTruncated`; `ac4::Error::kTruncated` from the AC-4 inspector) rather than an
-  over-read. The IAB reader (`ac3iab`) is the exception to the design: its reader returns a
+  (`DecodeError::kTruncated`; `iclforge::ac4::Error::kTruncated` from the AC-4 inspector) rather than an
+  over-read. The IAB reader (`iclforge::iab`) is the exception to the design: its reader returns a
   `std::expected` from every read.
 - **Every fallible path returns a value, not an exception.** `std::expected<T, DecodeError>`
-  throughout (`ac4::DecodeError` for the AC-4 decoder). The codec core does not throw; the only
+  throughout (`iclforge::ac4::DecodeError` for the AC-4 decoder). The codec core does not throw; the only
   exceptions that can escape it are `std::bad_alloc` from an allocation it makes.
 - **No owning raw pointers, no manual `new`/`delete`, no C string handling** in the codec core.
   Buffers are `std::vector`; borrowed views are `std::span` and `std::string_view`.
@@ -97,7 +97,7 @@ guarantee:
 
 What runs against it:
 
-- **Twenty-four libFuzzer harnesses** under [`fuzz/`](https://github.com/iainchesworthlabs/ac3forge/blob/main/fuzz/README.md),
+- **Twenty-four libFuzzer harnesses** under [`fuzz/`](https://github.com/iainchesworthlabs/iclforge/blob/main/fuzz/README.md),
   built with ASan + UBSan and `-fno-sanitize-recover=all`. Twenty-one are in `fuzz/run.sh`'s
   default list and drive the entry points in the table above for crashes and undefined
   behaviour — format sniffing (`fuzz_scan`), the three container demuxers (`fuzz_matroska_demux`,
@@ -112,7 +112,7 @@ What runs against it:
   configurations and input it takes and holds it to the decoder. Two more
   (`fuzz_differential_ac3_decode`, `fuzz_differential_eac3_decode`) decode the same mutated
   bytes with FFmpeg as well and diff the PCM, so a *wrong* decode that does not crash is caught
-  too. The last, `fuzz_adm_parse`, is built only when `AC3FORGE_BUILD_ADM` is on — see
+  too. The last, `fuzz_adm_parse`, is built only when `ICLFORGE_BUILD_ADM` is on — see
   [ADM](#adm-xml-and-bw64). `Fuzz Regress` replays the checked-in seed and regression corpora on
   every push to `main` and on pull requests into it (a repository variable can pause the
   pull-request run, as [Where each check runs](verification.md#where-each-check-runs) says);
@@ -127,7 +127,7 @@ What runs against it:
   race there — the two runtimes are also mutually exclusive, so it is a separate leg
   (`Linux LLVM TSan`, a `deep`-tier leg in `.github/ci/legs.jsonc`, so it runs in the nightly run;
   preset `linux-llvm-tsan`) rather than more entries on the one above. It runs the `concurrency`
-  ctest label only — the audio layer's tests (`tests/audio/`), `ac3cli live`'s
+  ctest label only — the audio layer's tests (`tests/audio/`), `forge live`'s
   (`tests/cli/test_cli_live.cpp`) and the Hearth tests that carry the tag —
   because TSan's shadow memory makes everything several times slower and the rest of the suite is
   single-threaded codec maths. `tsan.supp` at the repository root holds the suppressions and is
@@ -160,13 +160,13 @@ exist because that audit should not have been the thing that found it.
 Three surfaces cross out of C++ into a caller that the type system cannot help. Each has a
 contract the caller must keep; none of them validate it in a release build.
 
-### The C API (`ac3forge_c/ac3forge.h`)
+### The C API (`iclforge_c/iclforge.h`)
 
 The safest of the three, by design. Every handle is opaque, every fallible call returns
-`ac3forge_status_t`, and **nothing is returned through a caller-supplied buffer** — a
+`iclforge_status_t`, and **nothing is returned through a caller-supplied buffer** — a
 variable-length result is an owned handle read through accessors, so no caller has to predict a
 size. Every entry point is wrapped in a `noexcept` guard that turns `std::bad_alloc` into
-`AC3FORGE_ERROR_OUT_OF_MEMORY` and anything else into `AC3FORGE_ERROR_INTERNAL`, because letting
+`ICLFORGE_ERROR_OUT_OF_MEMORY` and anything else into `ICLFORGE_ERROR_INTERNAL`, because letting
 a C++ exception unwind into a C (or Rust, or Python) frame is undefined behaviour.
 
 What the caller still owns:
@@ -174,13 +174,13 @@ What the caller still owns:
 - **Lifetime.** Every `_create` needs its `_destroy`. Passing `NULL` to a `_destroy` is a no-op,
   matching `free()`.
 - **The `const uint8_t* frame` / `size_t frame_size` pair** every decode entry point takes
-  (`ac3forge_decoder_decode_frame`, `ac3forge_ac4_decoder_decode` and the rest). A size larger
+  (`iclforge_decoder_decode_frame`, `iclforge_ac4_decoder_decode` and the rest). A size larger
   than the buffer is a caller bug this layer cannot detect; the buffer must be valid for the
   whole call.
-- **Accessor indices.** `ac3forge_decoded_frame_channel_samples(frame, channel_index)` and
+- **Accessor indices.** `iclforge_decoded_frame_channel_samples(frame, channel_index)` and
   friends take an index the caller is expected to have read from
-  `ac3forge_decoded_frame_channel_count` first.
-- **No ABI promise before v1.0.** A newer ac3forge may need a recompile, not merely a relink.
+  `iclforge_decoded_frame_channel_count` first.
+- **No ABI promise before v1.0.** A newer ICL Forge may need a recompile, not merely a relink.
 
 ### The `_into` decode forms
 
@@ -272,8 +272,8 @@ libraries enforce:
 
 | Quantity | Limit | Enforced by |
 |---|---|---|
-| AC-4 sync frame | 16,777,215 bytes, plus a 7-byte header and a 2-byte CRC | `frame_size` is 16 bits, or 24 when the 16-bit field reads `0xFFFF` (`ac4::scan`) |
-| Frames handed back | spans into the input, or into storage the caller supplies | `ac4::scan` copies no frame; `ac4::SyncFrameSplitter` reports `kBufferTooSmall` rather than growing its storage |
+| AC-4 sync frame | 16,777,215 bytes, plus a 7-byte header and a 2-byte CRC | `frame_size` is 16 bits, or 24 when the 16-bit field reads `0xFFFF` (`iclforge::ac4::scan`) |
+| Frames handed back | spans into the input, or into storage the caller supplies | `iclforge::ac4::scan` copies no frame; `iclforge::ac4::SyncFrameSplitter` reports `kBufferTooSmall` rather than growing its storage |
 | Objects in an OAMD portion | 64 | `kMaxOamdObjects`; a larger count is refused as unsupported however large the stream says it is |
 | Leading ones in an `ext_code` escape | 8 | Table 40 gives the escape 21 bits at most; a ninth leading one refuses the frame |
 
@@ -287,11 +287,11 @@ unbounded. There is no measured worst-case expansion ratio for AC-4.
 
 ### Open gaps
 
-**No cap on stream length, and no streaming split in the CLI.** `ac3::io::scan`,
-`ac3::split_frames`, `ac3::split_access_units` and `ac4::scan` take the whole elementary stream as
+**No cap on stream length, and no streaming split in the CLI.** `iclforge::io::scan`,
+`iclforge::split_frames`, `iclforge::split_access_units` and `iclforge::ac4::scan` take the whole elementary stream as
 one `std::span` and return one span per access unit. Peak memory is therefore *O(input size)* —
 the bytes themselves plus an index entry per access unit — and there is no limit at which the
-library refuses. `ac3cli` inherits this: it reads the encoded input fully into memory (it streams
+library refuses. `forge` inherits this: it reads the encoded input fully into memory (it streams
 the *decoded* PCM out, so output is O(1)).
 
 This is deliberate rather than overlooked: what counts as "too large" is the embedder's policy,
@@ -303,9 +303,9 @@ mitigation is on the caller:
 - Or drive the per-frame API directly. `FrameDecoder::decode_frame` and
   `Eac3Decoder::decode_substream`/`decode_access_unit` each take one unit at a time, and the
   `_into` forms write into caller-owned storage, so a caller that delimits units itself never
-  needs the whole stream resident. `ac3::io::AccessUnitAccumulator` (AC-3, E-AC-3) and
-  `ac4::SyncFrameSplitter` (AC-4) do the delimiting incrementally in storage the caller owns;
-  the ESP32 player uses the first, and neither is used by `ac3cli`.
+  needs the whole stream resident. `iclforge::io::AccessUnitAccumulator` (AC-3, E-AC-3) and
+  `iclforge::ac4::SyncFrameSplitter` (AC-4) do the delimiting incrementally in storage the caller owns;
+  the ESP32 player uses the first, and neither is used by `forge`.
 
 **No decode time bound.** Nothing in the library measures or limits wall-clock time. Because
 per-unit cost is bounded and the parsers do not recurse or backtrack, total decode time is linear
@@ -318,8 +318,8 @@ produces 96 KiB of PCM, so the structural upper bound on decoded-bytes-per-input
 short enough to hit it does not carry enough bits to code channels at all, and overflows the bit
 reader into `kTruncated` first. Bound decoded *output*, not input bytes, if this matters.
 
-**A WAV file is read whole.** `ac3::io::read_wav` reads its entire source into memory before
-parsing, so memory is O(file). `ac3::io::WavStreamReader` is the block-at-a-time alternative and
+**A WAV file is read whole.** `iclforge::io::read_wav` reads its entire source into memory before
+parsing, so memory is O(file). `iclforge::io::WavStreamReader` is the block-at-a-time alternative and
 reads only a fixed header window (a `data` chunk beyond that window is refused rather than
 searched for). A WAV may declare up to 65,535 channels; the per-channel vector overhead that
 implies (~1.5 MB) is not proportional to the file that declared it, though the sample data itself
@@ -327,13 +327,13 @@ is still clamped to the bytes actually present.
 
 ### ADM XML and BW64
 
-`atmos-adm` and `ac3adm::` are **off by default** (`-DAC3FORGE_BUILD_ADM=ON`) and, unlike every
+`atmos-adm` and `iclforge::adm::` are **off by default** (`-DICLFORGE_BUILD_ADM=ON`) and, unlike every
 other parser here, are not this project's own code: the XML and BW64/RF64 reading is vendored
 libadm and libbw64, plus Boost headers. That means:
 
 - **The fuzz harness that covers this path is opt-in, not continuous.** `fuzz_adm_parse` drives
-  `ac3adm::parse_bw64` over BW64 chunks plus an arbitrary XML document, but it is built only when
-  `AC3FORGE_BUILD_ADM` is on (`fuzz/run.sh` turns that on via `AC3FORGE_FUZZ_ADM=1`), and the one
+  `iclforge::adm::parse_bw64` over BW64 chunks plus an arbitrary XML document, but it is built only when
+  `ICLFORGE_BUILD_ADM` is on (`fuzz/run.sh` turns that on via `ICLFORGE_FUZZ_ADM=1`), and the one
   CI job that runs it — `Fuzz ADM Nightly` — is schedule/dispatch-only and `continue-on-error`,
   because a vcpkg restore plus the libbw64/libadm `FetchContent` pulls cost more than the mutation
   budget and most of what the harness reaches is third-party code. It is not one of the
@@ -364,8 +364,8 @@ libadm and libbw64, plus Boost headers. That means:
   proposing the same fixes upstream.
 - The whole `axml` chunk is materialised as a string and re-parsed from an `istringstream`, so
   memory is O(document).
-- Parse and graph-resolution failures do surface as real diagnostics (`ac3adm::AdmError`,
-  `ac3::admbridge::BridgeError`, each with its own `describe()`) rather than a crash or a bare
+- Parse and graph-resolution failures do surface as real diagnostics (`iclforge::adm::AdmError`,
+  `iclforge::admbridge::BridgeError`, each with its own `describe()`) rather than a crash or a bare
   non-zero exit.
 
 **Do not enable the ADM build for untrusted input.** It exists to ingest professional master
@@ -375,17 +375,17 @@ advisory job, and deciding a document-size policy; neither has been done.
 
 ### Object signing is authentication, not integrity of the stream
 
-`ac3::signing::verify_atmos_frame`/`verify_atmos_stream` check an HMAC tag over the EMDF object
+`iclforge::signing::verify_atmos_frame`/`verify_atmos_stream` check an HMAC tag over the EMDF object
 container. This tells you the object metadata came from someone holding the key. It does **not**
 authenticate the audio, the bed, or anything outside the container, and a stream with no
 container at all has nothing to verify — see
 [Object signing](concepts/object-signing.md). Verification is opt-in
-(`ac3cli decode ... verify-objects`); a signed-but-unchecked stream decodes exactly like an
+(`forge decode ... verify-objects`); a signed-but-unchecked stream decodes exactly like an
 unsigned one. This project ships no key.
 
 ### OSC live-position input has no authentication or encryption
 
-`positions=osc:<port>` (`ac3cli live mode=atmos`) and the GUI live room's "Drive objects from
+`positions=osc:<port>` (`forge live mode=atmos`) and the GUI live room's "Drive objects from
 OSC" toggle open a plain UDP socket. OSC 1.0 has no authentication or encryption of its own, and
 this project adds neither: anyone who can reach the bound address and port can send
 `/object/<n>/xyz` and move that object, full stop. The source IP is not checked — UDP has no
@@ -399,7 +399,7 @@ surface on top of opt-in surface: a session listens for OSC at all only when `po
 the GUI toggle) is explicitly used, and listens on every interface only when that is explicitly
 widened too.
 
-What a successful spoof or injection buys an attacker is narrow. `ac3::oba::apply`
+What a successful spoof or injection buys an attacker is narrow. `iclforge::oba::apply`
 (`src/objects/src/scene_osc.cpp`) merges only position, gain and `lfe_send` onto an object's
 existing placement, or releases it back to its authored automation (`/object/<n>/release`) —
 there is no path from this input to encoder configuration, to the filesystem, or to anything
@@ -408,13 +408,13 @@ move to wherever the packet says," never a compromised process.
 
 ### Sendspin: Hearth's server and its sinks
 
-`src/sendspin`, built only with `AC3FORGE_BUILD_HEARTH`, listens on the local network. A sink
-(`ac3hearth-testsink` on a computer, or `hearth_sink` on an ESP32-S3, ESP32-C6 or ESP32-P4 board)
+`src/sendspin`, built only with `ICLFORGE_BUILD_HEARTH`, listens on the local network. A sink
+(`hearth-testsink` on a computer, or `hearth_sink` on an ESP32-S3, ESP32-C6 or ESP32-P4 board)
 accepts WebSocket connections on port 8928 and advertises `_sendspin._tcp`; Hearth's server
 listens on 8927, advertises `_sendspin-server._tcp`, and dials the players it finds. Anyone on the
 network can open a connection to either, and anyone can send them mDNS packets. The protocol, and
 where Hearth departs from it, is in
-[`planning/hearth-sendspin-extension.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/hearth-sendspin-extension.md).
+[`planning/hearth-sendspin-extension.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/hearth-sendspin-extension.md).
 
 **A peer without a key reaches the handshake and little more.** After the handshake's text
 frames, every message is sealed with Noise `KKpsk2` under a PSK both ends hold: a pairing
@@ -438,7 +438,7 @@ operator has approved. What such a peer can still do:
 
 **A key is the credential.** A device's pairing PSK token (`SP:0...`) pairs whoever enters it
 into a server; the test sink prints its own at start. A paired server can play audio and send
-the commands a player lists: volume, mute and output delay, and over `_ac3forge_player@v1` the
+the commands a player lists: volume, mute and output delay, and over `_iclforge_player@v1` the
 settings a sink admits. What a sink decodes is an elementary stream from that server, and meets
 the decoder's posture above. The test sink keeps its identity key, pairing PSK and pairing
 records as files in its state directory, readable and writable by their owner only where the
@@ -475,7 +475,7 @@ key:
 A page on another site, opened by someone on the same network, can send the board requests that
 need no CORS preflight, such as `POST /play` with a text body. Forgetting one server that way
 needs its whole server_id, which such a page cannot read from `GET /pairing`.
-[`planning/esp32-device-ui.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-device-ui.md)
+[`planning/esp32-device-ui.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/esp32-device-ui.md)
 records that exposure and the decision to leave it. The page puts every string from `/status` into
 the document as text, never as markup.
 
@@ -490,7 +490,7 @@ network over Improv Wi-Fi, and type `pair forget` or `pair reset`.
 
 **A board's limits are its own.** The player holds three connections at once. It closes a
 connection that sends a message larger than its largest chunk
-(`CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_MAX_CHUNK_BYTES`, 25,600 bytes by default) before storing it.
+(`CONFIG_ICLFORGE_EXAMPLE_SENDSPIN_MAX_CHUNK_BYTES`, 25,600 bytes by default) before storing it.
 A chunk that does not fit the ring between the network and the decoder is dropped and counted.
 A chunk of the wrong type, or a unit that fails to decode, is counted as invalid, and the decoder
 starts again at the next burst. The decoder meets the posture above.
@@ -500,16 +500,16 @@ starts again at the next burst. The decoder meets the posture above.
 Every decode entry point returns `std::expected<..., DecodeError>`. The AC-3 and E-AC-3
 decoders' error is one of seven values: `kTruncated`, `kBadSyncWord`, `kBadCrc`, `kReservedValue`,
 `kUnsupported` (a bsid this decoder does not read), `kInvalidStream` or `kNoReferenceTransform` (a
-build without the direct-form transform, asked for it). `ac3::describe()` turns each into a
-sentence. The AC-4 decoder's `ac4::DecodeError` has five: `kTruncated`, `kInvalidToc` (the table
+build without the direct-form transform, asked for it). `iclforge::describe()` turns each into a
+sentence. The AC-4 decoder's `iclforge::ac4::DecodeError` has five: `kTruncated`, `kInvalidToc` (the table
 of contents did not parse), `kInvalidStream`, `kUnsupported` (legal AC-4 this decoder does not
 read; `Decoder::refusal_reason()` names it) and `kMissingIFrame` (a frame that needs configuration
-no I-frame has sent yet), and the inspector's `ac4::Error` has three (`kTruncated`, `kLostSync`,
+no I-frame has sent yet), and the inspector's `iclforge::ac4::Error` has three (`kTruncated`, `kLostSync`,
 `kUnsupportedBitstreamVersion`).
 
 By default a frame that fails produces no audio and the caller decides what to do. All three
 decoders take a concealment policy (`DecoderConfig::concealment`; `conceal=repeat|mute|off` on
-`ac3cli decode` and `monitor`, off by default) that returns a frame's worth of audio instead of
+`forge decode` and `monitor`, off by default) that returns a frame's worth of audio instead of
 the error, repeating the last good block with a fade or playing silence, so a stream with a
 damaged frame stays continuous. A frame that fails before any frame has decoded has nothing to
 conceal from and still returns its error.
@@ -527,17 +527,17 @@ CRC is checked, on both generations: AC-3 checks `crc1` over the first 5/8 of th
 `kBadCrc` is a real refusal, not a warning.
 
 AC-4 differs. A sync frame with the sync word `0xAC41` carries a CRC-16 (Annex G), and
-`ac4::scan` and `ac4::SyncFrameSplitter` compute it and report the result per frame
-(`SyncFrame::crc_ok`; `ac3cli probe` counts the failures), but neither they nor `ac4::Decoder`
+`iclforge::ac4::scan` and `iclforge::ac4::SyncFrameSplitter` compute it and report the result per frame
+(`SyncFrame::crc_ok`; `forge probe` counts the failures), but neither they nor `iclforge::ac4::Decoder`
 refuse a frame for a bad CRC. A frame with one still reaches the decoder's syntax layer, which is
 why `fuzz_ac4_decode` needs no CRC-repairing mutator. A caller that wants AC-3's behaviour checks
 `crc_ok` itself.
 
 ## Reporting an issue
 
-Use [GitHub Security Advisories](https://github.com/iainchesworthlabs/ac3forge/security/advisories/new),
+Use [GitHub Security Advisories](https://github.com/iainchesworthlabs/iclforge/security/advisories/new),
 privately — the process and timelines are in
-[SECURITY.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/SECURITY.md).
+[SECURITY.md](https://github.com/iainchesworthlabs/iclforge/blob/main/SECURITY.md).
 
 If you found it while embedding this library, the two things that speed up a fix most are:
 
@@ -549,13 +549,13 @@ If you found it while embedding this library, the two things that speed up a fix
    say which one is in play can take a while to place.
 
 A sanitizer report (ASan/UBSan stack) is worth more than a description of the symptom, and the
-build that produced it (`ac3cli --version` prints version, commit and toolchain) says whether
+build that produced it (`forge --version` prints version, commit and toolchain) says whether
 what you hit is already fixed.
 
 ## See also
 
 - [Validation](verification.md) — how output correctness is checked, and where the oracles run out
 - [Conformance vectors](conformance-vectors.md) — the published stream set, and what it does and does not prove
-- [`fuzz/README.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/fuzz/README.md) — the harnesses, the differential oracle and its agreement floor
+- [`fuzz/README.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/fuzz/README.md) — the harnesses, the differential oracle and its agreement floor
 - [Decoding](library/decoding.md) — the decode API this page describes the boundaries of
 - [C API](library/c-api.md) — the ownership and error conventions in full

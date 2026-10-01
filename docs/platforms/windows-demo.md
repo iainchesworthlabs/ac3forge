@@ -1,5 +1,11 @@
 # Windows (Desktop Atmos Demo)
 
+!!! info "Names"
+    The names on this page are those of the demo's own time (`ac3desk`, `ac3windemo`, `ac3forge`, the
+    `AC3FORGE_` variables and the `ac3::` namespaces), and the note below says how the demo became
+    Crucible. The family was renamed ICL Forge after that, and Crucible's program is `crucible`:
+    [Renamed](../renamed.md) puts each old name beside its new one.
+
 !!! info "Renamed: this application is now AC3Forge Crucible"
     This page is the design and phase record of the Windows demo, kept under the names it was
     built with (`ac3desk`, `ac3::windemo`, `apps/windows/`). The application was promoted to a
@@ -991,7 +997,7 @@ never fires for a window that opens in 3D, so the first switch away unloaded it.
 
 The About box linked a repository that does not exist (the checkout's directory name, not
 the remote's), and said nothing about the toolkit or the type. It now links
-github.com/iainchesworthlabs/ac3forge and attributes Qt 6 (LGPL v3), {fmt} (MIT), Tracy in
+github.com/iainchesworthlabs/iclforge and attributes Qt 6 (LGPL v3), {fmt} (MIT), Tracy in
 profiling builds (BSD 3-clause), and the faces: the window now bundles the GUI app's Archivo
 and Noto Sans Arabic and Hebrew, each SIL OFL 1.1 with the licence texts beside the files,
 where before it fell back to whatever the machine had. The version block is what the library

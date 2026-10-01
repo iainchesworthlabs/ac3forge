@@ -10,7 +10,7 @@ import "HearthTestHelpers.js" as H
 // control, driven by a real click, press or key, writes its setting, and what
 // the engine then plays changes as the setting's formula says - measured
 // tone by tone at the fake device (TestServices.toneLevelDb()) on streams
-// ac4::Encoder writes here (TestServices.writeAc4Stream(), test_room.hpp):
+// iclforge::ac4::Encoder writes here (TestServices.writeAc4Stream(), test_room.hpp):
 //
 //   tones          5.1, a tone a channel (L 440, R 620, C 800, LFE 90, Ls
 //                  1030, Rs 1270 Hz), dialnorm -24 dBFS, Lo/Ro centre -1.5

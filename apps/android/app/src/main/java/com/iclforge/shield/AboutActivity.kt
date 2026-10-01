@@ -68,7 +68,7 @@ class AboutActivity : Activity() {
             addView(kicker("VERSION"))
             addView(body(
                 "App: $appVersionName (build $appVersionCode)\n" +
-                    "ac3::forge (native): $version",
+                    "iclforge::ac3 (native): $version",
             ))
 
             addView(kicker("LICENSE"))

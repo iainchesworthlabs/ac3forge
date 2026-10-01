@@ -3,7 +3,7 @@
 # V1.3.1, written from the published texts.
 #
 # A peer of src/ac4 (iclforge::ac4, the bitstream inspector) and, like it,
-# independent of ac3::forge: AC-4 shares no bitstream syntax with AC-3 or
+# independent of iclforge::ac3: AC-4 shares no bitstream syntax with AC-3 or
 # E-AC-3, and a decoder that linked iclforge::ac3 would bring the whole codec
 # into every AC-4 build. It links iclforge::ac4 for the table of contents and the
 # presentation and substream group information, which the inspector already
@@ -113,7 +113,7 @@ target_compile_features(iclforge_ac4dec_objects PUBLIC cxx_std_23)
 # $<BUILD_INTERFACE:...> on all five for the reason src/ac4/CMakeLists.txt
 # gives, and because nothing that uses the installed package compiles these
 # objects. iclforge::arithmetic is the header-only target that carries
-# ac3/internal/scalar_math.hpp, which src/ac4core's dsp/real_functions.hpp
+# iclforge/arithmetic/scalar_math.hpp, which src/ac4core's dsp/real_functions.hpp
 # includes: the float transcendentals that give the same float on every
 # platform, called by pcm/aspx.cpp and pcm/companding.cpp through that header
 # (src/ac4dec includes from src/ac4core and not from src/arithmetic,
@@ -173,7 +173,7 @@ endif()
 set_target_properties(iclforge_ac4dec_static PROPERTIES OUTPUT_NAME "iclforge_ac4dec_static")
 
 # install(EXPORT ... NAMESPACE ac4::) prefixes the name a target is exported
-# under, which is its own name unless this says otherwise: ac4::ac4dec_static
+# under, which is its own name unless this says otherwise: iclforge::ac4::ac4dec_static
 # where the tree says iclforge::ac4dec_static.
 set_target_properties(iclforge_ac4dec_objects PROPERTIES EXPORT_NAME "decoder_objects")
 set_target_properties(iclforge_ac4dec_static PROPERTIES EXPORT_NAME "decoder_static")

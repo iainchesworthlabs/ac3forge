@@ -65,7 +65,7 @@ What the stream says about itself, as opposed to how to decode it. The card hold
   their original purpose. E-AC-3 gathers the whole group into `infomdat`, which setting any of
   these turns on.
 
-The library page on [Metadata](../../library/metadata.md#bit-stream-information-ac3metabsihpp)
+The library page on [Metadata](../../library/metadata.md#bit-stream-information-iclforgeac3metabsihpp)
 lists these fields and their sections of the standard.
 
 Every field on this tab maps directly onto the [Metadata](../../library/metadata.md) library page's

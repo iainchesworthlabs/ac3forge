@@ -98,7 +98,7 @@ domain rather than 256, which is the filterbank pair's own algorithmic delay (a 
 less one 64-sample hop) and cannot be shortened. `oba::joc::reconstruction_delay(domain)` is the single
 place either number is written down.
 
-The filterbank itself is `ac3::dsp::QmfAnalysis` / `QmfSynthesis`. Its prototype filter is
+The filterbank itself is `iclforge::dsp::QmfAnalysis` / `QmfSynthesis`. Its prototype filter is
 designed in this tree rather than transcribed: §7.1 fixes the *shape* — 64 subbands, complex,
 odd-stacked — and does not publish coefficients. The design is constrained to exact perfect
 reconstruction (analysis then synthesis returns the input bit-for-bit at the float boundary), with
@@ -125,7 +125,7 @@ streams rather than your own:
 - **A programme need not be objects.** OAMD describes a *bed* just as happily — a fixed
   7.1.4 speaker layout, coded exactly like objects but anchored to speakers. That is what most
   channel-based-immersive (CBI) Atmos content actually is, and JOC still reconstructs its eleven
-  non-LFE channels out of the 5.1 downmix. `ac3cli atmos-cbi` produces this shape directly from a
+  non-LFE channels out of the 5.1 downmix. `forge atmos-cbi` produces this shape directly from a
   channel-based WAV already mixed into a 5.1.4/7.1.4/9.1.6 bed — see
   [Spatial & Atmos objects](../library/spatial-and-atmos.md#channel-based-immersive-cbi-beds) for
   the API and [CLI commands](../forge/cli/commands.md) for the command. It is a different thing
@@ -150,13 +150,13 @@ that objects were ever there.
 The same property makes the reverse operation trivial to define and exact to perform. Because
 the bed **is** the full mix and the object layer only ever rides in skip fields, a DD+ JOC
 stream can be turned back into a plain DD+ 5.1 stream by removing the container — no decode, no
-re-encode, and no quality cost. `ac3cli strip-objects in.ec3 out.ec3` does exactly that, and the
+re-encode, and no quality cost. `forge strip-objects in.ec3 out.ec3` does exactly that, and the
 result decodes to sample-identical PCM (see
 [Object-layer strip](../library/decoding.md#object-layer-strip)).
 
 That matters for delivery: Apple's HLS authoring requirements ask that an Atmos rendition be
 accompanied by an equivalent 5.1 bitstream in the same `#EXT-X-MEDIA` group, so a client that
-cannot render objects has something to select. `ac3cli fmp4 … fallback-51` writes both from one
+cannot render objects has something to select. `forge fmp4 … fallback-51` writes both from one
 source stream.
 
 ## The fallback rule: objects, or nothing
@@ -169,14 +169,14 @@ things advertise the object layer and they have to agree:
   treats its sync word as a commitment to object decoding: if the field doesn't check out it
   refuses the whole stream rather than falling back to the bed. So an empty or unusable
   container is worse than no container — with nothing to find, that decoder plays ordinary 5.1.
-  This is what `ac3cli atmos ... bed51` and `AtmosConfig::emit_object_metadata` are for. Receivers
+  This is what `forge atmos ... bed51` and `AtmosConfig::emit_object_metadata` are for. Receivers
   differ: the Atmos receiver in the [Raspberry Pi test](../platforms/raspberry-pi.md#live-hdmi-passthrough-to-a-real-receiver)
   played the 5.1 bed from an unsigned container instead of refusing the stream, and the rule
   protects against the decoders that do refuse.
 - The **`addbsi` object marker** (ETSI TS 103 420 §8.3.1's `flag_ec3_extension_type_a` and
   §8.3.2.2's `complexity_index_type_a`). This is a few bits in the bitstream header, and it is
   the only thing a *reader* — as opposed to a decoder — has to go on: it is what
-  `ac3::io::scan` reports, what the MP4 `dec3` box's Dolby Atmos extension is built from, what
+  `iclforge::io::scan` reports, what the MP4 `dec3` box's Dolby Atmos extension is built from, what
   becomes an HLS `CHANNELS="<N>/JOC"` attribute, and what makes FFmpeg report the stream as
   "Dolby Digital Plus + Dolby Atmos". A stream with the marker but no container promises a
   packager, a player and a manifest an object layer that isn't there.
@@ -205,7 +205,7 @@ against independent tooling and the bed decodes correctly — but unless that ta
 valid, the licensed decoder falls back to playing just the plain 5.1 bed rather than
 reconstructing the objects. This is an authenticity gate, not a correctness or conformance problem.
 
-The signer that produces the tag ships in the tree (`ac3::signing`): the HMAC construction and the
+The signer that produces the tag ships in the tree (`iclforge::signing`): the HMAC construction and the
 layout of what gets signed are clean-room and committed, and the **only** thing you supply is the
 key — provisioned at runtime, never embedded, the same way a licensed tool receives its own. With a
 matching key, a validating decoder reconstructs the objects; without one, the stream stays a valid

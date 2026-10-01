@@ -21,11 +21,11 @@
     crates.io hold nothing under the family's names.) That replaces this page's decisions 2, 5
     and 6 and its recommended scheme S1: the scheme it costed as S3 was taken, with `forge` and
     `forge-gui`, and the family name changed as well.
-    **The execution is still a plan.** It is phase N1 of the AC-4 plan, in two tasks, N1A (the
-    programs) and N1B (the libraries, studied in [layout.md](layout.md)); the study's fourteen
-    decisions wait for the user, and nothing moves before they are answered. Until N1 runs the
-    tree, the docs and this page use the current names (`ac3cli`, `ac3gui`, `ac3hearth`,
-    `ac3crucible`, `ac3forge`).
+    **The execution has run.** It was phase N1 of the AC-4 plan, in two tasks, N1A (the
+    programs) and N1B (the libraries, studied in [layout.md](layout.md)); the user took the study's
+    recommendations on 2026-09-30, and the tree and the docs use the new names since 2026-10-01
+    ([N1](ac4.md#n1-the-names) lists the pull requests). This page keeps the names of its time
+    (`ac3cli`, `ac3gui`, `ac3hearth`, `ac3crucible`, `ac3forge`).
 
     This page plans the recasting of the repository from one name over everything into three
     named products: **the library**, **Forge** (the `ac3cli` and `ac3gui` tooling) and
@@ -139,8 +139,8 @@ as written. The programs take the names S3 offered as `forge` and `forge-gui`, w
 name go with it, as S4 costed: N1B renames the C API prefix, the CMake package, the Kconfig
 prefix, the environment variables and the wire strings outright, with no shim
 ([the AC-4 plan](ac4.md#n1-the-names)). The C++ namespace is a question the layout study puts to
-the user (its decision 2), and it has not been answered. **Not yet done**: the tree still uses the
-current names throughout. The three rules below are S1's, and hold until N1 replaces them.
+the user (its decision 2), and the answer was `iclforge`. **Done by N1**: the tree uses the new
+names. The three rules below are S1's, and N1 replaced them (CONTRIBUTING.md has the current ones).
 
 Under S1 three rules are written down once, on the Library index page, the Forge index page and
 in CONTRIBUTING.md:

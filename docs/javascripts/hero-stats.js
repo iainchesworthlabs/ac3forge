@@ -15,7 +15,12 @@
   const mount = document.getElementById("ac3f-stats");
   if (!mount) return; // not the homepage
 
-  const REPO = "iainchesworthlabs/ac3forge";
+  // The site is served under the repository's name, so the repository is read off the address:
+  // it is right before and after the repository is renamed. A local preview, and the stub
+  // tools/ci/render_measurement_tiles.js runs the scripts in, have no such address.
+  const REPO = typeof location !== "undefined" && location.hostname.endsWith(".github.io")
+    ? location.hostname.split(".")[0] + "/" + location.pathname.split("/")[1]
+    : "iainchesworthlabs/iclforge";
   const HISTORY_BRANCH = "quality-history";
 
   // >>> measurement summary

@@ -1576,6 +1576,57 @@ class PublishedImages(Case):
         self.assertIn("--run takes a workflow run's number", out)
 
 
+class RepositoryName(unittest.TestCase):
+    """repository() names the repository of the run, whatever it is called now."""
+
+    def setUp(self) -> None:
+        ota.repository.cache_clear()
+        self.addCleanup(ota.repository.cache_clear)
+
+    def test_a_ci_run_names_it_in_the_environment(self) -> None:
+        with (
+            mock.patch.dict("os.environ", {"GITHUB_REPOSITORY": "owner/renamed"}),
+            mock.patch.object(subprocess, "run") as run,
+        ):
+            self.assertEqual(ota.repository(), "owner/renamed")
+        run.assert_not_called()
+
+    def test_a_checkout_asks_the_github_cli(self) -> None:
+        answer = subprocess.CompletedProcess([], 0, stdout="owner/now-called\n", stderr="")
+        with (
+            mock.patch.dict("os.environ", {"GITHUB_REPOSITORY": ""}),
+            mock.patch.object(subprocess, "run", return_value=answer) as run,
+        ):
+            self.assertEqual(ota.repository(), "owner/now-called")
+            self.assertEqual(ota.repository(), "owner/now-called")
+        self.assertEqual(run.call_count, 1, "the answer is kept")
+        self.assertEqual(run.call_args.args[0][:3], ["gh", "repo", "view"])
+
+    def test_without_either_it_is_the_name_it_had_when_written(self) -> None:
+        refused = subprocess.CompletedProcess([], 1, stdout="", stderr="not logged in")
+        for outcome in (refused, FileNotFoundError("gh"), subprocess.TimeoutExpired("gh", 20)):
+            ota.repository.cache_clear()
+            with (
+                self.subTest(outcome=repr(outcome)),
+                mock.patch.dict("os.environ", {"GITHUB_REPOSITORY": ""}),
+                mock.patch.object(
+                    subprocess,
+                    "run",
+                    side_effect=outcome if isinstance(outcome, Exception) else None,
+                    return_value=None if isinstance(outcome, Exception) else outcome,
+                ),
+            ):
+                self.assertEqual(ota.repository(), ota.FALLBACK_REPOSITORY)
+
+    def test_an_answer_that_is_no_owner_and_name_is_not_taken(self) -> None:
+        odd = subprocess.CompletedProcess([], 0, stdout="no slash here\n", stderr="")
+        with (
+            mock.patch.dict("os.environ", {"GITHUB_REPOSITORY": ""}),
+            mock.patch.object(subprocess, "run", return_value=odd),
+        ):
+            self.assertEqual(ota.repository(), ota.FALLBACK_REPOSITORY)
+
+
 class CommandLine(Case):
     def test_help(self) -> None:
         for argv in (["--help"], ["push", "--help"], ["status", "--help"]):

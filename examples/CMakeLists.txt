@@ -36,7 +36,7 @@ set(ICLFORGE_EXAMPLES
 # read_adm demonstrates iclforge::adm (src/adm), the standalone BW64/RF64 + ADM
 # parser - "standalone" meaning zero dependency on iclforge::ac3, unlike every other
 # example in the list above. encode_adm (ADM BWF reader phase 3) is the end-to-end
-# counterpart: ac3adm::parse_bw64 -> ac3::admbridge::build -> ac3::oba::AtmosEncoder, so unlike
+# counterpart: iclforge::adm::parse_bw64 -> iclforge::admbridge::build -> iclforge::oba::AtmosEncoder, so unlike
 # every other entry here (including read_adm) it needs BOTH iclforge::ac3 and the opt-in ADM modules
 # together. Both are only added when ICLFORGE_BUILD_ADM turned those modules on (default OFF - see
 # root CMakeLists.txt's own option() for why), so the foreach below cannot assume either is always
@@ -52,8 +52,8 @@ if(ICLFORGE_BUILD_ADM)
 endif()
 
 # mux_iamf demonstrates IAMF writer phase 1's decode -> IAMF bridge: it encodes a synthetic
-# 7.1.4 E-AC-3 stream, decodes it back with ac3::Eac3Decoder, permutes the result into iamf::'s
-# own channel order and calls iamf::mux() - so, like encode_adm above, it needs BOTH iclforge::ac3
+# 7.1.4 E-AC-3 stream, decodes it back with iclforge::Eac3Decoder, permutes the result into iamf::'s
+# own channel order and calls iclforge::iamf::mux() - so, like encode_adm above, it needs BOTH iclforge::ac3
 # and the standalone writer module together, and only exists to build when ICLFORGE_BUILD_IAMF
 # (default ON, see the root CMakeLists.txt's own option()) turned iclforge::iamf on.
 if(ICLFORGE_BUILD_IAMF)

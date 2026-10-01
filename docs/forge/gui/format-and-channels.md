@@ -52,12 +52,12 @@ Quality step shows the same idea in plain language when a wide room still has "G
 *second* command over the finished elementary stream — pasting one command would otherwise write
 a raw elementary stream into a file the receiver or player expects a different format for:
 
-| Container | Produces (exactly what its `ac3cli` subcommand does) | Command | Atmos signaling |
+| Container | Produces (exactly what its `forge` subcommand does) | Command | Atmos signaling |
 |---|---|---|---|
-| **S/PDIF (.wav)** | The stream's IEC 61937 bursts as a 2-channel 16-bit PCM WAV, playable bit-exactly (100% volume, no mixing) into an S/PDIF or HDMI output so a receiver locks onto it | `ac3cli encode … out.ac3 && ac3cli spdif out.ac3 out.wav` | none |
-| **MP4 (.mp4)** | A spec-correct ISOBMFF file with a `dac3`/`dec3` sample-entry box built off the bitstream (fscod, bsid, bsmod, acmod, lfeon — ETSI TS 102 366 Annex F) | `ac3cli encode … out.ac3 && ac3cli mp4 out.ac3 out.mp4` | `flag_ec3_extension_type_a` (TS 103 420 §8.3.2.2) |
-| **fragmented MP4/CMAF** | A *folder*, not a file — the save dialog switches to a folder picker for this one choice: an init segment (`init.mp4`), one CMAF media segment per fragment (1.536 s each at 48 kHz), an HLS media/master playlist pair (RFC 8216), and a DASH MPD (ISO/IEC 23009-1), ready for a packager or CDN origin | `ac3cli encode … out.ac3 && ac3cli fmp4 out.ac3 out_dir` | `CHANNELS="<N>/JOC"` on the HLS rendition, the `EC3_ExtensionType`/`EC3_ExtensionComplexityIndex` descriptors in the MPD (clause D.2), and the `ceao` compatibility brand on the segments |
-| **MPEG-TS (.ts)** | A DVB-profile MPEG-2 Transport Stream: stream_type 0x06 plus the AC3_descriptor/Enhanced_AC3_descriptor (ETSI EN 300 468 Annex D.3/D.5) | `ac3cli encode … out.ac3 && ac3cli ts out.ac3 out.ts` | none — DVB's descriptors carry no JOC marker |
+| **S/PDIF (.wav)** | The stream's IEC 61937 bursts as a 2-channel 16-bit PCM WAV, playable bit-exactly (100% volume, no mixing) into an S/PDIF or HDMI output so a receiver locks onto it | `forge encode … out.ac3 && forge spdif out.ac3 out.wav` | none |
+| **MP4 (.mp4)** | A spec-correct ISOBMFF file with a `dac3`/`dec3` sample-entry box built off the bitstream (fscod, bsid, bsmod, acmod, lfeon — ETSI TS 102 366 Annex F) | `forge encode … out.ac3 && forge mp4 out.ac3 out.mp4` | `flag_ec3_extension_type_a` (TS 103 420 §8.3.2.2) |
+| **fragmented MP4/CMAF** | A *folder*, not a file — the save dialog switches to a folder picker for this one choice: an init segment (`init.mp4`), one CMAF media segment per fragment (1.536 s each at 48 kHz), an HLS media/master playlist pair (RFC 8216), and a DASH MPD (ISO/IEC 23009-1), ready for a packager or CDN origin | `forge encode … out.ac3 && forge fmp4 out.ac3 out_dir` | `CHANNELS="<N>/JOC"` on the HLS rendition, the `EC3_ExtensionType`/`EC3_ExtensionComplexityIndex` descriptors in the MPD (clause D.2), and the `ceao` compatibility brand on the segments |
+| **MPEG-TS (.ts)** | A DVB-profile MPEG-2 Transport Stream: stream_type 0x06 plus the AC3_descriptor/Enhanced_AC3_descriptor (ETSI EN 300 468 Annex D.3/D.5) | `forge encode … out.ac3 && forge ts out.ac3 out.ts` | none — DVB's descriptors carry no JOC marker |
 
 S/PDIF is the one exception on codec support in practice, not in principle: an E-AC-3 stream's
 carrier runs at four times the content sample rate (Dolby Digital Plus over IEC 60958/61937),
@@ -65,7 +65,7 @@ which is legal and expected, if unusual for a plain PCM16 file.
 
 Of the four containers above, only **fragmented MP4/CMAF** carries over to a **live session** the
 way Matroska does: `EncoderController::openLiveOutputWriters` wires exactly two incremental
-writers, `matroska::Writer` and `mp4::FragmentWriter`, and **MP4**, **S/PDIF** and **MPEG-TS** all
+writers, `iclforge::matroska::Writer` and `iclforge::mp4::FragmentWriter`, and **MP4**, **S/PDIF** and **MPEG-TS** all
 fall through to writing the plain elementary stream when a live session starts — the same file
 Elementary stream itself would produce live. That is a limit of the live path, not of the
 containers: a **recording** (the Record button's capture-to-file take) goes through
@@ -97,7 +97,7 @@ has.
 
 A finished VBR run reports what it actually spent, since it has no target: the run strip reads
 `VBR q75 · avg 512 kbps (384–704)` instead of a plain `NNN kbps` figure. At the foot of the
-panel, a monospace `ac3cli vbr token` readout shows the exact
+panel, a monospace `forge vbr token` readout shows the exact
 `q:<quality>[,min:<kbps>][,max:<kbps>]` string that reproduces the current setting — see
 [CLI → Options & grammars](../cli/metadata-options.md#the-vbr-token-eac3-encode-only).
 
@@ -207,7 +207,7 @@ with it so Play there needs no fresh pick.
 ## AC-4
 
 **Codec** offers AC-4 (ETSI TS 103 190) as its third choice. AC-4 encodes the loaded source in its
-own layout, the way `ac3cli ac4-encode` takes a WAV file: mono, stereo, 5.0 or 5.1, one source,
+own layout, the way `forge ac4-encode` takes a WAV file: mono, stereo, 5.0 or 5.1, one source,
 no assignment and no start offset. Choosing AC-4 sets the bed to the source's layout, clears the
 extras, and leaves **Container** at Elementary stream (a raw `.ac4` of sync frames) or MP4; the
 other containers are refused when Encode is pressed, as is a bed that is not the source's. A
@@ -219,7 +219,7 @@ The **AC-4** tab takes the place of Coding tools and Metadata, which belong to t
 codecs, in Advanced as well as Expert (Guided has no such tab), and its badge counts the options it
 adds to the command line:
 
-| Control | `ac3cli ac4-encode` option | Default |
+| Control | `forge ac4-encode` option | Default |
 |---|---|---|
 | Frame rate | `frame-rate=` (Part 1 Table 83; native alone at 44.1 kHz) | native, 2 048-sample frames |
 | Rate mode | `rate-mode=constant\|average\|variable` | constant |
@@ -233,7 +233,7 @@ adds to the command line:
 | Stereo downmix: centre, surround, preferred (a 5.0 or 5.1 source) | `cmixlev=`, `surmixlev=`, `dmixmod=` | the stream's defaults |
 | Dialogue in L, R, C; Raise the Mid of L and R; Largest dialogue boost | `dialogue-channels=`, `dialogue-method=mid`, `dialogue-max-gain=` | off, 9 dB |
 
-The command bar echoes one command, `ac3cli ac4-encode <source> out.ac4 <kbps> <options>`, or
+The command bar echoes one command, `forge ac4-encode <source> out.ac4 <kbps> <options>`, or
 `out.mp4` for MP4, since `ac4-encode` writes the MP4 file itself. Run where the source is, it
 writes the same bytes the page writes; the Qt Quick Tests hold a raw stream, an MP4 file and a
 5.1 downmix to that. The page and the command share their channel order, loudness measurement
@@ -248,7 +248,7 @@ mix and the downmix corrections, I-frames at named frames or fragment starts, th
 the `experimental=` tools, the codec modes of the immersive layouts (`scpl`, `aspx-scpl`,
 `aspx-ajcc`), the height downmix, and the 3.0, 7.X and immersive layouts (5.0.4 and 5.1.4 among
 them). None of these fits one source in one layout, and each is
-an option of [`ac3cli ac4-encode`](../cli/commands.md#ac4-encode). Objects are the Objects tab's:
+an option of [`forge ac4-encode`](../cli/commands.md#ac4-encode). Objects are the Objects tab's:
 with its switch on and AC-4 the codec, the page writes AC-4 objects, and the AC-4 tab carries what
 an object stream takes; see [Objects & motion](objects-and-motion.md#ac-4-objects).
 

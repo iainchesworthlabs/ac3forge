@@ -444,7 +444,7 @@ def generate(streams, cases, n_mutations, n_synthetic, seed):
 
 def sync_frames(data):
     """The raw frames of ac4_syncframe()s back to back, stopping where sync is
-    lost or a frame runs past the data, as ac4::scan does."""
+    lost or a frame runs past the data, as iclforge::ac4::scan does."""
     pos = 0
     while pos + 4 <= len(data):
         sync = (data[pos] << 8) | data[pos + 1]
