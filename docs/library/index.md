@@ -286,21 +286,25 @@ I/O, `MuxError` muxing. All five have a `describe()` returning a `std::string_vi
 libraries do the same with `iclforge::ac4::Error`, `iclforge::ac4::DecodeError` and `iclforge::ac4::EncodeError`, which are not
 `iclforge::ac3::DecodeError` and `iclforge::ac3::FrameError` under other names ([AC-4](ac4.md#errors)).
 
-**Namespaces follow the libraries only in part.** Everything is under `iclforge::`. The
-containers, the readers and the AC-4 libraries each have a namespace named for them
-(`iclforge::mp4`, `iclforge::matroska`, `iclforge::mpegts`, `iclforge::iamf`, `iclforge::iab`,
-`iclforge::adm` and `iclforge::ac4`), and the first six know nothing about AC-3, E-AC-3 or Atmos:
-they take frames as opaque bytes. The AC-3 codec's own names are in `iclforge::` itself and in its
-sub-namespaces `eac3`, `oba`, `io`, `meta`, `plan`, `verify`, `quality` and `analysis`; `render`,
-`dsp` and `iec61937` are libraries split from it with a namespace of their own, and `iclforge::oba`
-is shared by `iclforge::objects` and `iclforge::ac3`. The directory and the header root say which
-library a header is in, which the namespace does not yet;
-[planning/layout.md](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/layout.md)
-plans to nest the AC-3 codec under `iclforge::ac3`, and the rule of
-[CONTRIBUTING.md](https://github.com/iainchesworthlabs/iclforge/blob/main/CONTRIBUTING.md#repository-layout)
-holds for the libraries meanwhile.
+**Namespaces follow the libraries.** Everything is under `iclforge::`, and a library's public
+headers declare into the namespace named for it: `iclforge::ac3` for the AC-3, E-AC-3 and Atmos
+codec, `iclforge::ac4` for the four AC-4 libraries, and `iclforge::mp4`, `iclforge::matroska`,
+`iclforge::mpegts`, `iclforge::iamf`, `iclforge::iab` and `iclforge::adm` for the containers and
+the readers, which know nothing about AC-3, E-AC-3 or Atmos: they take frames as opaque bytes. The
+codec's sub-namespaces keep their names under its own: `iclforge::ac3::eac3`, `iclforge::ac3::oba`,
+`iclforge::ac3::io`, `iclforge::ac3::meta`, `iclforge::ac3::plan`, `iclforge::ac3::verify`,
+`iclforge::ac3::quality` and `iclforge::ac3::analysis`. The libraries split from it have a
+namespace of their own, `iclforge::base`, `iclforge::render`, `iclforge::dsp` and
+`iclforge::iec61937`, and the objects library declares `iclforge::oba` and `iclforge::emdf`.
+Five names are declared both by another library under `iclforge::` and by the codec under
+`iclforge::ac3::`: `oba`, `emdf`, `render`, `internal` and `detail`. Inside `iclforge::ac3` an
+unqualified `oba::` is the codec's, so the objects library's `Position` is written
+`iclforge::oba::Position` there. The directory and the header root say which library a header is
+in, and so does the namespace; `tools/checks/check_namespaces.py` holds the headers to it, with
+three exceptions it lists as debts (`BitReader` and `BitWriter` of `iclforge/base/`, and `dft512`
+of `iclforge/dsp/fft.hpp`, which are declared in `iclforge` itself).
 
-Within the AC-3 codec, AC-3 is the base case and lives in the bare namespace; E-AC-3 additions and
+Within the AC-3 codec, AC-3 is the base case and lives in `iclforge::ac3` itself; E-AC-3 additions and
 overrides live in `iclforge::ac3::eac3`, nested rather than parallel. `iclforge::ac3::FrameEncoder` (AC-3) and
 `iclforge::ac3::eac3::FrameEncoder` (E-AC-3) sharing a class name across that boundary is this rule applied
 consistently — the same split the Python bindings mirror by putting the E-AC-3
