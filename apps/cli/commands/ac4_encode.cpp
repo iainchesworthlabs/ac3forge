@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -7,6 +8,7 @@
 #include <fmt/base.h>
 #include <fmt/format.h>
 #include <fstream>
+#include <ios>
 #include <optional>
 #include <span>
 #include <string>
@@ -19,6 +21,8 @@
 #include "iclforge/ac3/io/wav.hpp"
 #include "iclforge/ac4/ac4.hpp"
 #include "ac4_encode_core.hpp"
+#include "iclforge/ac4/syntax.hpp"
+#include "iclforge/ac4dec/decoder.hpp"
 #include "iclforge/ac4enc/encoder.hpp"
 #include "encode.hpp"
 
@@ -446,8 +450,10 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
         const double step = *opts.fragment_seconds * static_cast<double>(main.wav.sample_rate);
         const double end = static_cast<double>(main.wav.frame_count()) +
                            2.0 * static_cast<double>(main.wav.sample_rate);
-        for (double at = step; at < end; at += step) {
-            config.fragment_starts.push_back(static_cast<std::int64_t>(std::llround(at)));
+        // Each start is its multiple of the step, not the running sum of the steps before it.
+        for (std::int64_t n = 1; static_cast<double>(n) * step < end; ++n) {
+            config.fragment_starts.push_back(
+                static_cast<std::int64_t>(std::llround(static_cast<double>(n) * step)));
         }
     }
     config.experimental.aspx_balance = meta.ac4_experimental_balance;

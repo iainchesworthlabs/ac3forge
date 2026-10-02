@@ -28,6 +28,7 @@
 #include "iclforge/ac3/io/elementary.hpp"
 #include "iclforge/ac3/io/probe.hpp"
 #include "iclforge/ac3/meta/bsi.hpp"
+#include "iclforge/ac4dec/decoder.hpp"
 #include "iclforge/objects/oamd.hpp"
 #include "iclforge/signing/emdf_atmos_signer.hpp"
 #include "iclforge/ac3/version.hpp"
@@ -543,11 +544,20 @@ void print_ac4_table(std::string_view path, const Ac4Summary& summary,
                 roles += " (" + m.language + ")";
             }
         }
+        // Copies of the two optionals, checked and read as locals:
+        // bugprone-unchecked-optional-access loses a check made through the range-for reference p
+        // (it flagged `*p.presentation_id` inside `if (p.presentation_id)`).
+        std::string id;
+        if (const std::optional<int> presentation_id = p.presentation_id) {
+            id = fmt::format("id {}, ", *presentation_id);
+        }
+        std::string md_compat;
+        if (const std::optional<int> level = p.md_compat) {
+            md_compat = fmt::format("md_compat {}, ", *level);
+        }
         fmt::println(
-            "{:<16}{}{}{}{}; {}; {}{}{}", fmt::format("presentation {}", p.index),
-            p.presentation_id ? fmt::format("id {}, ", *p.presentation_id) : std::string{},
-            p.name.empty() ? std::string{} : fmt::format("\"{}\", ", p.name),
-            p.md_compat ? fmt::format("md_compat {}, ", *p.md_compat) : std::string{},
+            "{:<16}{}{}{}{}; {}; {}{}{}", fmt::format("presentation {}", p.index), id,
+            p.name.empty() ? std::string{} : fmt::format("\"{}\", ", p.name), md_compat,
             channels.empty() ? "not decoded" : channels, roles, p.enabled ? "" : "disabled, ",
             p.pre_virtualized ? "pre-virtualized, " : "",
             selected == p.index ? "selected" : (p.selectable ? "selectable" : "not selectable"));
