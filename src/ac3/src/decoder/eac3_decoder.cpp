@@ -29,11 +29,13 @@
 #include "iclforge/ac3/decoder/diagnostics.hpp"
 #include "iclforge/ac3/decoder/output.hpp"
 #include "iclforge/ac3/decoder/transient_prenoise.hpp"
+#include "iclforge/base/layout.hpp"
 #include "iclforge/objects/emdf.hpp"
 #include "iclforge/ac3/detail/decode_scalar.hpp"
 #include "iclforge/ac3/detail/profile.hpp"
 #include "eac3_tools_fixed.hpp"
 #include "iclforge/arithmetic/fixed32.hpp"
+#include "iclforge/objects/joc_domain.hpp"
 #include "scalar_inverse.hpp"
 #include "block_norm.hpp"
 #include "iclforge/base/detail/profiling.hpp"
@@ -1552,7 +1554,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     if (decoded.has_value() && decoded->has_value() && impl_->transient_[slot] != nullptr) {
         auto& hold = *impl_->transient_[slot];
         if (hold_back(hold, std::move(**decoded), {})) {
-            **decoded = std::move(hold.released);
+            *decoded = std::move(hold.released);
         } else {
             decoded->reset();
         }

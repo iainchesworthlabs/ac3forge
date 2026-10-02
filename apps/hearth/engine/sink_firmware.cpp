@@ -143,10 +143,9 @@ constexpr std::array<TargetChip, 10> kTargets{{
     return iclforge::sendspin::crypto::sha256({bytes}, out);
 }
 
-[[nodiscard]] bool is_new_image(const iclforge::FirmwareSlot* running, const FirmwareFile& file,
+[[nodiscard]] bool is_new_image(const iclforge::FirmwareSlot& running, const FirmwareFile& file,
                                 std::string_view slot) {
-    return running != nullptr && lower(running->elf_sha256) == file.elf_sha256 &&
-           (slot.empty() || running->label == slot);
+    return lower(running.elf_sha256) == file.elf_sha256 && (slot.empty() || running.label == slot);
 }
 
 [[nodiscard]] std::string updated_text(const iclforge::FirmwareSlot& running, const FirmwareFile& file) {
@@ -441,7 +440,7 @@ WaitVerdict judge_wait(const iclforge::FirmwareStatus* firmware, const FirmwareF
         }
         return {UpdateOutcome::kNone, "still in flash mode; it restarts next"};
     }
-    if (is_new_image(running, file, context.slot)) {
+    if (running != nullptr && is_new_image(*running, file, context.slot)) {
         if (running->state == "trial" || firmware->trial) {
             return {UpdateOutcome::kNone,
                     "on trial: " + (firmware->trial ? trial_words(*firmware->trial) : std::string("starting"))};
@@ -479,7 +478,7 @@ std::string silent_text(const iclforge::FirmwareStatus* last, const FirmwareFile
         head = fmt::format("did not come back within {} s.", seconds);
     } else if (last->mode == "flash") {
         head = fmt::format("still in flash mode after {} s: it has not restarted into the new image.", seconds);
-    } else if (is_new_image(running, file, context.slot)) {
+    } else if (running != nullptr && is_new_image(*running, file, context.slot)) {
         head = running->state == "trial" || last->trial
                    ? fmt::format("still runs the new image on trial after {} s.", seconds)
                    : fmt::format("runs the new image after {} s ({}), and has not accepted it.", seconds,
@@ -737,7 +736,11 @@ void SinkFirmware::Worker::run() {
         if (watching_) {
             wake_.wait_until(lock, next_poll_);
         } else {
-            wake_.wait(lock);
+            // Until there is something to do: a stop, a job, or a watch to begin (the conditions
+            // the loop above acts on), so a wake-up with none of them goes back to sleep.
+            wake_.wait(lock, [this] {
+                return stop_ || watching_ || (job_ != Job::kNone && !job_running_);
+            });
         }
     }
 }

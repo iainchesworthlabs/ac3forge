@@ -33,6 +33,7 @@
 #include <iterator>
 #include <limits>
 #include <map>
+#include <numbers>
 #include <optional>
 #include <set>
 #include <span>
@@ -284,6 +285,156 @@ TEST_CASE("set_output changes the output level from the next frame without waiti
     }
     INFO("frames a rebuilt decoder waits for an I-frame");
     CHECK(silent > 0);
+}
+
+namespace {
+
+// 5.1 at 384 kbps, a tone a channel at -20 dBFS (L 440, R 620, C 800, LFE 90,
+// Ls 1030, Rs 1270 Hz) with gains of its own for every downmix, which the
+// encoder sends in I-frames alone, every 24 frames: Hearth's tones stream
+// (apps/hearth/ui/tests/test_room.cpp).
+std::vector<std::vector<std::byte>> tones_with_their_own_gains(std::size_t frames) {
+    iclforge::ac4::EncoderConfig config;
+    config.channels = 6;
+    config.bitrate_kbps = 384;
+    config.downmix =
+        iclforge::ac4::DownmixConfig{.loro_centre_db = -1.5,
+                                     .loro_surround_db = -4.5,
+                                     .ltrt_centre_db = -3.0,
+                                     .ltrt_surround_db = -6.0,
+                                     .lfe_db = -4.5,
+                                     .preferred = iclforge::ac4::PreferredDownmix::kLtRt,
+                                     .loro_correction_db2 = std::nullopt,
+                                     .ltrt_correction_db2 = std::nullopt};
+    REQUIRE(config.iframe_interval == 24);
+    std::vector<std::vector<float>> input;
+    for (const double hz : {440.0, 620.0, 800.0, 90.0, 1030.0, 1270.0}) {
+        std::vector<float>& channel = input.emplace_back(frames * 2048);
+        for (std::size_t n = 0; n < channel.size(); ++n) {
+            channel[n] = static_cast<float>(
+                0.1 * std::sin(2.0 * std::numbers::pi * hz * static_cast<double>(n) / 48000.0));
+        }
+    }
+    auto encoder = iclforge::ac4::Encoder::create(config);
+    REQUIRE(encoder.has_value());
+    const std::vector<std::span<const float>> views(input.begin(), input.end());
+    auto encoded = encoder->encode(views);
+    REQUIRE(encoded.has_value());
+    auto rest = encoder->flush();
+    REQUIRE(rest.has_value());
+    std::vector<std::vector<std::byte>> out;
+    for (const auto* part : {&*encoded, &*rest}) {
+        for (const iclforge::ac4::EncodedFrame& frame : *part) {
+            out.push_back(frame.raw_ac4_frame);
+        }
+    }
+    return out;
+}
+
+// The first sample in [from, to) at which a and b differ.
+std::optional<std::size_t> first_difference(const std::vector<float>& a,
+                                            const std::vector<float>& b, std::size_t from,
+                                            std::size_t to) {
+    for (std::size_t n = from; n < to && n < a.size() && n < b.size(); ++n) {
+        if (a[n] != b[n]) {
+            return n;
+        }
+    }
+    return std::nullopt;
+}
+
+// Plays `frames` with `before` and changes to `after` at frame `change`: what
+// comes out is a decode with `before` throughout up to the change, and from
+// two frames after it, the control data having reached the QMF domain, a
+// decode with `after` throughout.
+void require_change_lands_whole(const std::vector<std::vector<std::byte>>& frames,
+                                std::size_t change, const iclforge::ac4::OutputConfig& before,
+                                const iclforge::ac4::OutputConfig& after) {
+    iclforge::ac4::Decoder first(iclforge::ac4::DecoderConfig{.syntax = {}, .output = before});
+    iclforge::ac4::Decoder second(iclforge::ac4::DecoderConfig{.syntax = {}, .output = after});
+    const Decoded as_before = decode_all(first, frames);
+    const Decoded as_after = decode_all(second, frames);
+    REQUIRE(as_before.waited == 0);
+    REQUIRE(as_after.speakers == as_before.speakers);
+
+    iclforge::ac4::Decoder playing(iclforge::ac4::DecoderConfig{.syntax = {}, .output = before});
+    std::vector<std::vector<float>> out(as_before.channels.size());
+    std::size_t at_change = 0;
+    std::size_t frame_length = 0;
+    for (std::size_t f = 0; f < frames.size(); ++f) {
+        if (f == change) {
+            playing.set_output(after);
+            at_change = out[0].size();
+        }
+        const auto decoded = playing.decode(frames[f]);
+        REQUIRE(decoded.has_value());
+        REQUIRE(decoded->has_value());
+        const iclforge::ac4::DecodedFrame& pcm = **decoded;
+        REQUIRE(pcm.channels.size() == out.size());
+        frame_length = std::max(frame_length, pcm.samples);
+        for (std::size_t c = 0; c < out.size(); ++c) {
+            out[c].insert(out[c].end(), pcm.channels[c].begin(), pcm.channels[c].end());
+        }
+    }
+    REQUIRE(at_change > 0);
+    REQUIRE(out[0].size() == as_after.channels[0].size());
+    const auto shown = [](const std::optional<std::size_t>& at) {
+        return at ? std::to_string(*at) : std::string{"none"};
+    };
+    for (std::size_t c = 0; c < out.size(); ++c) {
+        const std::optional<std::size_t> early =
+            first_difference(out[c], as_before.channels[c], 0, at_change);
+        const std::optional<std::size_t> late = first_difference(
+            out[c], as_after.channels[c], at_change + (2 * frame_length), out[c].size());
+        INFO("channel " << c << ", " << frame_length << " samples a frame, changed at sample "
+                        << at_change << "; first sample unlike the old output before it "
+                        << shown(early) << ", unlike the new output after it " << shown(late));
+        CHECK_FALSE(early.has_value());
+        CHECK_FALSE(late.has_value());
+    }
+}
+
+}  // namespace
+
+// The gains persist from the frame that sends them (6.2.17.0), and a stream
+// may send them only in its I-frames: dropped at a new fold or LFE choice,
+// the downmix would take a stream without gains' -3 dB, and no LFE, for up to
+// a second (Hearth's DecoderAc4::test_downmixIsHeardWithTheStreamsGains).
+TEST_CASE("set_output changes the downmix from the next frame, keeping the stream's own gains",
+          "[ac4dec][api]") {
+    const auto frames = tones_with_their_own_gains(60);
+    REQUIRE(frames.size() >= 60);
+    // Frame 30 is between the I-frames 24 and 48, the only frames that carry
+    // the gains.
+    constexpr std::size_t kChange = 30;
+    SECTION("Lo/Ro to Lt/Rt") {
+        require_change_lands_whole(frames, kChange,
+                                   {.downmix = iclforge::ac4::DownmixTarget::kLoRo},
+                                   {.downmix = iclforge::ac4::DownmixTarget::kLtRt});
+    }
+    SECTION("the LFE back into Lt/Rt") {
+        require_change_lands_whole(
+            frames, kChange, {.downmix = iclforge::ac4::DownmixTarget::kLtRt, .mix_lfe = false},
+            {.downmix = iclforge::ac4::DownmixTarget::kLtRt, .mix_lfe = true});
+    }
+}
+
+TEST_CASE("set_output changes the downmix without starting the DRC again", "[ac4dec][api]") {
+    auto frames = frames_of(baseline("ac4-51-drc-ltrt-192"));
+    REQUIRE(frames.size() > 60);
+    frames.resize(60);
+    const iclforge::ac4::OutputConfig loro{.output_level_dbfs = -20.0,
+                                           .downmix = iclforge::ac4::DownmixTarget::kLoRo};
+    iclforge::ac4::OutputConfig ltrt = loro;
+    ltrt.downmix = iclforge::ac4::DownmixTarget::kLtRt;
+    // The DRC compresses this stream at -20 dBFS, or the change has nothing
+    // of it to keep.
+    iclforge::ac4::OutputConfig uncompressed = loro;
+    uncompressed.drc = iclforge::ac4::DrcMode::kOff;
+    iclforge::ac4::Decoder compressing(iclforge::ac4::DecoderConfig{.syntax = {}, .output = loro});
+    iclforge::ac4::Decoder flat(iclforge::ac4::DecoderConfig{.syntax = {}, .output = uncompressed});
+    REQUIRE(decode_all(compressing, frames).channels != decode_all(flat, frames).channels);
+    require_change_lands_whole(frames, 30, loro, ltrt);
 }
 
 TEST_CASE("set_presentation switches presentations from the next frame", "[ac4dec][api]") {

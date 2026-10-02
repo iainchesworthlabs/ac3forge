@@ -172,15 +172,19 @@ void SubstreamPcm::configure_outputs(const SubstreamContext& ctx, const OutputCo
                                  .lfe = ch_mode_ == ch_mode::k7_1_4,
                                  .decoding = decoding_};
     }
-    if (outputs_valid_ && add_ch_base_ == ctx.add_ch_base && downmix_target_ == output.downmix &&
-        mix_lfe_ == output.mix_lfe && layout_ == layout) {
+    const bool same_inputs = outputs_valid_ && add_ch_base_ == ctx.add_ch_base && layout_ == layout;
+    if (same_inputs && downmix_target_ == output.downmix && mix_lfe_ == output.mix_lfe) {
         return;
     }
     add_ch_base_ = ctx.add_ch_base;
     downmix_target_ = output.downmix;
     mix_lfe_ = output.mix_lfe;
     layout_ = layout;
-    drc_.configure(internal_rate_, slots_, speakers_, add_ch_base_, layout_.has_value());
+    // DRC acts on the decoded channels before the downmix: a new target or
+    // LFE choice leaves its dialnorm and smoothing where they were.
+    if (!same_inputs) {
+        drc_.configure(internal_rate_, slots_, speakers_, add_ch_base_, layout_.has_value());
+    }
     downmix_.configure(speakers_, add_ch_base_, downmix_target_, mix_lfe_, layout_);
     outputs_.clear();
     for (std::size_t o = 0; o < downmix_.speakers().size(); ++o) {

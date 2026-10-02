@@ -151,21 +151,30 @@ jobs:
         shell: bash
         env:
           LLVM_VERSION: ${{ needs.toolchain-versions.outputs.llvm_version }}
+        # The scope is the library and the CLI. The library lived in one directory, forge,
+        # until the re-layout of 2026-09-30 split it into ac3, objects, base, dsp, render,
+        # arithmetic and iec61937; the pattern kept naming forge, so the nightly of
+        # 2026-10-01 analysed none of that code. Each library's sources sit in
+        # <library>/src, and the pattern says so: an unanchored src/dsp also matches
+        # src/ac4core/src/dsp, which is outside the scope on purpose.
         run: |
           "run-clang-tidy-${LLVM_VERSION}" -j "$(nproc)" -p build/config-linux-llvm-debug \
             -warnings-as-errors='*' \
-            '(src/(forge|matroska|mp4|mpegts)|apps/cli)/.*\.cpp'
+            '(src/(ac3|arithmetic|base|dsp|iec61937|matroska|mp4|mpegts|objects|render)/src|apps/cli)/.*\.cpp'
 
   # A finding (or a broken build) is handed to the shared
   # report-nightly-failure action, which opens - or comments on - the one
   # `nightly-analysis` issue for this engine. `!cancelled()` rather than
   # `always()`: a failure is still reported, but a run someone cancelled by
   # hand does not open an issue over it. Pinned to the control-plane runner
-  # like check-runner above: seconds long, needs only gh.
+  # like check-runner above: seconds long, needs only gh. Only main's run
+  # reports: a dispatch from a branch (a trial of a fix) that fails would
+  # otherwise comment on main's nightly issue with the branch's commit. The
+  # run itself still shows red.
   surface:
     name: Surface findings
     needs: static-analysis
-    if: ${{ !cancelled() && needs.static-analysis.result != 'success' }}
+    if: ${{ !cancelled() && needs.static-analysis.result != 'success' && github.ref == 'refs/heads/main' }}
     runs-on: ${{ fromJSON(vars.CONTROL_RUNNER_JSON || '["ubuntu-latest"]') }}
     permissions:
       contents: read
