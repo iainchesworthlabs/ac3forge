@@ -15,6 +15,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "iclforge/ac4core/detail/real.hpp"
+#include "iclforge/ac4core/dsp/scalar_traits.hpp"
 #include "iclforge/ac4core/tables/sfb_tables.hpp"
 #include "pcm/asf_reconstruct.hpp"
 
@@ -79,6 +80,11 @@ TEST_CASE("the scale factor gains are the std::pow the reconstruction made for e
           "[ac4dec][exact]") {
     const iclforge::ac4::detail::ScaleFactorGains gains =
         iclforge::ac4::detail::scale_factor_gains();
+    // At Fixed32 the table is empty: that tier forms each gain as a MantExp (pcm/asf_reconstruct.cpp).
+    if (iclforge::ac4::detail::dsp::kFixed<Real>) {
+        CHECK(gains == iclforge::ac4::detail::ScaleFactorGains{});
+        return;
+    }
     for (int sf = 0; sf < 256; ++sf) {
         CAPTURE(sf);
         const auto before = static_cast<Real>(std::pow(2.0, 0.25 * static_cast<double>(sf - 100)));

@@ -21,6 +21,7 @@
 #include <random>
 #include <span>
 #include <utility>
+#include <type_traits>
 #include <vector>
 
 #include <catch2/catch_test_macros.hpp>
@@ -623,7 +624,15 @@ void preflattening_matches_reference() {
 
 TEST_CASE("the FFT passes give the bits of the generic radix loop at the decoder's scalar",
           "[ac4core][dsp][exact]") {
-    fft_matches_reference<Real>();
+    // These rewrites are identities of IEEE rounding; Fixed32 rounds a product half up,
+    // so a negated product and the product of a negation differ by a raw unit there, and the
+    // fixed decoder runs Fft::inverse_scaled. A generic lambda, so that a fixed build
+    // does not instantiate the floating comparison.
+    []<typename R>() {
+        if constexpr (std::is_floating_point_v<R>) {
+            fft_matches_reference<R>();
+        }
+    }.template operator()<Real>();
 }
 
 TEST_CASE("the FFT passes give the bits of the generic radix loop at double",
@@ -633,7 +642,13 @@ TEST_CASE("the FFT passes give the bits of the generic radix loop at double",
 
 TEST_CASE("the inverse MDCT gives the bits of the old inverse transform at the decoder's scalar",
           "[ac4core][dsp][exact]") {
-    imdct_matches_reference<Real>();
+    // As the FFT's: the fixed decoder runs the inverse that carries a block's exponent. A generic lambda, so that a fixed build
+    // does not instantiate the floating comparison.
+    []<typename R>() {
+        if constexpr (std::is_floating_point_v<R>) {
+            imdct_matches_reference<R>();
+        }
+    }.template operator()<Real>();
 }
 
 TEST_CASE("the inverse MDCT gives the bits of the old inverse transform at double",
@@ -649,7 +664,15 @@ TEST_CASE(
           std::pair{960, 1}, std::pair{4096, 2}, std::pair{3840, 2}, std::pair{8192, 4}}) {
         CAPTURE(full);
         CAPTURE(multiplier);
-        synthesis_matches_reference<Real>(full, multiplier);
+        // At Fixed32 every block takes the inverse that carries the block's exponent and no
+        // fused path (dsp/synthesis.cpp); the fixed tier's agreement with double is held by
+        // tools/checks/check_ac4_decode_scalar_snr.py. A generic lambda, so that a fixed build
+        // does not instantiate the floating comparison.
+        [&]<typename R>() {
+            if constexpr (std::is_floating_point_v<R>) {
+                synthesis_matches_reference<R>(full, multiplier);
+            }
+        }.template operator()<Real>();
     }
 }
 
@@ -667,7 +690,12 @@ TEST_CASE(
     "pre-flattening's gains keep the bits of the fit made afresh each frame at the decoder's "
     "scalar",
     "[ac4core][aspx][exact]") {
-    preflattening_matches_reference<Real>();
+    // At Fixed32 the gains are MantExp values, which this floating reference does not form.
+    []<typename R>() {
+        if constexpr (std::is_floating_point_v<R>) {
+            preflattening_matches_reference<R>();
+        }
+    }.template operator()<Real>();
 }
 
 TEST_CASE("pre-flattening's gains keep the bits of the fit made afresh each frame at double",
