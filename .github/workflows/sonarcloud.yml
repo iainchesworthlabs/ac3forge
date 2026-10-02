@@ -358,10 +358,15 @@ jobs:
   # `== 'failure'` rather than the `!= 'success'` the other three use: `scan`
   # here skips itself deliberately when SONAR_TOKEN is absent, and a skip is
   # not something to open an issue about.
+  #
+  # Only main's run reports: a dispatch from a branch (a trial of a fix) that
+  # fails the gate would otherwise comment on main's nightly issue with the
+  # branch's commit, which is what the first trial of 2026-10-02 did. The run
+  # itself still shows red.
   surface:
     name: Surface findings
     needs: scan
-    if: ${{ !cancelled() && needs.scan.result == 'failure' }}
+    if: ${{ !cancelled() && needs.scan.result == 'failure' && github.ref == 'refs/heads/main' }}
     runs-on: ${{ fromJSON(vars.CONTROL_RUNNER_JSON || '["ubuntu-latest"]') }}
     permissions:
       contents: read
