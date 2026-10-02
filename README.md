@@ -145,8 +145,8 @@ Beyond that:
    emulate the part. [ESP32-C6](docs/platforms/bare-metal/esp32-c6.md).
 10. Every fixture decodes in real time on a board at 360 MHz, the ceiling of the revision 1.3
     silicon it carries, with no network. AC-4 from an HTTP source with Wi-Fi up: 2.0 in SIMPLE mode
-    decodes at 0.53 of a frame's time and in A-SPX mode at 0.74, 5.1 takes 1.4 to 4.1 and 5.1.4
-    2.8 to 3.7; no ESP32 sink takes AC-4 in a Sendspin group. QEMU does not emulate the part.
+    decodes at 0.28 of a frame's time and in A-SPX mode at 0.37, 5.1 in SIMPLE mode at 0.64, in A-SPX mode at 0.83 and
+    with A-CPL mode 2 at 0.91 (A-CPL mode 3 takes 1.14) and 5.1.4 1.57 to 1.90; no ESP32 sink takes AC-4 in a Sendspin group. QEMU does not emulate the part.
     [ESP32-P4](docs/platforms/bare-metal/esp32-p4.md).
 11. Correct under QEMU's `mps2-an385`; no real silicon.
 

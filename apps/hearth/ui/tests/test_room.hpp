@@ -47,6 +47,10 @@ struct RoomReading {
     std::uint16_t channels = 0;
     std::uint32_t opens = 0;
     std::uint64_t frames_heard = 0;
+    // Frames the engine has handed the device, every open together: once it
+    // has grown by kToneWindow, tone_level_db() reads none of what it read
+    // before.
+    std::uint64_t frames_submitted = 0;
     // The largest |sample| submitted since reset_peak(), across every slot -
     // non-zero means decoded audio, not silence, reached the device.
     double peak = 0.0;

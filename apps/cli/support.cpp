@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <cctype>
 #include <charconv>
 #include <chrono>
 #include <cmath>
@@ -35,8 +36,11 @@
 #include "iclforge/ac3/decoder/decoder.hpp"
 #include "iclforge/ac3/decoder/output.hpp"
 #include "iclforge/ac3/encoder/assignment.hpp"
+#include "iclforge/ac3/encoder/eac3_frame.hpp"
+#include "iclforge/ac3/encoder/encoder.hpp"
 #include "iclforge/ac3/encoder/plan.hpp"
 #include "iclforge/ac3/encoder/silent_frame.hpp"
+#include "iclforge/ac4dec/decoder.hpp"
 #include "iclforge/iec61937/iec61937.hpp"
 #include "iclforge/ac3/io/elementary.hpp"
 #include "iclforge/ac3/io/wav.hpp"
@@ -45,7 +49,9 @@
 #include "iclforge/ac3/meta/loudness.hpp"
 #include "iclforge/ac3/meta/mixing.hpp"
 #include "iclforge/ac3/meta/qc.hpp"
-#include "iclforge/ac3/oba/joc.hpp"
+#include "iclforge/mp4/dash.hpp"
+#include "iclforge/mp4/mp4.hpp"
+#include "iclforge/objects/joc_domain.hpp"
 #include "iclforge/objects/oamd.hpp"
 #include "iclforge/ac3/quality/distortion.hpp"
 #include "iclforge/signing/emdf_atmos_signer.hpp"
@@ -771,7 +777,8 @@ std::optional<std::pair<std::size_t, std::string_view>> match_numbered(std::stri
         ++digits;
     }
     std::size_t n = 0;
-    const auto [ptr, ec] = std::from_chars(rest.data(), rest.data() + digits, n);
+    const std::string_view number = rest.substr(0, digits);
+    const auto [ptr, ec] = std::from_chars(number.data(), number.data() + number.size(), n);
     if (digits == 0 || digits > 2 || rest.front() == '0' || ec != std::errc{} || n < 1 ||
         n > most) {
         return std::nullopt;
@@ -4116,7 +4123,7 @@ int ac4_input_rank(iclforge::ac3::eac3::chanmap::Location location) {
 }  // namespace
 
 std::string TakeEncoder::open(const plan::Plan& p,
-                              std::optional<iclforge::ac4::EncoderConfig> ac4) {
+                              const std::optional<iclforge::ac4::EncoderConfig>& ac4) {
     ac3_.reset();
     eac3_.reset();
     ac4_.reset();

@@ -221,7 +221,7 @@ DrcModeGains DrcGainEncoder::gains(long long frame) {
         double sum = 0.0;
         int count = 0;
         for (int n = 0; n < per; ++n) {
-            const long long slot = first + sf * per + n;
+            const long long slot = first + static_cast<long long>(sf) * per + n;
             if (slot >= first_ && slot - first_ < static_cast<long long>(pending_.size())) {
                 sum += pending_[static_cast<std::size_t>(slot - first_)];
                 ++count;

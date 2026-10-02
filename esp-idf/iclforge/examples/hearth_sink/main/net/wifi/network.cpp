@@ -19,6 +19,7 @@
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
+#include "discovery.hpp"
 #include "settings.hpp"
 
 namespace player {
@@ -279,6 +280,17 @@ void start_driver() {
         return;
     }
     g_netif = esp_netif_create_default_wifi_sta();
+    // The name DHCP registers, and so what a dynamic-DNS server files the board
+    // under. Left alone it is ESP-IDF's "espressif", the same on every board, so
+    // all of them fight over one record. The board's own name is what mDNS and
+    // the control page already use ("hearth-47b39c"). Before esp_wifi_start(),
+    // which is when the DHCP client reads it; settings_load() has run by now.
+    const std::string host = discovery_host_name();
+    if (const esp_err_t err = esp_netif_set_hostname(g_netif, host.c_str()); err != ESP_OK) {
+        std::printf("warning: could not set the DHCP host name '%s' (%s); the router will see "
+                    "the default\n",
+                    host.c_str(), esp_err_to_name(err));
+    }
 
     wifi_init_config_t init = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&init));

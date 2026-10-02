@@ -1,6 +1,6 @@
 # Shared CodeQL configuration for every language in .github/workflows/codeql.yml's
-# matrix. Only path filtering lives here; the query suite stays in the workflow,
-# next to the comment recording the measurement that chose it.
+# matrix. Path filtering and query filters live here; the query suite stays in the
+# workflow, next to the comment recording the measurement that chose it.
 name: iclforge
 
 paths-ignore:
@@ -12,3 +12,41 @@ paths-ignore:
   # iclforge_decode.js beside it is Emscripten's minified module loader -
   # machine output, where an alert would name generated code no one can act on.
   - docs/assets/wasm-decode-demo
+
+# Query filters. These apply to the whole suite, in every language of the matrix. paths-ignore
+# above cannot do this work for C++ and Kotlin: for a language CodeQL builds, GitHub documents the
+# paths options as applying only to analysis without a build, so the C++ leg is scoped by what its
+# build compiles instead (codeql.yml's Configure step: no tests, no examples, and vcpkg's installed
+# headers outside the checkout).
+#
+# Why filters at all: the C++ leg scanned 1 of 991 files until 2026-09-24 (the log line "CodeQL
+# scanned 1 out of 991 C++ files"), which is where the earlier "zero findings" baseline in
+# codeql.yml's header came from. From 2026-09-25 it scans about 1,000 files, and its first night
+# raised 3,826 alerts, 94% of them one query. Every query that can point at a defect stays on; the
+# three filters below remove queries that never did here.
+query-filters:
+  # CodeQL labels a query "recommendation" when it is advisory, lint-level: unused static
+  # functions and variables, float equality, long switches, complex blocks, empty blocks,
+  # import style and deprecated calls. This repository has a tool for each of them where it
+  # matters: the compilers' -Wall -Wextra -Werror on C++, ruff on Python, clang-tidy's curated
+  # set, and SonarCloud's maintainability view for complexity and duplication. 6,359 of the
+  # 6,920 alerts CodeQL had raised by 2026-10-01 were a single recommendation,
+  # cpp/unused-static-function, and every one sat in a Catch2 TEST_CASE: the macro makes a
+  # static function whose only caller is a registrar variable, and CodeQL reports the function
+  # unreachable because it reports the registrar unused. No security query is a
+  # recommendation: security queries are warning or error, so none of them leaves the suite
+  # here. To adopt a recommendation, remove this filter and fix its backlog in the same change.
+  - exclude:
+      problem.severity: recommendation
+  # A comment-density metric (fewer than 2% comments in a function of 100 lines or more),
+  # reported at warning level. It names no defect, and it fired on test bodies and on parsers
+  # whose reasoning sits in the specification citations above them.
+  - exclude:
+      id: cpp/poorly-documented-function
+  # Its range analysis misreads variables a loop carries: it reported `waited < 1000` as always
+  # true "because waited <= 0", `ch < channels` as always false, and `acmod > 1` as always true
+  # because acmod >= 7, in 13 places that are ordinary loops and defensive checks on values read
+  # from a bitstream. The true tautologies are compile errors here already (-Wtype-limits and
+  # -Wtautological-compare under -Werror, MSVC /W4 /WX).
+  - exclude:
+      id: cpp/constant-comparison

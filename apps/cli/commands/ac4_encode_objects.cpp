@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <fmt/base.h>
 #include <fstream>
+#include <ios>
 #include <optional>
 #include <span>
 #include <sstream>
@@ -19,6 +20,7 @@
 #include "../support.hpp"
 #include "iclforge/ac3/io/wav.hpp"
 #include "iclforge/ac4/ac4.hpp"
+#include "iclforge/ac4/syntax.hpp"
 #include "iclforge/ac4enc/encoder.hpp"
 #include "encode.hpp"
 

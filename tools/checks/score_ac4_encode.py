@@ -1,4 +1,4 @@
-"""Score forge's AC-4 encoding: the encoder's streams, decoded, against their sources.
+"""Score forge's AC-4 encoder: its streams, decoded, against their sources.
 
 planning/ac4.md, the encoder's ladder, items 4 and 5, as phases E1 to E5 and E8 need them: SIMPLE,
 ASPX and A-CPL, mono, stereo, 5.0 and 5.1, at frame_rate_index 13 and, in the frame-rate legs, the

@@ -285,12 +285,13 @@ if [[ "$DIRECTION" == "ac4" ]]; then
     PRESET="${PRESET}-ac4"
     BUILD_PRESET="${BUILD_PRESET}-ac4"
     # Plain assignments over the E-AC-3 defaults above, for the reason the encode block's
-    # comment gives. Measured 2026-10-01: image 683,448 bytes (680,804 .text, 392 .data, 2,252
-    # .bss), 198,416 bytes of .text more than the same tree before D14a5 (485,032), 196,464 of
-    # them the sample rate converter's float tables, which the compiler builds into the image
-    # (planning/ac4.md, D14a5); peak heap 1,931,680 (the 5.1.4 fixture); 0 retained; the stack a
-    # decode used, read by painting, 19,456 bytes on the Cortex-M3 and 25,968 on the x86-64 host,
-    # whose frames are larger. Every ceiling a tenth or so over its figure.
+    # comment gives. Measured 2026-10-02 (D14e): image 691,896 bytes (689,244 .text, 392 .data,
+    # 2,260 .bss), 8,448 more than at D14a5 (683,448, which was 198,416 more than the tree before
+    # it, 196,464 of them the sample rate converter's float tables, which the compiler builds
+    # into the image; planning/ac4.md, D14a5); peak heap 1,800,312 (the 5.1.4 fixture); 0
+    # retained; the stack a decode used, read by painting, 19,480 bytes on the Cortex-M3 and
+    # 23,920 on the x86-64 host, whose frames are larger. Every ceiling a tenth or so over its
+    # figure.
     ICLFORGE_MAX_IMAGE_BYTES=${ICLFORGE_MAX_IMAGE_BYTES_AC4:-750000}
     ICLFORGE_MAX_HEAP_BYTES=${ICLFORGE_MAX_HEAP_BYTES_AC4:-2130000}
     ICLFORGE_MAX_STEADY_ALLOCS_PER_FRAME=${ICLFORGE_MAX_STEADY_ALLOCS_PER_FRAME_AC4:-210}

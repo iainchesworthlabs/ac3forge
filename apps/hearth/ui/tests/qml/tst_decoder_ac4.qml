@@ -22,10 +22,13 @@ import "HearthTestHelpers.js" as H
 //                  description, 2 with it
 //
 // A level is read over the last third of a second the engine handed the
-// device, so each check waits until that window is all of the setting's
-// making. tests/hearth/test_ac4_engine.cpp holds the same formulas sample
-// for sample through the engine alone; these hold that the page's controls
-// reach them.
+// device, so each check waits until the level has held while the engine
+// handed over a whole window more: one reading can catch a level on its way
+// through, as the window slides from one setting's audio to the next's.
+// The waits count the device's frames, not the clock's milliseconds, so a
+// runner that decodes behind real time is given the audio it needs.
+// tests/hearth/test_ac4_engine.cpp holds the same formulas sample for sample
+// through the engine alone; these hold that the page's controls reach them.
 TestCase {
     id: testCase
     name: "DecoderAc4"
@@ -107,49 +110,96 @@ TestCase {
     function level(label, hz) {
         return TestServices.toneLevelDb(slot(label), hz);
     }
-    // The tone's level once it has held within 0.02 dB for longer than the
-    // window it is read over - a reading taken while the device has had
-    // nothing new can repeat itself, so one repeat proves nothing.
+    // Frames the engine has handed the device, every open together.
+    function submitted() {
+        return TestServices.device().framesSubmitted;
+    }
+    // Calls step(frames), frames being submitted() as it was just before,
+    // until it returns true, the engine has handed the device `seconds` of
+    // audio since the poll began, or it has handed it nothing for five
+    // seconds. { done, seconds, ms }: whether step() came true, the audio
+    // handed over meanwhile and the milliseconds the poll took.
+    function poll(step, seconds) {
+        const rate = TestServices.device().sampleRate || 48000;
+        const start = submitted();
+        const began = Date.now();
+        let last = start;
+        let moved = began;
+        for (;;) {
+            const frames = submitted();
+            const done = step(frames);
+            const now = Date.now();
+            if (frames !== last) {
+                last = frames;
+                moved = now;
+            }
+            if (done || frames - start >= seconds * rate || now - moved >= 5000) {
+                return { done: done, seconds: (frames - start) / rate, ms: now - began };
+            }
+            wait(20);
+        }
+    }
+    // What a wait that gave up took, for its failure message.
+    function took(polled) {
+        return " after " + polled.seconds.toFixed(2) + " s of audio handed over in "
+               + (polled.ms / 1000).toFixed(2) + " s";
+    }
+    // A step for poll(): true once accept(level) has held at every reading
+    // while the engine handed the device a whole window more than the first
+    // of them read, so that every sample it read over in that time passed.
+    function heldThroughAWindow(label, hz, accept) {
+        const run = { from: NaN, last: NaN };
+        run.step = function(frames) {
+            run.last = level(label, hz);
+            if (!accept(run.last)) {
+                run.from = NaN;
+                return false;
+            }
+            if (isNaN(run.from)) {
+                run.from = frames;
+            }
+            return frames - run.from >= TestServices.toneWindowFrames();
+        };
+        return run;
+    }
+    // The tone's level once it has held within 0.02 dB through a window -
+    // a reading taken while the device has had nothing new repeats itself,
+    // so repeats alone prove nothing.
     function steady(label, hz) {
-        const readings = [];
-        let settled = NaN;
-        tryVerify(function() {
-            const now = level(label, hz);
-            const at = Date.now();
-            if (!isFinite(now)) {
-                readings.length = 0;
+        const run = { from: NaN, low: NaN, high: NaN, last: NaN };
+        const polled = poll(function(frames) {
+            run.last = level(label, hz);
+            if (!isFinite(run.last)) {
+                run.from = NaN;
                 return false;
             }
-            readings.push({ at: at, db: now });
-            while (readings.length > 1 && at - readings[1].at >= 500) {
-                readings.shift();
-            }
-            if (at - readings[0].at < 500) {
+            if (isNaN(run.from) || Math.max(run.high, run.last) - Math.min(run.low, run.last) >= 0.02) {
+                run.from = frames;
+                run.low = run.last;
+                run.high = run.last;
                 return false;
             }
-            let low = Infinity;
-            let high = -Infinity;
-            for (const reading of readings) {
-                low = Math.min(low, reading.db);
-                high = Math.max(high, reading.db);
-            }
-            if (high - low < 0.02) {
-                settled = now;
-                return true;
-            }
-            return false;
-        }, 15000, "the " + hz + " Hz tone in " + label + " never settled");
-        return settled;
+            run.low = Math.min(run.low, run.last);
+            run.high = Math.max(run.high, run.last);
+            return frames - run.from >= TestServices.toneWindowFrames();
+        }, 15);
+        if (!polled.done) {
+            fail("the " + hz + " Hz tone in " + label + " never settled: it reads " + run.last
+                 + " dB" + took(polled) + stateNow());
+        }
+        return run.last;
     }
     // tryVerify's message is built before it waits, so it would report the
-    // level the wait started from. These poll instead, and fail with the level
-    // the wait ended on and the settings in force then.
+    // value the wait started from. This polls instead, and answers with the
+    // last reading it took, never a fresh one.
     function waitUntil(condition, timeout) {
         const deadline = Date.now() + timeout;
-        while (!condition() && Date.now() < deadline) {
+        let met = condition();
+        while (!met && Date.now() < deadline) {
             wait(50);
+            met = condition();
         }
-        return condition();
+        return met;
     }
     // What a failed check was looking at: every tone at every speaker, where
     // playback is, whether the device is still being fed (its frames heard
@@ -170,22 +220,24 @@ TestCase {
                + ", note '" + HearthController.noteText + "', error '" + HearthController.errorText
                + "', tones" + tones + ", settings " + JSON.stringify(HearthController.decoderSettings) + ")";
     }
-    // Waits until the tone's level is `expected` dB, within the tolerance.
+    // Waits until the tone's level is `expected` dB, within the tolerance,
+    // and holds there through a window.
     function heardAt(label, hz, expected, what) {
-        const held = waitUntil(function() { return Math.abs(level(label, hz) - expected) < tolerance; },
-                               15000);
+        const run = heldThroughAWindow(label, hz, function(db) { return Math.abs(db - expected) < tolerance; });
+        const polled = poll(run.step, 10);
         // Built only on failure: stateNow() waits, and a message passed to
         // verify() is built whether it fails or not.
-        if (!held) {
-            fail(what + ": the " + hz + " Hz tone in " + label + " reads " + level(label, hz)
-                 + " dB after 15 s, not " + expected + stateNow());
+        if (!polled.done) {
+            fail(what + ": the " + hz + " Hz tone in " + label + " reads " + run.last + " dB, not "
+                 + expected + "," + took(polled) + stateNow());
         }
     }
     function heardOff(label, hz, reference, what) {
-        const gone = waitUntil(function() { return level(label, hz) < reference - 60; }, 15000);
-        if (!gone) {
-            fail(what + ": the " + hz + " Hz tone in " + label + " is still there at "
-                 + level(label, hz) + " dB after 15 s" + stateNow());
+        const run = heldThroughAWindow(label, hz, function(db) { return db < reference - 60; });
+        const polled = poll(run.step, 10);
+        if (!polled.done) {
+            fail(what + ": the " + hz + " Hz tone in " + label + " is still there at " + run.last
+                 + " dB," + took(polled) + stateNow());
         }
     }
     // 20 log10 of Part 1 clause 5.7.9.3.3's 2^((Lout - dialnorm) / 6), the

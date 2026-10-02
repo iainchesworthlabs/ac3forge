@@ -45,8 +45,15 @@ const SURFACES = {
 const ENTITIES = { amp: "&", lt: "<", gt: ">", quot: '"', "#39": "'", times: "×", mdash: "—", ndash: "–",
   hellip: "…", nbsp: " " };
 
+// The text of a fragment of the scripts' own HTML: tags removed until none is left (one pass can
+// leave a tag behind when it was split by another), entities decoded, whitespace collapsed.
 function text(html) {
-  return html.replace(/<[^>]+>/g, "").replace(/&(#?\w+);/g, (m, name) => (name in ENTITIES ? ENTITIES[name] : m))
+  let stripped = html;
+  for (let before = ""; before !== stripped;) {
+    before = stripped;
+    stripped = stripped.replace(/<[^>]+>/g, "");
+  }
+  return stripped.replace(/&(#?\w+);/g, (m, name) => (name in ENTITIES ? ENTITIES[name] : m))
     .replace(/\s+/g, " ").trim();
 }
 
@@ -54,7 +61,7 @@ function scriptOf(surface) {
   const source = fs.readFileSync(surface.file, "utf8");
   if (!surface.file.endsWith(".md")) return source;
   // The cards' script is inline in the page: the last <script> element.
-  const scripts = [...source.matchAll(/<script>([\s\S]*?)<\/script>/g)];
+  const scripts = [...source.matchAll(/<script\s*>([\s\S]*?)<\/script\s*>/gi)];
   if (scripts.length === 0) throw new Error(`${surface.file} has no <script> element`);
   return scripts[scripts.length - 1][1];
 }
@@ -78,7 +85,10 @@ async function render(surface, historyDir) {
     },
     console,
   };
-  vm.runInNewContext(scriptOf(surface), sandbox, { filename: surface.file });
+  // The point of this tool: run the two committed site scripts as they are, in a context with a stub
+  // document and a fetch that reads a local directory. They are this repository's own files, and
+  // nothing a caller supplies is evaluated. NOSONAR: javascript:S1523 flags every dynamic execution.
+  vm.runInNewContext(scriptOf(surface), sandbox, { filename: surface.file }); // NOSONAR
   const mount = elements[surface.mount];
   for (let waited = 0; mount.innerHTML === "" && waited < 10000; waited += 10) {
     await new Promise((resolve) => setTimeout(resolve, 10));

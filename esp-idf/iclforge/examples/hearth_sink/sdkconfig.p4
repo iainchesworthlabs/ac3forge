@@ -63,6 +63,31 @@ CONFIG_PM_SLEEP_CLK_ICG_ENABLE=n
 # CONFIG_BOOTLOADER_LOG_LEVEL_WARN took it to 20,896 bytes in the same
 # measurement. planning/esp32-ota.md has the table.
 
+# Quad I/O to the flash. The AC-4 decoder's code and the tables it reads are
+# larger than the caches, so every frame refills thousands of 64-byte lines
+# from flash, 2 bits a clock in DIO and 4 in QIO. On 2026-10-02 the same
+# decoder took 6 to 7 ms a frame less at 5.1 and 3 to 5 ms less at 2.0 with the
+# flash in QIO, to the same PCM (docs/platforms/bare-metal/esp32-p4.md,
+# "Flash mode"). The mode is the second stage bootloader's, so an update over
+# the network, which replaces the application and keeps the bootloader on the
+# board, leaves a board flashed before this line in DIO until it is flashed
+# again over USB, bootloader included (`idf.py flash`). QIO adds 944 bytes to
+# the bootloader, 24,368 in all and 208 under the window above. A bootloader
+# that cannot set a flash chip's quad-enable bit says so and stays in DIO.
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+
+# The I2S queue: 12 descriptors of 256 frames, 64 ms, where the example's default is 21 ms
+# (sdkconfig.psram gives the S3's network sources the same). The sink's write returns when the
+# frame is in the queue, so a queue that holds less than a frame takes to decode runs dry in
+# every frame: a 5.1 A-SPX stream folded to 2.0, 35 ms to decode of its 42.7, took 13.5 s for
+# 10.1 s of audio through the default queue, and the sink counted 236 underruns and 3.5 s of
+# silence; through this one it counted 1 underrun of 11 ms, the first frame's (planning/ac4.md,
+# D14e). The queue is internal RAM, 24 KB at 2.0 (two 32-bit slots); a wide TDM frame (16 slots)
+# would be 196 KB, which the AC-4 decoder leaves no room for, so size it down with that
+# layout (it does not start on this chip revision).
+CONFIG_ICLFORGE_EXAMPLE_I2S_DMA_DESCRIPTORS=12
+CONFIG_ICLFORGE_EXAMPLE_I2S_DMA_FRAMES=256
+
 # PSRAM, on: this board has 32 MB of it (docs/platforms/bare-metal/esp32-p4.md),
 # unlike the minimum-footprint bare-metal probe that deliberately leaves it off
 # to measure what fits in internal SRAM alone - hearth_sink has no such goal,
@@ -82,6 +107,27 @@ CONFIG_PM_SLEEP_CLK_ICG_ENABLE=n
 # reused here - this board's own numbers are still to be measured.
 CONFIG_SPIRAM=y
 CONFIG_SPIRAM_USE_MALLOC=y
+
+# Keep the low-power SRAM out of the heap. ESP-IDF adds the P4's 32 KB of RTC fast memory
+# (the LP system's SRAM, 0x50108000 to 0x50110000) to the heap by default,
+# CONFIG_ESP_SYSTEM_ALLOW_RTC_FAST_MEM_AS_HEAP, whose help says it "does not have much
+# performance impact". It is the allocator's last internal region: an allocation of up to
+# 16 KB that main RAM cannot satisfy comes from it before PSRAM is tried. The HP cores reach it
+# over the LP bus with no cache between, and slowly. Measured on this board with a loop
+# that touches nothing else (docs/platforms/bare-metal/esp32-p4.md, "The low-power SRAM"):
+# a load takes 174 cycles when the next depends on it and 195 in sequence, a store 173,
+# against 6 to 7 from main RAM and 18 a word for a cold sequential read of PSRAM. The
+# AC-4 decoder takes nearly all of main RAM (343 to 350 KB free when a play starts, 1 to
+# 11 KB left at its lowest), so what it allocates after that spills, and the four
+# frame-rate plays that were measured used 25 to 31 KB of the LP SRAM at the most.
+# Whether a hot buffer was among that depended on how full main RAM was at the moment it
+# was allocated: the 29.97 fps frame-rate converter's history and output vectors were,
+# after one sequence of plays and not after another, and the converter took 94 ms a frame
+# where it takes 12 with them in PSRAM (planning/ac4.md, D14a6). Without the region the
+# same allocations go to PSRAM, behind the cache, and the heap is 32 KB smaller. Nothing
+# here asks for MALLOC_CAP_RTCRAM, so this option is the only way a buffer gets into that
+# memory.
+CONFIG_ESP_SYSTEM_ALLOW_RTC_FAST_MEM_AS_HEAP=n
 
 # esp_hosted's own SDIO transport buffers (main/idf_component.yml) still
 # reach for internal DMA-capable RAM by default even with PSRAM on -

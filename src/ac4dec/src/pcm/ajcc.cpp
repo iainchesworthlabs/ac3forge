@@ -141,7 +141,10 @@ void AjccStage::reset() {
         ducker.reset();
     }
     pre_.reset();
-    prev_ = {};
+    // Each side in turn: assigning a whole `{}` builds the 25 kB array as a temporary first.
+    for (auto& side : prev_) {
+        side.fill(acpl::ParamPrev{});
+    }
 }
 
 // Pseudocode 111 on `in`, then Pseudocode 114's ducking, as A-CPL's

@@ -65,7 +65,25 @@ class Imdct {
     void inverse(std::span<const Real> spectrum, int exponent, std::span<Real> out,
                  std::span<Complex> scratch);
 
+    // A block that follows another of its own length, with its window and overlap-add done as it
+    // is unfolded (Pseudocode 64 with Nskip = 0, which dsp/synthesis.hpp describes): for i < N,
+    //
+    //   pcm[i] = overlap[i] kbd[N - 1 - i] + x[i] kbd[i]   and   overlap[i] = x[N + i],
+    //
+    // x being what inverse() gives, each product rounded and then the two added, so pcm and the
+    // new overlap hold the bits that inverse() followed by the three loops of ChannelSynthesis
+    // gives (tests/ac4core/test_ac4core_dsp_exact.cpp) with no 2N-sample block in between. `kbd`
+    // holds the N values of KBD_LEFT(N), `overlap` and `pcm` N and `scratch` N, as above.
+    void inverse_overlap(std::span<const Real> spectrum, std::span<const Real> kbd,
+                         std::span<Real> overlap, std::span<Real> pcm, std::span<Complex> scratch);
+
    private:
+    // Pseudocodes 60 and 61: the pre-twiddle goes into the first pass of the plan's inverse
+    // transform as it reads its input, so that no array of z[k] is made. Returns the half of
+    // `scratch` that holds the N/2 values of the transform, or null for a plan with no passes.
+    [[nodiscard]] Complex* transform(std::span<const Real> spectrum,
+                                     std::span<Complex> scratch) const;
+
     std::size_t length_ = 0;
     Fft<Real> fft_;
     std::vector<Complex> twiddle_;  // xcos1[k] + j xsin1[k], k < N/2

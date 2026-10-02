@@ -203,30 +203,30 @@ G2_GROUPS = {
 }
 
 DEE_CANNOT = [
-    "any stream from objects: dee_ddpjoc_encoder, dee_dthd_encoder (--presentation atmos) and "
-    "dee_ddp_encoder take objects only as an Atmos master and refuse every ADM BWF master this "
-    "project writes with 'Content was not authored with Dolby tools' (the objects group)",
-    "48 kHz is the only rate DD, DD+ and DD+ JOC take ('Invalid input. Unsupported sample-rate' "
-    "for 32, 44.1 and 96 kHz); TrueHD takes 48 and 96 kHz and refuses 32 and 44.1",
-    "DD+ above 5.1 other than the 'bluray' mode's 7.1 (an AC-3 core and a dependent "
-    "substream), which --help does not list; the online DD+ and DD encoders write 7.1 input as "
-    "5.1",
-    "AC-3 layouts other than 1/0, 2/0 and 3/2 with or without the LFE, dual mono, 3.0 or 5.0 "
-    "from a channel list with silent channels (DEE writes the layout it is asked for)",
-    "E-AC-3 below its per-layout floors (mono 32, 2.0 96, 5.1 192 kbps; 5.1 at 64 to 160 only "
-    "with allow_hybrid_downmix), several programmes, associated services with their mixing "
-    "metadata (programme scale factors, mixdef, pan), or reduced-rate (fscod2) frames",
-    "an embedded timecode in DD+ ('Embedding timestamp is supported only by DD and Bluray "
-    "encoder modes'); where DD and the 'bluray' mode embed one, it is a 16-byte packet ahead "
-    "of each sync frame, so the file is no longer a bare elementary stream (FFmpeg and forge "
-    "both stop at byte 0; DEE's MP4 muxer takes the DD ones)",
-    "an MP4 of a 'bluray' stream: DEE's MP4 muxer refuses the AC-3 core with its E-AC-3 "
-    "dependent substream ('Unsupported bitstream id')",
-    "a Pro Logic II preferred downmix in AC-3 ('Downmix Mode ltrt-pl2 is not supported by the "
-    "selected codec'), and TrueHD's atsc_a85_agile loudness preset, which its help lists and "
-    "its parser refuses",
-    "multi-input (gapless) or split (cut-point) E-AC-3 JOC from channel beds ('Multi-input CBI "
-    "encoding is not supported', 'Splitting CBI input is not supported')",
+    ("any stream from objects: dee_ddpjoc_encoder, dee_dthd_encoder (--presentation atmos) and "
+     "dee_ddp_encoder take objects only as an Atmos master and refuse every ADM BWF master this "
+     "project writes with 'Content was not authored with Dolby tools' (the objects group)"),
+    ("48 kHz is the only rate DD, DD+ and DD+ JOC take ('Invalid input. Unsupported sample-rate' "
+     "for 32, 44.1 and 96 kHz); TrueHD takes 48 and 96 kHz and refuses 32 and 44.1"),
+    ("DD+ above 5.1 other than the 'bluray' mode's 7.1 (an AC-3 core and a dependent "
+     "substream), which --help does not list; the online DD+ and DD encoders write 7.1 input as "
+     "5.1"),
+    ("AC-3 layouts other than 1/0, 2/0 and 3/2 with or without the LFE, dual mono, 3.0 or 5.0 "
+     "from a channel list with silent channels (DEE writes the layout it is asked for)"),
+    ("E-AC-3 below its per-layout floors (mono 32, 2.0 96, 5.1 192 kbps; 5.1 at 64 to 160 only "
+     "with allow_hybrid_downmix), several programmes, associated services with their mixing "
+     "metadata (programme scale factors, mixdef, pan), or reduced-rate (fscod2) frames"),
+    ("an embedded timecode in DD+ ('Embedding timestamp is supported only by DD and Bluray "
+     "encoder modes'); where DD and the 'bluray' mode embed one, it is a 16-byte packet ahead "
+     "of each sync frame, so the file is no longer a bare elementary stream (FFmpeg and forge "
+     "both stop at byte 0; DEE's MP4 muxer takes the DD ones)"),
+    ("an MP4 of a 'bluray' stream: DEE's MP4 muxer refuses the AC-3 core with its E-AC-3 "
+     "dependent substream ('Unsupported bitstream id')"),
+    ("a Pro Logic II preferred downmix in AC-3 ('Downmix Mode ltrt-pl2 is not supported by the "
+     "selected codec'), and TrueHD's atsc_a85_agile loudness preset, which its help lists and "
+     "its parser refuses"),
+    ("multi-input (gapless) or split (cut-point) E-AC-3 JOC from channel beds ('Multi-input CBI "
+     "encoding is not supported', 'Splitting CBI input is not supported')"),
 ]
 
 WAV_LIST = (DDP,)
@@ -1217,8 +1217,10 @@ def run_leg(task):
     cmd, files = leg_command(leg, command_sources, streams, work)
     stamp = {"command": subprocess.list2cmdline(cmd), "source_sha256": shas}
     leg_json = work / "leg.json"
-    fresh = not (all(s.is_file() for s in streams) and leg_json.is_file()
-                 and json.loads(leg_json.read_text(encoding="utf-8")) == stamp)
+    reusable = all(s.is_file() for s in streams) and leg_json.is_file()
+    if reusable:
+        reusable = json.loads(leg_json.read_text(encoding="utf-8")) == stamp
+    fresh = not reusable
     entry = {"group": leg["group"], "for": G2_GROUPS[leg["group"]], "encoder": leg["encoder"],
              "codec": leg["codec"], "source": leg["source"] if not leg.get("master")
              else str(leg["source"]), "sources": [s.name for s in sources],

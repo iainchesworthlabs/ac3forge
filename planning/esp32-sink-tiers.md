@@ -226,8 +226,8 @@ and the three streams above have not been played through it.
      ([ESP32-P4 → AC-4](../docs/platforms/bare-metal/esp32-p4.md#what-it-decodes-in-real-time)).
 6. **Memory** — least free internal heap during play, compared to the S3’s ~1 KB margin.
    **Not met for AC-3 and E-AC-3, 2026-09-30:** neither the example's README nor the P4 page has
-   a low-water figure for a play of either. The AC-4 plays do: 2 to 14 KB free at the least under
-   ESP-IDF's default allocation policy
+   a low-water figure for a play of either. The AC-4 plays do: 1 to 8 KB free at the least under
+   ESP-IDF's default allocation policy, with the low-power SRAM out of the heap (1 to 11 at D14a6, 2 to 14 before)
    ([ESP32-P4 → AC-4](../docs/platforms/bare-metal/esp32-p4.md#decode-time-and-memory)).
 7. **Go / no-go** — ship as the **best** module for the shared PCB, or leave P4 closed again
    with numbers. **Open, 2026-09-30.** The P4 ships as a stereo Wi-Fi sink image; whether it is

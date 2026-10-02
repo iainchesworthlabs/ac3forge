@@ -1,6 +1,7 @@
 #include "iclforge/ac4core/dsp/synthesis.hpp"
 
 #include <algorithm>
+#include <type_traits>
 #include <utility>
 
 #include "iclforge/ac4core/detail/profiling.hpp"
@@ -107,6 +108,16 @@ bool ChannelSynthesis<Real>::block(TransformSet<Real>& transforms, std::span<con
     }
     AC4_ZONE_SCOPED_N("ac4_imdct");
     const auto full = static_cast<std::size_t>(full_length_);
+
+    // A full-length block after a full-length block has no skipped samples, and its transform,
+    // window and overlap-add are one pass over the samples (Imdct::inverse_overlap). At Fixed32
+    // every block takes the inverse that carries its exponent.
+    if (std::is_floating_point_v<Real> && n == full && n_prev == full) {
+        imdct->inverse_overlap(spectrum, kbd, overlap_, pcm,
+                               transforms.transform_scratch().first(n));
+        previous_length_ = n_int;
+        return true;
+    }
 
     // Steps 1 to 4 and Pseudocode 63's unfolding, into the set's block scratch.
     const std::span<Real> x = transforms.block_scratch().first(2 * n);

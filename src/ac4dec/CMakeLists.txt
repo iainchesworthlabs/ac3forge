@@ -137,6 +137,28 @@ else()
     set(_ac4dec_pic ON)
 endif()
 
+# The translation units a frame's time goes to (the syntax's Huffman and scale factor reading, the
+# reconstruction around the transforms, the stereo and downmix passes) at -O2 under the profile's
+# ICLFORGE_MINIMAL_HOT_O2, as src/ac4core/CMakeLists.txt does for the kernels (at -O3 there); flash
+# and not SRAM. planning/ac4.md, D14e has what it bought on the ESP32-P4 and what it cost.
+if(ICLFORGE_MINIMAL_DECODER AND ICLFORGE_MINIMAL_HOT_O2)
+    set_source_files_properties(
+        src/decoder.cpp
+        src/huffman.cpp
+        src/pcm/asf_reconstruct.cpp
+        src/pcm/aspx.cpp
+        src/pcm/companding.cpp
+        src/pcm/downmix.cpp
+        src/pcm/drc.cpp
+        src/pcm/multichannel.cpp
+        src/pcm/renderer.cpp
+        src/pcm/stereo.cpp
+        src/pcm/substream_pcm.cpp
+        src/syntax/asf.cpp
+        src/syntax/channel_elements.cpp
+        PROPERTIES COMPILE_OPTIONS "-O2")
+endif()
+
 set_target_properties(iclforge_ac4dec_objects PROPERTIES
     POSITION_INDEPENDENT_CODE ${_ac4dec_pic}
     CXX_VISIBILITY_PRESET hidden

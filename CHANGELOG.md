@@ -1690,6 +1690,25 @@ The sections below contain the complete change list and fixes.
   image grows by 196 KB of constants (the Cortex-M3 probe's ceiling is 750,000 bytes from 535,000),
   and a `float` build evaluates the tables while it compiles `dsp/resampler.cpp` (5 to 14 seconds
   more, by compiler, MSVC the longest, with the constant evaluator's limit raised for that file).
+- **The ESP32-P4 decodes AC-4 at 5.1 in real time in three of its four codec modes (phase D14e).** On a board at 360 MHz with Wi-Fi up, a 5.1
+  frame took 1.17, 1.52, 1.94 and 3.86 times its duration in SIMPLE mode, A-SPX, A-SPX with A-CPL mode 2 and A-CPL mode 3, and takes 0.64, 0.83, 0.91
+  and 1.14: the first three keep up, to 5.1 and folded to 2.0 (0.60, 0.76 and 0.83), where the 2.0 streams take 0.28 and 0.37 and the frame-rate
+  converter's four frame rates 0.51 to 0.69. The decoder's transforms and filter work run in fewer passes: the FFT's passes are a function for each radix
+  and direction, and a full-length block goes from the spectrum to the PCM in one pass with its window and overlap-add (`Imdct::inverse_overlap()`); A-SPX's
+  cubic fit keeps its four polynomials for a channel and does not make them in `double` at every frame (A-SPX's stage of a 5.1 frame takes 8.3 ms from
+  16.0); A-CPL's interpolation is evaluated once for each run of subbands that share a parameter band and the decorrelator's coefficients are narrowed
+  once (the stage takes 7 ms in mode 2 and 20 in mode 3, from 28 and 117); a frame that SIMPLE mode passes through whole is read from the QMF matrix
+  where it is and not copied, a long block's lines change places with the spectrum's buffer, the 256 scale factor gains are a table, and the concealment
+  spectra, the delay queue and an element's tracks stop moving or copying. `src/ac4core`'s kernels build at `-O3` and 13 of `src/ac4dec`'s translation
+  units at `-O2` under `ICLFORGE_MINIMAL_HOT_O2` (2.7 ms and 1.6 to 3.8 ms a 5.1 frame, for 9 and 71 KB of flash), and `sdkconfig.p4` reads the flash in
+  QIO mode, which takes 7 to 8 ms off a 5.1 frame and 4 ms off a 2.0 one: the mode is the second stage bootloader's, so a board flashed before keeps DIO until
+  it is flashed again over USB with its bootloader (`idf.py flash`), and an update over the network replaces only the application. The example's I2S queue
+  is 64 ms on the P4, where a stream whose frame takes longer to decode than the default 21 ms queue holds ran dry in every frame (a 5.1 A-SPX stream folded
+  to 2.0 took 13.5 s for 10.1 s of audio, with 236 underruns, and plays in real time now). Not a bit of the PCM moves: each speed-up has a test against a
+  verbatim copy of the code it replaced, the host's hash of the 84 plays and cuts equals D14a5's with MSVC, GCC 16 and Clang 22, and the board's hash of 52
+  plays and the probe's six fixtures (also on the Cortex-M3 under QEMU) equals the host's. A-CPL mode 3 (1.14), 5.1.4 in full decoding (1.57 to 1.90) and a
+  5.1 layout through a sink (the wide TDM sink does not start on this chip revision) are not in real time. The Cortex-M3 probe's image is 691,896 bytes from
+  683,448 (ceiling 750,000). [ESP32-P4](docs/platforms/bare-metal/esp32-p4.md#what-d14e-changed) has the tables.
 
 **Browser (WASM)**
 
@@ -2637,6 +2656,15 @@ The sections below contain the complete change list and fixes.
 
 **Codec correctness**
 
+- **The AC-4 decoder dropped the stream's downmix gains when the listener changed the downmix or
+  the LFE choice.** `Decoder::set_output()` with a new `downmix` or `mix_lfe` reset the gains,
+  the custom downmix data and the loudness corrections the stream had sent, and a stream may send
+  them only in its I-frames. Until the next one, up to a second later at the encoder's default
+  interval, the downmix took the -3 dB of a stream that has sent none and left out the LFE. Hearth's
+  Lo/Ro and Lt/Rt control and its LFE switch were audibly wrong for that second. The values now
+  persist across the change, as Part 1 clause 6.2.17.0 has them persist until another frame sends
+  them. The same change no longer starts the DRC's smoothing again either, since DRC acts on the
+  channels before the downmix.
 - **The AC-4 encoder wrote a screen factor of 1/8 for an object whose depth exponent was other than
   1 and whose screen factor was 0.** Part 2 sends `object_screen_factor_code` and
   `object_depth_factor` as one group of fields, and the factor, (code + 1) / 8, has no code for 0,
@@ -3250,6 +3278,20 @@ The sections below contain the complete change list and fixes.
   changed. Two QML tests (`test_twoWritesInOneTurnBothLand`, `test_twoChangesInOneTurnBothLand`)
   fail without the change. The AC-4 Decoder page's audio checks now fail with the level the wait
   ended on and the settings in force, where they showed the level it started from.
+- **The ESP32-P4's heap held 32 KB that takes 174 cycles a load, and the AC-4 decoder's buffers landed in it
+  (phase D14a6).** ESP-IDF adds the P4's low-power SRAM (0x50108000) to the heap by default
+  (`CONFIG_ESP_SYSTEM_ALLOW_RTC_FAST_MEM_AS_HEAP`) as the last internal region, and the HP cores reach it over the LP
+  bus with no cache: 174 cycles for a load the next depends on, 195 in sequence and 173 for a store, where main RAM
+  takes 6 to 7. The AC-4 decoder takes nearly all of main RAM, so what it allocated late in a play came from the SRAM
+  before PSRAM was tried, and whether a hot buffer was among it depended on how full main RAM was at that moment: the
+  29.97 fps frame-rate converter's history and output vectors were in it after some sequences of plays and not after
+  others, and the converter took 93.8 ms a frame where it takes 12.0, a play at 3.51 times real time where it is now
+  1.00. `sdkconfig.p4` turns the option off, so the heap is 32 KB smaller and what spilled goes to PSRAM behind the
+  cache. The allocation policy stays ESP-IDF's default, which is now the faster of the two policies on all 26 plays
+  measured. The other 19 plays of the twenty take 3 to 24% less time a frame and the six core-decoding plays 11 to
+  19% less, the QMF synthesis and inverse transform stages that took 1.4 to 10 times as long in some plays no longer
+  do, and no `float` PCM hash moves (56 plays and cuts compared, the probe's six fixtures at their pins).
+  [ESP32-P4](docs/platforms/bare-metal/esp32-p4.md#the-low-power-sram) has the measurements.
 
 ## [0.10.0-beta.1] - 2026-09-01
 

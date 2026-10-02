@@ -1147,28 +1147,28 @@ MASTERS = {
 # What the audit found DEE 6.5.4 cannot be made to write; the manifest carries it as
 # g1_dee_cannot, so a phase reading the set knows what to build elsewhere.
 DEE_CANNOT = [
-    "7.1 AC-4: dee_ac4_encoder takes 7.1 input (a WAV or wav_list of 8 channels) and writes 5.1; "
-    "--output-channel-layout offers auto, stereo, 5.1 and 5.1.4 (the seven-one legs record "
-    "what it does with the back surrounds)",
-    "7.1.4 and 9.1.6 AC-4: dee_ac4_encoder refuses cbi_wav of 12 and 16 channels ('Invalid "
-    "input. Unsupported channel count'); 5.1.4 is its only immersive layout, and a 5.1.4 "
-    "input cannot be written as 5.1 or stereo",
-    "frame rates other than frame_rate_index 13 from dee_ac4_encoder (--timecode-frame-rate "
-    "does not change it); dee_ac4ims_encoder writes indices 0 to 3 and 13 only, and its music "
-    "mode index 13 only ('Music mode requires native frame rate')",
-    "several presentations, substream groups or audio substreams in one stream, music and "
-    "effects with dialogue, associated audio, a dialogue enhancement substream, or dialogue "
-    "enhancement from a separate dialogue input: no encoder, option or template reaches them",
-    "A-JOC, direct-coded objects, OAMD, or immersive stereo from objects: dee_ac4ajoc_encoder "
-    "and dee_ac4ims_encoder take objects only as an Atmos master (ADM BWF, MXF IAB or a Dolby "
-    "Atmos master file set), and refuse every ADM BWF master forge writes with 'Content was "
-    "not authored with Dolby tools' (dlb::isAtmosMezzFile), as atmos_info and "
-    "dee_ddpjoc_encoder do; a bare IAB is 'ATMOS_STORAGE_RES_UNSUPPORTED_MASTER_TYPE'",
-    "mono, 3.0 or 5.0 AC-4: dee_ac4_encoder refuses input of 1, 3, 4 or 5 channels ('Invalid "
-    "input. Unsupported channel count'), and 5.1 with a silent LFE is written as 5.1",
-    "22.2, the speech frontend where it can be seen, A-JCC, ASPX_ACPL_1, 44.1 kHz (48 kHz input "
-    "only), transmitted DRC gains, the CRC or the bitstream version, as the census of 2026-09-15 "
-    "found (planning/ac4.md, What DEE writes)",
+    ("7.1 AC-4: dee_ac4_encoder takes 7.1 input (a WAV or wav_list of 8 channels) and writes 5.1; "
+     "--output-channel-layout offers auto, stereo, 5.1 and 5.1.4 (the seven-one legs record "
+     "what it does with the back surrounds)"),
+    ("7.1.4 and 9.1.6 AC-4: dee_ac4_encoder refuses cbi_wav of 12 and 16 channels ('Invalid "
+     "input. Unsupported channel count'); 5.1.4 is its only immersive layout, and a 5.1.4 "
+     "input cannot be written as 5.1 or stereo"),
+    ("frame rates other than frame_rate_index 13 from dee_ac4_encoder (--timecode-frame-rate "
+     "does not change it); dee_ac4ims_encoder writes indices 0 to 3 and 13 only, and its music "
+     "mode index 13 only ('Music mode requires native frame rate')"),
+    ("several presentations, substream groups or audio substreams in one stream, music and "
+     "effects with dialogue, associated audio, a dialogue enhancement substream, or dialogue "
+     "enhancement from a separate dialogue input: no encoder, option or template reaches them"),
+    ("A-JOC, direct-coded objects, OAMD, or immersive stereo from objects: dee_ac4ajoc_encoder "
+     "and dee_ac4ims_encoder take objects only as an Atmos master (ADM BWF, MXF IAB or a Dolby "
+     "Atmos master file set), and refuse every ADM BWF master forge writes with 'Content was "
+     "not authored with Dolby tools' (dlb::isAtmosMezzFile), as atmos_info and "
+     "dee_ddpjoc_encoder do; a bare IAB is 'ATMOS_STORAGE_RES_UNSUPPORTED_MASTER_TYPE'"),
+    ("mono, 3.0 or 5.0 AC-4: dee_ac4_encoder refuses input of 1, 3, 4 or 5 channels ('Invalid "
+     "input. Unsupported channel count'), and 5.1 with a silent LFE is written as 5.1"),
+    ("22.2, the speech frontend where it can be seen, A-JCC, ASPX_ACPL_1, 44.1 kHz (48 kHz input "
+     "only), transmitted DRC gains, the CRC or the bitstream version, as the census of 2026-09-15 "
+     "found (planning/ac4.md, What DEE writes)"),
 ]
 
 
@@ -1834,8 +1834,10 @@ def run_g1_leg(task):
     stamp = {"command": subprocess.list2cmdline(cmd),
              "source_sha256": shas[0] if len(shas) == 1 else shas}
     leg_json = work / "leg.json"
-    fresh = not (all(s.is_file() for s in streams) and leg_json.is_file()
-                 and json.loads(leg_json.read_text(encoding="utf-8")) == stamp)
+    reusable = all(s.is_file() for s in streams) and leg_json.is_file()
+    if reusable:
+        reusable = json.loads(leg_json.read_text(encoding="utf-8")) == stamp
+    fresh = not reusable
     entry = {"group": leg["group"], "phases": leg["phases"], "encoder": leg["encoder"],
              "source": leg["source"] if isinstance(leg["source"], str)
              else Path(leg["source"]).relative_to(root).as_posix(),

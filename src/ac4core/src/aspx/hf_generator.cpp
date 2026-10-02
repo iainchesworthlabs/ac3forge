@@ -89,70 +89,94 @@ constexpr std::array<std::array<double, 4>, 4> kNewChirp = {{
 // powers of i, without their conditioning. The values are what
 // polynomial_fit()'s coefficients give back (Pseudocode 85).
 //
-// Value is Real at double and float and dsp::Energy (MantExp) at Fixed32, whose t^k is t times
-// itself, not std::pow: the fixed tier's output is the same on every machine, and a C library's
-// pow need not be.
-template <typename Value>
-void fit_cubic(std::span<const Value> y, std::span<Value> fitted) {
-    const std::size_t n = y.size();
-    std::array<std::vector<double>, 4> basis;
-    for (std::size_t k = 0; k < basis.size(); ++k) {
-        basis[k].resize(n);
+// The orthonormal vectors depend on the number of points alone, so they are made once
+// for a count (build_cubic_basis: the front half of what this function was, step for
+// step, so the doubles are the same) and each frame projects on them (fit_cubic).
+//
+// With `by_products`, the fixed-point tier's, t^k is t times itself and not std::pow: that
+// tier's output is the same on every machine, and a C library's pow need not be.
+void build_cubic_basis(std::size_t n, CubicBasis& cubic, bool by_products) {
+    cubic.n = n;
+    cubic.empty = {};
+    for (std::size_t k = 0; k < cubic.basis.size(); ++k) {
+        cubic.basis[k].assign(n, 0.0);
         for (std::size_t i = 0; i < n; ++i) {
             const double t = n > 1 ? (2.0 * static_cast<double>(i) - static_cast<double>(n - 1)) /
                                          static_cast<double>(n - 1)
                                    : 0.0;
-            if constexpr (std::is_floating_point_v<Value>) {
-                basis[k][i] = std::pow(t, static_cast<double>(k));
-            } else {
+            if (by_products) {
                 double power = 1.0;
                 for (std::size_t j = 0; j < k; ++j) {
                     power *= t;
                 }
-                basis[k][i] = power;
+                cubic.basis[k][i] = power;
+            } else {
+                cubic.basis[k][i] = std::pow(t, static_cast<double>(k));
             }
         }
     }
-    std::ranges::fill(fitted, Value{});
-    for (std::size_t k = 0; k < basis.size(); ++k) {
+    for (std::size_t k = 0; k < cubic.basis.size(); ++k) {
+        std::vector<double>& basis_k = cubic.basis[k];
         for (std::size_t m = 0; m < k; ++m) {
             double dot = 0.0;
             for (std::size_t i = 0; i < n; ++i) {
-                dot += basis[k][i] * basis[m][i];
+                dot += basis_k[i] * cubic.basis[m][i];
             }
             for (std::size_t i = 0; i < n; ++i) {
-                basis[k][i] -= dot * basis[m][i];
+                basis_k[i] -= dot * cubic.basis[m][i];
             }
         }
         double norm = 0.0;
-        for (const double v : basis[k]) {
-            norm += v * v;
+        for (std::size_t i = 0; i < n; ++i) {
+            norm += basis_k[i] * basis_k[i];
         }
         // Fewer points than coefficients: this power adds nothing new.
         if (norm < 1e-18) {
-            std::ranges::fill(basis[k], 0.0);
+            std::fill_n(basis_k.begin(), n, 0.0);
+            cubic.empty[k] = true;
             continue;
         }
         norm = std::sqrt(norm);
-        double projection = 0.0;
         for (std::size_t i = 0; i < n; ++i) {
-            basis[k][i] /= norm;
-            projection += basis[k][i] * static_cast<double>(y[i]);
-        }
-        for (std::size_t i = 0; i < n; ++i) {
-            fitted[i] += static_cast<Value>(projection * basis[k][i]);
+            basis_k[i] /= norm;
         }
     }
 }
 
+// Value is Real at double and float and dsp::Energy (MantExp) at Fixed32.
+template <typename Value>
+void fit_cubic(std::span<const Value> y, std::span<Value> fitted, const CubicBasis& cubic) {
+    const std::size_t n = y.size();
+    std::ranges::fill(fitted, Value{});
+    for (std::size_t k = 0; k < cubic.basis.size(); ++k) {
+        if (cubic.empty[k]) {
+            continue;
+        }
+        const std::vector<double>& basis_k = cubic.basis[k];
+        double projection = 0.0;
+        for (std::size_t i = 0; i < n; ++i) {
+            projection += basis_k[i] * static_cast<double>(y[i]);
+        }
+        for (std::size_t i = 0; i < n; ++i) {
+            fitted[i] += static_cast<Value>(projection * basis_k[i]);
+        }
+    }
+}
 }  // namespace
+
+template <typename Real>
+void preflattening_gains(std::span<const dsp::Complex<Real>> q_low, int sbx, int ts_begin,
+                         int ts_end, std::span<dsp::Energy<Real>> gain_vec) {
+    CubicBasis cubic;
+    preflattening_gains<Real>(q_low, sbx, ts_begin, ts_end, gain_vec, cubic);
+}
 
 // At Fixed32 the energies are the fixed tier's QMF domain's (dsp/scalar_traits.hpp), whose
 // decibels are the double decoder's less a constant; the mean and the cubic, which has a
 // constant term, move by it alike, and the gains do not.
 template <typename Real>
 void preflattening_gains(std::span<const dsp::Complex<Real>> q_low, int sbx, int ts_begin,
-                         int ts_end, std::span<dsp::Energy<Real>> gain_vec) {
+                         int ts_end, std::span<dsp::Energy<Real>> gain_vec, CubicBasis& cubic) {
     using Energy = dsp::Energy<Real>;
     const auto n = at(sbx);
     if (ts_end <= ts_begin || n == 0) {
@@ -174,7 +198,10 @@ void preflattening_gains(std::span<const dsp::Complex<Real>> q_low, int sbx, int
     }
     mean_energy /= static_cast<Energy>(n);
     std::vector<Energy> slope(n);
-    fit_cubic<Energy>(pow_env, slope);
+    if (cubic.n != n) {
+        build_cubic_basis(n, cubic, dsp::kFixed<Real>);
+    }
+    fit_cubic<Energy>(pow_env, slope, cubic);
     for (std::size_t sb = 0; sb < n; ++sb) {
         gain_vec[sb] = from_power_db(mean_energy - slope[sb]);
     }
@@ -182,8 +209,8 @@ void preflattening_gains(std::span<const dsp::Complex<Real>> q_low, int sbx, int
 
 // Pseudocode 86's sum at Fixed32: the products of the values' raw parts, each below 2^62,
 // summed exactly in 64 bits (unsigned, so that a stream that is not audio wraps rather than
-// overflowing), then as a dsp::Energy. Audio's values are below 2^26, and forty of their
-// products below 2^58.
+// overflowing), then as a dsp::Energy. Audio's values are below 2^27, and forty of their
+// products below 2^60.
 [[nodiscard]] dsp::Complex<dsp::MantExp> covariance(std::span<const dsp::Complex<dsp::Fixed32>> q, int sb,
                                                     int i, int j, int num_ts_ext) noexcept {
     std::uint64_t re = 0;
@@ -275,7 +302,7 @@ void generate_high_band(const SubbandGroups& groups, const PatchTables& patches,
 
     std::array<dsp::Energy<Real>, kSubbands> gain_vec{};
     if (in.preflat) {
-        preflattening_gains<Real>(q_low, sbx, in.ts_begin, in.ts_end, gain_vec);
+        preflattening_gains<Real>(q_low, sbx, in.ts_begin, in.ts_end, gain_vec, state.cubic);
     }
     std::array<Complex, kSubbands> alpha0{};
     std::array<Complex, kSubbands> alpha1{};
@@ -342,6 +369,8 @@ template void generate_high_band<Real>(const SubbandGroups&, const PatchTables&,
                                        std::span<dsp::Complex<Real>>);
 template void preflattening_gains<Real>(std::span<const dsp::Complex<Real>>, int, int, int,
                                         std::span<dsp::Energy<Real>>);
+template void preflattening_gains<Real>(std::span<const dsp::Complex<Real>>, int, int, int,
+                                        std::span<dsp::Energy<Real>>, CubicBasis&);
 template void prediction_coefficients<Real>(std::span<const dsp::Complex<Real>>, int, int,
                                             std::span<dsp::Complex<Real>>,
                                             std::span<dsp::Complex<Real>>);
@@ -358,6 +387,8 @@ AC4CORE_ALSO_AT_DOUBLE(
                                              std::span<dsp::Complex<double>>);
     template void preflattening_gains<double>(std::span<const dsp::Complex<double>>, int, int, int,
                                               std::span<double>);
+    template void preflattening_gains<double>(std::span<const dsp::Complex<double>>, int, int, int,
+                                              std::span<double>, CubicBasis&);
     template void prediction_coefficients<double>(std::span<const dsp::Complex<double>>, int, int,
                                                   std::span<dsp::Complex<double>>,
                                                   std::span<dsp::Complex<double>>);)

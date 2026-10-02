@@ -23,7 +23,9 @@
 #include "iclforge/ac3/latency.hpp"
 #include "iclforge/ac3/oba/joc.hpp"
 #include "iclforge/ac3/oba/joc_tables.hpp"
+#include "iclforge/objects/joc_domain.hpp"
 #include "iclforge/objects/oamd.hpp"
+#include "iclforge/objects/placement.hpp"
 #include "iclforge/render/spatial.hpp"
 
 namespace iclforge::ac3::oba {

@@ -395,7 +395,10 @@ int main(int argc, char** argv) {
     }
 
     auto log = std::make_shared<CaptureSink::Log>();
-    iclforge::hearth::Player player(std::make_unique<CaptureSink>(log), loader, *layout, settings);
+    // A Player is about 71 kB, so it is a heap object: on main's frame it was 74 kB of stack.
+    const auto player_storage = std::make_unique<iclforge::hearth::Player>(
+        std::make_unique<CaptureSink>(log), loader, *layout, settings);
+    iclforge::hearth::Player& player = *player_storage;
     player.add(iclforge::hearth::QueueItem{.path = input, .title = input, .facts = {}});
     player.play();
     int status = 0;

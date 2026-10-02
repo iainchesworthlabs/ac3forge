@@ -83,6 +83,7 @@ checked. The table is of `main` at `5ef9eeafc`.
 | D14b | AC-4 on the ESP32-P4 | #1118, 2026-09-29 | merged; the P4 decodes 2.0 in real time and nothing wider; decision 26's identical output does not hold on the five plays with companding |
 | D14a4 | libm parity and the frame-rate converter at `float` | open, 2026-09-30 | exit met: the `float` PCM equal on the host, the Cortex-M3 leg and the P4 for D14b's twenty plays; the converter takes 7.3 ms a frame at 24 and 25 fps, and 1001/960 still has a 5.9 s first frame |
 | D14a5 | the converter's `float` tables at compile time | open, 2026-10-01 | exit met: the P4's first frame at 1001/960 takes 0.31 s from 5.9 s and the converter 16.5 ms a frame at 23.976 fps from 22.4; no `float` pin moved and the `double` output is byte-identical |
+| D14a6 | the P4's low-power SRAM out of the heap | open, 2026-10-02 | exit met: the 29.97 fps play's converter takes 12.0 ms a frame under ESP-IDF's default allocation policy from 93.8, the play 1.00 of real time from 3.51, and every other play 3 to 24% less time a frame; no `float` pin moved |
 | D14c | the S3 | | not built |
 | D14d | the C6, fixed point | | not built |
 | E1 | the encoder library, the frame writer, SIMPLE mono and stereo | #1011, 2026-09-25 | merged; exit met |
@@ -116,8 +117,9 @@ twice as long as at the commit it is queued on, or doubles its heap churn.
 
 Left to the user, each with its options in the pull request or section named: N1's steps outside
 the repository and what to do with the open vcpkg pull request ([N1](#n1-the-names)); D14b's four, of which the libm change and the frame-rate converter were taken on
-2026-09-30 and are D14a4, and the allocation policy and what comes next on the P4 are still open (#1118);
-D14a4's, of which the 1001/960 table was taken on 2026-09-30 and is D14a5, and the allocation policy is still open;
+2026-09-30 and are D14a4, the allocation policy was taken on 2026-10-01 and is D14a6, and what comes next on the P4 is
+still open (#1118);
+D14a4's, of which the 1001/960 table was taken on 2026-09-30 and is D14a5;
 I5's two, whether to spend a check on the `zone_mask` reading and a native
 check of the Arabic, Hebrew and Yiddish strings (#1100); I5b's four, which are an ADM or IAB master
 as a source on the encoder page, static beds for channels assigned to speakers, a Preview from a
@@ -2266,7 +2268,7 @@ D14a4's, so no pin moved; the `double` output is byte-identical (360 decodes and
 bytes, 196,464 of them the tables, the Cortex-M3 probe's by 198,416 bytes, and `dsp/resampler.cpp` takes 5 to 14 s
 longer to compile at `float`, by compiler (MSVC 14.7 s from 0.7, GCC 16 6.0 s from 0.8, ESP-IDF's RISC-V GCC 8.4 s from 1.5). The 29.97 fps play's
 converter still takes 77 ms more than the 23.976 fps play's with the same table and code, and the allocation policy's
-open question stands.
+open question stood until D14a6.
 
 **Exit:** the P4's first frame at 1001/960 from 5.9 s to the 0.31 s of the first frame at 24 and 25 fps, no run-time
 design on any target, no change to the `double` output, and the `float` PCM equal across the host, the Cortex-M3 leg
@@ -2276,6 +2278,155 @@ and the board. Met.
 Hearth test, `stream decoder: fast inverse transform reaches the decoder, closely matching the reference transform`,
 fails on all four, and on main's tree with GCC 16); the `double` comparison with main's build; the probe on the Cortex-M3
 and the host; the board; the full-matrix `ci.yml` and `pr-gate.yml` dispatches on the branch.
+
+#### D14a6: the P4's low-power SRAM out of the heap
+
+After D14a5. D14b and D14a5 left one thing open on the P4: under ESP-IDF's default allocation policy the 29.97 fps play's
+frame-rate converter took 93.8 ms a frame and under the 512-byte policy 12.2, from the same code and the same table, and a
+few stages of other plays (QMF synthesis, the inverse transform) were slow in the same way. The user took the allocation
+policy on 2026-10-01, to run once N1 and D14a5 had merged: find the cause, and give the default policy the fast time
+through the allocator's placement and not by moving the image to the 512-byte policy. One pull request, one line of
+configuration.
+
+- **The cause.** ESP-IDF puts the ESP32-P4's 32 KB of low-power SRAM (0x50108000) in the heap as internal memory of the
+  lowest priority (`CONFIG_ESP_SYSTEM_ALLOW_RTC_FAST_MEM_AS_HEAP`, on by default, whose help says the memory "does not have
+  much performance impact"). The HP cores reach it over the LP bus with no cache: a loop in a scratch image took 174 cycles
+  for a load the next depends on, 195 for a load in sequence and 173 for a store, against 6 to 7 from main RAM and 18 a word
+  for a cold sequential read of PSRAM. The decoder takes nearly all of main RAM (343 to 350 KB free when a play starts, 1 to
+  11 KB at its least), so what it allocates late is served from the SRAM before PSRAM is tried, and whether a hot buffer is
+  among it depends on how full main RAM is at that moment, which is why a play was slow after some plays and not after
+  others and why two images of the same code differed. In the 29.97 fps play of a scratch image that prints the converter's
+  addresses, one channel's history was at 0x50108364 and the output vector the channels share at 0x5010ad6c, and the
+  converter took 93.6 ms a frame; the same image built without the region had both in PSRAM and the converter took 11.9.
+  At the most 25.3 to 31.5 KB of the SRAM was in use in each of the four converter plays.
+- **The fix.** `CONFIG_ESP_SYSTEM_ALLOW_RTC_FAST_MEM_AS_HEAP=n` in `esp-idf/iclforge/examples/hearth_sink/sdkconfig.p4`, with
+  the reasons in a comment beside it. The heap is 32,640 bytes smaller, what spilled into the SRAM goes to PSRAM behind the
+  cache, and the allocation policy stays ESP-IDF's default. Nothing in the component asks for `MALLOC_CAP_RTCRAM`, so the
+  option is the only way a buffer reached that memory.
+- **Ruled out on the way.** The image's layout (the code's addresses were the same in a slow image and a fast one); the
+  heap's free and largest block at the start of the play; the order of the plays alone (a fresh boot played the slow play
+  slow in the image that printed the addresses); and the L1 data cache's two ways, to which a model of the converter's two
+  streams gave no sensitivity to placement.
+
+**Built in D14a6.** The line above, the ESP32-P4 page's tables, stage table and a new section,
+[The low-power SRAM](../docs/platforms/bare-metal/esp32-p4.md#the-low-power-sram), and this plan's lines. No source file changed,
+so no `float` PCM hash moved: the board's hash of 56 plays and cuts on the default image equals D14a5's, so do the 26 plays
+of the 512-byte image, and the probe's six fixtures equal their pins.
+
+**Exit, as measured.** On the P4 with the network up and the default allocation policy, the converter's microseconds a frame,
+D14a5's then D14a6's: 7,389 and 7,397 at 24 fps (25/24), 7,285 and 7,280 at 25 fps (15/16), 16,520 and 15,150 at 23.976 fps
+(1001/960) and 93,761 and 11,978 at 29.97 fps (1001/960; under the 512-byte policy 17,454 on D14a4's tree, 12,180 on
+D14a5's and 12,240 on D14a6's). The frames are 0.79, 0.80, 0.98 and 1.00 of their duration, from 0.91, 0.82, 1.11 and 3.51. The other
+plays of the twenty take 3 to 24% less time a frame and the six core-decoding plays 11 to 19% less; synthesis in
+`51-music-96` at 2.0 takes 1.3 ms a channel from 13.6, `514-music-768`'s inverse transform 1.0 ms a call from 2.3, and the
+inverse transform at 5.1 takes 7.1 to 7.3 ms a frame, from 13.1 to 13.4. The default policy is now the faster of the two on all
+twenty-six plays (the 512-byte policy takes 1.04 to 1.16 times as long on the twenty and 1.05 to 1.08 on the six), and the
+AC-3 and E-AC-3 decoders take 0.19 (5.1), 0.19 (5.1) and 0.38 (7.1.4) of real time under it from 0.20, 0.20 and 0.38, and
+0.21, 0.31 and 0.65 under the 512-byte policy. The peak heap is as before (0.60 to 2.2 MB), PSRAM's peak 0.02 to 0.04 MB
+higher and internal RAM's least free 1 to 11 KB (2 to 14 before). Not measured: the 8 KB of tightly coupled memory at 0x30100000, which is
+in the heap at the same low priority; the same option on the S3 and the C6; and the tree before D14a's third part.
+
+**Exit:** the 29.97 fps converter at the speed the 512-byte policy gave it (17 ms on D14a4's tree, 12 with D14a5's tables) under
+the default policy, the slow QMF stage gone, and the `float` PCM unchanged. Met: 12.0 ms, and the stages are at 1.1 to 1.4 ms a
+channel-frame in every play.
+
+**Verified by:** the board (the twenty plays, the six core plays, their cuts, D14b's four cuts and the probe's six fixtures
+on the default image, the twenty and the six on the 512-byte image, and the AC-3 and E-AC-3 plays on both); both images built
+from the branch tree with the committed configuration; `tools/ci/precheck.py`; `mkdocs build --strict`; the packer's
+`--with-ac4 --verify --verify-targets esp32p4`; and, since no source file changed, the host builds and tests (MSVC, GCC 16,
+Clang 22) of the base commit, whose code this branch does not touch.
+
+#### D14e: the P4 decodes 5.1 in real time
+
+After D14a6. On the P4 at D14a6 a 5.1 frame took 1.17, 1.52, 1.94 and 3.86 times its duration in SIMPLE mode, A-SPX, A-SPX with A-CPL mode 2 and A-CPL mode 3.
+The user took it on 2026-10-01, to run once N1 and D14a5 had merged: decode 5.1 SIMPLE in real time, then A-SPX and, where it can be reached, the A-CPL
+modes, at 1.0 times a frame's duration or less at 360 MHz with Wi-Fi up and ESP-IDF's default allocation policy, with the `float` PCM equal to the host's and
+the Cortex-M3's, starting from the board's own stage timers; the levers named were A-CPL mode 3, the inverse transform at 5.1, the QMF banks, the vector
+extension, where the allocator puts things, the L2 cache's size and a paced I2S; the 29.97 fps converter was D14a6's, and 5.1.4 was to be measured and not chased.
+One pull request.
+
+- **Where the time went.** At D14a6 a 5.1 SIMPLE frame took 49.9 ms: parse 13.0, reconstruction 13.7, the inverse transform 7.5, the QMF banks 8.3 and 7.4;
+  A-SPX added 15.9, A-CPL mode 2 28.4 and mode 3 116.8. The cache controller's access counters, read in a scratch image, gave about 2,300 64-byte lines of
+  code a frame from flash (1,000 of them in parse), 1,700 to 2,600 lines of data from PSRAM in each stage and about 0.7 MB of data a frame through the 128 KB
+  L2 cache; a loop of `float` operations on the in-order core ran 2 to 3 times slower as written than unrolled with independent work (a scratch `membench`),
+  and a profile by caller found 48,000 calls a frame into the compiler's soft-float `double` routines in A-CPL mode 3, 43,000 of them in its coupling.
+- **The transforms and the banks in fewer passes** (`perf(ac4core)`). The FFT's passes are a function for each radix and direction
+  (`dsp/fft_kernels.hpp`) in place of a generic butterfly; `Imdct::inverse_overlap()` takes a full-length block after a full-length block from the spectrum to
+  the PCM in one pass (the pre-twiddle is the first pass's read, the post-twiddle, the unfolding, the window and the overlap-add one loop); and the A-SPX cubic
+  fit's four orthonormal polynomials, which depend on the number of points alone, are made once for a channel and not at every frame in `double`.
+- **A-CPL's interpolation once for each run of subbands** (`perf(ac4)`). `acpl::Interpolator` evaluates Pseudocode 109 operation for operation, from the values
+  the subbands of a parameter band that share `acpl_param_prev` share, with the ramp's `(ts + 1)` a table entry and the division by 16 or 32 slots a
+  multiplication by the exact reciprocal; `AcplStage` forms each slot's coefficients once for a run and narrows them to `Real` once, and `Decorrelator`
+  narrows Tables 199 to 201 once. 35,000 evaluations a frame at 5.1 in mode 3 become 8,000.
+- **The reconstruction and the output without their copies** (`perf(ac4dec)`). A frame that SIMPLE mode passes through whole is read from `ext` by the
+  synthesis where nothing else takes its matrix, and not copied to `out` first; a frame of one long block is ungrouped by swapping buffers; the 256 scale
+  factor gains are a table and not a `std::pow` for each band; the concealment spectra change places with the frame's in place of a 48 KB copy; the delay queue
+  moves each sample once; an element's tracks (15 KB each) are reserved and not moved 63 times a frame; and the two or four lines of a Huffman codeword are
+  stored by name, where GCC made a call into ROM's `memcpy` of them.
+- **The compiler and the flash** (`build(esp32p4)`). The kernels of `src/ac4core` at `-O3` and thirteen of `src/ac4dec`'s translation units at `-O2` under
+  `ICLFORGE_MINIMAL_HOT_O2`, and `sdkconfig.p4` reading the flash in QIO mode. The mode is the second stage bootloader's, and the application image carries
+  none of it.
+
+**What each part bought**, 5.1 on the board, the decoder's microseconds a frame without the first frame and times a frame's duration, D14a6's image and then
+the same tree with the parts added, one image each, flashed with its own bootloader and played in the same session
+([the P4 page](../docs/platforms/bare-metal/esp32-p4.md#what-d14e-changed) has the stages):
+
+| | SIMPLE | A-SPX | A-SPX, A-CPL 2 | A-SPX, A-CPL 3 |
+|---|---:|---:|---:|---:|
+| D14a6 | 52,937 (1.24) | 65,797 (1.54) | 82,756 (1.94) | 164,627 (3.86) |
+| and the three code commits | 41,390 (0.97) | 48,144 (1.13) | 50,994 (1.20) | 60,398 (1.42) |
+| and `-O3` and `-O2` | 35,026 (0.82) | 42,921 (1.00) | 46,329 (1.08) | 56,153 (1.32) |
+| and QIO flash | 27,399 (0.64) | 35,621 (0.83) | 38,932 (0.91) | 48,255 (1.13) |
+| with the decoder's files at `-Os` | 31,217 (0.73) | 37,496 (0.88) | 40,502 (0.95) | 50,175 (1.18) |
+
+- **Found on the way.** An extra component that includes the decoder's headers and is built without `-ffp-contract=off` changes the PCM on the board: the linker
+  keeps one copy of each weak symbol for the whole program, and the profiling component's copy of the QMF kernels, compiled at GCC's default of `fast`,
+  contained fused multiply-adds that the decoder then ran (every hash moved and the QMF stages ran slower; the host, which never links such a component, did
+  not move). Compare the board's PCM hash after any change to an image's components or flags. A play's time moves with the boot: ten boots of one image gave 5.1
+  SIMPLE 28.4 to 29.9 ms and 5.1 A-SPX 36.7 to 37.5 ms a frame (the average with the first frame), and the D14a6 image's SIMPLE play 49.9 and 52.9 ms in two
+  sessions. The one-in-twenty slow QMF and transform stage of D14b was the low-power SRAM of D14a6: no stage was slow in the twenty plays of the final image or the
+  ten boots.
+- **Tried and not taken.** `-O3` on the decoder's files (no gain over `-O2` there, 73 KB more flash); `-funroll-loops` and an instruction-scheduling flag on the
+  kernels (1.3 to 3.2 ms a frame for 21 to 31 KB, no more than `-O3`'s 2.7 to 2.9 for 9 KB); a 256 KB L2 cache (2.6 to 3.7 ms a frame, for 128 KB of internal RAM,
+  1 KB of it free at the end of a play); a 128-byte L2 line (1.3 to 2.2 ms on three 5.1 plays, 0.6 ms more on another, and three plays of nine stopped on an image
+  whose `esp_hosted` buffers are PSRAM that its DMA reads: not traced); the cache's autoload prefetcher, which the ROM has and ESP-IDF does not use (enabling
+  it from a scratch image panicked the board, and the setting survived the CPU reset into a boot loop in PSRAM initialisation until a watchdog reset cleared it);
+  a 120 MHz flash (`IDF_EXPERIMENTAL_FEATURES` for this part, with the flash's high-performance mode: not tried). Not attempted: the second core, which is idle
+  (87% of its samples in a profile) but would take a job hook in the library and a second set of working buffers, and the vector extension, which works on
+  integers and so cannot form the `float` kernels' bits.
+- **A-CPL mode 3 is not reached** (1.14). Its stage takes 19.9 ms of the 48.7. Some 7 to 11 ms of that is the compiler's soft-float `double` routines at 60 to 100
+  cycles a call, which Pseudocode 109's interpolation needs for its bits (8,000 evaluations of three operations and 11,500 narrowings a frame, in a profile of
+  the rework's image); the decorrelators, the ducker and the loops over the subbands are `float`, and the rest is passes over 16 KB buffers in PSRAM. A ramp
+  scaled by the reciprocal of the slot count would save one multiplication in three of the evaluations, about 2 ms of the 6.0 the mode is over by.
+- **The output side.** The measurements use a null sink. Through the example's I2S sink at 2.0, with its default queue of 4 descriptors of 240 frames (21 ms), a
+  stream whose frame takes more than the queue holds to decode plays slowly: 5.1 A-SPX folded to 2.0, 35 ms a frame, took 13.5 s for 10.1 s of audio, where a 2.0
+  SIMPLE stream (13 ms a frame) took 10.0 s. With 12 descriptors of 256 frames (64 ms, 24 KB of internal RAM at 2.0), which `sdkconfig.p4` now sets, the same stream took 10.0 s with one underrun of 11 ms,
+  and 5.1 SIMPLE and A-SPX with A-CPL mode 2 folded to 2.0 played in 10.0 s with at most three underruns and 11 ms of silence in all; A-CPL mode 3 ran dry in every frame (11.4 s).
+  The sink's own count is `sink.underruns` and `sink.dry_ms`. The wide TDM sink does not start on this chip revision (`sink/i2s_wide/audio_sink.cpp` has why), so 5.1 itself
+  could not be played through a sink, and a wide TDM frame (64 bytes, 196 KB for a 64 ms queue) wants the decoded PCM in a PSRAM ring in front of the sink instead.
+
+**Built in D14e.** `src/ac4core`'s `dsp/fft_kernels.hpp`, `Imdct::inverse_overlap()`, `CubicBasis`, `acpl::Interpolator` and the decorrelator's narrowed tables; in `src/ac4dec`
+`SubstreamPcm`'s lazy pass-through (`materialize_out()` and `shift_history()`), `ungroup_in_place()`, `scale_factor_gains()` and the cheaper `parse_sf_data()` store
+and `ElementParser::begin()`; the compiler options of both libraries' `CMakeLists.txt`; `sdkconfig.p4`'s QIO line; the page's tables and its Flash mode and What D14e
+changed sections. Four test files hold the changes to the old code, to the bit: `test_ac4core_dsp_exact.cpp` (the passes, the transform and the synthesis against
+verbatim copies, at the decoder's scalar and at `double`, on dense data and on spectra with runs of zeros of either sign), `test_ac4core_acpl_exact.cpp`,
+`test_ac4dec_acpl_exact.cpp` (the stage against a copy of the old one, over several frames that carry state) and `test_ac4dec_reconstruct_exact.cpp`.
+
+**Exit, as measured.** On the board with the network up and the default allocation policy, the decoder's microseconds a frame and times a frame's duration, D14a6's and then D14e's
+(`ICLFORGE_EXAMPLE_AC4_PCM_HASH` on, a null sink): 5.1 SIMPLE 49,913 (1.17) and 27,400 (0.64), A-SPX 64,836 (1.52) and 35,589 (0.83), A-SPX with A-CPL mode 2 82,568 (1.94) and 38,823
+(0.91), A-CPL mode 3 164,748 (3.86) and 48,689 (1.14); the 5.1 streams folded to 2.0 1.07, 1.46, 1.85 and 3.77 and 0.60, 0.76, 0.83 and 1.06; the 2.0 streams 0.52 and 0.66 and 0.28 and 0.37;
+the converter's four streams 0.97, 0.79, 0.80 and 1.00 and 0.68, 0.51, 0.53 and 0.69; 5.1.4 in full decoding 2.4 to 3.4 and 1.57 to 1.90, in core decoding 1.9 to 2.7 and 1.24 to 1.58. The 512-byte
+policy takes 1.08 to 1.24 times as long over the twenty plays. The PCM did not move: the host's hash of each of the 84 plays and cuts (MSVC, GCC 16 and Clang 22 at `float`) equals D14a5's, the board's
+hash of 52 plays (the twenty, the six core plays, their cuts and the probe's six fixtures) equals the host's, and the six fixtures equal their pins.
+
+**Exit:** 5.1 in SIMPLE mode, A-SPX and, if reached, A-CPL at 1.0 or less with the `float` PCM unchanged, and the exit's figures. Met for SIMPLE (0.64), A-SPX (0.83) and A-SPX with A-CPL
+mode 2 (0.91), which also keep up folded to 2.0 (0.60, 0.76 and 0.83); not met for A-CPL mode 3 (1.14), which was named "if reachable"; 5.1.4 is 1.57 to 1.90 in full
+decoding and 1.24 to 1.58 in core decoding, measured only.
+
+**Verified by:** the board (the 26 plays and their cuts under the default policy and the 26 plays under the 512-byte one, the control plays with the hash off, AC-3 and E-AC-3, the probe's
+six fixtures, and the six quick plays of every image in the table above); `iclforge-tests` whole at `double` on MSVC with every option on, and its AC-4 tests at `float` on MSVC; the WSL GCC 16 and Clang 22
+`-Werror` gates at both scalars; GCC 14 with the wheel's flags over the 75 AC-4 translation units; clang-cl over the touched ones; `run_baremetal_probe.sh --ac4 --icount` on the Cortex-M3 under QEMU and `--host` (the six pinned hashes and every ceiling); the packer's `--verify-targets esp32p4`;
+`tools/ci/precheck.py`; `mkdocs build --strict`.
 
 ### Encoder phases
 
@@ -3870,7 +4021,8 @@ words, asked for 25 in their own words, and took the recommendations for the res
     from PSRAM (22 to 98 ms a frame), and a shorter filter is one of the options D14a4's pull
     request puts. D14a5 builds the table at compile time and the converter copies the 188 KB of it
     that it keeps into PSRAM: no first-frame stall, 16.5 ms a frame at 23.976 fps, so the shorter
-    filter is not needed for either.
+    filter is not needed for either. The 29.97 fps play's 93 to 98 ms a frame was not the table: it was the heap's low-power
+    SRAM, which D14a6 took out, and the converter takes 12.0 ms there.
 
 34. **The encoder on an ESP32.**
     - (a) **Never**, as decision 15 has it.

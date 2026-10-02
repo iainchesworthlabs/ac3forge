@@ -106,8 +106,8 @@ public:
     }
 
     // What the fake device has been asked to do: { open, paused, endpoint,
-    // sampleRate, channels, opens, framesHeard, peak } - empty before
-    // useFakeRoom().
+    // sampleRate, channels, opens, framesHeard, framesSubmitted, peak } -
+    // empty before useFakeRoom().
     Q_INVOKABLE QVariantMap device() const {
         if (!room_) {
             return {};
@@ -121,7 +121,13 @@ public:
                 {QStringLiteral("channels"), reading.channels},
                 {QStringLiteral("opens"), reading.opens},
                 {QStringLiteral("framesHeard"), static_cast<double>(reading.frames_heard)},
+                {QStringLiteral("framesSubmitted"), static_cast<double>(reading.frames_submitted)},
                 {QStringLiteral("peak"), reading.peak}};
+    }
+
+    // The frames toneLevelDb() reads over (test_room.hpp's kToneWindow).
+    Q_INVOKABLE double toneWindowFrames() const {
+        return static_cast<double>(iclforge::hearth::uitest::kToneWindow);
     }
 
     Q_INVOKABLE void resetPeak() {
