@@ -1,13 +1,30 @@
 #include "iclforge/ac4core/acpl/acpl.hpp"
 
 #include <algorithm>
+#include <bit>
 #include <cstddef>
+#include <cstdint>
 
 namespace iclforge::ac4::detail::acpl {
 namespace {
 
 [[nodiscard]] std::size_t at(int index) noexcept {
     return static_cast<std::size_t>(index);
+}
+
+// The doubles of (ts + 1) and its kin, as a table: Pseudocode 109 converts each from an integer at
+// every subband, which is a call into soft float on a chip without double hardware. Past the table,
+// the conversion.
+constexpr std::array<double, kMaxSlots + 1> kRamp = [] {
+    std::array<double, kMaxSlots + 1> table{};
+    for (std::size_t k = 0; k < table.size(); ++k) {
+        table[k] = static_cast<double>(k);
+    }
+    return table;
+}();
+
+[[nodiscard]] double ramp(int k) noexcept {
+    return at(k) < kRamp.size() ? kRamp[at(k)] : static_cast<double>(k);
 }
 
 // Table 197, one row per QMF band group: the group's first subband and its
@@ -213,36 +230,64 @@ double gamma_step(Quant quant) noexcept {
     return quant == Quant::kFine ? 1638.0 / 16384.0 : 3276.0 / 16384.0;
 }
 
+Interpolator::Divisor::Divisor(int divisor) noexcept
+    : n(static_cast<double>(divisor)),
+      by_multiply(divisor > 0 && std::has_single_bit(static_cast<unsigned>(divisor))) {
+    if (by_multiply) {
+        reciprocal = 1.0 / n;
+    }
+}
+
+Interpolator::Interpolator(const Framing& framing, int num_ts) noexcept
+    : steep_(framing.steep),
+      two_(framing.num_param_sets == 2),
+      half_(num_ts / 2),
+      slot_(framing.param_timeslot),
+      whole_(num_ts),
+      first_half_(num_ts / 2),
+      second_half_(num_ts - num_ts / 2) {}
+
+double Interpolator::at(const Column& column, int ts) const noexcept {
+    if (!steep_) {
+        if (!two_) {
+            return column.prev + whole_(ramp(ts + 1) * column.rise);
+        }
+        if (ts < half_) {
+            return column.prev + first_half_(ramp(ts + 1) * column.rise);
+        }
+        return column.first + second_half_(ramp(ts - half_ + 1) * column.step);
+    }
+    if (ts < slot_[0]) {
+        return column.prev;
+    }
+    return !two_ || ts < slot_[1] ? column.first : column.second;
+}
+
 void interpolate(const Framing& framing, int num_param_bands, const ParamSets& values, const ParamPrev& prev,
                  int num_ts, std::span<double> out) noexcept {
     if (num_ts <= 0 || out.size() < at(num_ts) * kSubbands) {
         return;
     }
-    const bool two = framing.num_param_sets == 2;
-    const int ts_2 = num_ts / 2;
+    const Interpolator interpolator(framing, num_ts);
+    int run_band = -1;
+    std::uint64_t run_prev = 0;
     for (int sb = 0; sb < kSubbands; ++sb) {
         const int pb = std::max(sb_to_pb(num_param_bands, sb), 0);
         const double p = prev[at(sb)];
-        const double v0 = values[0][at(pb)];
-        const double v1 = values[1][at(pb)];
-        for (int ts = 0; ts < num_ts; ++ts) {
-            double value = 0.0;
-            if (!framing.steep) {
-                if (!two) {
-                    value = p + (ts + 1) * (v0 - p) / num_ts;
-                } else if (ts < ts_2) {
-                    value = p + (ts + 1) * (v0 - p) / ts_2;
-                } else {
-                    value = v0 + (ts - ts_2 + 1) * (v1 - v0) / (num_ts - ts_2);
-                }
-            } else if (ts < framing.param_timeslot[0]) {
-                value = p;
-            } else if (!two || ts < framing.param_timeslot[1]) {
-                value = v0;
-            } else {
-                value = v1;
+        const auto p_bits = std::bit_cast<std::uint64_t>(p);
+        if (sb > 0 && pb == run_band && p_bits == run_prev) {
+            for (int ts = 0; ts < num_ts; ++ts) {
+                const std::size_t i = at(ts) * kSubbands + at(sb);
+                out[i] = out[i - 1];
             }
-            out[at(ts) * kSubbands + at(sb)] = value;
+            continue;
+        }
+        run_band = pb;
+        run_prev = p_bits;
+        const Interpolator::Column column =
+            Interpolator::column(p, values[0][at(pb)], values[1][at(pb)]);
+        for (int ts = 0; ts < num_ts; ++ts) {
+            out[at(ts) * kSubbands + at(sb)] = interpolator.at(column, ts);
         }
     }
 }
@@ -275,7 +320,15 @@ std::span<const double> coefficients(int decorrelator, int region) noexcept {
 }
 
 template <typename Real>
-Decorrelator<Real>::Decorrelator(int index) noexcept : index_(std::clamp(index, 0, kDecorrelators - 1)) {}
+Decorrelator<Real>::Decorrelator(int index) noexcept
+    : index_(std::clamp(index, 0, kDecorrelators - 1)) {
+    for (std::size_t region = 0; region < coefficients_.size(); ++region) {
+        const std::span<const double> a = coefficients(index_, static_cast<int>(region));
+        for (std::size_t i = 0; i < a.size(); ++i) {
+            coefficients_[region][i] = static_cast<Real>(a[i]);
+        }
+    }
+}
 
 template <typename Real>
 void Decorrelator<Real>::reset() noexcept {
@@ -299,7 +352,7 @@ void Decorrelator<Real>::process(std::span<const Complex> in, std::span<Complex>
     for (int sb = 0; sb < kSubbands; ++sb) {
         const auto s = at(sb);
         const int region = region_of(sb);
-        const std::span<const double> a = coefficients(index_, region);
+        const std::array<Real, 8>& a = coefficients_[at(region)];
         const auto delay = at(kRegions[at(region)].delay);
         const auto length = at(kRegions[at(region)].length);
         for (std::size_t k = 0; k < kIn; ++k) {
@@ -313,12 +366,11 @@ void Decorrelator<Real>::process(std::span<const Complex> in, std::span<Complex>
         }
         for (std::size_t ts = 0; ts < n; ++ts) {
             // b[i] = a[length - i]; a[0] is 1 in every table, kept as printed.
-            Complex acc = static_cast<Real>(a[length]) * x[kIn + ts - delay];
+            Complex acc = a[length] * x[kIn + ts - delay];
             for (std::size_t i = 1; i <= length; ++i) {
-                acc += static_cast<Real>(a[length - i]) * x[kIn + ts - i - delay] -
-                       static_cast<Real>(a[i]) * y[kOut + ts - i];
+                acc += a[length - i] * x[kIn + ts - i - delay] - a[i] * y[kOut + ts - i];
             }
-            y[kOut + ts] = acc / static_cast<Real>(a[0]);
+            y[kOut + ts] = acc / a[0];
             out[ts * kSubbands + s] = y[kOut + ts];
         }
         for (std::size_t k = 0; k < kIn; ++k) {

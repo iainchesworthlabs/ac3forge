@@ -87,11 +87,11 @@ floating-point unit) builds the AC-4 inspector, core and decoder into the compon
 precision, and lets the player read a stream that opens with an AC-4 sync word: the same ring,
 renderer and sinks, and `iclforge::ac4::SyncFrameSplitter` and `iclforge::ac4::Decoder` in place of the AC-3 and
 E-AC-3 framer and decoders. With it off the component builds as it always did. It needs PSRAM,
-since the decoder alone peaks at 432 KB of heap at 2.0 and 1.93 MB at 5.1.4 on the footprint
+since the decoder alone peaks at 414 KB of heap at 2.0 and 1.80 MB at 5.1.4 on the footprint
 probe's streams, and a decode task with a stack of 40 KB, which `examples/hearth_sink/sdkconfig.ac4`
-sets: the decoder uses 20 to 24 KB of it. The [ESP32-P4 page](../../docs/platforms/bare-metal/esp32-p4.md#ac-4) has what a stream of
-each kind held and how fast it decoded on a board: 2.0 in SIMPLE and A-SPX modes in real time,
-wider layouts slower. It is not built for the ESP32-S3, the ESP32-C6 or the ESP32-C3 yet, and no
+sets: the decoder uses 19 to 30 KB of it. The [ESP32-P4 page](../../docs/platforms/bare-metal/esp32-p4.md#ac-4) has what a stream of
+each kind held and how fast it decoded on a board: 2.0 and 5.1 streams in SIMPLE, A-SPX and A-CPL mode 2
+in real time, A-CPL mode 3 and 5.1.4 slower. It is not built for the ESP32-S3, the ESP32-C6 or the ESP32-C3 yet, and no
 sink built on the component takes AC-4 in a Sendspin group. A component archive carries the AC-4
 sources only when it was packed with `pack_esp_component.py --with-ac4`.
 

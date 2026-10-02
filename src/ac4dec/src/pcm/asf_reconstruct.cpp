@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <utility>
 
 #include "pcm/pow43.hpp"
 #include "iclforge/ac4core/tables/sfb_tables.hpp"
@@ -36,7 +37,17 @@ namespace {
 
 }  // namespace
 
-ParseResult reconstruct_track(const SfInfo& info, const SfData& data, RandGenState& noise,
+ScaleFactorGains scale_factor_gains() {
+    ScaleFactorGains gains{};
+    for (std::size_t sf = 0; sf < gains.size(); ++sf) {
+        gains[sf] = static_cast<Real>(
+            std::pow(2.0, 0.25 * static_cast<double>(static_cast<int>(sf) - 100)));
+    }
+    return gains;
+}
+
+ParseResult reconstruct_track(const SfInfo& info, const SfData& data,
+                              const ScaleFactorGains& sf_gain_table, RandGenState& noise,
                               std::vector<Real>& scaled) {
     const AsfPsyInfo& psy = info.psy;
     scaled.assign(data.quant_spec.size(), Real{});
@@ -60,8 +71,7 @@ ParseResult reconstruct_track(const SfInfo& info, const SfData& data, RandGenSta
             if (scale_factor < 0 || scale_factor > 255) {
                 return fail(DecodeError::kInvalidStream, "a scale factor outside 0 to 255");
             }
-            const auto sf_gain =
-                static_cast<Real>(std::pow(2.0, 0.25 * static_cast<double>(scale_factor - 100)));
+            const Real sf_gain = sf_gain_table[static_cast<std::size_t>(scale_factor)];
             const std::size_t begin = data.sect_sfb_offset[gi][si];
             const std::size_t end = data.sect_sfb_offset[gi][si + 1];
             for (std::size_t k = begin; k < end; ++k) {
@@ -176,6 +186,27 @@ void ungroup(const SubstreamContext& ctx, const AsfPsyInfo& psy, const SfData& d
         }
         win += windows;
     }
+}
+
+bool ungroup_in_place(const SubstreamContext& ctx, const AsfPsyInfo& psy, const SfData& data,
+                      std::span<const int> lengths, std::vector<Real>& scaled,
+                      std::vector<Real>& spec_reord) {
+    if (lengths.size() != 1 || psy.num_window_groups != 1 || psy.num_win_in_group[0] != 1) {
+        return false;
+    }
+    const std::span<const std::uint16_t> offsets =
+        tables::sfb_offsets_48(transform_length_samples(ctx, get_transf_length(ctx, psy, 0)));
+    const auto bands = static_cast<std::size_t>(std::max(data.max_sfb[0], 0));
+    const auto total = static_cast<std::size_t>(std::max(lengths[0], 0));
+    // The lines the bands cover are the first ones, one for one: offsets[0] is 0 and the bands
+    // follow each other.
+    if (offsets.empty() || offsets[0] != 0 || bands >= offsets.size() ||
+        scaled.size() != offsets[bands] || scaled.size() > total) {
+        return false;
+    }
+    std::swap(spec_reord, scaled);
+    spec_reord.resize(total, Real{});
+    return true;
 }
 
 }  // namespace iclforge::ac4::detail

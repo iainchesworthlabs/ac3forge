@@ -7,6 +7,7 @@
 
 #include "iclforge/ac4core/detail/real.hpp"
 #include "iclforge/ac4core/dsp/complex.hpp"
+#include "iclforge/ac4core/dsp/fft_kernels.hpp"
 
 // A complex FFT for every length of the form 2^a * 3^b * 5^c, which covers
 // every transform AC-4 needs: an inverse MDCT of N spectral lines runs an
@@ -19,7 +20,8 @@
 // first, then 2, 3 and 5, with the twiddle factors of every pass computed
 // once, in double, when the plan is built. Both directions are unscaled, as
 // Pseudocode 61 is: forward is sum_n x[n] e^(-2 pi i kn/L), inverse the same
-// with +i.
+// with +i. The passes are dsp/fft_kernels.hpp's, one function for each radix
+// and direction.
 //
 // Written against a scalar type (planning/ac4.md, "Arithmetic"); only double
 // is instantiated until the float and fixed-point tiers arrive.
@@ -47,13 +49,22 @@ class Fft {
     void forward(std::span<Complex> data, std::span<Complex> scratch) { run(data, scratch, false); }
     void inverse(std::span<Complex> data, std::span<Complex> scratch) { run(data, scratch, true); }
 
-   private:
-    struct Stage {
-        int radix = 0;
-        std::size_t n = 0;       // the sub-transform length this pass splits
-        std::size_t stride = 0;  // how many sub-transforms run side by side
-        std::size_t twiddle = 0; // offset of this pass's factors in twiddles_
+    // The plan's passes and factors, for a caller that supplies the first pass's input
+    // itself (Imdct's fused pre-twiddle, dsp/mdct.hpp) and runs fft_kernels::run_stages.
+    struct View {
+        const fft_kernels::Stage* stages = nullptr;
+        std::size_t count = 0;
+        const Complex* twiddles = nullptr;
+        const Complex* roots3 = nullptr;
+        const Complex* roots5 = nullptr;
     };
+    [[nodiscard]] View view() const noexcept {
+        return View{stages_.data(), stages_.size(), twiddles_.data(), roots3_.data(),
+                    roots5_.data()};
+    }
+
+   private:
+    using Stage = fft_kernels::Stage;
 
     [[nodiscard]] std::span<Complex> own_work() {
         if (work_.size() != length_) {

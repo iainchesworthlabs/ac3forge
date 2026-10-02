@@ -1088,8 +1088,16 @@ from a Sendspin group (phase I6). The measurements were made with `POST /play` a
 idf.py -DIDF_TARGET=esp32p4   "-DSDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.hw;sdkconfig.p4;sdkconfig.sendspin;sdkconfig.ac4"   -DICLFORGE_STAGE_TIMERS=ON build
 ```
 
-The decode task needs 40 KB of stack, which `sdkconfig.ac4` sets: today's decoder uses 20 to 24 KB
-of it. A play ends with the lines the page's figures come from: `ac4.lap` (frames, samples, the
+The decode task needs 40 KB of stack, which `sdkconfig.ac4` sets: today's decoder uses 19 to 30 KB
+of it. `sdkconfig.p4` reads the flash in quad I/O, which takes 6 to 7 ms off a 5.1 frame and is
+the second stage bootloader's mode: an update over the network keeps the bootloader on the board,
+so a board flashed before keeps DIO until it is flashed again over USB with its bootloader
+(`idf.py flash`; [the page's Flash mode](../../../../docs/platforms/bare-metal/esp32-p4.md#flash-mode)
+has the figures). The I2S queue is 64 ms there (12 descriptors of 256 frames) and not the default 21 ms: the
+sink's write returns when a frame is in the queue, so a queue shorter than a frame's decode runs dry in every
+frame (`sink.underruns` and `sink.dry_ms` in a play's last lines count it;
+[Paced output](../../../../docs/platforms/bare-metal/esp32-p4.md#paced-output) has the plays). A play ends
+with the lines the page's figures come from: `ac4.lap` (frames, samples, the
 decoder's time, the worst frame's and the PCM hash), `ac4.heap` (what the play took of internal
 RAM and PSRAM) and, with `ICLFORGE_STAGE_TIMERS=ON`, a `play.stage[...]` line for each part of the
 decode. `ICLFORGE_EXAMPLE_AC4_CORE` selects core decoding and `ICLFORGE_EXAMPLE_AC4_PCM_HASH` the

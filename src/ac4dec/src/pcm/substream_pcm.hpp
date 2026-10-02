@@ -12,6 +12,7 @@
 #include "iclforge/ac4core/dsp/resampler.hpp"
 #include "iclforge/ac4core/dsp/synthesis.hpp"
 #include "pcm/acpl.hpp"
+#include "pcm/asf_reconstruct.hpp"
 #include "pcm/ajcc.hpp"
 #include "pcm/ajoc.hpp"
 #include "pcm/aspx.hpp"
@@ -261,8 +262,15 @@ class SubstreamPcm {
     // A-CPL (pcm/immersive.hpp), after A-SPX made `units`.
     void apply_immersive_gains(const Control& control, std::span<const UnitIo> units,
                                std::span<const aspx::SubbandGroups> groups);
+    // Below the crossover and everywhere in SIMPLE mode a channel's `out` is its `ext` from
+    // ts_offset_hfadj on. pass_through() for the whole frame does not copy it: it leaves
+    // `out_in_ext_` set, and the output stages that only read the matrix read the window of `ext`.
+    // materialize_out() makes the copy where something else needs `out`.
     void pass_through();
     void pass_through(Channel& channel) const;
+    void materialize_out();
+    // The last slots of `ext` become the next frame's history.
+    void shift_history();
 
     int full_length_ = 0;
     int ch_mode_ = -1;  // the element's layout: pcm_layout()'s
@@ -319,6 +327,9 @@ class SubstreamPcm {
     AjocQuantHistory ajoc_history_next_;
     std::vector<std::vector<QmfValue>> objects_;
     bool ajoc_applied_ = false;
+    // Every channel's matrix of this frame is the window of its `ext` (pass_through()), `out`
+    // stale.
+    bool out_in_ext_ = false;
     std::vector<const std::vector<QmfValue>*> ajoc_inputs_;
     std::vector<std::vector<QmfValue>*> ajoc_inputs_in_place_;
     // The objects' matrices in object order, and each object's synthesis bank
@@ -371,6 +382,8 @@ class SubstreamPcm {
     ElementRoute route_;
     std::vector<StereoParameters> parameters_;  // one channel data element's, 16 or 32 KiB each
     std::vector<std::vector<Real>> scaled_;     // per track, in bitstream order
+    // reconstruct_track()'s 2^((sf - 100) / 4), made with the substream (1 KB at float).
+    ScaleFactorGains sf_gain_ = scale_factor_gains();
     // The layouts align_tracks() gives a pair with b_dual_maxsfb, and per
     // track the one it takes, or -1 for its own.
     std::vector<SfData> dual_layouts_;

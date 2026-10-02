@@ -41,6 +41,29 @@ void Imdct<Real>::inverse(std::span<const Real> spectrum, std::span<Real> out) {
 }
 
 template <typename Real>
+typename Imdct<Real>::Complex* Imdct<Real>::transform(std::span<const Real> spectrum,
+                                                      std::span<Complex> scratch) const {
+    const std::size_t n = length_;
+    const std::size_t half = n / 2;
+    const auto view = fft_.view();
+    if (view.count == 0) {
+        return nullptr;
+    }
+    // Pseudocode 60: Z[k] = (X[N-2k-1] + j X[2k]) (xcos1[k] + j xsin1[k]), the first pass's
+    // input at index k.
+    const Real* const x = spectrum.data();
+    const Complex* const tw = twiddle_.data();
+    const auto pretwiddled = [x, tw, n](std::size_t k) noexcept {
+        return Complex(x[n - 2 * k - 1], x[2 * k]) * tw[k];
+    };
+    // Pseudocode 61: the unscaled N/2-point inverse transform. The first pass writes the second
+    // half of the scratch and the next the first, and so on.
+    return fft_kernels::run_stages<Real, true>(view.stages, view.count, view.twiddles, view.roots3,
+                                               view.roots5, pretwiddled, scratch.data(),
+                                               scratch.data() + half);
+}
+
+template <typename Real>
 void Imdct<Real>::inverse(std::span<const Real> spectrum, std::span<Real> out,
                           std::span<Complex> scratch) {
     const std::size_t n = length_;
@@ -49,31 +72,67 @@ void Imdct<Real>::inverse(std::span<const Real> spectrum, std::span<Real> out,
     }
     const std::size_t half = n / 2;
     const std::size_t quarter = n / 4;
-    const std::span<Complex> z = scratch.first(half);
-    const std::span<Complex> work = scratch.subspan(half, half);
-
-    // Pseudocode 60: Z[k] = (X[N-2k-1] + j X[2k]) (xcos1[k] + j xsin1[k]).
-    for (std::size_t k = 0; k < half; ++k) {
-        z[k] = Complex(spectrum[n - 2 * k - 1], spectrum[2 * k]) * twiddle_[k];
+    const Complex* const z = transform(spectrum, scratch);
+    if (z == nullptr) {
+        return;
     }
-    // Pseudocode 61: the unscaled N/2-point inverse transform.
-    fft_.inverse(z, work);
+    const Complex* const tw = twiddle_.data();
     // Pseudocode 62: y[n] = z[n] (xcos1[n] + j xsin1[n]) / N.
     const Real scale = Real(1) / static_cast<Real>(n);
-    for (std::size_t k = 0; k < half; ++k) {
-        z[k] = z[k] * twiddle_[k] * scale;
-    }
+    const auto post = [z, tw, scale](std::size_t k) noexcept { return z[k] * tw[k] * scale; };
     // Pseudocode 63 without w[n].
-    const Complex* y = z.data();
     for (std::size_t m = 0; m < quarter; ++m) {
-        out[2 * m] = y[quarter + m].imag();
-        out[2 * m + 1] = -y[quarter - m - 1].real();
-        out[half + 2 * m] = y[m].real();
-        out[half + 2 * m + 1] = -y[half - m - 1].imag();
-        out[n + 2 * m] = y[quarter + m].real();
-        out[n + 2 * m + 1] = -y[quarter - m - 1].imag();
-        out[n + half + 2 * m] = -y[m].imag();
-        out[n + half + 2 * m + 1] = y[half - m - 1].real();
+        const Complex a = post(quarter + m);
+        const Complex b = post(quarter - m - 1);
+        const Complex c = post(m);
+        const Complex d = post(half - m - 1);
+        out[2 * m] = a.imag();
+        out[2 * m + 1] = -b.real();
+        out[half + 2 * m] = c.real();
+        out[half + 2 * m + 1] = -d.imag();
+        out[n + 2 * m] = a.real();
+        out[n + 2 * m + 1] = -b.imag();
+        out[n + half + 2 * m] = -c.imag();
+        out[n + half + 2 * m + 1] = d.real();
+    }
+}
+
+template <typename Real>
+void Imdct<Real>::inverse_overlap(std::span<const Real> spectrum, std::span<const Real> kbd,
+                                  std::span<Real> overlap, std::span<Real> pcm,
+                                  std::span<Complex> scratch) {
+    const std::size_t n = length_;
+    if (!valid() || spectrum.size() != n || kbd.size() != n || overlap.size() < n ||
+        pcm.size() < n || scratch.size() < n) {
+        return;
+    }
+    const std::size_t half = n / 2;
+    const std::size_t quarter = n / 4;
+    const Complex* const z = transform(spectrum, scratch);
+    if (z == nullptr) {
+        return;
+    }
+    const Complex* const tw = twiddle_.data();
+    const Real scale = Real(1) / static_cast<Real>(n);
+    const auto post = [z, tw, scale](std::size_t k) noexcept { return z[k] * tw[k] * scale; };
+    const Real* const window = kbd.data();
+    Real* const lap = overlap.data();
+    Real* const out = pcm.data();
+    // A sample of the first half of the block, windowed, added to the previous block's second half,
+    // windowed in its turn, and the sample of this block's second half that waits for the next.
+    const auto lapped = [window, lap, out, n](std::size_t i, Real first, Real second) noexcept {
+        out[i] = lap[i] * window[n - 1 - i] + first * window[i];
+        lap[i] = second;
+    };
+    for (std::size_t m = 0; m < quarter; ++m) {
+        const Complex a = post(quarter + m);
+        const Complex b = post(quarter - m - 1);
+        const Complex c = post(m);
+        const Complex d = post(half - m - 1);
+        lapped(2 * m, a.imag(), a.real());
+        lapped(2 * m + 1, -b.real(), -b.imag());
+        lapped(half + 2 * m, c.real(), -c.imag());
+        lapped(half + 2 * m + 1, -d.imag(), d.real());
     }
 }
 

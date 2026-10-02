@@ -51,9 +51,11 @@ add_executable(iclforge-tests
     ac4/test_ac4_splitter.cpp
     ac4/test_ac4_toc_syntax.cpp
     ac4core/test_ac4core_acpl.cpp
+    ac4core/test_ac4core_acpl_exact.cpp
     ac4core/test_ac4core_ajoc.cpp
     ac4core/test_ac4core_aspx.cpp
     ac4core/test_ac4core_dsp.cpp
+    ac4core/test_ac4core_dsp_exact.cpp
     ac4core/test_ac4core_portable_math.cpp
     ac4core/test_ac4core_resampler.cpp
     ac4dec/test_ac4dec_api.cpp
@@ -272,6 +274,7 @@ if(NOT BUILD_SHARED_LIBS)
         ac4dec/ac4dec_mux.cpp
         ac4dec/ac4dec_objects.cpp
         ac4dec/test_ac4dec_acpl.cpp
+        ac4dec/test_ac4dec_acpl_exact.cpp
         ac4dec/test_ac4dec_asf.cpp
         ac4dec/test_ac4dec_aspx.cpp
         ac4dec/test_ac4dec_channel_elements.cpp
@@ -287,6 +290,7 @@ if(NOT BUILD_SHARED_LIBS)
         ac4dec/test_ac4dec_pcm.cpp
         ac4dec/test_ac4dec_presentation.cpp
         ac4dec/test_ac4dec_presentations.cpp
+        ac4dec/test_ac4dec_reconstruct_exact.cpp
         ac4dec/test_ac4dec_renderer.cpp
         ac4enc/test_ac4enc_acpl.cpp
         ac4enc/test_ac4enc_aspx.cpp
