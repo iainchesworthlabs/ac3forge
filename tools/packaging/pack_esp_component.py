@@ -180,9 +180,8 @@ def verify(archive: pathlib.Path, with_ac4: bool = False, targets: list[str] | N
     The only check that establishes self-containment. Everything else - entry
     counts, file lists - can pass on an archive that does not configure.
 
-    With `with_ac4` the parts that have a floating-point unit (the component's
-    Kconfig offers CONFIG_ICLFORGE_AC4 to no others) turn the AC-4 decoder on, and
-    the throwaway application constructs one and calls it, for the reason the
+    With `with_ac4` every part turns the AC-4 decoder on, and the throwaway
+    application constructs one and calls it, for the reason the
     AC-3 decoder is called: an archive whose AC-4 headers or archives were left
     out would still link an application that never named them.
 
@@ -228,14 +227,16 @@ def verify(archive: pathlib.Path, with_ac4: bool = False, targets: list[str] | N
         # still fail to configure for the other. The manifest's own list is
         # the source - adding a target there is what adds it here.
         for target in targets or manifest_targets():
-            # AC-4 only where the component offers it: a part with a
-            # floating-point unit, which is the S3 and the P4 among these.
-            ac4_here = with_ac4 and target_has_fpu(target)
+            # AC-4 on every part: single precision where there is a
+            # floating-point unit, the fixed-point tier where there is not
+            # (planning/ac4.md, D14d), as the AC-3 decoder above it.
             defaults = f'CONFIG_IDF_TARGET="{target}"\nCONFIG_COMPILER_OPTIMIZATION_SIZE=y\n'
-            if ac4_here:
-                defaults += "CONFIG_ICLFORGE_AC4=y\n"
+            if with_ac4:
+                # IDF's 1.5 MB factory partition: with AC-4 the esp32c3 image is
+                # 1,155,232 bytes, past the default table's 1 MB.
+                defaults += "CONFIG_ICLFORGE_AC4=y\nCONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y\n"
             (root / "sdkconfig.defaults").write_text(defaults, encoding="utf-8")
-            (root / "main" / "main.cpp").write_text(main_source(ac4_here), encoding="utf-8")
+            (root / "main" / "main.cpp").write_text(main_source(with_ac4), encoding="utf-8")
             for command in (["set-target", target], ["build"]):
                 subprocess.run([sys.executable, str(idf_py), *command], cwd=root, check=True)
 
@@ -276,30 +277,6 @@ def main_source(with_ac4: bool) -> str:
         ]
     lines.append("}")
     return "\n".join(lines) + "\n"
-
-
-def target_has_fpu(target: str) -> bool:
-    """Whether ESP-IDF's soc component says `target` has a floating-point unit.
-
-    The same fact the component keys its decode arithmetic and CONFIG_ICLFORGE_AC4
-    on (CONFIG_SOC_CPU_HAS_FPU, which Kconfig generates from this header), read
-    from where it is written so that a part added to the manifest needs nothing
-    added here.
-    """
-    caps = (
-        pathlib.Path(os.environ["IDF_PATH"])
-        / "components"
-        / "soc"
-        / target
-        / "include"
-        / "soc"
-        / "soc_caps.h"
-    )
-    for line in caps.read_text(encoding="utf-8").splitlines():
-        fields = line.split()
-        if len(fields) >= 3 and fields[0] == "#define" and fields[1] == "SOC_CPU_HAS_FPU":
-            return fields[2] == "1"
-    return False
 
 
 def manifest_targets() -> list[str]:
