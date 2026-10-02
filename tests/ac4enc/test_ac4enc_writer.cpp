@@ -294,3 +294,28 @@ TEST_CASE("a DRC profile sent as a curve is the profile the decoder's Table 162 
         CHECK(own.release_threshold == table->release_threshold);
     }
 }
+
+TEST_CASE(
+    "dialogue enhancement data of a later frame with no frame before it is coded against zeros",
+    "[ac4enc][writer]") {
+    // Before any parameters were sent a stream starts from 0 in every band (the encoder's
+    // least_parameters() reads it so). Writing a frame that is not an I-frame with no previous
+    // frame must give the bits that writing it against zeros gives, and not read through a null
+    // pointer.
+    using iclforge::ac4::detail::DeConfigCodes;
+    using iclforge::ac4::detail::DeFrameParameters;
+    const DeConfigCodes config{
+        .method = 0, .max_gain = 2, .channel_config = 1, .mid = false, .signal_contribution = 0};
+    DeFrameParameters frame;
+    frame.par[0] = {3, 2, 1, 0, 1, 2, 3, 2};
+    const DeFrameParameters zeros;
+
+    BitWriter without = BitWriter::buffered();
+    iclforge::ac4::detail::write_dialog_enhancement(without, &config, &frame, nullptr, false);
+    BitWriter against_zeros = BitWriter::buffered();
+    iclforge::ac4::detail::write_dialog_enhancement(against_zeros, &config, &frame, &zeros, false);
+    CHECK(without.bit_position() == against_zeros.bit_position());
+    CHECK(without.bytes() == against_zeros.bytes());
+    CHECK(without.bit_position() >
+          3);  // b_de_data_present, b_de_config_flag, de_keep_data_flag, the codes
+}

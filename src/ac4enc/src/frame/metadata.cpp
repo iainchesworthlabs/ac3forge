@@ -811,6 +811,11 @@ void write_dialog_enhancement(BitWriter& w, const DeConfigCodes* config,
     const auto code = [&](std::span<const HuffCode> codes, int value) {
         w.write_codeword(codes, static_cast<std::size_t>(value), "de_par_code");
     };
+    // A frame that is not an I-frame is coded against the last frame sent. Before any was sent that
+    // is the state a stream starts from, 0 in every band (the encoder's least_parameters() takes it
+    // the same way), so a missing previous frame reads as zeros instead of being read through.
+    const DeFrameParameters stream_start{};
+    const DeFrameParameters& before = previous != nullptr ? *previous : stream_start;
     int ref = 0;
     for (std::size_t ch = 0; ch < channels; ++ch) {
         const std::array<int, kDeBands>& row = par[ch];
@@ -829,7 +834,7 @@ void write_dialog_enhancement(BitWriter& w, const DeConfigCodes* config,
                     code(diff_codes, row[band] - ref + diff_off);
                     ref = row[band];
                 } else {
-                    code(diff_codes, row[band] - previous->par[ch][band] + diff_off);
+                    code(diff_codes, row[band] - before.par[ch][band] + diff_off);
                 }
             }
         }

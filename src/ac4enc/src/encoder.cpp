@@ -3612,7 +3612,9 @@ std::optional<Refusal> Encoder::Impl::make_objects(Impl& impl, const SubstreamCo
             umx_order.push_back(fullband[k]);
         }
         const double frame_bits = one.bitrate_kbps * 1000.0 * c.frame_length / c.rate_hz;
-        c.ajoc = std::make_unique<SubstreamCoder::AjocCoding>(SubstreamCoder::AjocCoding{
+        // Built where it lives: the A-JOC estimator is about 300 kB, and make_unique over a braced
+        // temporary would put it, and a copy of it, in this function's frame first.
+        c.ajoc.reset(new SubstreamCoder::AjocCoding{
             .timeline = impl.timeline,
             .static_dmx = layout.static_dmx,
             .fullband = fullband,
@@ -3621,13 +3623,13 @@ std::optional<Refusal> Encoder::Impl::make_objects(Impl& impl, const SubstreamCo
             .input_channel = input_channel,
             .objects = std::vector<std::vector<double>>(
                 fullband.size(), std::vector<double>(static_cast<std::size_t>(c.delay), 0.0)),
-            .estimator = detail::AjocEncoder(
-                detail::AjocSetup{.num_dmx = m,
-                                  .num_umx = static_cast<int>(fullband.size()),
-                                  .num_bands_code = layout.num_bands_code,
-                                  .quant_select = layout.quant_select,
-                                  .num_decorr = layout.num_decorr},
-                c.timing),
+            .estimator =
+                detail::AjocEncoder(detail::AjocSetup{.num_dmx = m,
+                                                      .num_umx = static_cast<int>(fullband.size()),
+                                                      .num_bands_code = layout.num_bands_code,
+                                                      .quant_select = layout.quant_select,
+                                                      .num_decorr = layout.num_decorr},
+                                    c.timing),
             .max_bits = static_cast<std::size_t>(kAjocShare * frame_bits),
             .dmx_objects = std::move(dmx_objects),
             .umx_objects = std::move(umx_objects),

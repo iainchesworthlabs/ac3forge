@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <memory>
 
 #include "bit_writer.hpp"
 
@@ -457,9 +458,11 @@ AjocFields AjocEncoder::propose(long long frame, bool iframe, std::size_t max_bi
             const std::size_t d = o % at(setup_.num_decorr);
             unit.wet[o][d].fill(quantise(true, 1.0));
         }
-        Reconstruction probe = state_;
+        // A Reconstruction is about 150 kB: these two work copies live on the heap, as the
+        // candidates' do, and not in this function's frame.
+        const auto probe = std::make_unique<Reconstruction>(state_);
         std::vector<std::vector<Complex>> with;
-        (void)run(unit, probe, with);
+        (void)run(unit, *probe, with);
         const std::vector<std::vector<Complex>>& dry = outputs[chosen];
         Values wetted = proposed_;
         for (std::size_t o = 0; o < wetted.wet.size(); ++o) {
@@ -481,10 +484,10 @@ AjocFields AjocEncoder::propose(long long frame, bool iframe, std::size_t max_bi
             }
         }
         if (bits_of(wetted) <= max_bits) {
-            Reconstruction after = state_;
-            (void)run(wetted, after, out);
+            const auto after = std::make_unique<Reconstruction>(state_);
+            (void)run(wetted, *after, out);
             proposed_ = wetted;
-            proposed_state_ = after;
+            proposed_state_ = *after;
         }
     }
     return fields_of(proposed_, iframe);
