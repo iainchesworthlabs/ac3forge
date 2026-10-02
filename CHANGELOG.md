@@ -2637,6 +2637,15 @@ The sections below contain the complete change list and fixes.
 
 **Codec correctness**
 
+- **The AC-4 decoder dropped the stream's downmix gains when the listener changed the downmix or
+  the LFE choice.** `Decoder::set_output()` with a new `downmix` or `mix_lfe` reset the gains,
+  the custom downmix data and the loudness corrections the stream had sent, and a stream may send
+  them only in its I-frames. Until the next one, up to a second later at the encoder's default
+  interval, the downmix took the -3 dB of a stream that has sent none and left out the LFE. Hearth's
+  Lo/Ro and Lt/Rt control and its LFE switch were audibly wrong for that second. The values now
+  persist across the change, as Part 1 clause 6.2.17.0 has them persist until another frame sends
+  them. The same change no longer starts the DRC's smoothing again either, since DRC acts on the
+  channels before the downmix.
 - **The AC-4 encoder wrote a screen factor of 1/8 for an object whose depth exponent was other than
   1 and whose screen factor was 0.** Part 2 sends `object_screen_factor_code` and
   `object_depth_factor` as one group of fields, and the factor, (code + 1) / 8, has no code for 0,
