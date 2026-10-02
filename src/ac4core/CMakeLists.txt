@@ -153,14 +153,18 @@ target_link_libraries(iclforge_ac4core
         "$<BUILD_INTERFACE:iclforge::coverage>"
         "$<BUILD_INTERFACE:iclforge::arithmetic>")
 
-# The kernels of a frame's transform and filter work at -O2 under the profile's
-# ICLFORGE_MINIMAL_HOT_O2, as src/ac3/minimal.cmake does for the AC-3 and
-# E-AC-3 decoders' (docs/platforms/bare-metal/esp32-p4.md has what it bought on
-# a board). A size-optimised build is what the profile is; these are the files a
-# stage timer showed the optimiser paying for, and it costs flash and not SRAM.
-# The decoder's own files (src/ac4dec) gained nothing measurable from it and
-# stay at -Os. The option is that file's own, declared before this directory is
-# added.
+# The kernels of a frame's transform and filter work at -O3 under the profile's
+# ICLFORGE_MINIMAL_HOT_O2 (named for the AC-3 and E-AC-3 decoders' -O2 in
+# src/ac3/minimal.cmake, whose switch this is). A size-optimised build is what
+# the profile is; these are the files a stage timer showed the optimiser paying
+# for, and it costs flash and not SRAM. On the ESP32-P4's in-order core -O3 beat
+# -O2 on these by 2.7 ms a 5.1 frame (it unrolls the filter and transform loops
+# and interleaves their independent multiplies, which hides the latency of the
+# core's floating-point unit that a rolled loop exposes) for 9 KB of flash; the
+# arithmetic is the same operation for operation, which the board's PCM hashes
+# checked (docs/platforms/bare-metal/esp32-p4.md, planning/ac4.md D14e). The
+# decoder's own files (src/ac4dec) are at -O2 in its CMakeLists.txt: -O3 gained
+# nothing there and cost 73 KB.
 if(ICLFORGE_MINIMAL_DECODER AND ICLFORGE_MINIMAL_HOT_O2)
     set_source_files_properties(
         src/dsp/fft.cpp
@@ -170,7 +174,7 @@ if(ICLFORGE_MINIMAL_DECODER AND ICLFORGE_MINIMAL_HOT_O2)
         src/dsp/synthesis.cpp
         src/aspx/hf_generator.cpp
         src/acpl/acpl.cpp
-        PROPERTIES COMPILE_OPTIONS "-O2")
+        PROPERTIES COMPILE_OPTIONS "-O3")
 endif()
 
 # The float tables of the sample rate converter are built by the compiler, in

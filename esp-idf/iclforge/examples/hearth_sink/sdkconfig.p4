@@ -63,6 +63,19 @@ CONFIG_PM_SLEEP_CLK_ICG_ENABLE=n
 # CONFIG_BOOTLOADER_LOG_LEVEL_WARN took it to 20,896 bytes in the same
 # measurement. planning/esp32-ota.md has the table.
 
+# Quad I/O to the flash. The AC-4 decoder's code and the tables it reads are
+# larger than the caches, so every frame refills thousands of 64-byte lines
+# from flash, 2 bits a clock in DIO and 4 in QIO. On 2026-10-02 the same
+# decoder took 6 to 7 ms a frame less at 5.1 and 3 to 5 ms less at 2.0 with the
+# flash in QIO, to the same PCM (docs/platforms/bare-metal/esp32-p4.md,
+# "Flash mode"). The mode is the second stage bootloader's, so an update over
+# the network, which replaces the application and keeps the bootloader on the
+# board, leaves a board flashed before this line in DIO until it is flashed
+# again over USB, bootloader included (`idf.py flash`). QIO adds 944 bytes to
+# the bootloader, 24,368 in all and 208 under the window above. A bootloader
+# that cannot set a flash chip's quad-enable bit says so and stays in DIO.
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+
 # PSRAM, on: this board has 32 MB of it (docs/platforms/bare-metal/esp32-p4.md),
 # unlike the minimum-footprint bare-metal probe that deliberately leaves it off
 # to measure what fits in internal SRAM alone - hearth_sink has no such goal,
