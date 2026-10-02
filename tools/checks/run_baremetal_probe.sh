@@ -35,7 +35,8 @@ HOST=0
 DIRECTION=decoder
 # --ac4: the third profile, the AC-4 decoder (planning/ac4.md, D14a) in float, with its own
 # probe (apps/baremetal/ac4_probe.cpp) and its own presets, since AC-4 shares nothing with
-# iclforge::ac3 and an image carries one probe.
+# iclforge::ac3 and an image carries one probe. --ac4 --scalar=fixed is the same probe on the
+# decoder's fixed-point tier (D14d), with ceilings of its own.
 # --stage-timers: build the library with ICLFORGE_STAGE_TIMERS, so the probe
 # prints where each fixture's decode time goes stage by stage. On this leg
 # that is shape only - QEMU's clock describes the host, and the host shape's
@@ -70,8 +71,8 @@ if [[ "$ICOUNT" == "1" && "$HOST" == "1" ]]; then
     echo "error: --icount is a QEMU mode; it cannot be combined with --host" >&2
     exit 2
 fi
-if [[ "$DIRECTION" == "ac4" && ( -n "${SCALAR:-}" || "$STAGE_TIMERS" == "ON" ) ]]; then
-    echo "error: the AC-4 probe is float and has no stage timers; --scalar and --stage-timers do not apply" >&2
+if [[ "$DIRECTION" == "ac4" && "$STAGE_TIMERS" == "ON" ]]; then
+    echo "error: the AC-4 probe has no stage timers; --stage-timers does not apply" >&2
     exit 2
 fi
 
@@ -151,6 +152,18 @@ declare -A ICOUNT_CEILING_AC4=(
     [ac4_51_acpl]=137000000
     [ac4_514_tones]=227000000
     [ac4_20_companding]=64500000
+)
+# The fixed-point tier's (--ac4 --scalar=fixed --icount), measured 2026-10-02 (D14d) on the same
+# leg with the same rule: 38,233,000, 34,202,000, 55,629,000, 52,493,000, 90,383,000 and
+# 39,856,000 in the order below. Integer arithmetic where the float tier's is software floating
+# point, so the 5.1 and 5.1.4 rows are well under half the float table's.
+declare -A ICOUNT_CEILING_AC4_FIXED=(
+    [ac4_20_music]=42000000
+    [ac4_20_acpl]=37500000
+    [ac4_51_music]=61000000
+    [ac4_51_acpl]=58000000
+    [ac4_514_tones]=99500000
+    [ac4_20_companding]=44000000
 )
 # Steady-state allocations per frame. The decoder's syntax layer still builds its element
 # vectors afresh each frame (planning/ac4.md, D14a's memory audit); these hold the distance
@@ -293,6 +306,16 @@ if [[ "$DIRECTION" == "ac4" ]]; then
     # 23,920 on the x86-64 host, whose frames are larger. Every ceiling a tenth or so over its
     # figure.
     ICLFORGE_MAX_IMAGE_BYTES=${ICLFORGE_MAX_IMAGE_BYTES_AC4:-750000}
+    # The fixed-point tier's image, measured 2026-10-02 (D14d): 727,656 bytes (725,004 .text).
+    # Its converter tables are Q1.30 integers built by the compiler, the 1001/960 one 188,376
+    # bytes and read in place, and the float tables are not linked. Peaks, churn, stack and
+    # retained bytes all sit inside the float tier's ceilings and share them.
+    if [[ "${SCALAR:-}" == "fixed" ]]; then
+        ICLFORGE_MAX_IMAGE_BYTES=${ICLFORGE_MAX_IMAGE_BYTES_AC4:-800000}
+        for key in "${!ICOUNT_CEILING_AC4_FIXED[@]}"; do
+            ICOUNT_CEILING_AC4[$key]=${ICOUNT_CEILING_AC4_FIXED[$key]}
+        done
+    fi
     ICLFORGE_MAX_HEAP_BYTES=${ICLFORGE_MAX_HEAP_BYTES_AC4:-2130000}
     ICLFORGE_MAX_STEADY_ALLOCS_PER_FRAME=${ICLFORGE_MAX_STEADY_ALLOCS_PER_FRAME_AC4:-210}
     ICLFORGE_MAX_RETAINED_BYTES=${ICLFORGE_MAX_RETAINED_BYTES_AC4:-1024}

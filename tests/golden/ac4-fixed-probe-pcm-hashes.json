@@ -1,0 +1,11 @@
+{
+  "_comment": "The AC-4 decoder's fixed-point PCM hashes (planning/ac4.md, D14d): FNV-1a over every sample the bare-metal AC-4 probe delivers for each fixture, built with ICLFORGE_DECODE_SCALAR=fixed, as <fixture>.pcm_hash prints them. Integer arithmetic, so the same on every platform by construction; measured 2026-10-02 on the x86-64 host (GCC 14), on the Cortex-M3 under QEMU (arm-none-eabi GCC 14.2.1) and on RV32IMC, the ESP32-C3's instruction set, with its compiler (riscv32-esp-elf GCC 15.2.0) on QEMU's virt board, identical. The C3 machine itself has 400 KB of SRAM and no PSRAM, less than the smallest fixture's peak. Re-pin when the tier's arithmetic changes on purpose (tools/checks/check_probe_hashes.py --expected).",
+  "hashes": {
+    "ac4_20_acpl": "85dd6ef009a201be",
+    "ac4_20_companding": "32f10af325e43fb7",
+    "ac4_20_music": "28407acde35647dd",
+    "ac4_514_tones": "171f6c8b7ad7ae76",
+    "ac4_51_acpl": "a8b3fd8fa17fabcc",
+    "ac4_51_music": "63242a49e29b5c83"
+  }
+}

@@ -224,9 +224,9 @@ struct LevelAccumulator {
 };
 
 // Every delivered sample's bit pattern, in delivery order, through FNV-1a, printed as
-// <fixture>.pcm_hash. The decode is float here, so the value is the same on every leg that
-// computes in IEEE single without fused multiply-add, and check_probe_hashes.py holds one
-// leg to another where that is the claim.
+// <fixture>.pcm_hash. In the float tier the value is the same on every leg that computes in
+// IEEE single without fused multiply-add; in the fixed-point tier it is the same on every leg.
+// check_probe_hashes.py holds one leg to another where that is the claim.
 struct PcmHash {
     std::uint64_t state = 14695981039346656037ULL;
 
@@ -255,7 +255,7 @@ void fail(const char* fixture, const char* what, long got, long expected) {
 // 5% of the expected value with a floor of 2 in the scaled unit (2e-6 of full scale): this
 // checks that the decode is RIGHT, not that two floating-point implementations agree bit for
 // bit, but the streams have levels down to 36 in that unit, so the floor is the smallest that
-// float's rounding stays inside.
+// float's rounding stays inside. The fixed-point tier's levels match the same expected values.
 bool level_matches(std::int32_t got, std::int32_t expected) {
     const std::int32_t slack = expected / 20 + 2;
     return got >= expected - slack && got <= expected + slack;

@@ -1109,6 +1109,26 @@ jobs:
             --double-cli build/config-linux-llvm/bin/forge \
             --float-cli build/decode-scalar-float/bin/forge
 
+      # The AC-4 decoder's fixed-point tier (planning/ac4.md, D14d), the same three
+      # questions: the scorers at the same pins, and the fixed decode against the
+      # double one at the floors in tests/golden/ac4dec/scalar-agreement-fixed.json.
+      - name: Build a fixed-point forge
+        run: |
+          cmake --preset config-linux-llvm -B build/decode-scalar-fixed -DICLFORGE_DECODE_SCALAR=fixed
+          cmake --build build/decode-scalar-fixed --target forge -- -k 0
+
+      - name: AC-4 decode against DEE's sources, fixed-point decoder
+        run: python3 tools/checks/score_ac4_decode.py --cli build/decode-scalar-fixed/bin/forge
+
+      - name: AC-4 encode, decoded by the fixed-point decoder against its sources
+        run: python3 tools/checks/score_ac4_encode.py --cli build/decode-scalar-fixed/bin/forge
+
+      - name: AC-4 fixed-point against double decode (below and above A-SPX's crossover)
+        run: |
+          python3 tools/checks/check_ac4_decode_scalar_snr.py \
+            --double-cli build/config-linux-llvm/bin/forge \
+            --fixed-cli build/decode-scalar-fixed/bin/forge
+
       - name: Matrix coverage (every CLI option is exercised somewhere)
         run: python3 tools/checks/check_matrix_coverage.py --cli build/config-linux-llvm/bin/forge
 

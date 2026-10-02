@@ -462,6 +462,17 @@ jobs:
           ./tools/checks/run_baremetal_probe.sh --ac4 --host | tee "$RUNNER_TEMP/ac4-host.txt"
           python3 tools/checks/check_probe_hashes.py --expected tests/golden/ac4-probe-pcm-hashes.json "$RUNNER_TEMP/ac4-host.txt"
 
+      # The same probe at the AC-4 decoder's fixed-point tier (planning/ac4.md, D14d),
+      # held to the tier's own pins (tests/golden/ac4-fixed-probe-pcm-hashes.json),
+      # which the Cortex-M3 leg is held to as well.
+      - name: Fixed-point AC-4 probe natively, hashes against the pinned ones
+        if: matrix.gold_reference && matrix.preset == 'linux-gcc'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./tools/checks/run_baremetal_probe.sh --ac4 --host --scalar=fixed | tee "$RUNNER_TEMP/ac4-fixed-host.txt"
+          python3 tools/checks/check_probe_hashes.py --expected tests/golden/ac4-fixed-probe-pcm-hashes.json "$RUNNER_TEMP/ac4-fixed-host.txt"
+
       # The same two questions for the ENCODE path's scalar. ICLFORGE_ENCODE_SCALAR
       # (src/ac3/variants/encode-scalar-{float64,float32}/) is the axis the minimum-footprint
       # profile encodes on for the ESP32-S3, and a float encoder is a different
