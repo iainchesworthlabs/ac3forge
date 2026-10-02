@@ -2336,6 +2336,98 @@ from the branch tree with the committed configuration; `tools/ci/precheck.py`; `
 `--with-ac4 --verify --verify-targets esp32p4`; and, since no source file changed, the host builds and tests (MSVC, GCC 16,
 Clang 22) of the base commit, whose code this branch does not touch.
 
+#### D14e: the P4 decodes 5.1 in real time
+
+After D14a6. On the P4 at D14a6 a 5.1 frame took 1.17, 1.52, 1.94 and 3.86 times its duration in SIMPLE mode, A-SPX, A-SPX with A-CPL mode 2 and A-CPL mode 3.
+The user took it on 2026-10-01, to run once N1 and D14a5 had merged: decode 5.1 SIMPLE in real time, then A-SPX and, where it can be reached, the A-CPL
+modes, at 1.0 times a frame's duration or less at 360 MHz with Wi-Fi up and ESP-IDF's default allocation policy, with the `float` PCM equal to the host's and
+the Cortex-M3's, starting from the board's own stage timers; the levers named were A-CPL mode 3, the inverse transform at 5.1, the QMF banks, the vector
+extension, where the allocator puts things, the L2 cache's size and a paced I2S; the 29.97 fps converter was D14a6's, and 5.1.4 was to be measured and not chased.
+One pull request.
+
+- **Where the time went.** At D14a6 a 5.1 SIMPLE frame took 49.9 ms: parse 13.0, reconstruction 13.7, the inverse transform 7.5, the QMF banks 8.3 and 7.4;
+  A-SPX added 15.9, A-CPL mode 2 28.4 and mode 3 116.8. The cache controller's access counters, read in a scratch image, gave about 2,300 64-byte lines of
+  code a frame from flash (1,000 of them in parse), 1,700 to 2,600 lines of data from PSRAM in each stage and about 0.7 MB of data a frame through the 128 KB
+  L2 cache; a loop of `float` operations on the in-order core ran 2 to 3 times slower as written than unrolled with independent work (a scratch `membench`),
+  and a profile by caller found 48,000 calls a frame into the compiler's soft-float `double` routines in A-CPL mode 3, 43,000 of them in its coupling.
+- **The transforms and the banks in fewer passes** (`perf(ac4core)`). The FFT's passes are a function for each radix and direction
+  (`dsp/fft_kernels.hpp`) in place of a generic butterfly; `Imdct::inverse_overlap()` takes a full-length block after a full-length block from the spectrum to
+  the PCM in one pass (the pre-twiddle is the first pass's read, the post-twiddle, the unfolding, the window and the overlap-add one loop); and the A-SPX cubic
+  fit's four orthonormal polynomials, which depend on the number of points alone, are made once for a channel and not at every frame in `double`.
+- **A-CPL's interpolation once for each run of subbands** (`perf(ac4)`). `acpl::Interpolator` evaluates Pseudocode 109 operation for operation, from the values
+  the subbands of a parameter band that share `acpl_param_prev` share, with the ramp's `(ts + 1)` a table entry and the division by 16 or 32 slots a
+  multiplication by the exact reciprocal; `AcplStage` forms each slot's coefficients once for a run and narrows them to `Real` once, and `Decorrelator`
+  narrows Tables 199 to 201 once. 35,000 evaluations a frame at 5.1 in mode 3 become 8,000.
+- **The reconstruction and the output without their copies** (`perf(ac4dec)`). A frame that SIMPLE mode passes through whole is read from `ext` by the
+  synthesis where nothing else takes its matrix, and not copied to `out` first; a frame of one long block is ungrouped by swapping buffers; the 256 scale
+  factor gains are a table and not a `std::pow` for each band; the concealment spectra change places with the frame's in place of a 48 KB copy; the delay queue
+  moves each sample once; an element's tracks (15 KB each) are reserved and not moved 63 times a frame; and the two or four lines of a Huffman codeword are
+  stored by name, where GCC made a call into ROM's `memcpy` of them.
+- **The compiler and the flash** (`build(esp32p4)`). The kernels of `src/ac4core` at `-O3` and thirteen of `src/ac4dec`'s translation units at `-O2` under
+  `ICLFORGE_MINIMAL_HOT_O2`, and `sdkconfig.p4` reading the flash in QIO mode. The mode is the second stage bootloader's, and the application image carries
+  none of it.
+
+**What each part bought**, 5.1 on the board, the decoder's microseconds a frame without the first frame and times a frame's duration, D14a6's image and then
+the same tree with the parts added, one image each, flashed with its own bootloader and played in the same session
+([the P4 page](../docs/platforms/bare-metal/esp32-p4.md#what-d14e-changed) has the stages):
+
+| | SIMPLE | A-SPX | A-SPX, A-CPL 2 | A-SPX, A-CPL 3 |
+|---|---:|---:|---:|---:|
+| D14a6 | 52,937 (1.24) | 65,797 (1.54) | 82,756 (1.94) | 164,627 (3.86) |
+| and the three code commits | 41,390 (0.97) | 48,144 (1.13) | 50,994 (1.20) | 60,398 (1.42) |
+| and `-O3` and `-O2` | 35,026 (0.82) | 42,921 (1.00) | 46,329 (1.08) | 56,153 (1.32) |
+| and QIO flash | 27,399 (0.64) | 35,621 (0.83) | 38,932 (0.91) | 48,255 (1.13) |
+| with the decoder's files at `-Os` | 31,217 (0.73) | 37,496 (0.88) | 40,502 (0.95) | 50,175 (1.18) |
+
+- **Found on the way.** An extra component that includes the decoder's headers and is built without `-ffp-contract=off` changes the PCM on the board: the linker
+  keeps one copy of each weak symbol for the whole program, and the profiling component's copy of the QMF kernels, compiled at GCC's default of `fast`,
+  contained fused multiply-adds that the decoder then ran (every hash moved and the QMF stages ran slower; the host, which never links such a component, did
+  not move). Compare the board's PCM hash after any change to an image's components or flags. A play's time moves with the boot: ten boots of one image gave 5.1
+  SIMPLE 28.4 to 29.9 ms and 5.1 A-SPX 36.7 to 37.5 ms a frame (the average with the first frame), and the D14a6 image's SIMPLE play 49.9 and 52.9 ms in two
+  sessions. The one-in-twenty slow QMF and transform stage of D14b was the low-power SRAM of D14a6: no stage was slow in the twenty plays of the final image or the
+  ten boots.
+- **Tried and not taken.** `-O3` on the decoder's files (no gain over `-O2` there, 73 KB more flash); `-funroll-loops` and an instruction-scheduling flag on the
+  kernels (1.3 to 3.2 ms a frame for 21 to 31 KB, no more than `-O3`'s 2.7 to 2.9 for 9 KB); a 256 KB L2 cache (2.6 to 3.7 ms a frame, for 128 KB of internal RAM,
+  1 KB of it free at the end of a play); a 128-byte L2 line (1.3 to 2.2 ms on three 5.1 plays, 0.6 ms more on another, and three plays of nine stopped on an image
+  whose `esp_hosted` buffers are PSRAM that its DMA reads: not traced); the cache's autoload prefetcher, which the ROM has and ESP-IDF does not use (enabling
+  it from a scratch image panicked the board, and the setting survived the CPU reset into a boot loop in PSRAM initialisation until a watchdog reset cleared it);
+  a 120 MHz flash (`IDF_EXPERIMENTAL_FEATURES` for this part, with the flash's high-performance mode: not tried). Not attempted: the second core, which is idle
+  (87% of its samples in a profile) but would take a job hook in the library and a second set of working buffers, and the vector extension, which works on
+  integers and so cannot form the `float` kernels' bits.
+- **A-CPL mode 3 is not reached** (1.14). Its stage takes 19.9 ms of the 48.7. Some 7 to 11 ms of that is the compiler's soft-float `double` routines at 60 to 100
+  cycles a call, which Pseudocode 109's interpolation needs for its bits (8,000 evaluations of three operations and 11,500 narrowings a frame, in a profile of
+  the rework's image); the decorrelators, the ducker and the loops over the subbands are `float`, and the rest is passes over 16 KB buffers in PSRAM. A ramp
+  scaled by the reciprocal of the slot count would save one multiplication in three of the evaluations, about 2 ms of the 6.0 the mode is over by.
+- **The output side.** The measurements use a null sink. Through the example's real I2S sink at 2.0, with its default queue of 4 descriptors of 240 frames (21 ms), a
+  stream whose frame takes more than the queue holds to decode plays slowly: 5.1 A-SPX folded to 2.0, 35 ms a frame, took 13.5 s for 10.1 s of audio, where a 2.0
+  SIMPLE stream (13 ms a frame) took 10.0 s. With 12 descriptors of 256 frames (64 ms, 24 KB of internal RAM at 2.0), which `sdkconfig.p4` now sets, the same stream took 10.0 s with one underrun of 11 ms,
+  and 5.1 SIMPLE and A-SPX with A-CPL mode 2 folded to 2.0 played in 10.0 s with at most three underruns and 11 ms of silence in all; A-CPL mode 3 ran dry in every frame (11.4 s).
+  The sink's own count is `sink.underruns` and `sink.dry_ms`. The wide TDM sink does not start on this chip revision (`sink/i2s_wide/audio_sink.cpp` has why), so 5.1 itself
+  could not be played through a sink, and a wide TDM frame (64 bytes, 196 KB for a 64 ms queue) wants the decoded PCM in a PSRAM ring in front of the sink instead.
+
+**Built in D14e.** `src/ac4core`'s `dsp/fft_kernels.hpp`, `Imdct::inverse_overlap()`, `CubicBasis`, `acpl::Interpolator` and the decorrelator's narrowed tables; in `src/ac4dec`
+`SubstreamPcm`'s lazy pass-through (`materialize_out()` and `shift_history()`), `ungroup_in_place()`, `scale_factor_gains()` and the cheaper `parse_sf_data()` store
+and `ElementParser::begin()`; the compiler options of both libraries' `CMakeLists.txt`; `sdkconfig.p4`'s QIO line; the page's tables and its Flash mode and What D14e
+changed sections. Four test files hold the changes to the old code, to the bit: `test_ac4core_dsp_exact.cpp` (the passes, the transform and the synthesis against
+verbatim copies, at the decoder's scalar and at `double`, on dense data and on spectra with runs of zeros of either sign), `test_ac4core_acpl_exact.cpp`,
+`test_ac4dec_acpl_exact.cpp` (the stage against a copy of the old one, over several frames that carry state) and `test_ac4dec_reconstruct_exact.cpp`.
+
+**Exit, as measured.** On the board with the network up and the default allocation policy, the decoder's microseconds a frame and times a frame's duration, D14a6's and then D14e's
+(`ICLFORGE_EXAMPLE_AC4_PCM_HASH` on, a null sink): 5.1 SIMPLE 49,913 (1.17) and 27,400 (0.64), A-SPX 64,836 (1.52) and 35,589 (0.83), A-SPX with A-CPL mode 2 82,568 (1.94) and 38,823
+(0.91), A-CPL mode 3 164,748 (3.86) and 48,689 (1.14); the 5.1 streams folded to 2.0 1.07, 1.46, 1.85 and 3.77 and 0.60, 0.76, 0.83 and 1.06; the 2.0 streams 0.52 and 0.66 and 0.28 and 0.37;
+the converter's four streams 0.97, 0.79, 0.80 and 1.00 and 0.68, 0.51, 0.53 and 0.69; 5.1.4 in full decoding 2.4 to 3.4 and 1.57 to 1.90, in core decoding 1.9 to 2.7 and 1.24 to 1.58. The 512-byte
+policy takes 1.08 to 1.24 times as long over the twenty plays. The PCM did not move: the host's hash of each of the 84 plays and cuts (MSVC, GCC 16 and Clang 22 at `float`) equals D14a5's, the board's
+hash of 52 plays (the twenty, the six core plays, their cuts and the probe's six fixtures) equals the host's, and the six fixtures equal their pins.
+
+**Exit:** 5.1 in SIMPLE mode, A-SPX and, if reached, A-CPL at 1.0 or less with the `float` PCM unchanged, and the exit's figures. Met for SIMPLE (0.64), A-SPX (0.83) and A-SPX with A-CPL
+mode 2 (0.91), which also keep up folded to 2.0 (0.60, 0.76 and 0.83); not met for A-CPL mode 3 (1.14), which was named "if reachable"; 5.1.4 is 1.57 to 1.90 in full
+decoding and 1.24 to 1.58 in core decoding, measured only.
+
+**Verified by:** the board (the 26 plays and their cuts under the default policy and the 26 plays under the 512-byte one, the control plays with the hash off, AC-3 and E-AC-3, the probe's
+six fixtures, and the six quick plays of every image in the table above); `iclforge-tests` whole at `double` on MSVC with every option on, and its AC-4 tests at `float` on MSVC; the WSL GCC 16 and Clang 22
+`-Werror` gates at both scalars; GCC 14 with the wheel's flags over the 75 AC-4 translation units; clang-cl over the touched ones; `run_baremetal_probe.sh --ac4 --icount` on the Cortex-M3 under QEMU and `--host` (the six pinned hashes and every ceiling); the packer's `--verify-targets esp32p4`;
+`tools/ci/precheck.py`; `mkdocs build --strict`.
+
 ### Encoder phases
 
 Each encoder phase follows the decoder phase that decodes what it writes and uses what that phase

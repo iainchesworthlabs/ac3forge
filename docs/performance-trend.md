@@ -1188,6 +1188,21 @@ stack and the hashes are the same, and the image is 683,448 bytes, 198,416 more 
 before D14a5 (485,032), 196,464 of them the sample rate converter's three `float` tables, which the
 compiler builds into it.
 
+With D14e in the tree (2026-10-02, the same leg) the counts are within 1.1% of D14a4's, the peak heaps 0.8 to 6.8%
+lower, the PCM hashes the same, and the image is 691,896 bytes (689,244 `.text`, 392 `.data`, 2,260 `.bss`),
+8,448 more than with D14a5: the specialised FFT passes, the A-CPL interpolation and the other code D14e adds, at
+`-Os`. D14e's changes are for the P4's in-order core and its flash, and a soft-float Cortex-M3 runs the same operations in
+the same order:
+
+| Fixture | Instructions per frame | Ceiling | Peak heap | Ceiling | Allocations per frame | Ceiling | Stack |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `ac4_20_music` | 54,766,000 | 60,000,000 | 413,611 | 485,000 | 56 | 58 | 16,580 |
+| `ac4_20_acpl` | 57,284,000 | 64,000,000 | 601,504 | 690,000 | 50 | 56 | 19,480 |
+| `ac4_51_music` | 116,737,000 | 130,000,000 | 946,390 | 1,100,000 | 147 | 168 | 19,480 |
+| `ac4_51_acpl` | 122,882,000 | 137,000,000 | 1,147,590 | 1,330,000 | 84 | 99 | 19,480 |
+| `ac4_514_tones` | 206,264,000 | 227,000,000 | 1,800,312 | 2,130,000 | 203 | 210 | 19,480 |
+| `ac4_20_companding` | 58,818,000 | 64,500,000 | 462,435 | 522,000 | 73 | 82 | 19,480 |
+
 The image is 683,448 bytes (680,804 `.text`, 392 `.data`, 2,252 `.bss`; 198,416 bytes of `.text` more than
 before D14a5, 196,464 of them the converter's tables), the ceiling 750,000; the
 stack ceiling is 21,500 here and 28,500 on the host, whose frames are larger (24.7 to 26.0 KB read
@@ -1200,9 +1215,9 @@ The PCM of every fixture is bit-identical on the two legs, and the hashes are pi
 streams with companding: before D14a4 the C libraries' `powf` and `exp2f` gave the Cortex-M3 leg,
 the host and the board a PCM each for such a stream, and no fixture had companding to say so.
 
-The first frame allocates 550 KB, 531 KB, 1.21 MB, 1.22 MB, 2.06 MB and 541 KB, the decoder's state
-built as the stream's layout is first seen; the steady state allocates 69 to 157 KB a frame at 2.0,
-387 to 408 KB at 5.1 and 673 KB at 5.1.4, the syntax layer's element vectors built afresh each
+The first frame allocates 510 KB, 490 KB, 987 KB, 998 KB, 1.86 MB and 498 KB (D14e; 550 KB, 531 KB, 1.21 MB, 1.22 MB, 2.06 MB
+and 541 KB at D14a), the decoder's state built as the stream's layout is first seen; the steady state allocates 72 to 153 KB a
+frame at 2.0, 311 to 317 KB at 5.1 and 761 KB at 5.1.4 (69 to 157 KB, 387 to 408 KB and 673 KB at D14a), the syntax layer's element vectors built afresh each
 frame (`vector<Track>` the largest). That is the gap to zero here, as it is for the AC-3 and E-AC-3
 decoders above, and the peak is what D14c has to bring under the S3's 245,000 bytes for 2.0.
 
