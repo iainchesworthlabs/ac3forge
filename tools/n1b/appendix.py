@@ -104,7 +104,7 @@ FORGE_CHARACTER = [
 
 
 def load(d: Path, name: str):
-    return json.load(open(d / name, encoding="utf-8"))
+    return json.loads((d / name).read_text(encoding="utf-8"))
 
 
 def main() -> None:

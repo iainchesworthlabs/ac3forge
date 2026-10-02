@@ -196,6 +196,7 @@ class CommittedTree(unittest.TestCase):
     def test_the_library_spells_the_other_half_of_a_shared_namespace_with_the_root(self) -> None:
         path = Path(__file__).resolve().parent / "ac3ns_symbols.json"
         table = core.Table.load(path)
+        out = ""
         try:
             out = subprocess.run(
                 ["git", "-C", str(self.ROOT), "ls-files", "-z", "--", "src/ac3", "tests/ac3"],
