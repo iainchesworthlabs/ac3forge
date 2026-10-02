@@ -132,7 +132,9 @@ What runs against it:
   because TSan's shadow memory makes everything several times slower and the rest of the suite is
   single-threaded codec maths. `tsan.supp` at the repository root holds the suppressions and is
   near-empty.
-- **CodeQL** on the `security-and-quality` suite, **MSVC PREfast** and **clang-tidy**, all run
+- **CodeQL** on the `security-and-quality` suite (less its advisory queries and two that misfire
+  here, filtered in `.github/codeql/codeql-config.yml`; the C++ leg builds the shipped code
+  without the tests and the examples), **MSVC PREfast** and **clang-tidy**, all run
   nightly against `main` rather than per pull request; a run that finds something new opens a
   `nightly-analysis` issue, and the alerts themselves are triaged in Security > Code scanning.
   **SonarCloud** runs in the same window for maintainability, duplication and coverage on new

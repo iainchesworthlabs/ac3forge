@@ -36,7 +36,9 @@ on:
 concurrency:
   # One nightly at a time; a manual dispatch queues behind a running nightly
   # rather than cancelling it (an analysis that never finishes uploads nothing).
-  group: msvc-analysis-nightly
+  # The group names the ref, so a trial dispatch from a branch has a queue of
+  # its own and neither waits for nor delays main's nightly.
+  group: msvc-analysis-nightly-${{ github.ref_name }}
   cancel-in-progress: false
 
 permissions:
@@ -181,10 +183,12 @@ jobs:
   # alerts exist by the time this runs. Pinned to ubuntu-latest because this
   # file's check-runner is (this workflow does not read CONTROL_RUNNER_JSON);
   # the job is seconds long and needs only gh and GNU date, so it takes
-  # nothing from the fleet. The query is pinned to refs/heads/main, the ref
-  # the schedule analyses; a workflow_dispatch from another branch uploads
-  # against that branch and this job does not see it, so the alert-to-issue
-  # path can only be exercised on main.
+  # nothing from the fleet. The query names the ref this run analysed:
+  # refs/heads/main on the schedule, which is the nightly as it always was,
+  # and the dispatched branch on a trial run, so a branch shows what the next
+  # nightly will see (an alert keeps its creation time across refs, so one
+  # main already holds is not new on the branch either). The issue is opened
+  # or commented on only for main.
   surface:
     name: Surface findings
     needs: analyze
@@ -204,6 +208,7 @@ jobs:
       - name: Fail on code-scanning alerts created since the last nightly
         env:
           GH_TOKEN: ${{ github.token }}
+          ANALYSED_REF: ${{ github.ref }}
           # Nightly cadence plus an hour of slack for a late-starting run.
           # The 25 h window overlaps the previous run by about an hour, so an
           # alert from night N is listed again on night N+1 while it stays
@@ -217,19 +222,19 @@ jobs:
           # newest first and filter client-side. One page of 100 bounds the
           # call; more than 100 new alerts in one night would be truncated,
           # which is acceptable for a "did anything new appear" signal.
-          gh api "repos/${GITHUB_REPOSITORY}/code-scanning/alerts?state=open&ref=refs/heads/main&tool_name=${TOOL}&sort=created&direction=desc&per_page=100" \
+          gh api "repos/${GITHUB_REPOSITORY}/code-scanning/alerts?state=open&ref=${ANALYSED_REF}&tool_name=${TOOL}&sort=created&direction=desc&per_page=100" \
             --jq ".[] | select(.created_at > \"${since}\") | \"\\(.number)\\t\\(.rule.id)\\t\\(.most_recent_instance.location.path):\\(.most_recent_instance.location.start_line)\\t\\(.html_url)\"" \
             > new-alerts.tsv
           count="$(wc -l < new-alerts.tsv | tr -d '[:space:]')"
           if [ "${count}" -gt 0 ]; then
-            echo "::error::${count} new ${TOOL} alert(s) on main since ${since}:"
+            echo "::error::${count} new ${TOOL} alert(s) on ${ANALYSED_REF} since ${since}:"
             cat new-alerts.tsv
             exit 1
           fi
-          echo "No new ${TOOL} alerts on main since ${since}."
+          echo "No new ${TOOL} alerts on ${ANALYSED_REF} since ${since}."
 
       - uses: ./.github/actions/report-nightly-failure
-        if: failure() || needs.analyze.result != 'success'
+        if: (failure() || needs.analyze.result != 'success') && github.ref == 'refs/heads/main'
         with:
           engine: ${{ env.TOOL }}
           detail: "New PREfast alerts on main since the previous nightly, or the analysis itself failed. See the run log, then Security > Code scanning filtered to refs/heads/main and tool PREfast."

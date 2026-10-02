@@ -161,11 +161,14 @@ jobs:
   # `nightly-analysis` issue for this engine. `!cancelled()` rather than
   # `always()`: a failure is still reported, but a run someone cancelled by
   # hand does not open an issue over it. Pinned to the control-plane runner
-  # like check-runner above: seconds long, needs only gh.
+  # like check-runner above: seconds long, needs only gh. Only main's run
+  # reports: a dispatch from a branch (a trial of a fix) that fails would
+  # otherwise comment on main's nightly issue with the branch's commit. The
+  # run itself still shows red.
   surface:
     name: Surface findings
     needs: static-analysis
-    if: ${{ !cancelled() && needs.static-analysis.result != 'success' }}
+    if: ${{ !cancelled() && needs.static-analysis.result != 'success' && github.ref == 'refs/heads/main' }}
     runs-on: ${{ fromJSON(vars.CONTROL_RUNNER_JSON || '["ubuntu-latest"]') }}
     permissions:
       contents: read
