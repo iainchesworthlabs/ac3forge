@@ -290,6 +290,7 @@ if(NOT BUILD_SHARED_LIBS)
         ac4dec/test_ac4dec_pcm.cpp
         ac4dec/test_ac4dec_presentation.cpp
         ac4dec/test_ac4dec_presentations.cpp
+        ac4dec/test_ac4dec_reconstruct_exact.cpp
         ac4dec/test_ac4dec_renderer.cpp
         ac4enc/test_ac4enc_acpl.cpp
         ac4enc/test_ac4enc_aspx.cpp

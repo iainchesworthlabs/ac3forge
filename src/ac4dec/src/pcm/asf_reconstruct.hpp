@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <span>
 #include <vector>
 
@@ -21,12 +22,23 @@
 
 namespace iclforge::ac4::detail {
 
+// 2^((sf - 100) / 4) for every scale factor, 0 to 255, at the decoder's scalar: what
+// std::pow(2.0, 0.25 * (sf - 100)) gives, rounded to Real, made once instead of once
+// for every scale factor band of every frame. The same call with the same argument
+// gives the same value on every platform's C library as it always did, so the
+// output moves by no bit; the call costs a hundred operations of the compiler's
+// software `double` on a part whose FPU is single precision, and a stream of 5.1
+// makes 250 of them a frame (planning/ac4.md, D14e).
+using ScaleFactorGains = std::array<Real, 256>;
+[[nodiscard]] ScaleFactorGains scale_factor_gains();
+
 // scaled_spec for one track, in bitstream order: sign(q) |q|^(4/3) times
 // 2^((sf - 100) / 4), then the noise fill when b_snf_data_exists. `noise` is
 // the generator Pseudocode 23 draws from, advanced by every line it fills.
 // Fails for a scale factor outside 0 to 255, which the note under Table A.1's
-// formula says is not a valid one.
-[[nodiscard]] ParseResult reconstruct_track(const SfInfo& info, const SfData& data, RandGenState& noise,
+// formula says is not a valid one. `sf_gain` is scale_factor_gains()'s.
+[[nodiscard]] ParseResult reconstruct_track(const SfInfo& info, const SfData& data,
+                                            const ScaleFactorGains& sf_gain, RandGenState& noise,
                                             std::vector<Real>& scaled);
 
 // The length in lines of each window of the frame, in order: one full block
@@ -40,5 +52,13 @@ namespace iclforge::ac4::detail {
 // `spec_reord` receives their sum.
 void ungroup(const SubstreamContext& ctx, const AsfPsyInfo& psy, const SfData& data, std::span<const int> lengths,
              std::span<const Real> scaled, std::vector<Real>& spec_reord);
+
+// ungroup() for a frame of one long block, in one group of one window: the lines of `scaled` are in window order already,
+// so the spectrum is `scaled` with zeros after its last band, and the buffer changes hands (`scaled` takes the spectrum's old
+// one) in place of two passes over 8 KB a channel, one to zero `spec_reord` and one to copy. False, with nothing changed,
+// for any other frame, which ungroup() takes.
+[[nodiscard]] bool ungroup_in_place(const SubstreamContext& ctx, const AsfPsyInfo& psy, const SfData& data,
+                                    std::span<const int> lengths, std::vector<Real>& scaled,
+                                    std::vector<Real>& spec_reord);
 
 }  // namespace iclforge::ac4::detail

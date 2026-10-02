@@ -71,6 +71,28 @@ ParseResult ElementParser::begin(ElementKind kind, int mode, bool needs_aspx,
                                  std::optional<AcplConfigKind> acpl_1ch, bool acpl_2ch) {
     out_.kind = kind;
     out_.codec_mode = mode;
+    // A Track is 15 KB, so growing the vector moves every track it holds (63 moves and 80 KB of zeroing
+    // a frame at 5.1 before this): the number of tracks the element kind codes, an LFE's included.
+    switch (kind) {
+        case ElementKind::kSingle:
+            out_.tracks.reserve(1);
+            break;
+        case ElementKind::kPair:
+            out_.tracks.reserve(2);
+            break;
+        case ElementKind::k3_0:
+            out_.tracks.reserve(4);
+            break;
+        case ElementKind::k5X:
+            out_.tracks.reserve(6);
+            break;
+        case ElementKind::k7X:
+            out_.tracks.reserve(8);
+            break;
+        case ElementKind::kImmersive:
+        case ElementKind::kVar:
+            break;
+    }
     const bool needs_config = needs_aspx || acpl_1ch.has_value() || acpl_2ch;
     if (ctx_.b_iframe) {
         const bool changed = state_.configured_codec_mode != mode || state_.configured_kind != kind;
