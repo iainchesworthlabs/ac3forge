@@ -124,15 +124,14 @@ class AcplStage {
                 std::span<QmfValue> z1, int num_ts);
     void coupling(const AcplCouplingValues& values, std::span<const QmfValue> x0, std::span<const QmfValue> x1,
                   std::span<std::span<QmfValue>, 5> z, int num_ts);
-    // Pseudocode 109 for `param` under `framing`, into `out`. ac4core's own
-    // acpl::interpolate() (acpl/acpl.hpp) is not retemplated on Real - its
-    // ParamSets/ParamPrev stay double, a handful of interpolated coefficients
-    // per slot rather than per-sample QMF data, in the same "computed in
-    // double, kept small" shape as a downmix or DRC gain matrix - so this
-    // wrapper keeps double too; module() and coupling() narrow to Real only
-    // where an interpolated value multiplies a QmfValue.
-    void interpolate(const acpl::Framing& framing, int num_bands, const Param& param, int num_ts,
-                     std::vector<double>& out) const;
+    // Pseudocode 109 is ac4core's own acpl::Interpolator (acpl/acpl.hpp), which is not
+    // retemplated on Real - its ParamSets/ParamPrev stay double, a handful of
+    // interpolated coefficients per slot rather than per-sample QMF data, in the
+    // same "computed in double, kept small" shape as a downmix or DRC gain
+    // matrix. module() and coupling() evaluate it once for each run of subbands
+    // that shares a parameter band and its acpl_param_prev, which is the same
+    // value to the bit in each, and narrow to Real there, once, where an
+    // interpolated value multiplies a QmfValue.
     void decorrelate(int decorrelator, std::span<const QmfValue> in, std::span<QmfValue> out, int num_ts);
 
     // D0, D1 and D2, then the second instances of D0 and D1 the immersive
@@ -145,16 +144,33 @@ class AcplStage {
     std::array<std::array<acpl::ParamPrev, 2>, kMaxAcplModules> module_prev_{};
     std::array<acpl::ParamPrev, 11> coupling_prev_{};
 
+    // Pseudocodes 118 and 119's coefficients at one slot of one run of subbands, as the products
+    // of the pseudocode narrow them to Real: coupling() has the expressions.
+    struct CouplingCoefficients {
+        // Transform(), the three decorrelators' inputs.
+        Real ig1{}, ig2{}, ig3{}, ig4{}, ig135{}, ig246{};
+        // ACplModule2() on (z0, z1), (z2, z3) and (z4, z5): the weights of L, R and the decorrelator's
+        // output; z1 and z3 take the output's of z0 and z2.
+        Real z0_l{}, z0_r{}, z0_y{}, z1_l{}, z1_r{};
+        Real z2_l{}, z2_r{}, z2_y{}, z3_l{}, z3_r{};
+        Real z4_l{}, z4_r{};
+        // ACplModule3()'s weights of D2's output in z0 to z4.
+        Real y2_z0{}, y2_z1{}, y2_z2{}, y2_z3{}, y2_z4{};
+    };
+
     // Scratch, kept to save allocations per frame.
     std::array<std::vector<QmfValue>, 5> in_{};
     std::array<std::vector<QmfValue>, 3> transformed_{};
     std::array<std::vector<QmfValue>, kDecorrelatorSlots> decorrelated_{};
     std::vector<QmfValue> work_;
-    std::array<std::vector<double>, 2> interp_{};
-    std::vector<std::vector<double>> interp_scratch_;
-    // coupling()'s six gamma parameters with their acpl_param_prev: 4.5 KB, too much
-    // for a local.
+    // coupling()'s six gamma parameters with their acpl_param_prev, and the eight sums and
+    // products of parameters it interpolates besides: 750 bytes each, too much for locals.
     std::array<Param, 6> coupling_g_{};
+    std::array<Param, 8> coupling_derived_{};
+    // One interpolation column for each run of subbands and parameter, and the coefficients at
+    // each slot of each run.
+    std::vector<acpl::Interpolator::Column> columns_;
+    std::vector<CouplingCoefficients> coupling_coefficients_;
 };
 
 }  // namespace iclforge::ac4::detail
