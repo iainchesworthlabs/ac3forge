@@ -208,44 +208,41 @@ void fft_radix4_stage(const FftTables<P, Scalar>& t, std::span<VecType, P> re,
             re[i + (3 * kQ)] = t1r - t3i;
             im[i + (3 * kQ)] = t1i + t3r;
         }
-        // Len == 4 has kQ == 1: no further group, and the loop would not run.
-        if constexpr (kQ > 1) {
-            for (std::size_t j = 1; j < kQ; ++j) {
-                const Scalar w1r = t.stage_re[kBase + j];
-                const Scalar w1i = t.stage_im[kBase + j];
-                const Scalar w2r = t.stage_re[kBase + kQ + j];
-                const Scalar w2i = t.stage_im[kBase + kQ + j];
-                const Scalar w3r = t.stage_re[kBase + (2 * kQ) + j];
-                const Scalar w3i = t.stage_im[kBase + (2 * kQ) + j];
-                const std::size_t i0 = i + j;
-                const std::size_t i1 = i0 + kQ;
-                const std::size_t i2 = i0 + (2 * kQ);
-                const std::size_t i3 = i0 + (3 * kQ);
-                const auto ar = re[i0];
-                const auto ai = im[i0];
-                const auto br = (re[i1] * w2r) - (im[i1] * w2i);
-                const auto bi = (re[i1] * w2i) + (im[i1] * w2r);
-                const auto cr = (re[i2] * w1r) - (im[i2] * w1i);
-                const auto ci = (re[i2] * w1i) + (im[i2] * w1r);
-                const auto dr = (re[i3] * w3r) - (im[i3] * w3i);
-                const auto di = (re[i3] * w3i) + (im[i3] * w3r);
-                const auto t0r = ar + br;
-                const auto t0i = ai + bi;
-                const auto t1r = ar - br;
-                const auto t1i = ai - bi;
-                const auto t2r = cr + dr;
-                const auto t2i = ci + di;
-                const auto t3r = cr - dr;
-                const auto t3i = ci - di;
-                re[i0] = t0r + t2r;
-                im[i0] = t0i + t2i;
-                re[i1] = t1r + t3i;
-                im[i1] = t1i - t3r;
-                re[i2] = t0r - t2r;
-                im[i2] = t0i - t2i;
-                re[i3] = t1r - t3i;
-                im[i3] = t1i + t3r;
-            }
+        for (std::size_t j = 1; j < kQ; ++j) {
+            const Scalar w1r = t.stage_re[kBase + j];
+            const Scalar w1i = t.stage_im[kBase + j];
+            const Scalar w2r = t.stage_re[kBase + kQ + j];
+            const Scalar w2i = t.stage_im[kBase + kQ + j];
+            const Scalar w3r = t.stage_re[kBase + (2 * kQ) + j];
+            const Scalar w3i = t.stage_im[kBase + (2 * kQ) + j];
+            const std::size_t i0 = i + j;
+            const std::size_t i1 = i0 + kQ;
+            const std::size_t i2 = i0 + (2 * kQ);
+            const std::size_t i3 = i0 + (3 * kQ);
+            const auto ar = re[i0];
+            const auto ai = im[i0];
+            const auto br = (re[i1] * w2r) - (im[i1] * w2i);
+            const auto bi = (re[i1] * w2i) + (im[i1] * w2r);
+            const auto cr = (re[i2] * w1r) - (im[i2] * w1i);
+            const auto ci = (re[i2] * w1i) + (im[i2] * w1r);
+            const auto dr = (re[i3] * w3r) - (im[i3] * w3i);
+            const auto di = (re[i3] * w3i) + (im[i3] * w3r);
+            const auto t0r = ar + br;
+            const auto t0i = ai + bi;
+            const auto t1r = ar - br;
+            const auto t1i = ai - bi;
+            const auto t2r = cr + dr;
+            const auto t2i = ci + di;
+            const auto t3r = cr - dr;
+            const auto t3i = ci - di;
+            re[i0] = t0r + t2r;
+            im[i0] = t0i + t2i;
+            re[i1] = t1r + t3i;
+            im[i1] = t1i - t3r;
+            re[i2] = t0r - t2r;
+            im[i2] = t0i - t2i;
+            re[i3] = t1r - t3i;
+            im[i3] = t1i + t3r;
         }
     }
 }
