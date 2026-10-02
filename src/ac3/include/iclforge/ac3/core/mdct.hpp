@@ -52,7 +52,7 @@ ICLFORGE_AC3_EXPORT void apply_analysis_window(std::span<const double, 512> x,
 ICLFORGE_AC3_EXPORT void mdct512_forward(std::span<const double, 512> windowed,
                                      std::span<double, 256> coeffs, bool fast = false);
 
-// The float32 forms of the two above (minimum-footprint decoder profile's float32 gap). Their caller
+// The float32 forms of the two above. Their caller
 // is oba::joc's object reconstruction, which runs a forward transform inside a
 // DECODE - it analyses the bed before un-mixing it (PF8). The encoder's own
 // forward path stays double and is untouched: the fifteen bitstream hashes in
@@ -72,7 +72,7 @@ ICLFORGE_AC3_EXPORT void mdct512_forward(std::span<const float, 512> windowed,
 ICLFORGE_AC3_EXPORT void imdct512_windowed(std::span<const double, 256> coeffs,
                                        std::span<double, 512> x, bool fast = false);
 
-// The float32 form of the inverse above (minimum-footprint decoder profile's float32 gap), for the
+// The float32 form of the inverse above, for the
 // minimum-footprint profile on a target whose FPU is single-precision - where
 // carrying the decoder's coefficient buffers in double costs both the memory
 // they occupy and a software-emulated multiply for every one of them.
@@ -86,7 +86,7 @@ ICLFORGE_AC3_EXPORT void imdct512_windowed(std::span<const float, 256> coeffs,
 
 // batched SIMD kernels: four INDEPENDENT calls to
 // imdct512_windowed(..., /*fast=*/true) run in lockstep, one object per
-// SIMD lane, instead of four separate scalar/SSE2 calls - the axis PF5's
+// SIMD lane, instead of four separate scalar/SSE2 calls - the axis the SIMD kernels'
 // own per-transform 2/4-lane seam cannot reach (there is no clean
 // within-one-transform grouping in the FFT core; see fft_kernel.hpp). Safe
 // to call unconditionally, the same as every other transform in this file:

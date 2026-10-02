@@ -6,8 +6,7 @@
 // What apps/baremetal/probe.cpp's eac3_atmos_render row expects: the
 // eac3_atmos_height stream's objects (fixture.hpp; three of them raised to the
 // ceiling and one half way, tools/generators/atmos_height_scene.txt) rendered
-// onto 7.1.4 by their own OAMD positions, one level per output slot (roadmap
-// PF7).
+// onto 7.1.4 by their own OAMD positions, one level per output slot.
 //
 // Hand-maintained, unlike fixture.hpp, and for the same reason
 // encode_fixture.hpp is: nothing outside the probe produces the reference.

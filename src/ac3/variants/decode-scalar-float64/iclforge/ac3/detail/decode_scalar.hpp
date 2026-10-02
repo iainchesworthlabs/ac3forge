@@ -1,7 +1,7 @@
 #pragma once
 
 // The type the DECODER carries its coefficients, transform scratch and
-// overlap-add history in (minimum-footprint decoder profile's float32 gap), in the DOUBLE variant.
+// overlap-add history in, in the DOUBLE variant (the minimum-footprint profile uses float32).
 // The float variant is the identically-pathed header under
 // src/internal/scalar/float32/; src/ac3/CMakeLists.txt picks the directory
 // from ICLFORGE_DECODE_SCALAR, so no source file asks which it is with a

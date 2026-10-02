@@ -12,7 +12,7 @@
 #include "iclforge/ac3/io/elementary.hpp"
 #include "../support.hpp"
 
-// The stream tools (stream tools): commands that operate on an ALREADY-encoded
+// The stream tools: commands that operate on an ALREADY-encoded
 // AC-3/E-AC-3 elementary stream rather than on PCM.
 //
 // Two of the three never touch the audio at all. 'metadata' and 'normalize'

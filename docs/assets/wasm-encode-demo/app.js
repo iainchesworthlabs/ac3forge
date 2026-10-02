@@ -420,7 +420,7 @@ async function previewRoundTrip() {
     setStatus('Decoding the encoded stream for preview...', false);
 
     // The old whole-file Decoder class was replaced by scanStream() +
-    // PushDecoder (UX5's push-frame rework of decoder_bindings.cpp): scan
+    // PushDecoder (the push-frame rework of decoder_bindings.cpp): scan
     // once for access-unit boundaries, then push each unit and collect that
     // frame's PCM. holdBack frames (dependent-substream latency) carry no
     // PCM yet; the flush() tail (at most one frame) is skipped - inaudible

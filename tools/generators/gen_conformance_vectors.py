@@ -97,8 +97,8 @@ UNMODELLED_TOOLS = ("ecpl", "tpn")
 # first principles rather than by resampling or by decoding one of our own
 # encodes. Stdlib only, and deterministic - a fixed seed per channel.
 #
-# legacy item VX7 will add redistributable (CC0) speech and music beside the
-# synthetic fixtures. When it lands, this is where those files join the set;
+# The redistributable (CC0) speech and music under tests/golden/audio/ are not in the set.
+# If they join, this is where those files go;
 # until then every vector's source is synthetic, which the README states
 # plainly because it bounds what the set proves.
 

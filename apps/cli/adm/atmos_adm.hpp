@@ -11,7 +11,7 @@
 #include "iclforge/objects/motion.hpp"
 #include "iclforge/audio/audio_backend.hpp"
 
-// ADM BWF reader phase 3 of 3 ("ADM BWF reader feeding the JOC encoder") - the narrow
+// The ADM BWF reader, phase 3 of 3 (feeding the JOC encoder) - the narrow
 // seam between main.cpp's 'atmos-adm' command and iclforge::adm/iclforge::admbridge, this project's
 // one opt-in, non-default library (ICLFORGE_BUILD_ADM, default OFF - see root CMakeLists.txt's
 // own option() for why: libadm's Boost dependency).

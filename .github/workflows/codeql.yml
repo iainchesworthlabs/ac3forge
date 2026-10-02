@@ -216,7 +216,7 @@ jobs:
           vcpkg-commit: ${{ needs.toolchain-versions.outputs.vcpkg_commit }}
 
       # CodeQL's TypeScript extraction shells out to `node` (first needed
-      # when js/'s .ts sources landed with UX5). The GitHub-hosted image
+      # when js/'s .ts sources landed). The GitHub-hosted image
       # ships Node; the self-hosted fleet image does not - and since #466
       # this leg runs bare on whichever pool check-runner picks, so pin
       # Node explicitly on the one leg that needs it rather than routing

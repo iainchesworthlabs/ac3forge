@@ -1856,7 +1856,7 @@ TEST_CASE("dialnorm=auto and src=/map= keep '-' output free of interleaved statu
     }
 }
 
-// legacy item C4: dialnorm=auto/dialnorm2=auto used to be unconditionally
+// dialnorm=auto/dialnorm2=auto used to be unconditionally
 // rejected the moment src=/map= was in play (main.cpp's old "not yet
 // supported with src=/map=" error), regardless of whether the routing would
 // have made measurement ambiguous. The fix routes/renders the whole
@@ -2061,7 +2061,7 @@ TEST_CASE("map= to an object destination warns instead of silently discarding it
     }
 }
 
-// legacy item C4's other half: dual mono (1+1) dialnorm=auto looked implemented
+// The other half: dual mono (1+1) dialnorm=auto looked implemented
 // already (measured_dialnorm_channel existed for Ch2), but Ch1's own
 // measurement went through measured_dialnorm() with the target's acmod
 // (kDualMono) instead - which runs a normal multi-channel BS.1770 pass
@@ -2395,7 +2395,7 @@ TEST_CASE(
         REQUIRE(verdict.has_value());
         verdicts.push_back(*verdict);
         // Each row also names the document edition it was judged against
-        // (IO11) - a verdict against an unnamed spec is not auditable.
+        // - a verdict against an unnamed spec is not auditable.
         const auto source = iclforge::ac3::meta::qc_preset(id).source;
         CHECK(text.find(std::string{source}) != std::string::npos);
     }
@@ -2412,7 +2412,7 @@ TEST_CASE(
     CHECK((rc == 0) == expect_success);
 }
 
-// legacy item IO10: `forge qc layout=rendered`. The bed pass measures only the
+// `forge qc layout=rendered`. The bed pass measures only the
 // independent substream's Table 5.8 channels, so on a 7.1.4 stream it never
 // sees the two dependents' rear and height channels at all; the rendered pass
 // measures the assembled program through BS.1770-5 Annex 3's extended
@@ -2496,7 +2496,7 @@ TEST_CASE("qc layout=rendered measures a 7.1.4 program's dependents, layout=bed 
     CHECK(*rendered_tp == Catch::Approx(*bed_tp).margin(1.0));
 }
 
-// legacy item IO12: `forge qc objects=<layout>`. layout=bed's Annex 1 pass sees
+// `forge qc objects=<layout>`. layout=bed's Annex 1 pass sees
 // only the flat 5.1 VBAP fold every dynamic object was panned into at encode
 // time - spatial.hpp's own "a raised object folds onto the ring... at full
 // level" - so an object authored at the ceiling measures no differently from
@@ -3726,7 +3726,7 @@ TEST_CASE("atmos-encode assembles real objects behind src=/map=",
     }
 }
 
-// --- IO7: the object-layer strip ----------------------------------
+// --- the object-layer strip ----------------------------------
 
 TEST_CASE("strip-objects leaves a decodable 5.1 stream with no object metadata",
           "[cli][strip-objects]") {
@@ -3770,7 +3770,7 @@ TEST_CASE("strip-objects refuses an AC-3 stream", "[cli][strip-objects]") {
     CHECK(read_log(log).find("E-AC-3") != std::string::npos);
 }
 
-// --- IO6: the MPEG-TS broadcast profiles ---------------------------
+// --- the MPEG-TS broadcast profiles ---------------------------
 
 TEST_CASE("ts writes the profile it is asked for", "[cli][ts]") {
     const auto dir = scratch_dir();

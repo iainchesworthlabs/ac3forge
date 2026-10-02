@@ -43,7 +43,7 @@
 // argv-mangling bugs in this CLI's history broke.
 //
 // [concurrency] on every case: this file and tests/audio/ are what the
-// ThreadSanitizer leg runs (ThreadSanitizer leg, `ctest -L concurrency` - see
+// ThreadSanitizer leg runs (`ctest -L concurrency` - see
 // CMakePresets.json's test-linux-llvm-tsan preset). A race between the
 // capture callback thread and the encoder thread is invisible to the
 // ASan+UBSan leg, and these are the paths that start those threads.

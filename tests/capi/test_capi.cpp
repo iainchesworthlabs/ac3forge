@@ -1776,7 +1776,7 @@ TEST_CASE("the C latency accessors tolerate null the way the rest of the surface
     CHECK(sentinel.holdback_samples == -7);
 }
 
-// --- decode_frame_into / decode_access_unit_into (legacy item AP5) -----------
+// --- decode_frame_into / decode_access_unit_into -----------
 
 TEST_CASE("iclforge_decoder_decode_frame_into writes the same samples the value form allocates",
           "[capi]") {
@@ -2159,7 +2159,7 @@ TEST_CASE(
     iclforge_eac3_decoder_destroy(decoder);
 }
 
-// --- scan / ScannedStream (legacy item AP5) -----------------------------------
+// --- scan / ScannedStream -----------------------------------
 
 TEST_CASE("iclforge_scan reports the same shape iclforge::ac3::io::scan does for an AC-3 stream",
           "[capi][scan]") {
@@ -2584,7 +2584,7 @@ TEST_CASE("E-AC-3 structure and substream errors reach C as their own codes", "[
     iclforge_eac3_access_unit_encoder_destroy(au_encoder);
 }
 
-// --- Loudness / level / QC metering (legacy item AP5) -------------------------
+// --- Loudness / level / QC metering -------------------------
 
 TEST_CASE("iclforge_loudness_meter measures a stereo tone", "[capi][loudness]") {
     iclforge_loudness_meter_t* meter = nullptr;

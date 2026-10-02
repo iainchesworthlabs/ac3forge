@@ -538,7 +538,7 @@ struct DecodedSubstream {
     // Table E1.2's mixmdate group, std::nullopt when mixmdate was clear -
     // separate Lt/Rt and Lo/Ro centre and surround levels plus the LFE mix
     // level, none of which AC-3's bsi can express, through the rest of the
-    // group DC4 added (programme scale factors, the mixdef block, pan info).
+    // mixmdate group (programme scale factors, the mixdef block, pan info).
     // A DEPENDENT substream's copy stops after the levels - Table E1.2 gates
     // everything past lfemixlevcod on strmtyp == 0x0 - so those fields keep
     // their defaults there rather than reporting bits that were never sent.

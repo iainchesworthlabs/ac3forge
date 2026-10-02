@@ -8,7 +8,7 @@
 #
 #   - Cross-compiled for arm-none-eabi (see cmake/toolchains/arm-none-eabi.toolchain.cmake).
 #     Adds the reset vector and the linker script from platform/baremetal/, and
-#     runs under QEMU - the no-OS leg PF7 names.
+#     runs under QEMU - the no-OS leg of the minimum-footprint decoder profile.
 #
 #   - Natively on the host. Same probe, same fixture, same checks, no startup
 #     files needed because the host has a C runtime already. It exists so the

@@ -28,7 +28,7 @@ CMakeUserPresets.json
 # The dump records one local crash and holds nothing this repository needs.
 *.stackdump
 
-# apps/wasm/tests' Playwright harness (roadmap VX18a). package-lock.json IS
+# apps/wasm/tests' Playwright harness. package-lock.json IS
 # committed (npm ci's own integrity-hash pinning, this project's equivalent
 # of requirements/*.txt's --require-hashes); only the installed tree and
 # Playwright's own run output are not.
@@ -36,7 +36,7 @@ apps/wasm/tests/node_modules/
 apps/wasm/tests/test-results/
 apps/wasm/tests/playwright-report/
 
-# The iclforge-wasm-decoder package (roadmap UX5). Same package-lock.json
+# The iclforge-wasm-decoder package. Same package-lock.json
 # convention as apps/wasm/tests above; js/dist/ is also covered by the
 # blanket dist/ rule below but named here for the same reason python/dist/ is.
 js/node_modules/
