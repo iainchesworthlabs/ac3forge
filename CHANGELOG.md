@@ -3250,6 +3250,20 @@ The sections below contain the complete change list and fixes.
   changed. Two QML tests (`test_twoWritesInOneTurnBothLand`, `test_twoChangesInOneTurnBothLand`)
   fail without the change. The AC-4 Decoder page's audio checks now fail with the level the wait
   ended on and the settings in force, where they showed the level it started from.
+- **The ESP32-P4's heap held 32 KB that takes 174 cycles a load, and the AC-4 decoder's buffers landed in it
+  (phase D14a6).** ESP-IDF adds the P4's low-power SRAM (0x50108000) to the heap by default
+  (`CONFIG_ESP_SYSTEM_ALLOW_RTC_FAST_MEM_AS_HEAP`) as the last internal region, and the HP cores reach it over the LP
+  bus with no cache: 174 cycles for a load the next depends on, 195 in sequence and 173 for a store, where main RAM
+  takes 6 to 7. The AC-4 decoder takes nearly all of main RAM, so what it allocated late in a play came from the SRAM
+  before PSRAM was tried, and whether a hot buffer was among it depended on how full main RAM was at that moment: the
+  29.97 fps frame-rate converter's history and output vectors were in it after some sequences of plays and not after
+  others, and the converter took 93.8 ms a frame where it takes 12.0, a play at 3.51 times real time where it is now
+  1.00. `sdkconfig.p4` turns the option off, so the heap is 32 KB smaller and what spilled goes to PSRAM behind the
+  cache. The allocation policy stays ESP-IDF's default, which is now the faster of the two policies on all 26 plays
+  measured. The other 19 plays of the twenty take 3 to 24% less time a frame and the six core-decoding plays 11 to
+  19% less, the QMF synthesis and inverse transform stages that took 1.4 to 10 times as long in some plays no longer
+  do, and no `float` PCM hash moves (56 plays and cuts compared, the probe's six fixtures at their pins).
+  [ESP32-P4](docs/platforms/bare-metal/esp32-p4.md#the-low-power-sram) has the measurements.
 
 ## [0.10.0-beta.1] - 2026-09-01
 
