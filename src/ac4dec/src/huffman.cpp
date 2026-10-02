@@ -33,7 +33,9 @@ int huff_decode(BitReader& reader, const Codebook& codebook, std::string_view el
         if (first == last) {
             continue;
         }
-        const std::uint32_t code = window >> static_cast<unsigned>(max_bits - length);
+        // max_bits - length is at most 31, so the mask changes nothing: it puts the bound in the
+        // shift, where the analysers read it.
+        const std::uint32_t code = window >> (static_cast<unsigned>(max_bits - length) & 31U);
         const auto begin = codebook.sorted.begin() + first;
         const auto end = codebook.sorted.begin() + last;
         const auto found = std::lower_bound(
