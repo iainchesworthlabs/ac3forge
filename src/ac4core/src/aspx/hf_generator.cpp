@@ -81,56 +81,80 @@ constexpr std::array<std::array<double, 4>, 4> kNewChirp = {{
 // [-1, 1], orthonormalised by modified Gram-Schmidt: the same cubics as
 // powers of i, without their conditioning. The values are what
 // polynomial_fit()'s coefficients give back (Pseudocode 85).
-template <typename Real>
-void fit_cubic(std::span<const Real> y, std::span<Real> fitted) {
-    const std::size_t n = y.size();
-    std::array<std::vector<double>, 4> basis;
-    for (std::size_t k = 0; k < basis.size(); ++k) {
-        basis[k].resize(n);
+//
+// The orthonormal vectors depend on the number of points alone, so they are made once
+// for a count (build_cubic_basis: the front half of what this function was, step for
+// step, so the doubles are the same) and each frame projects on them (fit_cubic).
+void build_cubic_basis(std::size_t n, CubicBasis& cubic) {
+    cubic.n = n;
+    cubic.empty = {};
+    for (std::size_t k = 0; k < cubic.basis.size(); ++k) {
+        cubic.basis[k].assign(n, 0.0);
         for (std::size_t i = 0; i < n; ++i) {
             const double t = n > 1 ? (2.0 * static_cast<double>(i) - static_cast<double>(n - 1)) /
                                          static_cast<double>(n - 1)
                                    : 0.0;
-            basis[k][i] = std::pow(t, static_cast<double>(k));
+            cubic.basis[k][i] = std::pow(t, static_cast<double>(k));
         }
     }
-    std::ranges::fill(fitted, Real{});
-    for (std::size_t k = 0; k < basis.size(); ++k) {
+    for (std::size_t k = 0; k < cubic.basis.size(); ++k) {
+        std::vector<double>& basis_k = cubic.basis[k];
         for (std::size_t m = 0; m < k; ++m) {
             double dot = 0.0;
             for (std::size_t i = 0; i < n; ++i) {
-                dot += basis[k][i] * basis[m][i];
+                dot += basis_k[i] * cubic.basis[m][i];
             }
             for (std::size_t i = 0; i < n; ++i) {
-                basis[k][i] -= dot * basis[m][i];
+                basis_k[i] -= dot * cubic.basis[m][i];
             }
         }
         double norm = 0.0;
-        for (const double v : basis[k]) {
-            norm += v * v;
+        for (std::size_t i = 0; i < n; ++i) {
+            norm += basis_k[i] * basis_k[i];
         }
         // Fewer points than coefficients: this power adds nothing new.
         if (norm < 1e-18) {
-            std::ranges::fill(basis[k], 0.0);
+            std::fill_n(basis_k.begin(), n, 0.0);
+            cubic.empty[k] = true;
             continue;
         }
         norm = std::sqrt(norm);
-        double projection = 0.0;
         for (std::size_t i = 0; i < n; ++i) {
-            basis[k][i] /= norm;
-            projection += basis[k][i] * static_cast<double>(y[i]);
-        }
-        for (std::size_t i = 0; i < n; ++i) {
-            fitted[i] += static_cast<Real>(projection * basis[k][i]);
+            basis_k[i] /= norm;
         }
     }
 }
 
+template <typename Real>
+void fit_cubic(std::span<const Real> y, std::span<Real> fitted, const CubicBasis& cubic) {
+    const std::size_t n = y.size();
+    std::ranges::fill(fitted, Real{});
+    for (std::size_t k = 0; k < cubic.basis.size(); ++k) {
+        if (cubic.empty[k]) {
+            continue;
+        }
+        const std::vector<double>& basis_k = cubic.basis[k];
+        double projection = 0.0;
+        for (std::size_t i = 0; i < n; ++i) {
+            projection += basis_k[i] * static_cast<double>(y[i]);
+        }
+        for (std::size_t i = 0; i < n; ++i) {
+            fitted[i] += static_cast<Real>(projection * basis_k[i]);
+        }
+    }
+}
 }  // namespace
 
 template <typename Real>
 void preflattening_gains(std::span<const dsp::Complex<Real>> q_low, int sbx, int ts_begin,
                          int ts_end, std::span<Real> gain_vec) {
+    CubicBasis cubic;
+    preflattening_gains<Real>(q_low, sbx, ts_begin, ts_end, gain_vec, cubic);
+}
+
+template <typename Real>
+void preflattening_gains(std::span<const dsp::Complex<Real>> q_low, int sbx, int ts_begin,
+                         int ts_end, std::span<Real> gain_vec, CubicBasis& cubic) {
     const auto n = at(sbx);
     if (ts_end <= ts_begin || n == 0) {
         std::ranges::fill(gain_vec.first(n), Real{1});
@@ -151,7 +175,10 @@ void preflattening_gains(std::span<const dsp::Complex<Real>> q_low, int sbx, int
     }
     mean_energy /= static_cast<Real>(n);
     std::vector<Real> slope(n);
-    fit_cubic<Real>(pow_env, slope);
+    if (cubic.n != n) {
+        build_cubic_basis(n, cubic);
+    }
+    fit_cubic<Real>(pow_env, slope, cubic);
     for (std::size_t sb = 0; sb < n; ++sb) {
         gain_vec[sb] = from_power_db(mean_energy - slope[sb]);
     }
@@ -211,7 +238,7 @@ void generate_high_band(const SubbandGroups& groups, const PatchTables& patches,
 
     std::array<Real, kSubbands> gain_vec{};
     if (in.preflat) {
-        preflattening_gains<Real>(q_low, sbx, in.ts_begin, in.ts_end, gain_vec);
+        preflattening_gains<Real>(q_low, sbx, in.ts_begin, in.ts_end, gain_vec, state.cubic);
     }
     std::array<Complex, kSubbands> alpha0{};
     std::array<Complex, kSubbands> alpha1{};
@@ -278,6 +305,8 @@ template void generate_high_band<Real>(const SubbandGroups&, const PatchTables&,
                                        std::span<dsp::Complex<Real>>);
 template void preflattening_gains<Real>(std::span<const dsp::Complex<Real>>, int, int, int,
                                         std::span<Real>);
+template void preflattening_gains<Real>(std::span<const dsp::Complex<Real>>, int, int, int,
+                                        std::span<Real>, CubicBasis&);
 template void prediction_coefficients<Real>(std::span<const dsp::Complex<Real>>, int, int,
                                             std::span<dsp::Complex<Real>>,
                                             std::span<dsp::Complex<Real>>);
@@ -294,6 +323,8 @@ AC4CORE_ALSO_AT_DOUBLE(
                                              std::span<dsp::Complex<double>>);
     template void preflattening_gains<double>(std::span<const dsp::Complex<double>>, int, int, int,
                                               std::span<double>);
+    template void preflattening_gains<double>(std::span<const dsp::Complex<double>>, int, int, int,
+                                              std::span<double>, CubicBasis&);
     template void prediction_coefficients<double>(std::span<const dsp::Complex<double>>, int, int,
                                                   std::span<dsp::Complex<double>>,
                                                   std::span<dsp::Complex<double>>);)
