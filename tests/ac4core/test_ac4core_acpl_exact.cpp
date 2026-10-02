@@ -1,11 +1,11 @@
-// A-CPL's interpolation and decorrelators (src/ac4core/src/acpl/acpl.cpp) against verbatim copies of the code they
-// replaced (planning/ac4.md, D14e): Pseudocode 109 evaluated at every subband and the decorrelators' coefficients
-// narrowed at every tap. Both are held to the BITS of what they gave, at the decoder's scalar and at double, on
-// parameters of every framing and band count and on signals with zeros of either sign, because a stream's PCM hash
-// moves by one bit of either.
+// A-CPL's interpolation and decorrelators (src/ac4core/src/acpl/acpl.cpp) against verbatim copies
+// of the code they replaced (planning/ac4.md, D14e): Pseudocode 109 evaluated at every subband and
+// the decorrelators' coefficients narrowed at every tap. Both are held to the BITS of what they
+// gave, at the decoder's scalar and at double, on parameters of every framing and band count and on
+// signals with zeros of either sign, because a stream's PCM hash moves by one bit of either.
 //
-// test_ac4core_acpl.cpp holds the same code to the formulas it computes; this file holds the speed-ups to what the
-// code did before them.
+// test_ac4core_acpl.cpp holds the same code to the formulas it computes; this file holds the
+// speed-ups to what the code did before them.
 
 #include <algorithm>
 #include <array>
@@ -141,8 +141,9 @@ template <typename T>
     return a.size() == b.size() && std::memcmp(a.data(), b.data(), a.size() * sizeof(T)) == 0;
 }
 
-// What a parameter set holds in practice (the dequantisation tables' values and sums of them), and what it can
-// when a stream is corrupt or built to find a difference: zeros of either sign, equal neighbours, plain doubles.
+// What a parameter set holds in practice (the dequantisation tables' values and sums of them), and
+// what it can when a stream is corrupt or built to find a difference: zeros of either sign, equal
+// neighbours, plain doubles.
 class Source {
    public:
     explicit Source(unsigned seed) : rng_(seed) {}
@@ -213,26 +214,30 @@ constexpr std::array<int, 8> kSlotCounts = {1, 2, 7, 16, 24, 30, 31, 32};
 
 }  // namespace
 
-TEST_CASE("interpolate gives the bits of Pseudocode 109 evaluated at every subband", "[ac4core][acpl][exact]") {
+TEST_CASE("interpolate gives the bits of Pseudocode 109 evaluated at every subband",
+          "[ac4core][acpl][exact]") {
     Source source(20261002U);
     for (const bool steep : {false, true}) {
         for (const int sets : {1, 2}) {
             for (const int bands : kBandCounts) {
                 for (const int num_ts : kSlotCounts) {
                     for (int round = 0; round < 6; ++round) {
-                        acpl::Framing framing{.steep = steep, .num_param_sets = sets, .param_timeslot = {}};
+                        acpl::Framing framing{
+                            .steep = steep, .num_param_sets = sets, .param_timeslot = {}};
                         framing.param_timeslot[0] = source.below(num_ts + 1);
                         framing.param_timeslot[1] =
                             std::min(num_ts, framing.param_timeslot[0] + source.below(num_ts + 1));
                         const acpl::ParamSets values = source.sets();
                         acpl::ParamPrev prev{};
                         switch (round % 3) {
-                            case 0:  // the frame before's last set in each subband's band, as end_frame() leaves it
+                            case 0:  // the frame before's last set in each subband's band, as
+                                     // end_frame() leaves it
                                 acpl::end_frame(framing, bands, source.sets(), prev);
                                 break;
                             case 1:  // the first frame
                                 break;
-                            default:  // not constant over a band: another band count's mapping, or a corrupt state
+                            default:  // not constant over a band: another band count's mapping, or
+                                      // a corrupt state
                                 for (double& p : prev) {
                                     p = source.value();
                                 }
@@ -251,12 +256,14 @@ TEST_CASE("interpolate gives the bits of Pseudocode 109 evaluated at every subba
     }
 }
 
-TEST_CASE("interpolate follows a band count that changes between frames", "[ac4core][acpl][exact]") {
-    // acpl_param_prev is per subband and a frame can change the band count: the previous frame's 15 bands'
-    // values stand in a new frame's 7, so a band's subbands start from different values.
+TEST_CASE("interpolate follows a band count that changes between frames",
+          "[ac4core][acpl][exact]") {
+    // acpl_param_prev is per subband and a frame can change the band count: the previous frame's 15
+    // bands' values stand in a new frame's 7, so a band's subbands start from different values.
     Source source(7U);
     for (int round = 0; round < 40; ++round) {
-        const acpl::Framing framing{.steep = false, .num_param_sets = 1 + round % 2, .param_timeslot = {}};
+        const acpl::Framing framing{
+            .steep = false, .num_param_sets = 1 + round % 2, .param_timeslot = {}};
         acpl::ParamPrev prev{};
         acpl::end_frame(framing, kBandCounts[at(round % 4)], source.sets(), prev);
         const int bands = kBandCounts[at((round + 1 + round / 4) % 4)];
@@ -279,7 +286,8 @@ void check_decorrelators() {
     for (int index = 0; index < acpl::kDecorrelators; ++index) {
         acpl::Decorrelator<Scalar> decorrelator(index);
         reference::Decorrelator<Scalar> original(index);
-        // Frames of different lengths, one after another, so that the histories carry; then a reset.
+        // Frames of different lengths, one after another, so that the histories carry; then a
+        // reset.
         const std::array<int, 6> slots = {32, 32, 24, 32, 30, 16};
         for (std::size_t frame = 0; frame < slots.size(); ++frame) {
             if (frame == 4) {
@@ -287,7 +295,8 @@ void check_decorrelators() {
                 original.reset();
             }
             const int num_ts = slots[frame];
-            const auto in = source.signal<Scalar>(at(num_ts) * acpl::kSubbands, frame == 2 ? 0.5 : 0.05);
+            const auto in =
+                source.signal<Scalar>(at(num_ts) * acpl::kSubbands, frame == 2 ? 0.5 : 0.05);
             std::vector<dsp::Complex<Scalar>> expected(in.size());
             std::vector<dsp::Complex<Scalar>> actual(in.size());
             original.process(in, expected, num_ts);
@@ -300,8 +309,10 @@ void check_decorrelators() {
 
 }  // namespace
 
-TEST_CASE("a decorrelator gives the bits of its coefficients narrowed at every tap at the decoder's scalar",
-          "[ac4core][acpl][exact]") {
+TEST_CASE(
+    "a decorrelator gives the bits of its coefficients narrowed at every tap at the decoder's "
+    "scalar",
+    "[ac4core][acpl][exact]") {
     check_decorrelators<Real>();
 }
 

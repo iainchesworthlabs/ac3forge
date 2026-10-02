@@ -149,8 +149,8 @@ class AcplStage {
     struct CouplingCoefficients {
         // Transform(), the three decorrelators' inputs.
         Real ig1{}, ig2{}, ig3{}, ig4{}, ig135{}, ig246{};
-        // ACplModule2() on (z0, z1), (z2, z3) and (z4, z5): the weights of L, R and the decorrelator's
-        // output; z1 and z3 take the output's of z0 and z2.
+        // ACplModule2() on (z0, z1), (z2, z3) and (z4, z5): the weights of L, R and the
+        // decorrelator's output; z1 and z3 take the output's of z0 and z2.
         Real z0_l{}, z0_r{}, z0_y{}, z1_l{}, z1_r{};
         Real z2_l{}, z2_r{}, z2_y{}, z3_l{}, z3_r{};
         Real z4_l{}, z4_r{};

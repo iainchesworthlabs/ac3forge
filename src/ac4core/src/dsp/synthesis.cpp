@@ -102,10 +102,11 @@ bool ChannelSynthesis<Real>::block(TransformSet<Real>& transforms, std::span<con
     AC4_ZONE_SCOPED_N("ac4_imdct");
     const auto full = static_cast<std::size_t>(full_length_);
 
-    // A full-length block after a full-length block has no skipped samples, and its transform, window and
-    // overlap-add are one pass over the samples (Imdct::inverse_overlap).
+    // A full-length block after a full-length block has no skipped samples, and its transform,
+    // window and overlap-add are one pass over the samples (Imdct::inverse_overlap).
     if (n == full && n_prev == full) {
-        imdct->inverse_overlap(spectrum, kbd, overlap_, pcm, transforms.transform_scratch().first(n));
+        imdct->inverse_overlap(spectrum, kbd, overlap_, pcm,
+                               transforms.transform_scratch().first(n));
         previous_length_ = n_int;
         return true;
     }

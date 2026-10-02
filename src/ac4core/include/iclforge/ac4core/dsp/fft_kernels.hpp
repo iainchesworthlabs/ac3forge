@@ -86,7 +86,8 @@ inline void static_for(F&& f) {
 // The radix-3 and radix-5 butterflies: b[k] = a[0] + sum over i >= 1 of a[i] roots[ik mod r],
 // each product turned by the root, the terms added in the order of i.
 template <typename Real, int Radix, bool Inverse>
-inline void butterfly_odd(const Complex<Real>* a, Complex<Real>* b, const Complex<Real>* roots) noexcept {
+inline void butterfly_odd(const Complex<Real>* a, Complex<Real>* b,
+                          const Complex<Real>* roots) noexcept {
     static_for<Radix>([&](auto kc) {
         constexpr int k = decltype(kc)::value;
         Complex<Real> sum = a[0];
@@ -116,8 +117,9 @@ inline void butterfly(const Complex<Real>* a, Complex<Real>* b, const Complex<Re
 // pass's input) into y. Stride, when known at compile time (the first pass has 1), takes
 // the loop over q out.
 template <typename Real, int Radix, bool Inverse, typename In>
-inline void pass(const In& in, Complex<Real>* y, std::size_t m, std::size_t s, const Complex<Real>* tw,
-                 const Complex<Real>* roots3, const Complex<Real>* roots5) noexcept {
+inline void pass(const In& in, Complex<Real>* y, std::size_t m, std::size_t s,
+                 const Complex<Real>* tw, const Complex<Real>* roots3,
+                 const Complex<Real>* roots5) noexcept {
     constexpr auto r = static_cast<std::size_t>(Radix);
     const std::size_t step = s * m;
     for (std::size_t p = 0; p < m; ++p) {
@@ -170,9 +172,11 @@ inline void pass_from_array(const Stage& stage, const Complex<Real>* x, Complex<
 // length that is a multiple of 4, and then it takes the fused input; a plan whose first
 // pass is another radix gets the same input read from `first` by that radix's pass.
 template <typename Real, bool Inverse, typename First>
-[[nodiscard]] inline Complex<Real>* run_stages(const Stage* stages, std::size_t count, const Complex<Real>* twiddles,
-                                               const Complex<Real>* roots3, const Complex<Real>* roots5,
-                                               const First& first, Complex<Real>* a, Complex<Real>* b) noexcept {
+[[nodiscard]] inline Complex<Real>* run_stages(const Stage* stages, std::size_t count,
+                                               const Complex<Real>* twiddles,
+                                               const Complex<Real>* roots3,
+                                               const Complex<Real>* roots5, const First& first,
+                                               Complex<Real>* a, Complex<Real>* b) noexcept {
     Complex<Real>* in = nullptr;
     Complex<Real>* out = b;
     for (std::size_t i = 0; i < count; ++i) {

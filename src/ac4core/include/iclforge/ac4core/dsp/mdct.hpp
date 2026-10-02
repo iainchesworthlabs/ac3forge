@@ -64,14 +64,15 @@ class Imdct {
     // new overlap hold the bits that inverse() followed by the three loops of ChannelSynthesis
     // gives (tests/ac4core/test_ac4core_dsp_exact.cpp) with no 2N-sample block in between. `kbd`
     // holds the N values of KBD_LEFT(N), `overlap` and `pcm` N and `scratch` N, as above.
-    void inverse_overlap(std::span<const Real> spectrum, std::span<const Real> kbd, std::span<Real> overlap,
-                         std::span<Real> pcm, std::span<Complex> scratch);
+    void inverse_overlap(std::span<const Real> spectrum, std::span<const Real> kbd,
+                         std::span<Real> overlap, std::span<Real> pcm, std::span<Complex> scratch);
 
    private:
     // Pseudocodes 60 and 61: the pre-twiddle goes into the first pass of the plan's inverse
     // transform as it reads its input, so that no array of z[k] is made. Returns the half of
     // `scratch` that holds the N/2 values of the transform, or null for a plan with no passes.
-    [[nodiscard]] Complex* transform(std::span<const Real> spectrum, std::span<Complex> scratch) const;
+    [[nodiscard]] Complex* transform(std::span<const Real> spectrum,
+                                     std::span<Complex> scratch) const;
 
     std::size_t length_ = 0;
     Fft<Real> fft_;

@@ -146,19 +146,22 @@ void scale(std::span<QmfValue> values, double gain) {
     }
 }
 
-// The subbands of a frame that share a parameter band and, in every one of `prevs`, an acpl_param_prev:
-// Pseudocode 109 gives them the same value at every slot, to the bit, so a run's is formed once and its
-// subbands take it. A run starts where the band or one of the prevs differs from the subband before's, which
-// is what acpl::interpolate() starts one at.
+// The subbands of a frame that share a parameter band and, in every one of `prevs`, an
+// acpl_param_prev: Pseudocode 109 gives them the same value at every slot, to the bit, so a run's
+// is formed once and its subbands take it. A run starts where the band or one of the prevs differs
+// from the subband before's, which is what acpl::interpolate() starts one at.
 struct Runs {
     std::array<std::uint8_t, kSubbands> first{};  // the first subband of each run, in order
     int count = 0;
 
     [[nodiscard]] int begin(int run) const noexcept { return first[at(run)]; }
-    [[nodiscard]] int end(int run) const noexcept { return run + 1 < count ? first[at(run + 1)] : kSubbands; }
+    [[nodiscard]] int end(int run) const noexcept {
+        return run + 1 < count ? first[at(run + 1)] : kSubbands;
+    }
 };
 
-[[nodiscard]] Runs runs_of(int num_param_bands, std::span<const acpl::ParamPrev* const> prevs) noexcept {
+[[nodiscard]] Runs runs_of(int num_param_bands,
+                           std::span<const acpl::ParamPrev* const> prevs) noexcept {
     Runs runs;
     int run_band = -1;
     for (int sb = 0; sb < kSubbands; ++sb) {
@@ -166,7 +169,8 @@ struct Runs {
         bool starts = sb == 0 || pb != run_band;
         for (std::size_t k = 0; k < prevs.size() && !starts; ++k) {
             const acpl::ParamPrev& prev = *prevs[k];
-            starts = std::bit_cast<std::uint64_t>(prev[at(sb)]) != std::bit_cast<std::uint64_t>(prev[at(sb - 1)]);
+            starts = std::bit_cast<std::uint64_t>(prev[at(sb)]) !=
+                     std::bit_cast<std::uint64_t>(prev[at(sb - 1)]);
         }
         if (starts) {
             runs.first[at(runs.count)] = static_cast<std::uint8_t>(sb);
@@ -178,7 +182,8 @@ struct Runs {
 }
 
 // One parameter's interpolation column for the run that starts at subband `sb`.
-[[nodiscard]] acpl::Interpolator::Column column_of(int num_param_bands, const acpl::ParamSets& values,
+[[nodiscard]] acpl::Interpolator::Column column_of(int num_param_bands,
+                                                   const acpl::ParamSets& values,
                                                    const acpl::ParamPrev& prev, int sb) noexcept {
     const auto pb = at(std::max(acpl::sb_to_pb(num_param_bands, sb), 0));
     return acpl::Interpolator::column(prev[at(sb)], values[0][pb], values[1][pb]);
@@ -304,12 +309,13 @@ void AcplStage::module(const AcplModuleValues& values, int index, int decorrelat
     columns_.resize(at(runs.count) * 2);
     for (int run = 0; run < runs.count; ++run) {
         columns_[at(run) * 2] = column_of(values.num_bands, values.alpha, prev[0], runs.begin(run));
-        columns_[at(run) * 2 + 1] = column_of(values.num_bands, values.beta, prev[1], runs.begin(run));
+        columns_[at(run) * 2 + 1] =
+            column_of(values.num_bands, values.beta, prev[1], runs.begin(run));
     }
     for (int ts = 0; ts < num_ts; ++ts) {
         for (int run = 0; run < runs.count; ++run) {
-            // alpha and beta are ac4core's own double-precision interpolation (acpl::Interpolator is not
-            // retemplated on Real; see this class's declaration), narrowed once for the run.
+            // alpha and beta are ac4core's own double-precision interpolation (acpl::Interpolator
+            // is not retemplated on Real; see this class's declaration), narrowed once for the run.
             const auto a = static_cast<Real>(interpolator.at(columns_[at(run) * 2], ts));
             const auto b = static_cast<Real>(interpolator.at(columns_[at(run) * 2 + 1], ts));
             for (int sb = runs.begin(run); sb < runs.end(run); ++sb) {
@@ -385,18 +391,35 @@ void AcplStage::coupling(const AcplCouplingValues& values, std::span<const QmfVa
     derived[6] = times(b3, a1);
     derived[7] = times(b3, a2);
     const std::array<const Param*, kCouplingInterpolations> params = {
-        &g[0], &g[1], &g[2], &g[3], &g[4], &g[5], &derived[0], &derived[1], &derived[2],
-        &derived[3], &derived[4], &derived[5], &b1, &b2, &b3, &derived[6], &derived[7]};
+        &g[0],       &g[1],       &g[2],       &g[3],       &g[4],       &g[5],
+        &derived[0], &derived[1], &derived[2], &derived[3], &derived[4], &derived[5],
+        &b1,         &b2,         &b3,         &derived[6], &derived[7]};
     enum Interpolated : std::size_t {
-        kIg1, kIg2, kIg3, kIg4, kIg5, kIg6, kIg135, kIg246, kIg1a1, kIg2a1, kIg3a2, kIg4a2, kIb1, kIb2, kIb3,
-        kIb3a1, kIb3a2
+        kIg1,
+        kIg2,
+        kIg3,
+        kIg4,
+        kIg5,
+        kIg6,
+        kIg135,
+        kIg246,
+        kIg1a1,
+        kIg2a1,
+        kIg3a2,
+        kIg4a2,
+        kIb1,
+        kIb2,
+        kIb3,
+        kIb3a1,
+        kIb3a2
     };
 
-    // Pseudocode 109 once for each run of subbands that shares a parameter band and every parameter's
-    // acpl_param_prev, and at each slot: the coefficients the loops below multiply by. ac4core's
-    // interpolation is in double (see this class's declaration); each sum below is formed in that double
-    // precision, as the original single-scalar code computed it, and narrowed to Real once, at the multiply
-    // into a QmfValue - the double build stays bit-for-bit since narrowing a double to double is the identity.
+    // Pseudocode 109 once for each run of subbands that shares a parameter band and every
+    // parameter's acpl_param_prev, and at each slot: the coefficients the loops below multiply by.
+    // ac4core's interpolation is in double (see this class's declaration); each sum below is formed
+    // in that double precision, as the original single-scalar code computed it, and narrowed to
+    // Real once, at the multiply into a QmfValue - the double build stays bit-for-bit since
+    // narrowing a double to double is the identity.
     std::array<const acpl::ParamPrev*, kCouplingInterpolations> prevs{};
     for (std::size_t k = 0; k < params.size(); ++k) {
         prevs[k] = &params[k]->prev;
@@ -413,7 +436,8 @@ void AcplStage::coupling(const AcplCouplingValues& values, std::span<const QmfVa
     coupling_coefficients_.resize(at(num_ts) * at(runs.count));
     for (int ts = 0; ts < num_ts; ++ts) {
         for (int run = 0; run < runs.count; ++run) {
-            const acpl::Interpolator::Column* columns = &columns_[at(run) * kCouplingInterpolations];
+            const acpl::Interpolator::Column* columns =
+                &columns_[at(run) * kCouplingInterpolations];
             std::array<double, kCouplingInterpolations> ip{};
             for (std::size_t k = 0; k < ip.size(); ++k) {
                 ip[k] = interpolator.at(columns[k], ts);
@@ -452,7 +476,8 @@ void AcplStage::coupling(const AcplCouplingValues& values, std::span<const QmfVa
     }
     for (int ts = 0; ts < num_ts; ++ts) {
         for (int run = 0; run < runs.count; ++run) {
-            const CouplingCoefficients& c = coupling_coefficients_[at(ts) * at(runs.count) + at(run)];
+            const CouplingCoefficients& c =
+                coupling_coefficients_[at(ts) * at(runs.count) + at(run)];
             for (int sb = runs.begin(run); sb < runs.end(run); ++sb) {
                 const std::size_t i = at(ts) * kSubbands + at(sb);
                 v[0][i] = x0in[i] * c.ig1 + x1in[i] * c.ig2;
@@ -472,7 +497,8 @@ void AcplStage::coupling(const AcplCouplingValues& values, std::span<const QmfVa
     const auto sqrt2 = static_cast<Real>(kSqrt2);
     for (int ts = 0; ts < num_ts; ++ts) {
         for (int run = 0; run < runs.count; ++run) {
-            const CouplingCoefficients& c = coupling_coefficients_[at(ts) * at(runs.count) + at(run)];
+            const CouplingCoefficients& c =
+                coupling_coefficients_[at(ts) * at(runs.count) + at(run)];
             for (int sb = runs.begin(run); sb < runs.end(run); ++sb) {
                 const std::size_t i = at(ts) * kSubbands + at(sb);
                 const QmfValue l = x0in[i];

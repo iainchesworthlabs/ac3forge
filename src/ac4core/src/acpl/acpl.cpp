@@ -12,8 +12,9 @@ namespace {
     return static_cast<std::size_t>(index);
 }
 
-// The doubles of (ts + 1) and its kin, as a table: Pseudocode 109 converts each from an integer at every
-// subband, which is a call into soft float on a chip without double hardware. Past the table, the conversion.
+// The doubles of (ts + 1) and its kin, as a table: Pseudocode 109 converts each from an integer at
+// every subband, which is a call into soft float on a chip without double hardware. Past the table,
+// the conversion.
 constexpr std::array<double, kMaxSlots + 1> kRamp = [] {
     std::array<double, kMaxSlots + 1> table{};
     for (std::size_t k = 0; k < table.size(); ++k) {
@@ -283,7 +284,8 @@ void interpolate(const Framing& framing, int num_param_bands, const ParamSets& v
         }
         run_band = pb;
         run_prev = p_bits;
-        const Interpolator::Column column = Interpolator::column(p, values[0][at(pb)], values[1][at(pb)]);
+        const Interpolator::Column column =
+            Interpolator::column(p, values[0][at(pb)], values[1][at(pb)]);
         for (int ts = 0; ts < num_ts; ++ts) {
             out[at(ts) * kSubbands + at(sb)] = interpolator.at(column, ts);
         }
@@ -318,7 +320,8 @@ std::span<const double> coefficients(int decorrelator, int region) noexcept {
 }
 
 template <typename Real>
-Decorrelator<Real>::Decorrelator(int index) noexcept : index_(std::clamp(index, 0, kDecorrelators - 1)) {
+Decorrelator<Real>::Decorrelator(int index) noexcept
+    : index_(std::clamp(index, 0, kDecorrelators - 1)) {
     for (std::size_t region = 0; region < coefficients_.size(); ++region) {
         const std::span<const double> a = coefficients(index_, static_cast<int>(region));
         for (std::size_t i = 0; i < a.size(); ++i) {

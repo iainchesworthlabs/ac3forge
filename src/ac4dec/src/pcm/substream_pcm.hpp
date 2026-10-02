@@ -327,7 +327,8 @@ class SubstreamPcm {
     AjocQuantHistory ajoc_history_next_;
     std::vector<std::vector<QmfValue>> objects_;
     bool ajoc_applied_ = false;
-    // Every channel's matrix of this frame is the window of its `ext` (pass_through()), `out` stale.
+    // Every channel's matrix of this frame is the window of its `ext` (pass_through()), `out`
+    // stale.
     bool out_in_ext_ = false;
     std::vector<const std::vector<QmfValue>*> ajoc_inputs_;
     std::vector<std::vector<QmfValue>*> ajoc_inputs_in_place_;

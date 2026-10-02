@@ -40,13 +40,15 @@ inline constexpr int kTsOffsetHfadj = 4;  // Pseudocode 86
 // polynomials of t = i scaled to [-1, 1], orthonormalised by modified Gram-Schmidt in
 // double. Those four vectors depend on the number of points alone, and making them
 // takes 4 n calls of std::pow and a hundred multiplies and adds of the compiler's
-// software `double` on a part with a single-precision FPU: 100 to 600 microseconds a
-// channel on the P4, every frame (planning/ac4.md, D14e). A channel keeps them for the
+// software `double` on a part with a single-precision FPU: about 1.5 milliseconds a
+// channel on the P4, every frame (A-SPX's stage of a 5.1 frame took 7.7 ms less in its
+// five channels with them kept; planning/ac4.md, D14e). A channel keeps them for the
 // number of points it last had, and the frame's own work is the projection.
 struct CubicBasis {
     std::size_t n = 0;  // the number of points the vectors are for; 0 when none is made
     std::array<std::vector<double>, 4> basis{};
-    std::array<bool, 4> empty{};  // a power that adds nothing new at this n (fewer points than coefficients)
+    // A power that adds nothing new at this n (fewer points than coefficients).
+    std::array<bool, 4> empty{};
 };
 
 // What Pseudocode 88 keeps from one A-SPX interval to the next, per channel.
@@ -110,8 +112,8 @@ extern template void generate_high_band<Real>(const SubbandGroups&, const PatchT
                                               std::span<dsp::Complex<Real>>);
 extern template void preflattening_gains<Real>(std::span<const dsp::Complex<Real>>, int, int,
                                                int, std::span<Real>);
-extern template void preflattening_gains<Real>(std::span<const dsp::Complex<Real>>, int, int,
-                                               int, std::span<Real>, CubicBasis&);
+extern template void preflattening_gains<Real>(std::span<const dsp::Complex<Real>>, int, int, int,
+                                               std::span<Real>, CubicBasis&);
 extern template void prediction_coefficients<Real>(std::span<const dsp::Complex<Real>>, int,
                                                    int, std::span<dsp::Complex<Real>>,
                                                    std::span<dsp::Complex<Real>>);

@@ -92,12 +92,13 @@ using ParamSets = std::array<std::array<double, kMaxParamBands>, kMaxParamSets>;
 // acpl_param_prev (Pseudocode 110): 0 before the first frame.
 using ParamPrev = std::array<double, kSubbands>;
 
-// Pseudocode 109 at one slot, from what the subbands of one parameter band share: the band's value in each of
-// the frame's sets and acpl_param_prev. The expression is the pseudocode's, operation for operation, and so are
-// its bits; what it saves is work the pseudocode repeats. The ramp's (ts + 1) is a table entry, not a conversion
-// of an integer; and a division by a power of two is a multiplication by its reciprocal, which gives the bits of
-// the division because the reciprocal is exact and both are correctly rounded (a frame of 2 048 samples has 32
-// slots, its halves 16). The other divisors, 24 and 30 slots and their halves, divide.
+// Pseudocode 109 at one slot, from what the subbands of one parameter band share: the band's value
+// in each of the frame's sets and acpl_param_prev. The expression is the pseudocode's, operation
+// for operation, and so are its bits; what it saves is work the pseudocode repeats. The ramp's (ts
+// + 1) is a table entry, not a conversion of an integer; and a division by a power of two is a
+// multiplication by its reciprocal, which gives the bits of the division because the reciprocal is
+// exact and both are correctly rounded (a frame of 2 048 samples has 32 slots, its halves 16). The
+// other divisors, 24 and 30 slots and their halves, divide.
 // tests/ac4core/test_ac4core_acpl_exact.cpp holds it to the expression as written.
 class Interpolator {
    public:
@@ -128,7 +129,9 @@ class Interpolator {
 
         Divisor() = default;
         explicit Divisor(int divisor) noexcept;
-        [[nodiscard]] double operator()(double x) const noexcept { return by_multiply ? x * reciprocal : x / n; }
+        [[nodiscard]] double operator()(double x) const noexcept {
+            return by_multiply ? x * reciprocal : x / n;
+        }
     };
 
     bool steep_ = false;
@@ -141,8 +144,9 @@ class Interpolator {
 };
 
 // Pseudocode 109 at every slot and subband of a frame of `num_ts` slots:
-// out[ts * 64 + sb] = interpolate(values, num_param_sets, sb, ts). A subband that shares its band and its
-// acpl_param_prev with the one before it takes that one's values, which are the same to the bit.
+// out[ts * 64 + sb] = interpolate(values, num_param_sets, sb, ts). A subband that shares its band
+// and its acpl_param_prev with the one before it takes that one's values, which are the same to the
+// bit.
 void interpolate(const Framing& framing, int num_param_bands, const ParamSets& values,
                  const ParamPrev& prev, int num_ts, std::span<double> out) noexcept;
 
@@ -188,8 +192,9 @@ class Decorrelator {
     static constexpr int kOutputHistory = 7;
 
     int index_ = 0;
-    // Tables 199 to 201's coefficients for this decorrelator, [region][i], narrowed to Real once and not at
-    // every tap of every slot: a conversion from double is a call on a chip without double hardware.
+    // Tables 199 to 201's coefficients for this decorrelator, [region][i], narrowed to Real once
+    // and not at every tap of every slot: a conversion from double is a call on a chip without
+    // double hardware.
     std::array<std::array<Real, 8>, 3> coefficients_{};
     // The last slots before this frame, oldest first: [k * 64 + sb].
     std::array<Complex, static_cast<std::size_t>(kInputHistory) * kSubbands> x_history_{};

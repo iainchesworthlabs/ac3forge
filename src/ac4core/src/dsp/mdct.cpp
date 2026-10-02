@@ -58,8 +58,9 @@ typename Imdct<Real>::Complex* Imdct<Real>::transform(std::span<const Real> spec
     };
     // Pseudocode 61: the unscaled N/2-point inverse transform. The first pass writes the second
     // half of the scratch and the next the first, and so on.
-    return fft_kernels::run_stages<Real, true>(view.stages, view.count, view.twiddles, view.roots3, view.roots5,
-                                               pretwiddled, scratch.data(), scratch.data() + half);
+    return fft_kernels::run_stages<Real, true>(view.stages, view.count, view.twiddles, view.roots3,
+                                               view.roots5, pretwiddled, scratch.data(),
+                                               scratch.data() + half);
 }
 
 template <typename Real>
@@ -98,10 +99,11 @@ void Imdct<Real>::inverse(std::span<const Real> spectrum, std::span<Real> out,
 
 template <typename Real>
 void Imdct<Real>::inverse_overlap(std::span<const Real> spectrum, std::span<const Real> kbd,
-                                  std::span<Real> overlap, std::span<Real> pcm, std::span<Complex> scratch) {
+                                  std::span<Real> overlap, std::span<Real> pcm,
+                                  std::span<Complex> scratch) {
     const std::size_t n = length_;
-    if (!valid() || spectrum.size() != n || kbd.size() != n || overlap.size() < n || pcm.size() < n ||
-        scratch.size() < n) {
+    if (!valid() || spectrum.size() != n || kbd.size() != n || overlap.size() < n ||
+        pcm.size() < n || scratch.size() < n) {
         return;
     }
     const std::size_t half = n / 2;

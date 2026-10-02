@@ -75,14 +75,16 @@ void Fft<Real>::run(std::span<Complex> data, std::span<Complex> work, bool inver
     }
     const Complex* const x = data.data();
     const auto first = [x](std::size_t index) noexcept { return x[index]; };
-    // The first pass reads `data` and writes `work`, the second reads `work` and writes `data`, and so on.
+    // The first pass reads `data` and writes `work`, the second reads `work` and writes `data`, and
+    // so on.
     Complex* const result =
-        inverse ? fft_kernels::run_stages<Real, true>(stages_.data(), stages_.size(), twiddles_.data(),
-                                                      roots3_.data(), roots5_.data(), first, data.data(),
-                                                      work.data())
-                : fft_kernels::run_stages<Real, false>(stages_.data(), stages_.size(), twiddles_.data(),
-                                                       roots3_.data(), roots5_.data(), first, data.data(),
-                                                       work.data());
+        inverse
+            ? fft_kernels::run_stages<Real, true>(stages_.data(), stages_.size(), twiddles_.data(),
+                                                  roots3_.data(), roots5_.data(), first,
+                                                  data.data(), work.data())
+            : fft_kernels::run_stages<Real, false>(stages_.data(), stages_.size(), twiddles_.data(),
+                                                   roots3_.data(), roots5_.data(), first,
+                                                   data.data(), work.data());
     if (result != data.data()) {
         std::copy(result, result + static_cast<std::ptrdiff_t>(length_), data.data());
     }

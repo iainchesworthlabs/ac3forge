@@ -59,7 +59,8 @@ class Fft {
         const Complex* roots5 = nullptr;
     };
     [[nodiscard]] View view() const noexcept {
-        return View{stages_.data(), stages_.size(), twiddles_.data(), roots3_.data(), roots5_.data()};
+        return View{stages_.data(), stages_.size(), twiddles_.data(), roots3_.data(),
+                    roots5_.data()};
     }
 
    private:

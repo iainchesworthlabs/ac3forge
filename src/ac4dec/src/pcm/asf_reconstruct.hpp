@@ -53,12 +53,13 @@ using ScaleFactorGains = std::array<Real, 256>;
 void ungroup(const SubstreamContext& ctx, const AsfPsyInfo& psy, const SfData& data, std::span<const int> lengths,
              std::span<const Real> scaled, std::vector<Real>& spec_reord);
 
-// ungroup() for a frame of one long block, in one group of one window: the lines of `scaled` are in window order already,
-// so the spectrum is `scaled` with zeros after its last band, and the buffer changes hands (`scaled` takes the spectrum's old
-// one) in place of two passes over 8 KB a channel, one to zero `spec_reord` and one to copy. False, with nothing changed,
-// for any other frame, which ungroup() takes.
-[[nodiscard]] bool ungroup_in_place(const SubstreamContext& ctx, const AsfPsyInfo& psy, const SfData& data,
-                                    std::span<const int> lengths, std::vector<Real>& scaled,
-                                    std::vector<Real>& spec_reord);
+// ungroup() for a frame of one long block, in one group of one window: the lines of `scaled` are in
+// window order already, so the spectrum is `scaled` with zeros after its last band, and the buffer
+// changes hands (`scaled` takes the spectrum's old one) in place of two passes over 8 KB a channel,
+// one to zero `spec_reord` and one to copy. False, with nothing changed, for any other frame, which
+// ungroup() takes.
+[[nodiscard]] bool ungroup_in_place(const SubstreamContext& ctx, const AsfPsyInfo& psy,
+                                    const SfData& data, std::span<const int> lengths,
+                                    std::vector<Real>& scaled, std::vector<Real>& spec_reord);
 
 }  // namespace iclforge::ac4::detail

@@ -565,8 +565,9 @@ ParseResult parse_sf_data(BitReader& r, const SubstreamContext& ctx, const SfInf
                 if (k + dim > end_line) {
                     return fail(DecodeError::kInvalidStream, "a codeword runs past its section");
                 }
-                // Stored line by line, a pair or a quad (dim is 2 or 4): as a loop of a count the compiler turns it
-                // into a call of memcpy, a call into ROM for 8 or 16 bytes at every codeword.
+                // Stored line by line, a pair or a quad (dim is 2 or 4): as a loop of a count the
+                // compiler turns it into a call of memcpy, a call into ROM for 8 or 16 bytes at
+                // every codeword.
                 std::int32_t* const target = &out.quant_spec[at(k)];
                 target[0] = lines[0];
                 target[1] = lines[1];

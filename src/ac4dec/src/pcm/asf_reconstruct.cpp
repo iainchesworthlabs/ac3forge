@@ -40,13 +40,15 @@ namespace {
 ScaleFactorGains scale_factor_gains() {
     ScaleFactorGains gains{};
     for (std::size_t sf = 0; sf < gains.size(); ++sf) {
-        gains[sf] = static_cast<Real>(std::pow(2.0, 0.25 * static_cast<double>(static_cast<int>(sf) - 100)));
+        gains[sf] = static_cast<Real>(
+            std::pow(2.0, 0.25 * static_cast<double>(static_cast<int>(sf) - 100)));
     }
     return gains;
 }
 
-ParseResult reconstruct_track(const SfInfo& info, const SfData& data, const ScaleFactorGains& sf_gain_table,
-                              RandGenState& noise, std::vector<Real>& scaled) {
+ParseResult reconstruct_track(const SfInfo& info, const SfData& data,
+                              const ScaleFactorGains& sf_gain_table, RandGenState& noise,
+                              std::vector<Real>& scaled) {
     const AsfPsyInfo& psy = info.psy;
     scaled.assign(data.quant_spec.size(), Real{});
 
@@ -187,7 +189,8 @@ void ungroup(const SubstreamContext& ctx, const AsfPsyInfo& psy, const SfData& d
 }
 
 bool ungroup_in_place(const SubstreamContext& ctx, const AsfPsyInfo& psy, const SfData& data,
-                      std::span<const int> lengths, std::vector<Real>& scaled, std::vector<Real>& spec_reord) {
+                      std::span<const int> lengths, std::vector<Real>& scaled,
+                      std::vector<Real>& spec_reord) {
     if (lengths.size() != 1 || psy.num_window_groups != 1 || psy.num_win_in_group[0] != 1) {
         return false;
     }
@@ -195,9 +198,10 @@ bool ungroup_in_place(const SubstreamContext& ctx, const AsfPsyInfo& psy, const 
         tables::sfb_offsets_48(transform_length_samples(ctx, get_transf_length(ctx, psy, 0)));
     const auto bands = static_cast<std::size_t>(std::max(data.max_sfb[0], 0));
     const auto total = static_cast<std::size_t>(std::max(lengths[0], 0));
-    // The lines the bands cover are the first ones, one for one: offsets[0] is 0 and the bands follow each other.
-    if (offsets.empty() || offsets[0] != 0 || bands >= offsets.size() || scaled.size() != offsets[bands] ||
-        scaled.size() > total) {
+    // The lines the bands cover are the first ones, one for one: offsets[0] is 0 and the bands
+    // follow each other.
+    if (offsets.empty() || offsets[0] != 0 || bands >= offsets.size() ||
+        scaled.size() != offsets[bands] || scaled.size() > total) {
         return false;
     }
     std::swap(spec_reord, scaled);

@@ -71,8 +71,9 @@ ParseResult ElementParser::begin(ElementKind kind, int mode, bool needs_aspx,
                                  std::optional<AcplConfigKind> acpl_1ch, bool acpl_2ch) {
     out_.kind = kind;
     out_.codec_mode = mode;
-    // A Track is 15 KB, so growing the vector moves every track it holds (63 moves and 80 KB of zeroing
-    // a frame at 5.1 before this): the number of tracks the element kind codes, an LFE's included.
+    // A Track is 15 KB, so growing the vector moves every track it holds (63 moves and 80 KB of
+    // zeroing a frame at 5.1 before this): the number of tracks the element kind codes, an LFE's
+    // included.
     switch (kind) {
         case ElementKind::kSingle:
             out_.tracks.reserve(1);

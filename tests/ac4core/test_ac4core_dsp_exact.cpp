@@ -1,11 +1,12 @@
-// The transforms of src/ac4core/include/iclforge/ac4core/dsp against verbatim copies of the code they replaced
-// (planning/ac4.md, D14e): the FFT passes, the inverse MDCT and the windowed overlap-add are held to the BITS
-// of the plan's generic radix loop, the old inverse transform and the old block synthesis, at the decoder's
-// scalar and at double, in both directions, on dense data and on spectra with runs of zeros of either sign.
-// A sign of zero is a bit, and a stream whose output is silent for a while shows it in its PCM hash.
+// The transforms of src/ac4core/include/iclforge/ac4core/dsp against verbatim copies of the code
+// they replaced (planning/ac4.md, D14e): the FFT passes, the inverse MDCT and the windowed
+// overlap-add are held to the BITS of the plan's generic radix loop, the old inverse transform and
+// the old block synthesis, at the decoder's scalar and at double, in both directions, on dense data
+// and on spectra with runs of zeros of either sign. A sign of zero is a bit, and a stream whose
+// output is silent for a while shows it in its PCM hash.
 //
-// test_ac4core_dsp.cpp holds the same code to the formulas it computes; this file holds the speed-ups to what the
-// code did before them, so that a decoder's output moves by no bit.
+// test_ac4core_dsp.cpp holds the same code to the formulas it computes; this file holds the
+// speed-ups to what the code did before them, so that a decoder's output moves by no bit.
 
 #include <algorithm>
 #include <array>
@@ -38,9 +39,9 @@ namespace {
 namespace dsp = iclforge::ac4::detail::dsp;
 using iclforge::ac4::detail::Real;
 
-// What the plan's loop was before the passes took the radix and the direction as arguments: the factorisation,
-// the factors, the generic butterfly with its runtime radix and the Stockham loop, as src/ac4core/src/dsp/fft.cpp
-// had them.
+// What the plan's loop was before the passes took the radix and the direction as arguments: the
+// factorisation, the factors, the generic butterfly with its runtime radix and the Stockham loop,
+// as src/ac4core/src/dsp/fft.cpp had them.
 namespace reference {
 
 std::vector<int> factor(std::size_t length, bool& ok) {
@@ -64,7 +65,8 @@ std::vector<int> factor(std::size_t length, bool& ok) {
 }
 
 std::complex<double> root(std::size_t num, std::size_t den) {
-    const double angle = -2.0 * std::numbers::pi * static_cast<double>(num % den) / static_cast<double>(den);
+    const double angle =
+        -2.0 * std::numbers::pi * static_cast<double>(num % den) / static_cast<double>(den);
     return {std::cos(angle), std::sin(angle)};
 }
 
@@ -126,7 +128,8 @@ class Fft {
             for (std::size_t p = 0; p < m; ++p) {
                 for (std::size_t k = 0; k < r; ++k) {
                     const std::complex<double> w = root(p * k, n);
-                    twiddles_.emplace_back(static_cast<Scalar>(w.real()), static_cast<Scalar>(w.imag()));
+                    twiddles_.emplace_back(static_cast<Scalar>(w.real()),
+                                           static_cast<Scalar>(w.imag()));
                 }
             }
             n = m;
@@ -194,21 +197,24 @@ std::vector<Complex> pre_twiddles(std::size_t length) {
     const double n16 = 16.0 * static_cast<double>(length);
     for (std::size_t k = 0; k < twiddle.size(); ++k) {
         const double angle = 2.0 * std::numbers::pi * static_cast<double>(8 * k + 1) / n16;
-        twiddle[k] = Complex(static_cast<Scalar>(-std::cos(angle)), static_cast<Scalar>(-std::sin(angle)));
+        twiddle[k] =
+            Complex(static_cast<Scalar>(-std::cos(angle)), static_cast<Scalar>(-std::sin(angle)));
     }
     return twiddle;
 }
 
-// Imdct::inverse() as it was: the pre-twiddle, the plan's inverse transform, the post-twiddle and its 1/N, and
-// Pseudocode 63's unfolding.
+// Imdct::inverse() as it was: the pre-twiddle, the plan's inverse transform, the post-twiddle and
+// its 1/N, and Pseudocode 63's unfolding.
 template <typename Scalar>
 class Imdct {
    public:
     using Complex = dsp::Complex<Scalar>;
 
-    explicit Imdct(std::size_t length) : length_(length), fft_(length / 2), twiddle_(pre_twiddles<Complex>(length)) {}
+    explicit Imdct(std::size_t length)
+        : length_(length), fft_(length / 2), twiddle_(pre_twiddles<Complex>(length)) {}
 
-    void inverse(std::span<const Scalar> spectrum, std::span<Scalar> out, std::span<Complex> scratch) {
+    void inverse(std::span<const Scalar> spectrum, std::span<Scalar> out,
+                 std::span<Complex> scratch) {
         const std::size_t n = length_;
         const std::size_t half = n / 2;
         const std::size_t quarter = n / 4;
@@ -241,19 +247,23 @@ class Imdct {
     std::vector<Complex> twiddle_;
 };
 
-// ChannelSynthesis::block() as it was: the whole of a block's inverse transform into a scratch, the windows, the
-// overlap-add and the shift of the overlap buffer. The windows are the library's own (kbd_left).
+// ChannelSynthesis::block() as it was: the whole of a block's inverse transform into a scratch, the
+// windows, the overlap-add and the shift of the overlap buffer. The windows are the library's own
+// (kbd_left).
 template <typename Scalar>
 class ChannelSynthesis {
    public:
     using Complex = dsp::Complex<Scalar>;
 
     explicit ChannelSynthesis(int full_length)
-        : full_length_(full_length), previous_length_(full_length),
+        : full_length_(full_length),
+          previous_length_(full_length),
           overlap_(static_cast<std::size_t>(full_length)),
-          block_(2 * static_cast<std::size_t>(full_length)), transform_(static_cast<std::size_t>(full_length)) {}
+          block_(2 * static_cast<std::size_t>(full_length)),
+          transform_(static_cast<std::size_t>(full_length)) {}
 
-    bool block(dsp::TransformSet<Scalar>& transforms, std::span<const Scalar> spectrum, std::span<Scalar> pcm) {
+    bool block(dsp::TransformSet<Scalar>& transforms, std::span<const Scalar> spectrum,
+               std::span<Scalar> pcm) {
         const std::size_t n = spectrum.size();
         const auto n_int = static_cast<int>(n);
         Imdct<Scalar>& imdct = imdct_for(n);
@@ -286,7 +296,8 @@ class ChannelSynthesis {
         for (std::size_t i = 0; i < nskip; ++i) {
             overlap_[i] = overlap_[n + i];
         }
-        std::copy_n(x.begin() + static_cast<std::ptrdiff_t>(n), n, overlap_.begin() + static_cast<std::ptrdiff_t>(nskip));
+        std::copy_n(x.begin() + static_cast<std::ptrdiff_t>(n), n,
+                    overlap_.begin() + static_cast<std::ptrdiff_t>(nskip));
         previous_length_ = n_int;
         return true;
     }
@@ -310,8 +321,8 @@ class ChannelSynthesis {
 
 }  // namespace reference
 
-// Dense normal values, then a stretch of zeros of random sign where `zeros` says so: a spectrum above a
-// coded bandwidth, a channel in silence.
+// Dense normal values, then a stretch of zeros of random sign where `zeros` says so: a spectrum
+// above a coded bandwidth, a channel in silence.
 template <typename Scalar>
 std::vector<Scalar> values(std::size_t count, unsigned seed, double zero_fraction) {
     std::mt19937 rng(seed);
@@ -320,7 +331,8 @@ std::vector<Scalar> values(std::size_t count, unsigned seed, double zero_fractio
     std::bernoulli_distribution negative(0.5);
     std::vector<Scalar> out(count);
     for (Scalar& v : out) {
-        v = zero(rng) ? (negative(rng) ? Scalar(-0.0) : Scalar(0.0)) : static_cast<Scalar>(normal(rng));
+        v = zero(rng) ? (negative(rng) ? Scalar(-0.0) : Scalar(0.0))
+                      : static_cast<Scalar>(normal(rng));
     }
     return out;
 }
@@ -343,7 +355,8 @@ bool same_bits(std::span<const Scalar> a, std::span<const Scalar> b) {
 }
 
 template <typename Scalar>
-std::vector<dsp::Complex<Scalar>> complexes(std::size_t count, unsigned seed, double zero_fraction) {
+std::vector<dsp::Complex<Scalar>> complexes(std::size_t count, unsigned seed,
+                                            double zero_fraction) {
     const std::vector<Scalar> re = values<Scalar>(count, seed, zero_fraction);
     const std::vector<Scalar> im = values<Scalar>(count, seed + 5, zero_fraction);
     std::vector<dsp::Complex<Scalar>> out(count);
@@ -354,20 +367,24 @@ std::vector<dsp::Complex<Scalar>> complexes(std::size_t count, unsigned seed, do
 }
 
 template <typename Scalar>
-bool same_bits(const std::vector<dsp::Complex<Scalar>>& a, const std::vector<dsp::Complex<Scalar>>& b) {
-    return a.size() == b.size() && std::memcmp(a.data(), b.data(), a.size() * sizeof(dsp::Complex<Scalar>)) == 0;
+bool same_bits(const std::vector<dsp::Complex<Scalar>>& a,
+               const std::vector<dsp::Complex<Scalar>>& b) {
+    return a.size() == b.size() &&
+           std::memcmp(a.data(), b.data(), a.size() * sizeof(dsp::Complex<Scalar>)) == 0;
 }
 
 // Every transform length of clause 5.5.3 (the MDCT lengths N; an FFT of N / 2 runs for each).
-constexpr std::array<int, 21> kBlockLengths = {2048, 1920, 1536, 1024, 960, 768, 512, 480, 384, 256, 240,
-                                               192,  128,  120,  96,   8192, 7680, 6144, 4096, 3840, 3072};
+constexpr std::array<int, 21> kBlockLengths = {2048, 1920, 1536, 1024, 960,  768,  512,
+                                               480,  384,  256,  240,  192,  128,  120,
+                                               96,   8192, 7680, 6144, 4096, 3840, 3072};
 
 template <typename Scalar>
 void fft_matches_reference() {
     // The lengths an MDCT of each block length runs, and others that put every radix, alone and in
     // combination, in first, middle and last position.
-    std::vector<std::size_t> lengths = {1U,  2U,  3U,  4U,  5U,  6U,  8U,  9U,  10U, 12U,  15U,  16U,  20U, 25U,
-                                        27U, 30U, 32U, 45U, 48U, 60U, 64U, 75U, 100U, 125U, 128U, 240U, 360U};
+    std::vector<std::size_t> lengths = {1U,  2U,  3U,  4U,  5U,   6U,   8U,   9U,   10U,
+                                        12U, 15U, 16U, 20U, 25U,  27U,  30U,  32U,  45U,
+                                        48U, 60U, 64U, 75U, 100U, 125U, 128U, 240U, 360U};
     for (const int length : kBlockLengths) {
         lengths.push_back(static_cast<std::size_t>(length) / 2);
     }
@@ -412,8 +429,9 @@ void imdct_matches_reference() {
         std::vector<dsp::Complex<Scalar>> scratch_slow(n);
         for (const bool zero_tail : {false, true}) {
             CAPTURE(zero_tail);
-            const std::vector<Scalar> spectrum =
-                zero_tail ? spectrum_with_zero_tail<Scalar>(n, seed++) : values<Scalar>(n, seed++, 0.0);
+            const std::vector<Scalar> spectrum = zero_tail
+                                                     ? spectrum_with_zero_tail<Scalar>(n, seed++)
+                                                     : values<Scalar>(n, seed++, 0.0);
             std::vector<Scalar> a(2 * n);
             std::vector<Scalar> b(2 * n);
             fast.inverse(spectrum, a, scratch_fast);
@@ -427,10 +445,10 @@ void imdct_matches_reference() {
     }
 }
 
-// Block lengths of a frame: the full length, or a power of two of blocks of the full length over a power of
-// two, as Table 187 has it. The sequences here are free of that table's rules, since the synthesis does the
-// same sums whatever the order, and run the long block more often than the others so that the transitions
-// into and out of it, and the runs of it, are all met.
+// Block lengths of a frame: the full length, or a power of two of blocks of the full length over a
+// power of two, as Table 187 has it. The sequences here are free of that table's rules, since the
+// synthesis does the same sums whatever the order, and run the long block more often than the
+// others so that the transitions into and out of it, and the runs of it, are all met.
 template <typename Scalar>
 void synthesis_matches_reference(int full, int rate_multiplier) {
     dsp::TransformSet<Scalar> transforms(full, rate_multiplier);
@@ -447,11 +465,13 @@ void synthesis_matches_reference(int full, int rate_multiplier) {
     reference::ChannelSynthesis<Scalar> slow(full);
     std::mt19937 rng(static_cast<unsigned>(full) * 31U + static_cast<unsigned>(rate_multiplier));
     for (int block = 0; block < 60; ++block) {
-        const int length = (rng() % 3 != 0 || lengths.size() == 1) ? full : lengths[rng() % lengths.size()];
+        const int length =
+            (rng() % 3 != 0 || lengths.size() == 1) ? full : lengths[rng() % lengths.size()];
         const auto n = static_cast<std::size_t>(length);
-        const std::vector<Scalar> spectrum = (block % 4 == 3)
-                                                 ? spectrum_with_zero_tail<Scalar>(n, static_cast<unsigned>(rng()))
-                                                 : values<Scalar>(n, static_cast<unsigned>(rng()), block % 7 == 0 ? 0.8 : 0.0);
+        const std::vector<Scalar> spectrum =
+            (block % 4 == 3)
+                ? spectrum_with_zero_tail<Scalar>(n, static_cast<unsigned>(rng()))
+                : values<Scalar>(n, static_cast<unsigned>(rng()), block % 7 == 0 ? 0.8 : 0.0);
         std::vector<Scalar> a(n, Scalar(7));
         std::vector<Scalar> b(n, Scalar(7));
         CAPTURE(block);
@@ -462,10 +482,9 @@ void synthesis_matches_reference(int full, int rate_multiplier) {
     }
 }
 
-
-// Pseudocode 85's pre-flattening gains as they were before the cubic fit's vectors were kept between calls:
-// src/ac4core/src/aspx/hf_generator.cpp's fit_cubic and preflattening_gains, with its two dB conversions,
-// verbatim.
+// Pseudocode 85's pre-flattening gains as they were before the cubic fit's vectors were kept
+// between calls: src/ac4core/src/aspx/hf_generator.cpp's fit_cubic and preflattening_gains, with
+// its two dB conversions, verbatim.
 namespace reference_aspx {
 
 constexpr double kTenOverLog2Of10 = 3.010299956639812;
@@ -534,8 +553,8 @@ void fit_cubic(std::span<const Scalar> y, std::span<Scalar> fitted) {
 }
 
 template <typename Scalar>
-void preflattening_gains(std::span<const dsp::Complex<Scalar>> q_low, int sbx, int ts_begin, int ts_end,
-                         std::span<Scalar> gain_vec) {
+void preflattening_gains(std::span<const dsp::Complex<Scalar>> q_low, int sbx, int ts_begin,
+                         int ts_end, std::span<Scalar> gain_vec) {
     const auto n = static_cast<std::size_t>(sbx);
     if (ts_end <= ts_begin || n == 0) {
         std::ranges::fill(gain_vec.first(n), Scalar{1});
@@ -567,7 +586,8 @@ void preflattening_matches_reference() {
     namespace aspx = iclforge::ac4::detail::aspx;
     std::mt19937 rng(7);
     std::normal_distribution<double> normal;
-    // One channel's state across frames whose crossover moves: the cache is for the last count and is made again for a new one.
+    // One channel's state across frames whose crossover moves: the cache is for the last count and
+    // is made again for a new one.
     aspx::CubicBasis cubic;
     std::vector<int> sbx_sequence;
     for (int sbx = 1; sbx <= 63; ++sbx) {
@@ -582,7 +602,8 @@ void preflattening_matches_reference() {
         const int slots = 8 + static_cast<int>(rng() % 24);
         std::vector<dsp::Complex<Scalar>> q_low(static_cast<std::size_t>(slots) * 64);
         for (auto& v : q_low) {
-            v = dsp::Complex<Scalar>{static_cast<Scalar>(normal(rng) * 100.0), static_cast<Scalar>(normal(rng) * 100.0)};
+            v = dsp::Complex<Scalar>{static_cast<Scalar>(normal(rng) * 100.0),
+                                     static_cast<Scalar>(normal(rng) * 100.0)};
         }
         std::array<Scalar, 64> kept{};
         std::array<Scalar, 64> fresh{};
@@ -590,19 +611,23 @@ void preflattening_matches_reference() {
         aspx::preflattening_gains<Scalar>(q_low, sbx, 0, slots, kept, cubic);
         aspx::preflattening_gains<Scalar>(q_low, sbx, 0, slots, fresh);
         reference_aspx::preflattening_gains<Scalar>(q_low, sbx, 0, slots, before);
-        CHECK(same_bits<Scalar>(std::span<const Scalar>(kept).first(static_cast<std::size_t>(sbx)),
-                                std::span<const Scalar>(before).first(static_cast<std::size_t>(sbx))));
-        CHECK(same_bits<Scalar>(std::span<const Scalar>(fresh).first(static_cast<std::size_t>(sbx)),
-                                std::span<const Scalar>(before).first(static_cast<std::size_t>(sbx))));
+        CHECK(same_bits<Scalar>(
+            std::span<const Scalar>(kept).first(static_cast<std::size_t>(sbx)),
+            std::span<const Scalar>(before).first(static_cast<std::size_t>(sbx))));
+        CHECK(same_bits<Scalar>(
+            std::span<const Scalar>(fresh).first(static_cast<std::size_t>(sbx)),
+            std::span<const Scalar>(before).first(static_cast<std::size_t>(sbx))));
     }
 }
 }  // namespace
 
-TEST_CASE("the FFT passes give the bits of the generic radix loop at the decoder's scalar", "[ac4core][dsp][exact]") {
+TEST_CASE("the FFT passes give the bits of the generic radix loop at the decoder's scalar",
+          "[ac4core][dsp][exact]") {
     fft_matches_reference<Real>();
 }
 
-TEST_CASE("the FFT passes give the bits of the generic radix loop at double", "[ac4core][dsp][exact]") {
+TEST_CASE("the FFT passes give the bits of the generic radix loop at double",
+          "[ac4core][dsp][exact]") {
     fft_matches_reference<double>();
 }
 
@@ -611,35 +636,41 @@ TEST_CASE("the inverse MDCT gives the bits of the old inverse transform at the d
     imdct_matches_reference<Real>();
 }
 
-TEST_CASE("the inverse MDCT gives the bits of the old inverse transform at double", "[ac4core][dsp][exact]") {
+TEST_CASE("the inverse MDCT gives the bits of the old inverse transform at double",
+          "[ac4core][dsp][exact]") {
     imdct_matches_reference<double>();
 }
 
-TEST_CASE("the windowed overlap-add gives the bits of the old block synthesis at the decoder's scalar",
-          "[ac4core][dsp][exact]") {
-    for (const auto& [full, multiplier] : {std::pair{2048, 1}, std::pair{1920, 1}, std::pair{1536, 1},
-                                           std::pair{1024, 1}, std::pair{960, 1}, std::pair{4096, 2},
-                                           std::pair{3840, 2}, std::pair{8192, 4}}) {
+TEST_CASE(
+    "the windowed overlap-add gives the bits of the old block synthesis at the decoder's scalar",
+    "[ac4core][dsp][exact]") {
+    for (const auto& [full, multiplier] :
+         {std::pair{2048, 1}, std::pair{1920, 1}, std::pair{1536, 1}, std::pair{1024, 1},
+          std::pair{960, 1}, std::pair{4096, 2}, std::pair{3840, 2}, std::pair{8192, 4}}) {
         CAPTURE(full);
         CAPTURE(multiplier);
         synthesis_matches_reference<Real>(full, multiplier);
     }
 }
 
-TEST_CASE("the windowed overlap-add gives the bits of the old block synthesis at double", "[ac4core][dsp][exact]") {
-    for (const auto& [full, multiplier] : {std::pair{2048, 1}, std::pair{1920, 1}, std::pair{1536, 1},
-                                           std::pair{4096, 2}}) {
+TEST_CASE("the windowed overlap-add gives the bits of the old block synthesis at double",
+          "[ac4core][dsp][exact]") {
+    for (const auto& [full, multiplier] :
+         {std::pair{2048, 1}, std::pair{1920, 1}, std::pair{1536, 1}, std::pair{4096, 2}}) {
         CAPTURE(full);
         CAPTURE(multiplier);
         synthesis_matches_reference<double>(full, multiplier);
     }
 }
 
-TEST_CASE("pre-flattening's gains keep the bits of the fit made afresh each frame at the decoder's scalar",
-          "[ac4core][aspx][exact]") {
+TEST_CASE(
+    "pre-flattening's gains keep the bits of the fit made afresh each frame at the decoder's "
+    "scalar",
+    "[ac4core][aspx][exact]") {
     preflattening_matches_reference<Real>();
 }
 
-TEST_CASE("pre-flattening's gains keep the bits of the fit made afresh each frame at double", "[ac4core][aspx][exact]") {
+TEST_CASE("pre-flattening's gains keep the bits of the fit made afresh each frame at double",
+          "[ac4core][aspx][exact]") {
     preflattening_matches_reference<double>();
 }
