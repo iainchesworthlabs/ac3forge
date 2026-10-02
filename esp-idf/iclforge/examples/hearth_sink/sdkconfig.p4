@@ -76,6 +76,18 @@ CONFIG_PM_SLEEP_CLK_ICG_ENABLE=n
 # that cannot set a flash chip's quad-enable bit says so and stays in DIO.
 CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
 
+# The I2S queue: 12 descriptors of 256 frames, 64 ms, where the example's default is 21 ms
+# (sdkconfig.psram gives the S3's network sources the same). The sink's write returns when the
+# frame is in the queue, so a queue that holds less than a frame takes to decode runs dry in
+# every frame: a 5.1 A-SPX stream folded to 2.0, 35 ms to decode of its 42.7, took 13.5 s for
+# 10.1 s of audio through the default queue, and the sink counted 236 underruns and 3.5 s of
+# silence; through this one it counted 1 underrun of 11 ms, the first frame's (planning/ac4.md,
+# D14e). The queue is internal RAM, 24 KB at 2.0 (two 32-bit slots); a wide TDM frame (16 slots)
+# would be 196 KB, which the AC-4 decoder leaves no room for, so size it down with that
+# layout (it does not start on this chip revision).
+CONFIG_ICLFORGE_EXAMPLE_I2S_DMA_DESCRIPTORS=12
+CONFIG_ICLFORGE_EXAMPLE_I2S_DMA_FRAMES=256
+
 # PSRAM, on: this board has 32 MB of it (docs/platforms/bare-metal/esp32-p4.md),
 # unlike the minimum-footprint bare-metal probe that deliberately leaves it off
 # to measure what fits in internal SRAM alone - hearth_sink has no such goal,
