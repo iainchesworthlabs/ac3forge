@@ -307,7 +307,8 @@ SavedQueue load_queue(const SettingsStore& store) {
         out.items.push_back(std::move(item));
     }
     const auto ms = number_of(store.value(kQueuePosition));
-    const auto most = static_cast<std::uint64_t>(std::numeric_limits<std::chrono::milliseconds::rep>::max());
+    constexpr auto most =
+        static_cast<std::uint64_t>(std::numeric_limits<std::chrono::milliseconds::rep>::max());
     if (out.current != Queue::kNone && ms && *ms <= most) {
         out.position = std::chrono::milliseconds{static_cast<std::chrono::milliseconds::rep>(*ms)};
     }
