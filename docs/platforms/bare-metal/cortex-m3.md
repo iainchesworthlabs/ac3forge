@@ -129,7 +129,11 @@ fixture hashes to the value `tests/golden/ac4-probe-pcm-hashes.json` pins, on th
 x86-64 host, and an ESP32-P4 board's hash equals the same six
 ([ESP32-P4](esp32-p4.md#float-output-on-the-host-the-cortex-m3-leg-and-the-board)). Instructions
 are not cycles: the [P4 page](esp32-p4.md#what-it-decodes-in-real-time) has what the decoder takes on
-a part with an FPU, and no part has run AC-4 in the fixed-point tier.
+a part with an FPU. In the fixed-point tier (`--ac4 --scalar=fixed`) the six fixtures take 34.2 M
+to 90.4 M instructions a frame on this leg, 0.43 to 0.70 of the `float` tier's, and hash to the
+values `tests/golden/ac4-fixed-probe-pcm-hashes.json` pins, on this leg, on the x86-64 host and on
+RV32IMC ([the performance trend](../../performance-trend.md#the-ac-4-decoder) has the table). No
+board has run AC-4 in the fixed-point tier.
 
 ## Porting to another part
 

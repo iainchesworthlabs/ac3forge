@@ -1709,6 +1709,17 @@ The sections below contain the complete change list and fixes.
   plays and the probe's six fixtures (also on the Cortex-M3 under QEMU) equals the host's. A-CPL mode 3 (1.14), 5.1.4 in full decoding (1.57 to 1.90) and a
   5.1 layout through a sink (the wide TDM sink does not start on this chip revision) are not in real time. The Cortex-M3 probe's image is 691,896 bytes from
   683,448 (ceiling 750,000). [ESP32-P4](docs/platforms/bare-metal/esp32-p4.md#what-d14e-changed) has the tables.
+- **The AC-4 decoder has a fixed-point tier (phase D14d).** `ICLFORGE_DECODE_SCALAR=fixed` builds it on `Fixed32`, with a block exponent for each
+  transform block and each QMF slot, A-SPX's, A-CPL's, companding's and DRC's energies and gains as a 30-bit mantissa and a power of two
+  (`MantExp`, `src/arithmetic`), and the decorrelators' and the frame-rate converter's taps summed in 64 bits. The converter's three tables are Q1.30,
+  built by the compiler; the 1001/960 one, 188,376 bytes, is read in place from flash. Against the `double` decode on the 67 committed streams the worst
+  channel is 105.7 to 132.1 dB below A-SPX's lowest crossover and 34.2 to 97.2 dB above its highest (pinned in
+  `tests/golden/ac4dec/scalar-agreement-fixed.json`), and both AC-4 scorers hold their pins with a fixed decoder. The AC-4 probe's six fixtures give
+  one PCM hash on the x86-64 host, the Cortex-M3 under QEMU and RV32IMC (`tests/golden/ac4-fixed-probe-pcm-hashes.json`); on the Cortex-M3 they take
+  34.2 M to 90.4 M instructions a frame, 0.43 to 0.70 of the `float` tier's, in an image of 727,656 bytes. `CONFIG_ICLFORGE_AC4` is offered on the
+  ESP32-C3 and ESP32-C6 as well, in this tier. Nothing fits a C6 beside WiFi: 2.0 peaks at 429,667 bytes, where the board had about 236,000 free, so a
+  C6 sink takes AC-4 programmes from Hearth as PCM. The `double` and `float` output is byte-identical to before (252 decodes and 12 encodes).
+  [ESP32-C6](docs/platforms/bare-metal/esp32-c6.md#ac-4) has the figures.
 
 **Browser (WASM)**
 

@@ -11,9 +11,10 @@
 # of the decode: the QMF bank, the inverse transform, A-SPX, A-CPL and the
 # sample rate converter. Without it the decode is the same code with no markers.
 #
-# Only for a part with a floating-point unit (the component's Kconfig says so),
-# and in practice for one with PSRAM: a decoder needs more than internal RAM has
-# (docs/platforms/bare-metal/esp32-p4.md, AC-4).
+# In practice for a part with PSRAM: a decoder needs more than internal RAM has
+# (docs/platforms/bare-metal/esp32-p4.md, AC-4). A part with no FPU decodes in the
+# fixed-point tier, and on an ESP32-C6 nothing fits beside WiFi
+# (docs/platforms/bare-metal/esp32-c6.md, AC-4).
 CONFIG_ICLFORGE_AC4=y
 
 # The decode task's stack: the decoder used about 50 KB of it before D14a's third part

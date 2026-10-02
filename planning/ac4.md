@@ -85,7 +85,7 @@ checked. The table is of `main` at `5ef9eeafc`.
 | D14a5 | the converter's `float` tables at compile time | open, 2026-10-01 | exit met: the P4's first frame at 1001/960 takes 0.31 s from 5.9 s and the converter 16.5 ms a frame at 23.976 fps from 22.4; no `float` pin moved and the `double` output is byte-identical |
 | D14a6 | the P4's low-power SRAM out of the heap | open, 2026-10-02 | exit met: the 29.97 fps play's converter takes 12.0 ms a frame under ESP-IDF's default allocation policy from 93.8, the play 1.00 of real time from 3.51, and every other play 3 to 24% less time a frame; no `float` pin moved |
 | D14c | the S3 | | not built |
-| D14d | the C6, fixed point | | not built |
+| D14d | the C6, fixed point | open, 2026-10-02 | the host and QEMU part's exit met: the fixed decode within 105.7 to 132.1 dB of `double` below A-SPX's crossover and 34.2 to 97.2 above, the probe's hashes equal on x86-64, the Cortex-M3 and RV32IMC, `double` and `float` unchanged; nothing fits a C6 beside WiFi; the board not yet run |
 | E1 | the encoder library, the frame writer, SIMPLE mono and stereo | #1011, 2026-09-25 | merged; exit met |
 | E2 | A-SPX and companding | #1013, 2026-09-25 | merged; exit met |
 | E3 | the 5.X element | #1025, 2026-09-25 | merged; exit met |
@@ -778,8 +778,8 @@ point ([decision 8](#decisions)). So from D2 the DSP is written against a scalar
 floating type and a fixed-point type can instantiate, in the pattern of forge's decode path
 (`planning/arithmetic-tiers.md`): arithmetic through the type's operators, functions through
 overload sets, and a block exponent carried with each block of coefficients where a fixed store
-would otherwise lose a small value's bits. `double` and `float` are built (D14a and D14b); fixed
-point, for the C6, is D14d and is not built. The QMF-domain tools make the fixed tier harder
+would otherwise lose a small value's bits. `double` and `float` are built (D14a and D14b), and
+fixed point, for the C6, in D14d. The QMF-domain tools make the fixed tier harder
 than forge's was: every codec mode except SIMPLE runs a complex filterbank, A-SPX's envelope
 estimates and, in the A-CPL modes, IIR decorrelators on every channel, and forge's own JOC
 reconstruction still runs in `float` in every build because of the same filterbank. The speech
@@ -1079,7 +1079,8 @@ parts; then the S3 in `float` and the C6 in fixed point, as the decoder's optimi
 ([decision 24](#decisions-of-2026-09-25)). The ESP-IDF component builds AC-4 only with
 `CONFIG_AC3FORGE_AC4` (D14b); the minimal profile carries the decoder for the Cortex-M3 probe
 (D14a). The parts decode only; the encoder is built for none of them
-([decision 34](#decisions-of-2026-09-25)). D14a and D14b are built and D14c and D14d are not.
+([decision 34](#decisions-of-2026-09-25)). D14a and D14b are built, D14d is built short of its
+board run, and D14c is not built.
 
 - **What they face.** Every AC-4 codec mode, SIMPLE included, runs QMF analysis and synthesis on
   each channel (D3), and the A-CPL modes add three decorrelators per band. Read from the code as
@@ -1097,7 +1098,7 @@ parts; then the S3 in `float` and the C6 in fixed point, as the decoder's optimi
 |---|---|---|---|---|
 | **P4**: 2 × RV32 at 360 MHz on this board's v1.3 silicon, single-precision FPU, 768 KB SRAM, 32 MB PSRAM | `float` | every fixture in real time: E-AC-3 5.1 at 0.18 of real time, 7.1.4 at 0.43 | 2.0, 5.1 and 5.1.4 in full decoding in real time, first | D14b: 2.0 in real time (SIMPLE at 0.53 of a frame, A-SPX at 0.74); 5.1 at 1.4 to 4.1 and 5.1.4 in full decoding at 2.8 to 3.7 |
 | **S3**: 2 × LX7 at 240 MHz, single-precision FPU, 512 KB SRAM, 8 MB PSRAM | `float` | every fixture in real time: E-AC-3 5.1 at 0.34, 7.1.4 at 0.90 | 2.0 and 5.1; 5.1.4 measured, heard through core decoding or folded to 2.0 | not built (D14c) |
-| **C6**: 1 × RV32 at 160 MHz, no FPU, 512 KB SRAM shared with WiFi, no PSRAM | fixed point | 5.1 with WiFi at 0.82 (AC-3) and 0.96 (E-AC-3); 7.1.4 misses, at 1.88 | 2.0 in core decoding if it keeps up with WiFi; otherwise Hearth sends it PCM | not built (D14d) |
+| **C6**: 1 × RV32 at 160 MHz, no FPU, 512 KB SRAM shared with WiFi, no PSRAM | fixed point | 5.1 with WiFi at 0.82 (AC-3) and 0.96 (E-AC-3); 7.1.4 misses, at 1.88 | 2.0 in core decoding if it keeps up with WiFi; otherwise Hearth sends it PCM | D14d: the decoder peaks at 429,667 bytes at 2.0 on a 32-bit core, against about 236,000 free with WiFi up, so Hearth sends it PCM; the board not yet run |
 
 - **The P4 here** is pre-production silicon: 400 MHz takes its CPLL down, and its I2S has no PLL
   clock, so it plays one or two channels over standard I2S and no TDM. On this board AC-4's
@@ -1316,7 +1317,7 @@ and, in the last column, where it stands; [State on 2026-09-30](#state-on-2026-0
 | 21 | [I5](#i5-immersive-and-object-content-in-the-applications) | immersive and object content in the applications | D10, E9 | merged, #1100 |
 | | [I4b](#i4b-the-object-encoder-in-the-c-api-python-rust-and-webassembly) | the object encoder in the bindings, and I4's leftovers | I4, E9 | merged, #1119 |
 | 21b | [I5b](#i5b-the-encoder-pages-ac-4-objects) | the encoder page's AC-4 objects | I3, I5 | merged, #1117 |
-| 22 | [D14](#d14-ac-4-on-the-esp32s) | AC-4 on the ESP32s: the P4 first, then the S3 and the C6 | D10 | D14a and D14b merged (#1096, #1102, #1123, #1118); D14c and D14d not built |
+| 22 | [D14](#d14-ac-4-on-the-esp32s) | AC-4 on the ESP32s: the P4 first, then the S3 and the C6 | D10 | D14a and D14b merged (#1096, #1102, #1123, #1118); D14d open, its board run to come; D14c not built |
 | | [D14a4](#d14a4-libm-parity-and-the-converter-at-float) | libm parity and the frame-rate converter at `float`: what D14b's board work left in D14a's build | D14a, D14b | open |
 | 23 | [I6](#i6-the-esp32-sinks) | the ESP32 sinks | each part's D14 figures | not built |
 | 24 | [N1](#n1-the-names) | the names | I5 | built in the repository, 2026-09-30 and 2026-10-01 (#1160 to #1164, S5 and S6); the owner's renames are left |
@@ -2140,7 +2141,8 @@ first; the S3 and the C6 follow in the phase's later parts. What AC-3 and E-AC-3
   ([decision 30](#decisions-of-2026-09-25)).
 
   **Exit and verified by:** as D14b for the S3, with the QEMU rows in CI.
-- **D14d, the C6.** Not built. `Fixed32` with a block exponent per QMF slot and per transform
+- **D14d, the C6.** Built on the host and under QEMU, the board not yet run:
+  [D14d](#d14d-the-c6-fixed-point) below. `Fixed32` with a block exponent per QMF slot and per transform
   block; A-SPX's energies, gains and limiter and the decorrelators' energies as a mantissa and a
   power of two; the decorrelators and the converter's taps on 64-bit accumulators; AC-4 rows in the
   fixed-point hashes, identical on x86, the Cortex-M3 leg and the C3 under QEMU. On the board with
@@ -2427,6 +2429,77 @@ decoding and 1.24 to 1.58 in core decoding, measured only.
 six fixtures, and the six quick plays of every image in the table above); `iclforge-tests` whole at `double` on MSVC with every option on, and its AC-4 tests at `float` on MSVC; the WSL GCC 16 and Clang 22
 `-Werror` gates at both scalars; GCC 14 with the wheel's flags over the 75 AC-4 translation units; clang-cl over the touched ones; `run_baremetal_probe.sh --ac4 --icount` on the Cortex-M3 under QEMU and `--host` (the six pinned hashes and every ceiling); the packer's `--verify-targets esp32p4`;
 `tools/ci/precheck.py`; `mkdocs build --strict`.
+
+#### D14d: the C6, fixed point
+
+After D14e. The user took it on 2026-10-02 as one branch, the host and QEMU first and the board last: `Fixed32` with a block
+exponent per QMF slot and per transform block; A-SPX's energies, gains and limiter and the decorrelators' energies as a mantissa
+and a power of two; the decorrelators and the converter's taps on 64-bit accumulators; the AC-4 rows of the fixed-point hashes
+equal on x86, the Cortex-M3 and the C3; the `double` output and the `float` pins unchanged; the fixed tier's agreement with
+`double` stated and pinned; the C6 and C3 images sized; and on the C6, with WiFi up, core decoding first.
+
+- **The tier.** `ICLFORGE_DECODE_SCALAR=fixed` selects `src/ac4core/variants/scalar-fixed/`, whose `Real` is `Fixed32` (Q7.24 in
+  an `int32_t`, `src/arithmetic`). The code that differs by tier is chosen by `if constexpr` on `dsp::kFixed<Real>`
+  (`dsp/scalar_traits.hpp`), so a `double` or `float` build compiles what it compiled before. In `src/ac4dec`'s files that are not
+  templates the fixed branches are templates on the scalar or generic lambdas, for the same reason.
+- **Where the values sit.** A sample of PCM has full scale at 8.0 and a QMF sample sits at 2^-16 of the `double` decoder's, two
+  shifts chosen from probes of each domain's smallest and largest values. Each track's spectrum carries an exponent: the
+  dequantisation puts the track's largest line in [1/2, 1), the tracks a matrix combines are aligned to the largest of them, and
+  the inverse transform normalises each block to a largest line in [4, 8). The FFT sheds a bit before a pass wherever a part
+  reaches 2^28, and the block's exponent carries every shift out to the PCM. A QMF analysis slot sums its window products in 64
+  bits with a Q30 window and normalises its 128 values; a synthesis slot is normalised by the sum of its parts' magnitudes, which
+  keeps the bits of a sparse slot that a normalisation by its largest part lost.
+- **Energies as a mantissa and a power of two.** `MantExp` (`src/arithmetic/include/iclforge/arithmetic/mant_exp.hpp`: a 30-bit
+  mantissa and an exponent, with integer `log2`, `exp2` and square root) holds A-SPX's envelopes, noise floors, gains, limiter and preflattening
+  gains, the HF generator's covariances and its solve of Pseudocode 87, the A-CPL transient ducker's energies, companding's levels
+  and gains and DRC's slot levels. A gain reaches a sample as one 64-bit product and a shift. At `double` and `float` the same
+  code's `Energy<Real>` is `Real`.
+- **64-bit accumulators.** The decorrelators' taps are Q30 with `int64_t` sums, rounded once; the converter's taps are Q1.30 with
+  64-bit sums.
+- **The converter's tables.** Q1.30, built by the compiler as D14a5's `float` ones are: 3,200 bytes at 15/16, 4,888 at 25/24 and
+  188,376 at 1001/960. The filter copies a table of up to 16,384 bytes (`kResamplerCopyLimit`) and reads a larger one in place
+  from flash, so the 1001/960 table costs no RAM: a C6 has no PSRAM, and 188 KB is most of what it has free with WiFi up. A fixed
+  image links these three tables and no `float` one.
+
+**Built in D14d.** In `src/arithmetic`, `mant_exp.hpp`; in `src/ac4core`, the `scalar-fixed` variant, `dsp/scalar_traits.hpp`,
+`dsp/qmf_fixed.hpp` and the generated `tables/qmf_tables_fixed.hpp` (`tools/generators/gen_ac4_fixed_tables.py`, with `--check`),
+`Fft::inverse_scaled()`, the IMDCT's and the synthesis's overloads that carry a block's exponent, and the fixed branches of
+`aspx/hf_generator.cpp`, `acpl/acpl.cpp` and `dsp/resampler.cpp`; in `src/ac4dec`, the per-track exponent of
+`pcm/asf_reconstruct.cpp` and `pcm/substream_pcm.cpp`, and the `Energy` types of `pcm/aspx.cpp`, `pcm/companding.cpp` and
+`pcm/drc.cpp`. `tests/ac4core/test_ac4core_mant_exp.cpp` is new; the AC-4 tests take their units from
+`tests/ac4dec/ac4dec_units.hpp` and pass at every scalar, and D14e's exact tests, which hold the floating paths to their verbatim
+copies, run where the scalar is floating. `check_ac4_decode_scalar_snr.py --fixed-cli` measures the tier against `double`;
+`run_baremetal_probe.sh --ac4 --scalar=fixed` builds the probe at the tier, with its own instruction and image ceilings. CI runs
+both, the scorers with a fixed CLI and the probe's hashes on the Linux host and the Cortex-M3 leg. `CONFIG_ICLFORGE_AC4` no longer
+depends on an FPU.
+
+**Exit, as measured.** (a) The fixed decode against the `double` one on every committed stream (67), the worst channel's SNR as
+D14a measured the `float` one: below the lowest crossover 105.7 to 132.1 dB (111.3 to 132.1 on DEE's), and above the highest 34.2
+to 97.2 dB where a stream has A-SPX (39.2 to 97.2 on DEE's, 35.0 to 96.9 on the object streams, 34.2 to 43.1 on the constructed
+ones). `float` measured 109.4 to 136.0 and 37.5 to 102.1. The loudest channel's difference against a full-scale sine is no louder
+than -139.4 dBFS on DEE's streams, -134.1 on the object streams and -92.3 on the constructed ones. The floors are pinned in
+`tests/golden/ac4dec/scalar-agreement-fixed.json`, 3 dB under the figures, and `score_ac4_decode.py` (15 legs) and
+`score_ac4_encode.py` (72) hold their pins with a fixed CLI. (b) The probe's six fixtures give the same PCM hash on the x86-64 host
+(GCC 14), the Cortex-M3 under QEMU (GCC 14.2.1) and RV32IMC, the C3's instruction set, built by its compiler (GCC 15.2.0,
+`riscv32-esp-elf`) and run on QEMU's `virt` board; they are pinned in `tests/golden/ac4-fixed-probe-pcm-hashes.json`. The C3
+machine of Espressif's QEMU has 400 KB of SRAM and no PSRAM, less than the smallest fixture's peak of 429,667 bytes, so the RV32
+run was made by hand with the toolchain's semihosting library and is not in CI. (c) On the Cortex-M3 leg the tier takes 38.2 M,
+34.2 M, 55.6 M, 52.5 M, 90.4 M and 39.9 M instructions a frame for the six fixtures, 0.43 to 0.70 of the `float` tier's; the peaks
+are 429,667 to 1,825,056 bytes, 1.4 to 5.2% above `float`'s; the stack 21,080 bytes; the image 727,656 bytes, 35,760 more than
+`float`'s. (d) The `double` and `float` outputs are byte-identical to `main` (`dd67c6461`) on every tracked AC-4 stream as coded,
+folded to 2.0 and in core decoding (252 decodes, and 3 that both refuse) and on 12 encodes; no `float` pin moved. (e) The
+component builds for the C3, the C6 and the S3 with AC-4 on (the packer's `--with-ac4 --verify`). A C6 image of the AC-4 decoder
+alone is 1,096,256 bytes with 48,560 of static RAM, and the same image at `float` 942,464; the C3's is 1,093,920 with 47,567. (f)
+On the C6 nothing fits beside WiFi: the decoder peaks at 429,667 bytes at 2.0 on a 32-bit core, and the board had about 236,000
+bytes free with WiFi up (285,000 with WiFi's code kept in flash, as the C6 player's overlay keeps it). Hearth sends a C6 sink PCM
+([decision 32](#decisions-of-2026-09-25)). The board has not run the tier yet.
+
+**Verified by:** the host's `iclforge-tests` built with Clang 22 and `-Werror` at `double` and `float`, whole (2,486 cases
+each), and at fixed, where every AC-4 test passes and the only failures are the 184 assertions of AC-3 and E-AC-3 tests
+(`test_eac3_search.cpp`, `test_eac3_selfcheck.cpp`, `test_cli.cpp`) that `main` fails at fixed as well; GCC 14 `-Werror` with the
+wheel's settings over the AC-4 libraries at `double` and at fixed; `run_baremetal_probe.sh --ac4 --scalar=fixed --icount` on the
+Cortex-M3 under QEMU and the host probe at fixed; the RV32 run; `check_layering.py`; the packer's `--verify` for `esp32c3`,
+`esp32c6` and `esp32s3`.
 
 ### Encoder phases
 

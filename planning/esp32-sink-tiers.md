@@ -16,8 +16,9 @@ phases are not built.
 - **C61** is not started: there is no C61 board, and the tree has no C61 probe or sink shape. The
   chip appears only in the chip-name tables of `ota.py` and the firmware code.
 - **AC-4** decodes on the P4 behind `CONFIG_AC3FORGE_AC4` (D14b of [`ac4.md`](ac4.md)), in real
-  time for 2.0 in the SIMPLE and A-SPX modes and for nothing wider. The S3 and C6 parts of that
-  phase (D14c, D14d) and AC-4 in a Sendspin group (I6) are not built.
+  time for 2.0 in the SIMPLE and A-SPX modes and for nothing wider. The C6 part of that phase
+  (D14d) builds the decoder in the fixed-point tier, which does not fit the C6 beside WiFi; the
+  S3 part (D14c) and AC-4 in a Sendspin group (I6) are not built.
 
 The tier is complementary to the shipped S3 and C6 sinks, not a replacement for either. The
 2026-09-08 close of the ESP32-P4 as a decoder target

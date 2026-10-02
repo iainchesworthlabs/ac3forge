@@ -1215,6 +1215,27 @@ The PCM of every fixture is bit-identical on the two legs, and the hashes are pi
 streams with companding: before D14a4 the C libraries' `powf` and `exp2f` gave the Cortex-M3 leg,
 the host and the board a PCM each for such a stream, and no fixture had companding to say so.
 
+The fixed-point tier (D14d, 2026-10-02, the same leg, `run_baremetal_probe.sh --ac4 --scalar=fixed
+--icount`) decodes the same six fixtures with integer arithmetic where the `float` tier's is software
+floating point, and its PCM hashes are the same on this leg, on the x86-64 host and on RV32IMC
+(`tests/golden/ac4-fixed-probe-pcm-hashes.json`). Its instruction ceilings are the runner's
+`ICOUNT_CEILING_AC4_FIXED`; the peaks, allocations and stack share the `float` tier's ceilings:
+
+| Fixture | Instructions per frame | Ceiling | Peak heap | Allocations per frame | Stack |
+|---|---:|---:|---:|---:|---:|
+| `ac4_20_music` | 38,233,000 | 42,000,000 | 429,667 | 56 | 18,380 |
+| `ac4_20_acpl` | 34,202,000 | 37,500,000 | 626,368 | 50 | 21,080 |
+| `ac4_51_music` | 55,629,000 | 61,000,000 | 970,430 | 147 | 21,080 |
+| `ac4_51_acpl` | 52,493,000 | 58,000,000 | 1,172,502 | 84 | 21,080 |
+| `ac4_514_tones` | 90,383,000 | 99,500,000 | 1,825,056 | 203 | 21,080 |
+| `ac4_20_companding` | 39,856,000 | 44,000,000 | 486,331 | 73 | 21,080 |
+
+That is 0.43 to 0.70 of the `float` tier's instructions, the widest streams the lowest, and peaks
+1.4 to 5.2% above its own. The image is 727,656 bytes (725,004 `.text`), against a ceiling of
+800,000: 35,760 more than the `float` image, with the converter's tables in Q1.30 in place of
+`float`, the same 196,464 bytes. On the x86-64 host (GCC 14) the peaks are 438,527 to 1,848,776
+bytes and the stack 24,908.
+
 The first frame allocates 510 KB, 490 KB, 987 KB, 998 KB, 1.86 MB and 498 KB (D14e; 550 KB, 531 KB, 1.21 MB, 1.22 MB, 2.06 MB
 and 541 KB at D14a), the decoder's state built as the stream's layout is first seen; the steady state allocates 72 to 153 KB a
 frame at 2.0, 311 to 317 KB at 5.1 and 761 KB at 5.1.4 (69 to 157 KB, 387 to 408 KB and 673 KB at D14a), the syntax layer's element vectors built afresh each

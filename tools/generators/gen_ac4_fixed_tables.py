@@ -30,7 +30,16 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 SOURCE = REPO_ROOT / "src" / "ac4core" / "src" / "tables" / "qmf_tables.cpp"
-HEADER = REPO_ROOT / "src" / "ac4core" / "include" / "iclforge" / "ac4core" / "tables" / "qmf_tables_fixed.hpp"
+HEADER = (
+    REPO_ROOT
+    / "src"
+    / "ac4core"
+    / "include"
+    / "iclforge"
+    / "ac4core"
+    / "tables"
+    / "qmf_tables_fixed.hpp"
+)
 
 QWIN = re.compile(r"kQwin\s*=\s*\{([^{}]*)\}\s*;")
 NOISE = re.compile(r"kAspxNoise\s*=\s*\{\{(.*?)\}\}\s*;", re.S)
@@ -76,8 +85,10 @@ def render() -> str:
     if len(qwin) != 640 or len(noise) != 512:
         sys.exit(f"kQwin holds {len(qwin)} values and kAspxNoise {len(noise)}, not 640 and 512")
     analysis = max(sum(abs(qwin[128 * k + n]) for k in range(5)) for n in range(128))
-    synthesis = max(sum(abs(qwin[128 * k + sb]) + abs(qwin[128 * k + 64 + sb]) for k in range(5))
-                    for sb in range(64))
+    synthesis = max(
+        sum(abs(qwin[128 * k + sb]) + abs(qwin[128 * k + 64 + sb]) for k in range(5))
+        for sb in range(64)
+    )
     lines = [
         "#pragma once",
         "",
@@ -91,8 +102,10 @@ def render() -> str:
         "namespace iclforge::ac4::detail::tables {",
         "",
         "// QWIN in Q1.30: each float of kQwin times 2^30, rounded half away from zero. One output",
-        f"// of the analysis sums five taps whose magnitudes add to at most {analysis:.6f}, and one",
-        f"// of the synthesis ten whose magnitudes add to at most {synthesis:.6f}, so a sum of their",
+        "// of the analysis sums five taps whose magnitudes add to at most "
+        f"{analysis:.6f}, and one",
+        "// of the synthesis ten whose magnitudes add to at most "
+        f"{synthesis:.6f}, so a sum of their",
         "// products with values of Q7.24 is below 2^62 in magnitude on any input.",
         "inline constexpr std::array<std::int32_t, 640> kQwinQ30 = {",
         *wrap([str(to_integer(v, 30)) for v in qwin]),
@@ -112,15 +125,19 @@ def render() -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("--check", action="store_true",
-                        help="fail when the header is not what this would write")
+    parser.add_argument(
+        "--check", action="store_true", help="fail when the header is not what this would write"
+    )
     args = parser.parse_args()
     text = render()
     if args.check:
         current = HEADER.read_text(encoding="utf-8") if HEADER.exists() else ""
         if current != text:
-            print(f"{HEADER.relative_to(REPO_ROOT)} is out of date; run "
-                  "tools/generators/gen_ac4_fixed_tables.py", file=sys.stderr)
+            print(
+                f"{HEADER.relative_to(REPO_ROOT)} is out of date; run "
+                "tools/generators/gen_ac4_fixed_tables.py",
+                file=sys.stderr,
+            )
             return 1
         return 0
     HEADER.write_text(text, encoding="utf-8", newline="\n")

@@ -16,8 +16,9 @@
     D14a moved `Fixed32`, the float scalar functions and the SIMD seam into a header-only target,
     `src/arithmetic`, and made the AC-4 decoder's kernels take `AC3FORGE_DECODE_SCALAR`: `double`
     (the default) or `float`. D14b built the `float` decoder into the ESP-IDF component behind
-    `CONFIG_AC3FORGE_AC4` and measured it on an ESP32-P4. AC-4 has no fixed-point tier (D14d, the
-    C6), no S3 phase (D14c), and its encoder stays in `double` on every platform. See
+    `CONFIG_AC3FORGE_AC4` and measured it on an ESP32-P4. D14d adds the AC-4 decoder's
+    fixed-point tier, for the C6. There is no S3 phase yet (D14c), and the encoder stays
+    in `double` on every platform. See
     [AC-4 on the same seam](#ac-4-on-the-same-seam).
 
     Design sections say what each tier and each effort level is and what it guarantees; each
@@ -127,14 +128,15 @@ AC-3 and E-AC-3 have. What is built, and what is not:
 
 | Part | State |
 |---|---|
-| The scalar (D14a) | `src/ac4core`'s kernels and `src/ac4dec/src/pcm` are templated on `Real`, with a complex type of the project's own (`dsp::Complex<Real>`) in place of `std::complex`. `AC3FORGE_DECODE_SCALAR` selects `double` (the default) or `float` for AC-4 as it does for AC-3 and E-AC-3. `fixed` builds the AC-4 libraries in `double`, because no AC-4 kernel is instantiated at `Fixed32` yet. The `float` build of `src/ac4core` compiles with `-Wdouble-promotion` as an error. The whole suite passes at both scalars |
+| The scalar (D14a) | `src/ac4core`'s kernels and `src/ac4dec/src/pcm` are templated on `Real`, with a complex type of the project's own (`dsp::Complex<Real>`) in place of `std::complex`. `AC3FORGE_DECODE_SCALAR` selects `double` (the default), `float` or, since D14d, `fixed` for AC-4 as it does for AC-3 and E-AC-3. The `float` build of `src/ac4core` compiles with `-Wdouble-promotion` as an error. The AC-4 tests pass at all three scalars |
 | The shared target (D14a) | `src/arithmetic` (`ac3::arithmetic`) is header-only and holds `Fixed32` (`ac3/internal/fixed32.hpp`), the float scalar functions (`ac3/internal/scalar_math.hpp`) and the SIMD seam (`arch/generic`, `arch/x86_64`, `arch/aarch64`). `ac3::forge` and `src/ac4core` link it, so nothing is copied ([decision 31](ac4.md#decisions-of-2026-09-25)). Before D14a the first two lived in `src/ac3` |
 | The decoder's size (D14a) | `SubstreamPcm` fell from 299 KB to 10.9 KB at `double`, D14a removed every guarded function-local static from `src/ac4core`, `src/ac4dec` and `src/ac4`, the QMF banks run on split real and imaginary planes with vector kernels that equal their scalar loops bit for bit, and the bit reader and the Huffman decoder are cached and table-driven |
 | The probe's AC-4 rows (D14a) | `tools/checks/run_baremetal_probe.sh --ac4` decodes five committed streams (2.0 and 5.1 with and without A-CPL, and DEE's 5.1.4 tones) on the Cortex-M3 leg in `float`: 54.5 M to 205.8 M instructions a frame, a peak heap of 0.43 to 1.93 MB, a 486,192-byte image. The PCM equals the x86-64 host's, and the hashes are pinned in `tests/golden/ac4-probe-pcm-hashes.json` |
 | `float` against `double` (D14a's exit) | On the 67 committed streams (`tools/checks/check_ac4_decode_scalar_snr.py`), the worst channel is 109.4 to 136.0 dB from the `double` decode below the lowest A-SPX crossover, and 37.5 to 102.1 dB above the highest where a stream has A-SPX. The floors are pinned 3 dB under those figures in `tests/golden/ac4dec/scalar-agreement.json`. The cause of the high band's gap is open |
 | The ESP32-P4 (D14b) | `CONFIG_AC3FORGE_AC4` builds the `float` decoder into the ESP-IDF component, off by default and offered only on a part with a floating-point unit. On a board at 360 MHz with Wi-Fi up, 2.0 in SIMPLE mode decodes in 0.28 of real time and 2.0 in A-SPX mode in 0.37, and so does the frame-rate converter at 24, 25, 23.976 and 29.97 fps (0.51, 0.53, 0.68 and 0.69; D14a4 runs its dot product in `float`, D14a5's tables are built by the compiler and D14a6 takes the low-power SRAM out of the heap); D14e brings 5.1 in SIMPLE mode (0.64), A-SPX (0.83) and A-SPX with A-CPL mode 2 (0.91) under real time (the transforms, A-CPL and the output in fewer passes, `-O3` for the kernels and the flash read in QIO mode), and A-CPL mode 3 takes 1.14 and 5.1.4 in full decoding 1.57 to 1.90. The output equals the probe's pinned `float` hashes and the host's on all twenty plays: D14a4 took `std::pow`, `std::exp2` and `hypotf` at `float`, whose last bit differs between C libraries, out of libm. [The P4 page](../docs/platforms/bare-metal/esp32-p4.md#ac-4) has the tables |
 | The ESP32-S3 (D14c) | Not built. The Cortex-M3 probe's 2.0 stream peaks at 432 KB of heap, where the S3's probe allows 245,000 bytes, so 2.0 in internal RAM needs the allocations halved again, or PSRAM |
-| The ESP32-C6 (D14d) | Not built. It needs `Fixed32` kernels with a block exponent per QMF slot and per transform block |
+| The fixed-point tier (D14d) | `Fixed32` with a block exponent per transform block and per QMF slot, and energies and gains as a mantissa and a power of two (`MantExp`, `src/arithmetic`). Against the `double` decode on the 67 committed streams, the worst channel is 105.7 to 132.1 dB below the lowest A-SPX crossover and 34.2 to 97.2 dB above the highest, pinned in `tests/golden/ac4dec/scalar-agreement-fixed.json`. The probe's six fixtures give one PCM hash on the x86-64 host, the Cortex-M3 leg and RV32IMC (`tests/golden/ac4-fixed-probe-pcm-hashes.json`); on the Cortex-M3 they take 34.2 M to 90.4 M instructions a frame, 0.43 to 0.70 of the `float` tier's, and peak at 0.43 to 1.83 MB |
+| The ESP32-C6 (D14d) | Builds with `CONFIG_ICLFORGE_AC4` and does not fit beside WiFi: 2.0 peaks at 429,667 bytes, where the board had about 236,000 free with WiFi up. Not run on the board |
 | The encoder | `double` on every platform. The AC-4 encoder has no `float` or fixed-point tier and never runs on an ESP32 ([decision 34](ac4.md#decisions-of-2026-09-25)); a `float` build of `src/ac4core` instantiates the kernels the encoder calls at `double` as well (`AC4CORE_ALSO_AT_DOUBLE`) |
 
 The figures are those of the AC-4 plan's D14a and D14b records, which name their sources; this page
@@ -389,6 +391,7 @@ came of it.
   `std::exp2` at `float` give a different last bit in each C library. Routing them through the
   project's own functions gave one hash on the host, a Cortex-M3 program and the board in a
   scratch copy; that change is not in the tree.
-- **AC-4 on the S3 and the C6.** Nothing is built or measured on either; the P4's figures say
-  what a single-precision FPU manages at 360 MHz, not what the S3's 240 MHz or the C6's
-  fixed-point tier will.
+- **AC-4 on the S3 and the C6.** Nothing is built or measured for the S3; the P4's figures say
+  what a single-precision FPU manages at 360 MHz, not what its 240 MHz will. The C6's
+  fixed-point tier is built and measured on the host and under QEMU; it does not fit the part
+  beside WiFi, and its time on the part has not been measured.

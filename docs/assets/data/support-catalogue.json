@@ -1685,7 +1685,7 @@
           [
             "source",
             "emulated",
-            "five streams in float; PCM hashes pinned"
+            "six streams in float and in fixed point; PCM hashes pinned"
           ],
           [
             "unavailable",
@@ -1700,12 +1700,12 @@
           [
             "unavailable",
             "not-applicable",
-            "not built; no FPU"
+            "builds in fixed point; does not fit the 400 KB of SRAM"
           ],
           [
             "unavailable",
             "not-applicable",
-            "not built yet; no fixed-point tier"
+            "builds in fixed point; does not fit beside Wi-Fi"
           ],
           [
             "unavailable",

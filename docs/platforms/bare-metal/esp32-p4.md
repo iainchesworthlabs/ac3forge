@@ -910,7 +910,8 @@ for core decoding and `?hash=off` for a play without the hash. A play ends with 
 samples, the decoder's time, the worst frame's, the hash), `ac4.heap` and one `play.stage[...]`
 line for each stage. The packer leaves the AC-4 sources out of the archive unless it is given
 `--with-ac4`; with `--verify` it then builds a throwaway project against the archive for each of
-the manifest's parts that has a floating-point unit, with the decoder switched on and constructed.
+the manifest's parts, with the decoder switched on and constructed (in the fixed-point tier on the
+parts with no floating-point unit).
 CI narrows that to the ESP32-P4 with `--verify-targets esp32p4`. A `float` build evaluates the
 converter's tables while it compiles `src/ac4core/src/dsp/resampler.cpp`, which takes ESP-IDF's
 RISC-V GCC 15.2 8.4 s where it took 1.5, and `src/ac4core/CMakeLists.txt` raises the compiler's limit

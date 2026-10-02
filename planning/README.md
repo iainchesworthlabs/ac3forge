@@ -68,7 +68,7 @@ claims.
 | [esp32-device-ui.md](esp32-device-ui.md) | Board web UI beside REST API | Built 2026-09-11, and extended in nine more pull requests to 2026-09-26 |
 | [esp32-stream-set.md](esp32-stream-set.md) | The 38 AC-3 and E-AC-3 streams the player's `http` source is served | Built and in use: CI plays them under QEMU, and board measurements use them; Sendspin replaced the `http` source only for playing to a board |
 | [esp32-player.md](esp32-player.md) | Component layer and ESPHome path | As of 2026-09-30: phases 0 to 2 built; phase 6 built as Hearth B3; phases 3 to 5 (ESPHome, upstream, the encode direction) not built; phase 7 replaced |
-| [arithmetic-tiers.md](arithmetic-tiers.md) | Decode arithmetic tiers and platform matrix | As of 2026-09-30: three tiers built for AC-3 and E-AC-3 (the fixed-point tier on the C3 under QEMU only, and on a board on the C6); AC-4's decoder shares `double` and `float` through `src/arithmetic` (D14a) and decodes on an ESP32-P4 in real time at 2.0 only, 0.53 to 0.74 of real time (D14b), with no fixed-point tier |
+| [arithmetic-tiers.md](arithmetic-tiers.md) | Decode arithmetic tiers and platform matrix | As of 2026-09-30: three tiers built for AC-3 and E-AC-3 (the fixed-point tier on the C3 under QEMU only, and on a board on the C6); AC-4's decoder shares `double` and `float` through `src/arithmetic` (D14a) and decodes on an ESP32-P4 in real time at 2.0 only, 0.53 to 0.74 of real time (D14b); D14d adds its fixed-point tier, which does not fit a C6 beside WiFi |
 
 ---
 

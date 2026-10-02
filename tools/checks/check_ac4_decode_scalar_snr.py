@@ -184,7 +184,9 @@ def measure(double_cli: Path, other_cli: Path, stream: Path, work: Path, tier: s
     the stream; raises where they differ on that."""
     np, scorer = _imports()
     name = relative(stream).replace("/", "__")
-    ref_wav, out_wav, trace = work / f"{name}.d.wav", work / f"{name}.{tier}.wav", work / f"{name}.tsv"
+    ref_wav = work / f"{name}.d.wav"
+    out_wav = work / f"{name}.{tier}.wav"
+    trace = work / f"{name}.tsv"
     code_d, text_d = decode(double_cli, stream, ref_wav, trace)
     code_f, text_f = decode(other_cli, stream, out_wav)
     if code_d != 0 and code_f != 0:

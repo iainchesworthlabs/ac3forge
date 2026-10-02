@@ -66,8 +66,12 @@ class Pins(unittest.TestCase):
         for path in self.PIN_FILES:
             with self.subTest(pins=path.name):
                 pins = json.loads(path.read_text(encoding="utf-8"))["streams"]
-                self.assertEqual(sorted(committed - set(pins)), [], "a committed stream without a pin")
-                self.assertEqual(sorted(set(pins) - committed), [], "a pin for a stream that is not there")
+                self.assertEqual(
+                    sorted(committed - set(pins)), [], "a committed stream without a pin"
+                )
+                self.assertEqual(
+                    sorted(set(pins) - committed), [], "a pin for a stream that is not there"
+                )
 
     def test_the_pins_are_floors_in_a_plausible_range(self):
         for path in self.PIN_FILES:
