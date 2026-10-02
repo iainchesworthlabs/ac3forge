@@ -3,6 +3,7 @@
 #include <cstddef>
 
 #include "iclforge/ac4core/detail/profiling.hpp"
+#include "iclforge/ac4core/dsp/qmf_fixed.hpp"
 #include "iclforge/ac4core/dsp/qmf_kernels.hpp"
 #include "iclforge/ac4core/dsp/qmf_vector.hpp"
 
@@ -42,12 +43,16 @@ void QmfAnalysis<Real>::process(std::span<const Real> pcm, std::span<Complex> ou
         for (std::size_t sb = 0; sb < kSubbands; ++sb) {
             block[sb] = slot[kSubbands - 1 - sb];
         }
-        qmf::vec::analysis_window(filt_.data(), head_, scratch.u.data());
-        qmf::vec::analysis_rotate(scratch.u.data(), scratch.a_re.data(), scratch.a_im.data());
-        qmf::vec::fft64(scratch.a_re.data(), scratch.a_im.data(), scratch.b_re.data(),
-                        scratch.b_im.data());
-        qmf::vec::analysis_unpack(scratch.b_re.data(), scratch.b_im.data(),
-                                  out.data() + ts * kSubbands);
+        if constexpr (kFixed<Real>) {
+            qmf::fixed::analysis_slot(filt_.data(), head_, out.data() + ts * kSubbands, scratch);
+        } else {
+            qmf::vec::analysis_window(filt_.data(), head_, scratch.u.data());
+            qmf::vec::analysis_rotate(scratch.u.data(), scratch.a_re.data(), scratch.a_im.data());
+            qmf::vec::fft64(scratch.a_re.data(), scratch.a_im.data(), scratch.b_re.data(),
+                            scratch.b_im.data());
+            qmf::vec::analysis_unpack(scratch.b_re.data(), scratch.b_im.data(),
+                                      out.data() + ts * kSubbands);
+        }
     }
 }
 
@@ -74,13 +79,18 @@ void QmfSynthesis<Real>::process(std::span<const Complex> in, std::span<Real> pc
     for (std::size_t ts = 0; ts < slots; ++ts) {
         // The 128 new values go over the oldest block, and are the newest.
         head_ = head_ == 0 ? 9 : head_ - 1;
-        qmf::vec::synthesis_pack(in.data() + ts * kSubbands, scratch.a_re.data(),
-                                 scratch.a_im.data());
-        qmf::vec::fft64(scratch.a_re.data(), scratch.a_im.data(), scratch.b_re.data(),
-                        scratch.b_im.data());
-        qmf::vec::synthesis_rotate(scratch.b_re.data(), scratch.b_im.data(),
-                                   filt_.data() + head_ * 128);
-        qmf::vec::synthesis_window(filt_.data(), head_, pcm.data() + ts * kSubbands);
+        if constexpr (kFixed<Real>) {
+            qmf::fixed::synthesis_slot(in.data() + ts * kSubbands, filt_.data(), head_,
+                                       pcm.data() + ts * kSubbands, scratch);
+        } else {
+            qmf::vec::synthesis_pack(in.data() + ts * kSubbands, scratch.a_re.data(),
+                                     scratch.a_im.data());
+            qmf::vec::fft64(scratch.a_re.data(), scratch.a_im.data(), scratch.b_re.data(),
+                            scratch.b_im.data());
+            qmf::vec::synthesis_rotate(scratch.b_re.data(), scratch.b_im.data(),
+                                       filt_.data() + head_ * 128);
+            qmf::vec::synthesis_window(filt_.data(), head_, pcm.data() + ts * kSubbands);
+        }
     }
 }
 

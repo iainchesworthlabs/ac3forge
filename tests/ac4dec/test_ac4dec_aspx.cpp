@@ -25,6 +25,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include "ac4dec_units.hpp"
 #include "iclforge/arithmetic/scalar_math.hpp"
 #include "pcm/aspx.hpp"
 #include "pcm/companding.hpp"
@@ -40,6 +41,9 @@ using iclforge::ac4::detail::AspxFrame;
 using iclforge::ac4::detail::QmfValue;
 using iclforge::ac4::detail::Real;
 namespace aspx = iclforge::ac4::detail::aspx;
+using ac4dec_units::qmf;
+using ac4dec_units::qmf_real;
+using ac4dec_units::qmf_units;
 
 constexpr int kSlots = 32;                                    // num_qmf_timeslots at 2 048
 constexpr int kExtSlots = aspx::kTsOffsetHfadj + 6 + kSlots;  // Q_low_ext
@@ -48,8 +52,8 @@ constexpr int kNoiseGroups = 2;
 
 // A relative-tolerance scale, in place of a fixed 1e-9: this file's own hand
 // assembly of a level times a table entry holds to a handful of ulps of Real
-// (possibly float), not of double.
-const double kRelativeTolerance = 1e4 * static_cast<double>(std::numeric_limits<Real>::epsilon());
+// (possibly float, or Fixed32's raw unit), not of double.
+const double kRelativeTolerance = 1e4 * ac4dec_units::relative_epsilon();
 
 AspxConfig dee_128k_config() {
     AspxConfig config;
@@ -148,7 +152,7 @@ TEST_CASE(
     Channel channel;
     for (int ts = 0; ts < kSlots + 6; ++ts) {
         for (int sb = 36; sb < 64; ++sb) {
-            channel.q_low(ts, sb) = QmfValue(1000.0, -500.0);
+            channel.q_low(ts, sb) = qmf(1000.0, -500.0);
         }
     }
     decode_one(frame_for(config, true), data, channel);
@@ -159,11 +163,11 @@ TEST_CASE(
             CAPTURE(sb);
             const QmfValue out = channel.at(ts, sb);
             if (tic) {
-                CHECK(out == QmfValue(1000.0, -500.0));
+                CHECK(out == qmf(1000.0, -500.0));
             } else if (sb == 40 || sb == 41) {
-                CHECK(abs(out - QmfValue(1000.0, -500.0)) < Real{1});
+                CHECK(abs(out - qmf(1000.0, -500.0)) < qmf_real(1.0));
             } else {
-                CHECK(abs(out) < Real{1});
+                CHECK(abs(out) < qmf_real(1.0));
             }
         }
     }
@@ -179,10 +183,10 @@ TEST_CASE("a sinusoid sits in its group's middle subband, a quarter turn further
     // Pseudocode 105 starts the first frame at index 1, and Table 196 turns by
     // a quarter per index; Pseudocode 104 negates the imaginary part in odd
     // subbands.
-    const std::array<QmfValue, 4> unit = {QmfValue(1.0, 0.0), QmfValue(0.0, -1.0),
-                                          QmfValue(-1.0, 0.0), QmfValue(0.0, 1.0)};
+    const std::array<QmfValue, 4> unit = {QmfValue(Real{1}, Real{0}), QmfValue(Real{0}, Real{-1}),
+                                          QmfValue(Real{-1}, Real{0}), QmfValue(Real{0}, Real{1})};
     const iclforge::ac4::detail::Real level = abs(channel.at(0, 43));
-    REQUIRE(level > Real{1});
+    REQUIRE(level > qmf_real(1.0));
     for (int ts = 0; ts < kSlots; ++ts) {
         CAPTURE(ts);
         CHECK(abs(channel.at(ts, 43) / level - unit[static_cast<std::size_t>((1 + ts) % 4)]) <
@@ -204,7 +208,7 @@ TEST_CASE("the noise generator's index runs on from one interval into the next",
     Channel channel;
     const auto check_frame = [&](int base) {
         const QmfValue level = channel.at(0, 36) / noise_entry(base + 1);
-        REQUIRE(abs(level) > Real{1});
+        REQUIRE(abs(level) > qmf_real(1.0));
         for (int ts = 0; ts < kSlots; ++ts) {
             for (int sb = 0; sb < 20; ++sb) {
                 const QmfValue expected = level * noise_entry(base + 20 * ts + sb + 1);
@@ -292,7 +296,7 @@ TEST_CASE("companding scales each slot by its level against full scale 1.0", "[a
     };
     for (int ts = 0; ts < kSlots + 6; ++ts) {
         for (int sb = 0; sb < 64; ++sb) {
-            slot(ts, sb) = QmfValue(static_cast<Real>(100.0 * (ts + 1)), Real{});
+            slot(ts, sb) = QmfValue(qmf_real(100.0 * (ts + 1)), Real{});
         }
     }
     const std::vector<QmfValue> before = ext;
@@ -302,15 +306,15 @@ TEST_CASE("companding scales each slot by its level against full scale 1.0", "[a
     const std::array<iclforge::ac4::detail::CompandingChannel, 1> channels{
         iclforge::ac4::detail::CompandingChannel{
             .ext = ext, .sb1 = 36, .interval = {.first = 2, .last = 34}}};
-    iclforge::ac4::detail::apply_companding(control, 0, kFullScale, channels);
+    iclforge::ac4::detail::apply_companding(control, 0, qmf_real(kFullScale), channels);
     const double big_g = std::exp2(1.0 / 0.65);
     for (int ts = 0; ts < kSlots + 6; ++ts) {
         CAPTURE(ts);
         const double level = 0.9105 * 100.0 * (ts + 1) / kFullScale;  // E = |Re| for real values
         const double gain = ts >= 2 && ts < 34 ? std::pow(level, 0.35 / 0.65) * big_g : 1.0;
-        CHECK(std::abs(static_cast<double>(slot(ts, 0).real()) - 100.0 * (ts + 1) * gain) <
+        CHECK(std::abs(qmf_units(slot(ts, 0).real()) - 100.0 * (ts + 1) * gain) <
               kRelativeTolerance * 100.0 * (ts + 1) * gain);
-        CHECK(std::abs(static_cast<double>(slot(ts, 35).real()) - 100.0 * (ts + 1) * gain) <
+        CHECK(std::abs(qmf_units(slot(ts, 35).real()) - 100.0 * (ts + 1) * gain) <
               kRelativeTolerance * 100.0 * (ts + 1) * gain);
         CHECK(slot(ts, 36) ==
               before[static_cast<std::size_t>(ts + aspx::kTsOffsetHfadj) * 64 + 36]);
@@ -320,13 +324,13 @@ TEST_CASE("companding scales each slot by its level against full scale 1.0", "[a
     ext = before;
     control.b_compand_on[0] = false;
     control.b_compand_avg = true;
-    iclforge::ac4::detail::apply_companding(control, 0, kFullScale, channels);
+    iclforge::ac4::detail::apply_companding(control, 0, qmf_real(kFullScale), channels);
     double mean = 0.0;
     for (int ts = 2; ts < 34; ++ts) {
         mean += 0.9105 * 100.0 * (ts + 1) / kFullScale / 32.0;
     }
     const double average = std::pow(mean, 0.35 / 0.65) * big_g;
-    CHECK(std::abs(static_cast<double>(slot(10, 0).real()) - 1100.0 * average) <
+    CHECK(std::abs(qmf_units(slot(10, 0).real()) - 1100.0 * average) <
           kRelativeTolerance * 1100.0 * average);
     CHECK(slot(35, 0) == before[static_cast<std::size_t>(35 + aspx::kTsOffsetHfadj) * 64]);
 }
@@ -339,8 +343,8 @@ TEST_CASE("companding's gains are libm's at double and the project's own functio
     // iclforge::internal::scalar_exp2 and scalar_log2, plain float multiplies and adds, and the
     // samples that come out are pinned to the bit: the C libraries' powf and exp2f differ in
     // the last bit on some inputs, and a Cortex-M3 or an ESP32 must give the host's samples
-    // (planning/ac4.md, D14a4).
-    constexpr Real kFullScaleReal = 32768;
+    // (planning/ac4.md, D14a4). At Fixed32 the level and the gains are MantExp's, and its own
+    // log2 and exp2 (planning/ac4.md, D14d).
     std::vector<QmfValue> ext(static_cast<std::size_t>(kExtSlots) * 64);
     const auto slot = [&](int ts, int sb) -> QmfValue& {
         return ext[static_cast<std::size_t>(ts + aspx::kTsOffsetHfadj) * 64 +
@@ -348,7 +352,7 @@ TEST_CASE("companding's gains are libm's at double and the project's own functio
     };
     for (int ts = 0; ts < kSlots + 6; ++ts) {
         for (int sb = 0; sb < 64; ++sb) {
-            slot(ts, sb) = QmfValue(static_cast<Real>(100 * (ts + 1)), Real{});
+            slot(ts, sb) = QmfValue(qmf_real(100.0 * (ts + 1)), Real{});
         }
     }
     iclforge::ac4::detail::CompandingControl control;
@@ -357,29 +361,41 @@ TEST_CASE("companding's gains are libm's at double and the project's own functio
     const std::array<iclforge::ac4::detail::CompandingChannel, 1> channels{
         iclforge::ac4::detail::CompandingChannel{
             .ext = ext, .sb1 = 36, .interval = {.first = 2, .last = 34}}};
-    iclforge::ac4::detail::apply_companding(control, 0, kFullScaleReal, channels);
+    const Real full_scale = qmf_real(32768.0);
+    iclforge::ac4::detail::apply_companding(control, 0, full_scale, channels);
 
-    constexpr Real kAlpha = Real(0.65);
-    constexpr Real kExponent = (Real{1} - kAlpha) / kAlpha;
-    const auto expected = [&](int ts) {
-        const auto sample = static_cast<Real>(100 * (ts + 1));
-        const Real level = Real(0.9105) * (Real(36) * sample) / Real(36) / kFullScaleReal;
-        Real gain{};
-        Real big_g{};
-        if constexpr (std::is_same_v<Real, double>) {
-            gain = std::pow(level, kExponent);
-            big_g = std::exp2(Real{1} / kAlpha);
+    // A generic lambda, so that each scalar's branch is compiled only at that scalar.
+    const auto expected = [&]<typename R>(int ts) -> R {
+        const R sample = qmf_real(100.0 * (ts + 1));
+        if constexpr (iclforge::ac4::detail::dsp::kFixed<R>) {
+            using iclforge::internal::MantExp;
+            const MantExp alpha{0.65};
+            const MantExp exponent = (MantExp{1} - alpha) / alpha;
+            const MantExp level = MantExp(0.9105) * (MantExp{36} * MantExp{sample}) / MantExp{36} /
+                                  MantExp{full_scale};
+            const MantExp gain = scalar_exp2(exponent * scalar_log2(level));
+            const MantExp big_g = scalar_exp2(MantExp{1} / alpha);
+            return iclforge::ac4::detail::dsp::apply_gain<R>(gain * big_g, sample);
         } else {
-            gain =
-                iclforge::internal::scalar_exp2(kExponent * iclforge::internal::scalar_log2(level));
-            big_g = iclforge::internal::scalar_exp2(Real{1} / kAlpha);
+            constexpr R kAlpha = R(0.65);
+            constexpr R kExponent = (R{1} - kAlpha) / kAlpha;
+            const R level = R(0.9105) * (R(36) * sample) / R(36) / full_scale;
+            R gain{};
+            R big_g{};
+            if constexpr (std::is_same_v<R, double>) {
+                gain = std::pow(level, kExponent);
+                big_g = std::exp2(R{1} / kAlpha);
+            } else {
+                gain = iclforge::internal::scalar_exp2(kExponent * iclforge::internal::scalar_log2(level));
+                big_g = iclforge::internal::scalar_exp2(R{1} / kAlpha);
+            }
+            return sample * (gain * big_g);
         }
-        return sample * (gain * big_g);
     };
     for (int ts = 2; ts < 34; ++ts) {
         CAPTURE(ts);
-        CHECK(slot(ts, 0).real() == expected(ts));
-        CHECK(slot(ts, 35).real() == expected(ts));
+        CHECK(slot(ts, 0).real() == expected.template operator()<Real>(ts));
+        CHECK(slot(ts, 35).real() == expected.template operator()<Real>(ts));
     }
     if constexpr (std::is_same_v<Real, float>) {
         // Outside a template a discarded branch is still compiled: the cast keeps it valid at

@@ -55,10 +55,23 @@ class Imdct {
     void inverse(std::span<const Real> spectrum, std::span<Real> out);
     void inverse(std::span<const Real> spectrum, std::span<Real> out, std::span<Complex> scratch);
 
+    // At Fixed32 (planning/ac4.md, D14d): `spectrum` holds the lines of the double decoder
+    // times 2^-exponent, and `out` receives the samples at the fixed tier's time-domain scale
+    // (dsp/scalar_traits.hpp, kTimeShift). The block takes an exponent of its own: its lines
+    // are shifted together until the largest is in [4, 8), the transform sheds bits only where
+    // a pass could reach the format's edge (Fft::inverse_scaled), and Pseudocode 62's 1/N is a
+    // power of two and a factor in [1/2, 1) folded into the post-twiddle. At double and float
+    // `exponent` is 0 and this is the form above.
+    void inverse(std::span<const Real> spectrum, int exponent, std::span<Real> out,
+                 std::span<Complex> scratch);
+
    private:
     std::size_t length_ = 0;
     Fft<Real> fft_;
     std::vector<Complex> twiddle_;  // xcos1[k] + j xsin1[k], k < N/2
+    // At Fixed32 only: twiddle_ times 2^(post_shift_) / N, in [1/2, 1) in magnitude.
+    std::vector<Complex> post_twiddle_;
+    int post_shift_ = 0;
     std::vector<Complex> scratch_;
 };
 

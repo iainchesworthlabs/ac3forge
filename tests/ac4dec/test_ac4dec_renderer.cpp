@@ -22,6 +22,8 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include "ac4dec_units.hpp"
+
 #include "iclforge/ac4dec/decoder.hpp"
 #include "pcm/downmix.hpp"
 #include "pcm/renderer.hpp"
@@ -37,7 +39,7 @@ using S = iclforge::ac4::Speaker;
 // through() below, so through DownmixStage's own Real (possibly float):
 // double-only comparisons (render_matrix()'s own values, RenderGains'
 // fields, both stay double regardless of the decoder's scalar) keep 1e-12.
-const double kRelativeTolerance = 1e4 * static_cast<double>(std::numeric_limits<detail::Real>::epsilon());
+const double kRelativeTolerance = 1e4 * ac4dec_units::relative_epsilon();
 
 // The generalized rendering matrix's indices (5.10.2.2).
 constexpr int kIndices = 14;

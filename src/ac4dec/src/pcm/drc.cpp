@@ -4,8 +4,10 @@
 #include <cmath>
 #include <complex>
 #include <cstddef>
+#include <cstdint>
 #include <numbers>
 
+#include "iclforge/ac4core/dsp/scalar_traits.hpp"
 #include "iclforge/ac4core/tables/qmf_tables.hpp"
 
 namespace iclforge::ac4::detail {
@@ -13,8 +15,16 @@ namespace {
 
 constexpr int kSubbands = 64;
 // The QMF domain works at the inverse transform's scale, full scale 2^15
-// (substream_pcm.cpp, kFullScale).
-constexpr double kFullScalePower = 32768.0 * 32768.0;
+// (substream_pcm.cpp, kQmfFullScale), and at Fixed32 at 2^-3, below the double
+// decoder's by dsp::kQmfShift (dsp/scalar_traits.hpp).
+constexpr double kFullScalePower = [] {
+    if constexpr (dsp::kFixed<Real>) {
+        const double full_scale = 1.0 / static_cast<double>(std::int64_t{1} << -(15 + dsp::kQmfShift<Real>));
+        return full_scale * full_scale;
+    } else {
+        return 32768.0 * 32768.0;
+    }
+}();
 // BS.1770's offset from K-weighted mean square to LKFS.
 constexpr double kLkfsOffset = -0.691;
 // A floor for the level of silence, in the power's units.
@@ -369,8 +379,9 @@ double DrcStage::slot_level(std::span<std::vector<QmfValue>* const> side, int sl
             // The level detector's accumulation stays double regardless of
             // Real, for the same reason a downmix or DRC gain matrix does:
             // norm(row[k]) is Real, widened once here rather than summed at
-            // Real precision.
-            channel += k_weight_[k] * static_cast<double>(norm(row[k]));
+            // Real precision; at Fixed32 it is the exact energy as a mantissa
+            // and a power of two (dsp::energy_of).
+            channel += k_weight_[k] * static_cast<double>(dsp::energy_of(row[k]));
         }
         power += weight * channel;
     }

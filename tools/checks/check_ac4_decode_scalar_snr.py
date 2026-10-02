@@ -1,10 +1,11 @@
-"""Gate the AC-4 decoder's float build against its double build, on every committed stream
-(planning/ac4.md, D14a).
+"""Gate the AC-4 decoder's float and fixed-point builds against its double build, on every
+committed stream (planning/ac4.md, D14a and D14d).
 
 `ICLFORGE_DECODE_SCALAR=float` builds the decoder's QMF banks, transforms, A-SPX, A-CPL and
-the rest of src/ac4dec/src/pcm in `float`; the default builds them in `double`. This decodes
-each committed AC-4 stream with a CLI of each and holds the float decode to the double one, in
-two regions of each channel's spectrum:
+the rest of src/ac4dec/src/pcm in `float`, and `ICLFORGE_DECODE_SCALAR=fixed` in Q7.24 with
+block exponents; the default builds them in `double`. This decodes each committed AC-4 stream
+with the double CLI and the other tier's and holds the second decode to the first, in two
+regions of each channel's spectrum:
 
   below   from 0 to the lowest crossover (sbx) of the frame's aspx_data elements, where every
           channel is waveform-coded and the two builds differ by rounding through the
@@ -20,8 +21,9 @@ frames of 2 048 samples, in dB, and the figure of a stream is its worst channel'
 with less than MIN_ENERGY_PER_FRAME in a region is not scored there (the LFE above a crossover).
 The error's level in dBFS, the energy of a full-scale sine in a frame being 0 dB, is printed
 beside them. What is gated is each figure against the pin of
-tests/golden/ac4dec/scalar-agreement.json, which holds floors: the figure measured with the
-double CLI as the reference, less a margin.
+tests/golden/ac4dec/scalar-agreement.json for the float tier, or of
+tests/golden/ac4dec/scalar-agreement-fixed.json for the fixed-point one, which hold floors: the
+figure measured with the double CLI as the reference, less a margin.
 
 What it does not answer is whether either decode is RIGHT: the scorers do that, with a float
 CLI in CI. Two builds agreeing says they agree.
@@ -30,8 +32,9 @@ numpy is needed to measure (the AC-4 scorers need it too) and not to read the pi
 tools/checks/test_check_ac4_decode_scalar_snr.py does under the plain-stdlib oracle test run.
 
 Usage:
-    check_ac4_decode_scalar_snr.py --double-cli <path> --float-cli <path> [--workdir <dir>]
-                                   [--pins <json>] [--write-pins <json>] [--streams <path>...]
+    check_ac4_decode_scalar_snr.py --double-cli <path> (--float-cli <path> | --fixed-cli <path>)
+                                   [--workdir <dir>] [--pins <json>] [--write-pins <json>]
+                                   [--streams <path>...]
 
 --write-pins records the figures of this run, less the margin, as the pins.
 """
@@ -48,6 +51,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 PINS = REPO_ROOT / "tests" / "golden" / "ac4dec" / "scalar-agreement.json"
+FIXED_PINS = REPO_ROOT / "tests" / "golden" / "ac4dec" / "scalar-agreement-fixed.json"
 # The streams: DEE's, the constructed and object streams the decoder's tests decode, the
 # presentation streams and the GUI's fixture. The decoder fuzz seeds are the first frames of
 # streams already here.
@@ -174,20 +178,20 @@ def decode(cli: Path, stream: Path, out: Path, trace: Path | None = None):
     return result.returncode, result.stdout + result.stderr
 
 
-def measure(double_cli: Path, float_cli: Path, stream: Path, work: Path):
+def measure(double_cli: Path, other_cli: Path, stream: Path, work: Path, tier: str = "float"):
     """(below, above, error) for a stream: the worst-channel figures, None where a region does not
     exist, and the loudest channel's error in dBFS; the string 'refused' where both CLIs refuse
     the stream; raises where they differ on that."""
     np, scorer = _imports()
     name = relative(stream).replace("/", "__")
-    ref_wav, out_wav, trace = work / f"{name}.d.wav", work / f"{name}.f.wav", work / f"{name}.tsv"
+    ref_wav, out_wav, trace = work / f"{name}.d.wav", work / f"{name}.{tier}.wav", work / f"{name}.tsv"
     code_d, text_d = decode(double_cli, stream, ref_wav, trace)
-    code_f, text_f = decode(float_cli, stream, out_wav)
+    code_f, text_f = decode(other_cli, stream, out_wav)
     if code_d != 0 and code_f != 0:
         return "refused"
     if code_d != code_f:
         raise SystemExit(
-            f"{relative(stream)}: the double CLI exits {code_d} and the float CLI {code_f}:\n"
+            f"{relative(stream)}: the double CLI exits {code_d} and the {tier} CLI {code_f}:\n"
             f"{text_d}{text_f}"
         )
     # read_wav gives (frames by channels, rate), as the scorers use it.
@@ -211,15 +215,21 @@ def main() -> int:
         description=__doc__, formatter_class=argparse.RawTextHelpFormatter
     )
     parser.add_argument("--double-cli", required=True, type=Path)
-    parser.add_argument("--float-cli", required=True, type=Path)
+    other = parser.add_mutually_exclusive_group(required=True)
+    other.add_argument("--float-cli", type=Path)
+    other.add_argument("--fixed-cli", type=Path)
     parser.add_argument("--workdir", type=Path)
-    parser.add_argument("--pins", type=Path, default=PINS)
+    parser.add_argument("--pins", type=Path)
     parser.add_argument("--write-pins", type=Path)
     parser.add_argument("--margin-db", type=float, default=DEFAULT_MARGIN_DB)
     parser.add_argument(
         "--streams", nargs="*", type=Path, help="these streams instead of the committed ones"
     )
     args = parser.parse_args()
+    tier = "fixed" if args.fixed_cli is not None else "float"
+    other_cli = args.fixed_cli if args.fixed_cli is not None else args.float_cli
+    if args.pins is None:
+        args.pins = FIXED_PINS if tier == "fixed" else PINS
 
     streams = [s.resolve() for s in args.streams] if args.streams else committed_streams()
     pins = None
@@ -239,7 +249,7 @@ def main() -> int:
     print(f"{'stream':<70} {'below dB':>9} {'above dB':>9} {'error dBFS':>11}   pin below / above")
     for stream in streams:
         key = relative(stream)
-        result = measure(args.double_cli, args.float_cli, stream, work)
+        result = measure(args.double_cli, other_cli, stream, work, tier)
         if result == "refused":
             print(f"{key:<70} {'refused by both':>19}")
             continue
@@ -270,7 +280,7 @@ def main() -> int:
     if args.write_pins is not None:
         document = {
             "_comment": (
-                "The AC-4 float decode's agreement with the double decode, per committed stream "
+                f"The AC-4 {tier} decode's agreement with the double decode, per committed stream "
                 "(tools/checks/check_ac4_decode_scalar_snr.py): the floors, in dB, of the worst "
                 "channel's SNR below the lowest A-SPX crossover and above the highest, over "
                 "half-overlapped Hann frames of 2048 samples, a channel with less than 1e-6 in a "

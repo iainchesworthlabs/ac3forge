@@ -16,6 +16,7 @@
 #include <numbers>
 #include <span>
 #include <tuple>
+#include <utility>
 #include <type_traits>
 #include <vector>
 
@@ -24,6 +25,7 @@
 #include "iclforge/ac4core/dsp/resampler.hpp"
 #include "iclforge/ac4core/dsp/resampler_design.hpp"
 #include "iclforge/ac4core/dsp/resampler_vector.hpp"
+#include "iclforge/ac4core/dsp/scalar_traits.hpp"
 
 namespace {
 
@@ -359,7 +361,7 @@ std::uint64_t fnv_float_image(const std::vector<float>& coefficients) {
 
 TEST_CASE("the converter's table is the double design rounded once to the scalar it runs at",
           "[ac4core][dsp][src]") {
-    const auto epsilon = static_cast<double>(std::numeric_limits<Real>::epsilon());
+    const double epsilon = dsp::kFixed<Real> ? 0x1p-30 : static_cast<double>(std::numeric_limits<Real>::epsilon());
     for (const Rate& rate : {kRates[1], kRates[2], kRates[0]}) {
         CAPTURE(rate.index);
         const dsp::ResamplerFilter design(rate.up, rate.down);
@@ -371,16 +373,33 @@ TEST_CASE("the converter's table is the double design rounded once to the scalar
         // At float the table is the compiler's, designed without the C library and with the
         // mirrored half of it read backwards; at double it is the C library's design. Every
         // coefficient is what the double design rounds to.
+        // At Fixed32 the table is Q1.30, each coefficient the double design times 2^30 rounded
+        // half away from zero, which the phase's own pointer reads.
         int rounded_differently = 0;
         double worst_sum = 0.0;
-        for (int p = 0; p < design.up(); ++p) {
-            double sum = 0.0;
-            for (int k = 0; k < design.taps(); ++k) {
-                const Real stored = kept.coefficient(p, k);
-                if (stored != static_cast<Real>(design.coefficient(p, k))) {
+        // A generic lambda, so that each scalar's branch is compiled only at that scalar.
+        const auto check = [&]<typename R>(int p, int k, double& sum) {
+            if constexpr (dsp::kFixed<R>) {
+                const auto phase = kept.phase(p);
+                const auto stored = static_cast<std::int32_t>(
+                    phase.coefficients[phase.reversed ? design.taps() - 1 - k : k]);
+                const double scaled = design.coefficient(p, k) * 0x1p30;
+                if (stored != static_cast<std::int32_t>(scaled < 0.0 ? scaled - 0.5 : scaled + 0.5)) {
+                    ++rounded_differently;
+                }
+                sum += std::ldexp(static_cast<double>(stored), -30);
+            } else {
+                const R stored = kept.coefficient(p, k);
+                if (stored != static_cast<R>(design.coefficient(p, k))) {
                     ++rounded_differently;
                 }
                 sum += static_cast<double>(stored);
+            }
+        };
+        for (int p = 0; p < design.up(); ++p) {
+            double sum = 0.0;
+            for (int k = 0; k < design.taps(); ++k) {
+                check.template operator()<Real>(p, k, sum);
             }
             worst_sum = std::max(worst_sum, std::abs(sum - 1.0));
         }
@@ -559,6 +578,27 @@ void check_how_the_filter_keeps_its_phases() {
                             compiled.coefficients[static_cast<std::size_t>(p * own.taps() + k)]));
             }
         }
+    } else if constexpr (dsp::kFixed<Scalar>) {
+        // A Fixed32 filter keeps half its phases, in Q1.30, as a float one does; a table of up to
+        // kResamplerCopyLimit bytes is copied and a longer one read where the compiler put it.
+        for (const auto [up, down] : {std::pair{25, 24}, std::pair{15, 16}, std::pair{1001, 960}}) {
+            CAPTURE(up, down);
+            const dsp::BasicResamplerFilter<Scalar> filter(up, down);
+            CHECK(!filter.phase(0).reversed);
+            for (int p = 1; p < up; ++p) {
+                const auto here = filter.phase(p);
+                CHECK(here.reversed == (p > up / 2));
+                if (here.reversed) {
+                    CHECK(here.coefficients == filter.phase(up - p).coefficients);
+                }
+            }
+            // Read in place, two filters of the ratio read the same constants; copied, each its own.
+            const dsp::BasicResamplerFilter<Scalar> other(up, down);
+            CHECK((filter.phase(0).coefficients == other.phase(0).coefficients) == (up == 1001));
+        }
+        CHECK(sizeof(dsp::HalfTableQ30<25, 24>::coefficients) <= dsp::kResamplerCopyLimit);
+        CHECK(sizeof(dsp::HalfTableQ30<15, 16>::coefficients) <= dsp::kResamplerCopyLimit);
+        CHECK(sizeof(dsp::HalfTableQ30<1001, 960>::coefficients) > dsp::kResamplerCopyLimit);
     } else {
         // A double filter keeps every phase as it is.
         const dsp::BasicResamplerFilter<Scalar> filter(1001, 960);
@@ -635,7 +675,11 @@ TEST_CASE("the reversed dot product is the four lane sum of the phase written ou
 
 TEST_CASE("the converter at the decoder's scalar follows the double converter to that scalar",
           "[ac4core][dsp][src]") {
-    const auto epsilon = static_cast<double>(std::numeric_limits<Real>::epsilon());
+    // At Fixed32 the converter runs in the time domain, kTimeShift below the double decoder's
+    // (dsp/scalar_traits.hpp), where a raw unit is 2^-24: the signal goes in and comes out
+    // through `scale`, and the bound is that unit against the peak.
+    const double epsilon = dsp::kFixed<Real> ? 0x1p-24 : static_cast<double>(std::numeric_limits<Real>::epsilon());
+    const double scale = std::ldexp(1.0, dsp::kTimeShift<Real>);
     for (const Rate& rate : {kRates[1], kRates[2], kRates[0]}) {
         CAPTURE(rate.index);
         const auto design = std::make_shared<const dsp::ResamplerFilter>(rate.up, rate.down);
@@ -657,8 +701,8 @@ TEST_CASE("the converter at the decoder's scalar follows the double converter to
                 const double noise = (static_cast<double>(state >> 8U) / 16777216.0 - 0.5) * 6000.0;
                 const double value = 16000.0 * std::sin(0.11 * static_cast<double>(n)) +
                                      9000.0 * std::cos(1.7 * static_cast<double>(n)) + noise;
-                in[i] = static_cast<Real>(value);
-                in_double[i] = static_cast<double>(in[i]);
+                in[i] = static_cast<Real>(value * scale);
+                in_double[i] = static_cast<double>(in[i]) / scale;
             }
             std::vector<double> want;
             std::vector<Real> got;
@@ -667,7 +711,7 @@ TEST_CASE("the converter at the decoder's scalar follows the double converter to
             REQUIRE(got.size() == want.size());
             for (std::size_t i = 0; i < want.size(); ++i) {
                 peak = std::max(peak, std::abs(want[i]));
-                worst = std::max(worst, std::abs(want[i] - static_cast<double>(got[i])));
+                worst = std::max(worst, std::abs(want[i] - static_cast<double>(got[i]) / scale));
             }
             count += want.size();
         }

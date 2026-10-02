@@ -14,6 +14,7 @@
 #include "pcm/multichannel.hpp"
 #include "pcm/snf_random.hpp"
 #include "pcm/stereo.hpp"
+#include "iclforge/ac4core/dsp/scalar_traits.hpp"
 
 namespace iclforge::ac4::detail {
 namespace {
@@ -33,14 +34,78 @@ constexpr std::array<int, 14> kControlDelay = {1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 4, 
 // DEE's streams of a -20 dBFS tone decode to 0.1 * 32 768 within 0.01 dB. The
 // QMF domain works at that scale, and the output is scaled to full scale 1.0.
 // See src/ac4dec/ERRATA.md, "Full scale, and the overlap-add's factor of two".
-constexpr Real kFullScale = 32768;
+// At Fixed32 the time and QMF domains are below the double decoder's by
+// dsp::kTimeShift and dsp::kQmfShift (iclforge/ac4core/dsp/scalar_traits.hpp),
+// where full scale is 2^(15 + the shift).
+template <typename R>
+[[nodiscard]] constexpr R qmf_full_scale() noexcept {
+    if constexpr (dsp::kFixed<R>) {
+        return R::from_raw(std::int32_t{1} << (R::kFractionBits + 15 + dsp::kQmfShift<R>));
+    } else {
+        return R(32768);
+    }
+}
+constexpr Real kQmfFullScale = qmf_full_scale<Real>();
 
 // The QMF analysis and synthesis banks together (tests/ac4core).
 constexpr int kQmfPairDelay = 577;
 
-// Output far beyond full scale comes only from streams that are not audio;
-// this bound keeps the conversion to float defined.
-constexpr Real kOutputLimit = Real(1e9);
+// An output sample, times `gain`, at full scale 1.0. Output far beyond full
+// scale comes only from streams that are not audio; at double and float a
+// bound keeps the conversion to float defined, and Fixed32 cannot exceed 128.
+// At Fixed32 the time domain's full scale is a power of two, which the float
+// takes exactly.
+template <typename R>
+[[nodiscard]] float time_to_output(R value) noexcept {
+    constexpr float kScale = 1.0F / static_cast<float>(std::int32_t{1} << (15 + dsp::kTimeShift<R>));
+    return static_cast<float>(value) * kScale;
+}
+template <typename R>
+[[nodiscard]] float output_sample(R value) noexcept {
+    if constexpr (dsp::kFixed<R>) {
+        return time_to_output(value);
+    } else {
+        constexpr R kFullScale = 32768;
+        constexpr R kOutputLimit = R(1e9);
+        return static_cast<float>(std::clamp(value / kFullScale, -kOutputLimit, kOutputLimit));
+    }
+}
+template <typename R>
+[[nodiscard]] float output_sample(R gain, R value) noexcept {
+    if constexpr (dsp::kFixed<R>) {
+        return time_to_output(gain * value);
+    } else {
+        constexpr R kFullScale = 32768;
+        constexpr R kOutputLimit = R(1e9);
+        return static_cast<float>(std::clamp(gain * value / kFullScale, -kOutputLimit, kOutputLimit));
+    }
+}
+
+// Brings each of `tracks` to the largest of their `exponents`, the one a matrix
+// that mixes them needs: a track below it is shifted down by the difference. At
+// double and float every exponent is 0 and nothing moves.
+template <typename R>
+void align_exponents(std::span<std::vector<R>* const> tracks, std::span<int* const> exponents) {
+    if (tracks.empty()) {
+        return;
+    }
+    int common = *exponents[0];
+    for (int* e : exponents) {
+        common = std::max(common, *e);
+    }
+    for (std::size_t t = 0; t < tracks.size(); ++t) {
+        if (*exponents[t] == common) {
+            continue;
+        }
+        if constexpr (dsp::kFixed<R>) {
+            const int down = *exponents[t] - common;
+            for (R& v : *tracks[t]) {
+                v = v.scaled_by_pow2(down);
+            }
+        }
+        *exponents[t] = common;
+    }
+}
 
 constexpr std::size_t kSubbands = dsp::kQmfSubbands;
 
@@ -451,7 +516,7 @@ void SubstreamPcm::apply(const Control& control) {
                                 control.acpl->module_count > 0
                             ? control.acpl->modules[0].qmf_band
                             : 0;
-        apply_companding(*control.companding, sb0, kFullScale,
+        apply_companding(*control.companding, sb0, kQmfFullScale,
                          std::span<const CompandingChannel>(companded).first(companded_.size()));
     }
 
@@ -620,8 +685,7 @@ void SubstreamPcm::synthesise_objects(const FrameInputs& frame_inputs, const Drc
         std::vector<float>& out = channels[o];
         out.resize(produced.size());
         for (std::size_t n = 0; n < produced.size(); ++n) {
-            out[n] = static_cast<float>(
-                std::clamp(gain_real * produced[n] / kFullScale, -kOutputLimit, kOutputLimit));
+            out[n] = output_sample(gain_real, produced[n]);
         }
     }
     converter_phase_ = converter_phase;
@@ -689,13 +753,20 @@ ParseResult SubstreamPcm::matrix(const SubstreamContext& ctx, const ChannelEleme
             }
             const int dual = dual_layout_of_[t0];
             const SfData& layout = dual >= 0 ? dual_layouts_[at(dual)] : first.data;
+            const std::array<std::vector<Real>*, 2> pair = {&scaled_[t0], &scaled_[t0 + 1]};
+            const std::array<int*, 2> pair_exponents = {&scaled_exponents_[t0], &scaled_exponents_[t0 + 1]};
+            align_exponents<Real>(pair, pair_exponents);
             apply_stereo(info, layout, parameters_[0], scaled_[t0], scaled_[t0 + 1]);
             continue;
         }
         std::array<std::vector<Real>*, 5> tracks{};
+        std::array<int*, 5> track_exponents{};
         for (int k = 0; k < part.count; ++k) {
             tracks[at(k)] = &scaled_[at(part.first_track + k)];
+            track_exponents[at(k)] = &scaled_exponents_[at(part.first_track + k)];
         }
+        align_exponents<Real>(std::span<std::vector<Real>* const>(tracks).first(at(part.count)),
+                              std::span<int* const>(track_exponents).first(at(part.count)));
         if (auto ok = apply_channel_data(info, first.data, part.chel_matsel,
                                          std::span<const StereoParameters>(parameters_).first(needed),
                                          std::span<std::vector<Real>* const>(tracks).first(at(part.count)));
@@ -705,11 +776,13 @@ ParseResult SubstreamPcm::matrix(const SubstreamContext& ctx, const ChannelEleme
     }
 
     spectra_.resize(channels_.size());
+    spectra_exponents_.assign(channels_.size(), 0);
     for (std::size_t c = 0; c < channels_.size(); ++c) {
         if (track_of_[c] < 0) {  // silent in this codec mode
             spectra_[c].assign(at(full_length_), Real{});
             continue;
         }
+        spectra_exponents_[c] = scaled_exponents_[at(track_of_[c])];
         const Track& track = element.tracks[at(track_of_[c])];
         const SfInfo& info = element.infos[at(track.info)];
         const int dual = dual_layout_of_[at(track_of_[c])];
@@ -724,6 +797,9 @@ ParseResult SubstreamPcm::matrix(const SubstreamContext& ctx, const ChannelEleme
         const SfInfo& info = element.infos[at(element.tracks[at(track_of_[framing])].info)];
         stereo_parameters(ctx, info, element.chparams[at(step.chparam)], parameters_[0],
                           step.prediction ? StereoUse::kPrediction : StereoUse::kPair);
+        const std::array<std::vector<Real>*, 2> pair = {&spectra_[first], &spectra_[second]};
+        const std::array<int*, 2> pair_exponents = {&spectra_exponents_[first], &spectra_exponents_[second]};
+        align_exponents<Real>(pair, pair_exponents);
         if (auto ok = apply_additional_pair(ctx, info.psy, parameters_[0], lengths_[first], lengths_[second],
                                             spectra_[first], spectra_[second]);
             !ok) {
@@ -843,10 +919,11 @@ ParseResult SubstreamPcm::decode(const SubstreamContext& ctx, const AudioSubstre
     // frame's sequence_counter, and runs through the tracks in syntax order.
     RandGenState noise = reset_rand_gen_state_snf(sequence_counter);
     scaled_.resize(element.tracks.size());
+    scaled_exponents_.assign(element.tracks.size(), 0);
     for (std::size_t t = 0; t < element.tracks.size(); ++t) {
         const Track& track = element.tracks[t];
         const SfInfo& info = element.infos[static_cast<std::size_t>(track.info)];
-        if (auto ok = reconstruct_track(info, track.data, noise, scaled_[t]); !ok) {
+        if (auto ok = reconstruct_track(info, track.data, noise, scaled_[t], scaled_exponents_[t]); !ok) {
             return ok;
         }
     }
@@ -866,6 +943,7 @@ ParseResult SubstreamPcm::decode(const SubstreamContext& ctx, const AudioSubstre
     // What concealment repeats: this frame's spectra and blocks, and the
     // values its output stages take.
     last_spectra_ = spectra_;
+    last_exponents_ = spectra_exponents_;
     last_lengths_ = lengths_;
     last_kind_ = element.kind;
     last_drc_ = frame_inputs.drc;
@@ -916,6 +994,7 @@ ParseResult SubstreamPcm::conceal(ConcealmentPolicy policy, const FrameInputs& f
     const auto gain = static_cast<Real>(
         policy == ConcealmentPolicy::kRepeatFade ? std::pow(10.0, -lost / kSecondsPer20Db) : 0.0);
     spectra_ = last_spectra_;
+    spectra_exponents_ = last_exponents_;
     for (std::vector<Real>& spectrum : spectra_) {
         for (Real& v : spectrum) {
             v *= gain;
@@ -953,7 +1032,7 @@ ParseResult SubstreamPcm::render(const FrameInputs& frame_inputs,
             // window_lengths() allows only lengths the transform set has.
             (void)channels_[c].synthesis.block(
                 *transforms_, std::span<const Real>(spectra_[c]).subspan(offset, n),
-                std::span<Real>(samples).subspan(offset, n));
+                spectra_exponents_[c], std::span<Real>(samples).subspan(offset, n));
             offset += n;
         }
     }
@@ -1090,8 +1169,7 @@ ParseResult SubstreamPcm::render(const FrameInputs& frame_inputs,
         std::vector<float>& out = channels[o];
         out.resize(produced.size());
         for (std::size_t n = 0; n < produced.size(); ++n) {
-            out[n] = static_cast<float>(
-                std::clamp(produced[n] / kFullScale, -kOutputLimit, kOutputLimit));
+            out[n] = output_sample(produced[n]);
         }
     }
     converter_phase_ = converter_phase;

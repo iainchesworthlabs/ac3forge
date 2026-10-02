@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cmath>
+#include <cstdlib>
+#include <type_traits>
 
 // The project's own complex type, in place of std::complex<Real>
 // (planning/ac4.md, "D14a": "a complex type of the project's own in place of
@@ -81,7 +83,10 @@ struct Complex {
     // Not constexpr: std::abs(Real) is not, and nothing needs this one to be -
     // a decoder never divides two complex values in a constant expression.
     friend Complex operator/(Complex a, Complex b) noexcept {
-        if (std::abs(b.re) >= std::abs(b.im)) {
+        // std::abs at double and float; iclforge::internal's, by argument-dependent lookup, at
+        // Fixed32 and MantExp.
+        using std::abs;
+        if (abs(b.re) >= abs(b.im)) {
             const Real r = b.im / b.re;
             const Real d = b.re + b.im * r;
             return {(a.re + a.im * r) / d, (a.im - a.re * r) / d};
@@ -123,10 +128,15 @@ template <typename Real>
 }
 
 // std::abs(std::complex<Real>) is defined as std::hypot(re, im) since C++11;
-// calling the same library function here gives the same value.
+// calling the same library function here gives the same value. A scalar that is
+// not floating takes the root of the norm through its own scalar_sqrt.
 template <typename Real>
 [[nodiscard]] inline Real abs(Complex<Real> z) noexcept {
-    return std::hypot(z.re, z.im);
+    if constexpr (std::is_floating_point_v<Real>) {
+        return std::hypot(z.re, z.im);
+    } else {
+        return scalar_sqrt(norm(z));
+    }
 }
 
 }  // namespace iclforge::ac4::detail::dsp

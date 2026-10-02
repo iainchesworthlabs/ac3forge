@@ -6,6 +6,7 @@
 
 #include "iclforge/ac4core/detail/real.hpp"
 #include "iclforge/ac4core/dsp/complex.hpp"
+#include "iclforge/ac4core/dsp/scalar_traits.hpp"
 
 // Advanced coupling's signal processing, ETSI TS 103 190-1 V1.4.1 clause 5.7.7:
 // the parameter bands (5.7.7.2, Table 197), interpolation (5.7.7.3,
@@ -114,10 +115,14 @@ struct Region {
 inline constexpr std::array<Region, 3> kRegions = {{{0, 7, 7}, {7, 10, 4}, {23, 12, 2}}};
 [[nodiscard]] int region_of(int subband) noexcept;
 [[nodiscard]] std::span<const double> coefficients(int decorrelator, int region) noexcept;
+// The same coefficients in Q1.30, each the double times 2^30 rounded to the nearest, for the
+// fixed-point tier's decorrelators.
+[[nodiscard]] std::span<const std::int32_t> coefficients_q30(int decorrelator, int region) noexcept;
 
 // Pseudocode 111: decorrelator `index` (0 to 2), a delay and an all-pass IIR
 // filter per subband, with each subband's input and output history from the
-// frames before. Real coefficients on complex samples.
+// frames before. Real coefficients on complex samples. At Fixed32 each output's
+// products are summed in 64 bits, the coefficients in Q1.30, and rounded once.
 template <typename Real>
 class Decorrelator {
    public:
@@ -148,7 +153,8 @@ class Decorrelator {
 // falls faster than its smoothed peak, slot by slot, per parameter band of
 // the 15-band mapping. The energy is the decorrelator's output's own, the
 // signal the gains apply to (src/ac4dec/ERRATA.md, "The transient ducker's
-// energy").
+// energy"). The energies are dsp::Energy values: Real at double and float, a
+// mantissa and a power of two at Fixed32.
 template <typename Real>
 class TransientDucker {
    public:
@@ -161,9 +167,10 @@ class TransientDucker {
     void process(std::span<Complex> inout, int num_ts) noexcept;
 
    private:
-    std::array<Real, kMaxParamBands> peak_decay_{};
-    std::array<Real, kMaxParamBands> smooth_{};
-    std::array<Real, kMaxParamBands> smooth_peak_diff_{};
+    using Energy = dsp::Energy<Real>;
+    std::array<Energy, kMaxParamBands> peak_decay_{};
+    std::array<Energy, kMaxParamBands> smooth_{};
+    std::array<Energy, kMaxParamBands> smooth_peak_diff_{};
 };
 
 extern template class Decorrelator<Real>;

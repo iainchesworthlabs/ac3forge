@@ -21,6 +21,8 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include "ac4dec_units.hpp"
+
 #include "iclforge/ac4/ac4.hpp"
 #include "iclforge/ac4dec/decoder.hpp"
 #include "pcm/de.hpp"
@@ -29,6 +31,7 @@ namespace {
 
 namespace detail = iclforge::ac4::detail;
 using QmfValue = detail::QmfValue;
+using Real = detail::Real;
 
 constexpr int kSlots = 32;
 constexpr std::size_t kValues = kSlots * 64;
@@ -39,7 +42,7 @@ constexpr std::array<int, 9> kBandStart = {0, 1, 2, 4, 7, 11, 17, 27, 41};
 // holds this closely to the matrix Pseudocode 111 and this file's own hand
 // worked sums print; double-only comparisons (de_parameter, de_rendering,
 // both fixed at double regardless of the decoder's scalar) keep 1e-12.
-const double kTolerance = 1e4 * static_cast<double>(std::numeric_limits<iclforge::ac4::detail::Real>::epsilon());
+const double kTolerance = 1e4 * ac4dec_units::relative_epsilon();
 
 int band_of(int subband) {
     for (int band = 0; band < 8; ++band) {
@@ -219,7 +222,7 @@ TEST_CASE("with de_ms_proc_flag, dialogue enhancement raises the Mid and leaves 
         std::vector<QmfValue> right(kValues);
         for (std::size_t i = 0; i < kValues; ++i) {
             const bool mid = i % 64 < 32;
-            left[i] = {1.0, 0.5};
+            left[i] = {Real{1}, Real{0.5}};
             right[i] = mid ? left[i] : -left[i];
         }
         std::array<std::vector<QmfValue>*, 2> matrices = {&left, &right};
@@ -232,9 +235,9 @@ TEST_CASE("with de_ms_proc_flag, dialogue enhancement raises the Mid and leaves 
             const int band = band_of(k);
             const double expected =
                 (k < 32 && band >= 0) ? 1.0 + g * values.p[0][static_cast<std::size_t>(band)] : 1.0;
-            CHECK(std::abs(static_cast<double>(abs(left[i]) / abs(QmfValue{1.0, 0.5})) - expected) <
+            CHECK(std::abs(static_cast<double>(abs(left[i]) / abs(QmfValue{Real{1}, Real{0.5}})) - expected) <
                   kTolerance);
-            CHECK(std::abs(static_cast<double>(abs(right[i]) / abs(QmfValue{1.0, 0.5})) -
+            CHECK(std::abs(static_cast<double>(abs(right[i]) / abs(QmfValue{Real{1}, Real{0.5}})) -
                            expected) < kTolerance);
         }
     }
@@ -275,8 +278,7 @@ TEST_CASE("cross-channel dialogue enhancement adds g r p^T m to the processed ch
                 expected += g * static_cast<iclforge::ac4::detail::Real>(values.r[i]) * dialogue;
             }
             CHECK(std::abs(static_cast<double>(abs(channels.data[i][at] - expected))) <
-                  1e4 * static_cast<double>(
-                            std::numeric_limits<iclforge::ac4::detail::Real>::epsilon()));
+                  1e4 * ac4dec_units::relative_epsilon());
         }
         // The LFE and the surrounds take no part.
         CHECK(channels.data[3][at] == m[3][at]);
@@ -291,7 +293,7 @@ TEST_CASE("dialogue enhancement moves from one frame's matrix to the next slot b
     stage.configure(kSlots, mono);
     const detail::DeFrameValues values = channel_independent({false, false, true}, 12.0);
     const double g = std::pow(10.0, 12.0 / 20.0) - 1.0;
-    std::vector<QmfValue> centre(kValues, QmfValue{1.0, 0.0});
+    std::vector<QmfValue> centre(kValues, QmfValue{Real{1}, Real{0}});
     std::array<std::vector<QmfValue>*, 1> matrices = {&centre};
     // From the identity: slot n takes (n + 1/2) / 32 of this frame's matrix.
     stage.process(12.0, values, matrices);

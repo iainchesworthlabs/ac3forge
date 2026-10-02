@@ -1,7 +1,13 @@
 #include "iclforge/ac4core/dsp/mdct.hpp"
 
+#include <algorithm>
+#include <bit>
 #include <cmath>
+#include <cstdint>
 #include <numbers>
+#include <type_traits>
+
+#include "iclforge/ac4core/dsp/scalar_traits.hpp"
 
 namespace iclforge::ac4::detail::dsp {
 namespace {
@@ -30,7 +36,76 @@ std::vector<Complex> pre_twiddles(std::size_t length) {
 
 template <typename Real>
 Imdct<Real>::Imdct(std::size_t length)
-    : length_(length), fft_(length / 2), twiddle_(pre_twiddles<Complex>(length)) {}
+    : length_(length), fft_(length / 2), twiddle_(pre_twiddles<Complex>(length)) {
+    if constexpr (!std::is_floating_point_v<Real>) {
+        // 1/N = 2^-post_shift_ (2^post_shift_ / N), the factor in [1/2, 1).
+        int shift = 0;
+        while ((std::size_t{1} << static_cast<unsigned>(shift)) < length) {
+            ++shift;
+        }
+        post_shift_ = shift - 1;
+        const double factor = std::ldexp(1.0, post_shift_) / static_cast<double>(length);
+        post_twiddle_.resize(length / 2);
+        const double n16 = 16.0 * static_cast<double>(length);
+        for (std::size_t k = 0; k < post_twiddle_.size(); ++k) {
+            const double angle = 2.0 * std::numbers::pi * static_cast<double>(8 * k + 1) / n16;
+            post_twiddle_[k] = Complex(Real(-std::cos(angle) * factor), Real(-std::sin(angle) * factor));
+        }
+    }
+}
+
+template <typename Real>
+void Imdct<Real>::inverse(std::span<const Real> spectrum, int exponent, std::span<Real> out,
+                          std::span<Complex> scratch) {
+    if constexpr (std::is_floating_point_v<Real>) {
+        (void)exponent;
+        inverse(spectrum, out, scratch);
+    } else {
+        const std::size_t n = length_;
+        if (!valid() || spectrum.size() != n || out.size() != 2 * n || scratch.size() < n) {
+            return;
+        }
+        const std::size_t half = n / 2;
+        const std::size_t quarter = n / 4;
+        const std::span<Complex> z = scratch.first(half);
+        const std::span<Complex> work = scratch.subspan(half, half);
+        std::uint32_t largest = 0;
+        for (const Real v : spectrum) {
+            const std::uint32_t magnitude =
+                v.raw < 0 ? 0U - static_cast<std::uint32_t>(v.raw) : static_cast<std::uint32_t>(v.raw);
+            largest = magnitude > largest ? magnitude : largest;
+        }
+        if (largest == 0) {
+            std::fill(out.begin(), out.end(), Real{});
+            return;
+        }
+        // The largest line into [2^26, 2^27), [4, 8) in Q7.24: then |Z[k]| < 8 sqrt(2).
+        const int up = 27 - (32 - std::countl_zero(largest));
+        const auto line = [&](std::size_t k) { return spectrum[k].scaled_by_pow2(up); };
+        for (std::size_t k = 0; k < half; ++k) {
+            z[k] = Complex(line(n - 2 * k - 1), line(2 * k)) * twiddle_[k];
+        }
+        const int shed = fft_.inverse_scaled(z, work);
+        for (std::size_t k = 0; k < half; ++k) {
+            z[k] = z[k] * post_twiddle_[k];
+        }
+        // The values are the double decoder's times 2^(-exponent + up - shed + post_shift_), and
+        // the time domain is kTimeShift below it.
+        const int back = exponent - up + shed - post_shift_ + kTimeShift<Real>;
+        const auto sample = [&](Real v) { return v.scaled_by_pow2(back); };
+        const Complex* y = z.data();
+        for (std::size_t m = 0; m < quarter; ++m) {
+            out[2 * m] = sample(y[quarter + m].imag());
+            out[2 * m + 1] = sample(-y[quarter - m - 1].real());
+            out[half + 2 * m] = sample(y[m].real());
+            out[half + 2 * m + 1] = sample(-y[half - m - 1].imag());
+            out[n + 2 * m] = sample(y[quarter + m].real());
+            out[n + 2 * m + 1] = sample(-y[quarter - m - 1].imag());
+            out[n + half + 2 * m] = sample(-y[m].imag());
+            out[n + half + 2 * m + 1] = sample(y[half - m - 1].real());
+        }
+    }
+}
 
 template <typename Real>
 void Imdct<Real>::inverse(std::span<const Real> spectrum, std::span<Real> out) {

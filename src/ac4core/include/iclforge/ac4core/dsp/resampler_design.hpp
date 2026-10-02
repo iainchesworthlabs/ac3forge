@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
+#include <cstdint>
 #include <numbers>
 
 #include "iclforge/ac4core/dsp/kbd.hpp"
@@ -112,6 +113,21 @@ constexpr void design_half_phases(const ResamplerDesign& d, float* out, double* 
     }
 }
 
+// The same phases in Q1.30, for the fixed-point tier (planning/ac4.md, D14d): each coefficient
+// of the double design times 2^30, rounded half away from zero.
+template <typename Math>
+constexpr void design_half_phases_q30(const ResamplerDesign& d, std::int32_t* out, double* row) noexcept {
+    const int phases = d.up / 2 + 1;
+    for (int p = 0; p < phases; ++p) {
+        design_phase<Math>(d, p, row);
+        std::int32_t* phase_out = out + static_cast<std::size_t>(p) * static_cast<std::size_t>(d.taps);
+        for (int k = 0; k < d.taps; ++k) {
+            const double scaled = row[k] * 1073741824.0;
+            phase_out[k] = static_cast<std::int32_t>(scaled < 0.0 ? scaled - 0.5 : scaled + 0.5);
+        }
+    }
+}
+
 // The half table of the ratio Up / Down, for the compiler's constant evaluator.
 template <int Up, int Down>
 struct HalfTable {
@@ -140,5 +156,29 @@ template <int Up, int Down>
 // it) and nothing the program computes.
 template <int Up, int Down>
 inline constexpr HalfTable<Up, Down> kHalfTable = design_half_table<Up, Down>();
+
+// The fixed-point tier's half table of the ratio Up / Down, in Q1.30: built by the compiler as the
+// float one is, and named only by a build whose scalar is Fixed32, so neither build evaluates or
+// links the other's.
+template <int Up, int Down>
+struct HalfTableQ30 {
+    static constexpr ResamplerDesign kDesign = design_resampler<PortableMath>(Up, Down);
+    static constexpr int kTaps = kDesign.taps;
+    static constexpr int kPhases = Up / 2 + 1;
+    std::array<std::int32_t, static_cast<std::size_t>(kPhases) * static_cast<std::size_t>(kTaps)>
+        coefficients{};
+};
+
+template <int Up, int Down>
+[[nodiscard]] consteval HalfTableQ30<Up, Down> design_half_table_q30() {
+    HalfTableQ30<Up, Down> table;
+    std::array<double, static_cast<std::size_t>(HalfTableQ30<Up, Down>::kTaps)> row{};
+    design_half_phases_q30<PortableMath>(HalfTableQ30<Up, Down>::kDesign, table.coefficients.data(),
+                                         row.data());
+    return table;
+}
+
+template <int Up, int Down>
+inline constexpr HalfTableQ30<Up, Down> kHalfTableQ30 = design_half_table_q30<Up, Down>();
 
 }  // namespace iclforge::ac4::detail::dsp

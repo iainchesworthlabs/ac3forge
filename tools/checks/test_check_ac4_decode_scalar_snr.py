@@ -59,16 +59,23 @@ class RegionSnr(unittest.TestCase):
 
 
 class Pins(unittest.TestCase):
+    PIN_FILES = (checker.PINS, checker.FIXED_PINS)
+
     def test_every_committed_stream_has_a_pin_and_every_pin_a_stream(self):
-        pins = json.loads(checker.PINS.read_text(encoding="utf-8"))["streams"]
         committed = {checker.relative(path) for path in checker.committed_streams()}
-        self.assertEqual(sorted(committed - set(pins)), [], "a committed stream without a pin")
-        self.assertEqual(sorted(set(pins) - committed), [], "a pin for a stream that is not there")
+        for path in self.PIN_FILES:
+            with self.subTest(pins=path.name):
+                pins = json.loads(path.read_text(encoding="utf-8"))["streams"]
+                self.assertEqual(sorted(committed - set(pins)), [], "a committed stream without a pin")
+                self.assertEqual(sorted(set(pins) - committed), [], "a pin for a stream that is not there")
 
     def test_the_pins_are_floors_in_a_plausible_range(self):
-        pins = json.loads(checker.PINS.read_text(encoding="utf-8"))["streams"]
+        for path in self.PIN_FILES:
+            self._plausible(json.loads(path.read_text(encoding="utf-8"))["streams"], path.name)
+
+    def _plausible(self, pins, name):
         for key, entry in pins.items():
-            with self.subTest(stream=key):
+            with self.subTest(pins=name, stream=key):
                 self.assertEqual(set(entry), {"below", "above"})
                 below = entry["below"]
                 self.assertIsNotNone(below)

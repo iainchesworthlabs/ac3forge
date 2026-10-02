@@ -87,6 +87,12 @@ void ChannelSynthesis<Real>::reset() {
 template <typename Real>
 bool ChannelSynthesis<Real>::block(TransformSet<Real>& transforms, std::span<const Real> spectrum,
                                    std::span<Real> pcm) {
+    return block(transforms, spectrum, 0, pcm);
+}
+
+template <typename Real>
+bool ChannelSynthesis<Real>::block(TransformSet<Real>& transforms, std::span<const Real> spectrum,
+                                   int exponent, std::span<Real> pcm) {
     const std::size_t n = spectrum.size();
     const auto n_int = static_cast<int>(n);
     if (transforms.full_length() != full_length_ || pcm.size() < n) {
@@ -104,7 +110,7 @@ bool ChannelSynthesis<Real>::block(TransformSet<Real>& transforms, std::span<con
 
     // Steps 1 to 4 and Pseudocode 63's unfolding, into the set's block scratch.
     const std::span<Real> x = transforms.block_scratch().first(2 * n);
-    imdct->inverse(spectrum, x, transforms.transform_scratch().first(n));
+    imdct->inverse(spectrum, exponent, x, transforms.transform_scratch().first(n));
 
     // Pseudocode 63's window over the first half.
     const std::size_t skip_left = (n - nw) / 2;

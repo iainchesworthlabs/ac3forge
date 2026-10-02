@@ -23,6 +23,8 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include "ac4dec_units.hpp"
+
 #include "iclforge/ac4/ac4.hpp"
 #include "iclforge/ac4dec/decoder.hpp"
 #include "iclforge/ac4core/dsp/qmf.hpp"
@@ -45,8 +47,7 @@ using iclforge::test::kSanitized;
 // few thousand through Real (possibly float); this holds them within a
 // tolerance scaled to that magnitude and Real's own epsilon, not to
 // double's exactness.
-const double kTolerance =
-    3000.0 * 1e4 * static_cast<double>(std::numeric_limits<iclforge::ac4::detail::Real>::epsilon());
+const double kTolerance = 3000.0 * 1e4 * ac4dec_units::relative_epsilon();
 
 // The frames of a DEE leg a test decodes: every one, or under the sanitizers
 // the first 72, three seconds. Past the half second tone_levels() and
@@ -214,7 +215,7 @@ TEST_CASE("a pair with b_dual_maxsfb is laid out alike before its stereo process
             for (int sfb = 0; sfb < data.max_sfb[static_cast<std::size_t>(g)]; ++sfb) {
                 const auto si = static_cast<std::size_t>(sfb);
                 for (int k = offsets[si]; k < offsets[si + 1]; ++k) {
-                    lines.push_back(static_cast<iclforge::ac4::detail::Real>(
+                    lines.push_back(ac4dec_units::line_real(
                         1000.0 * track + 100.0 * g + (k - offsets[si]) + 0.01 * sfb));
                 }
             }
@@ -239,10 +240,10 @@ TEST_CASE("a pair with b_dual_maxsfb is laid out alike before its stereo process
             // compared to the double formula within a tolerance scaled to
             // Real's own epsilon and this test's magnitudes (a few
             // thousand), not held to double's exactness.
-            CHECK(std::abs(static_cast<double>(track0[at]) - (1000.0 + 100.0 * g + 0.01 * sfb)) <
+            CHECK(std::abs(ac4dec_units::line_units(track0[at]) - (1000.0 + 100.0 * g + 0.01 * sfb)) <
                   kTolerance);
             const bool sent = sfb < second.max_sfb[gi];
-            CHECK(std::abs(static_cast<double>(track1[at]) -
+            CHECK(std::abs(ac4dec_units::line_units(track1[at]) -
                            (sent ? 2000.0 + 100.0 * g + 0.01 * sfb : 0.0)) < kTolerance);
         }
     }
@@ -253,16 +254,17 @@ TEST_CASE("a pair with b_dual_maxsfb is laid out alike before its stereo process
     info.psy = psy;
     iclforge::ac4::detail::StereoParameters parameters;
     for (auto& group : parameters.abcd) {
-        group.fill({1.0, 1.0, 1.0, -1.0});
+        group.fill({iclforge::ac4::detail::Real{1}, iclforge::ac4::detail::Real{1},
+                    iclforge::ac4::detail::Real{1}, iclforge::ac4::detail::Real{-1}});
     }
     iclforge::ac4::detail::apply_stereo(info, common, parameters, track0, track1);
     const std::size_t sixth = common.sect_sfb_offset[0][6];
-    CHECK(std::abs(static_cast<double>(track0[sixth]) - (1000.0 + 0.01 * 6)) < kTolerance);
-    CHECK(std::abs(static_cast<double>(track1[sixth]) - (1000.0 + 0.01 * 6)) < kTolerance);
+    CHECK(std::abs(ac4dec_units::line_units(track0[sixth]) - (1000.0 + 0.01 * 6)) < kTolerance);
+    CHECK(std::abs(ac4dec_units::line_units(track1[sixth]) - (1000.0 + 0.01 * 6)) < kTolerance);
     const std::size_t second_band = common.sect_sfb_offset[1][2];
-    CHECK(std::abs(static_cast<double>(track0[second_band]) -
+    CHECK(std::abs(ac4dec_units::line_units(track0[second_band]) -
                    ((1100.0 + 0.01 * 2) + (2100.0 + 0.01 * 2))) < kTolerance);
-    CHECK(std::abs(static_cast<double>(track1[second_band]) -
+    CHECK(std::abs(ac4dec_units::line_units(track1[second_band]) -
                    ((1100.0 + 0.01 * 2) - (2100.0 + 0.01 * 2))) < kTolerance);
 }
 

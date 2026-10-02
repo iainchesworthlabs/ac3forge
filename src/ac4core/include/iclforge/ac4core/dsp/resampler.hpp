@@ -6,6 +6,7 @@
 #include <span>
 #include <vector>
 
+#include "iclforge/arithmetic/fixed32.hpp"
 #include "iclforge/ac4core/detail/real.hpp"
 
 // The sample rate converter of ETSI TS 103 190-1 V1.4.1 clause 6.2.15, and the
@@ -64,8 +65,30 @@
 // which way to read (planning/ac4.md, D14a5). Any other ratio at float is
 // designed when the filter is made, with the same functions, and kept the same
 // way.
+//
+// At Fixed32 (planning/ac4.md, D14d) the table is kept in Q1.30, the compiler's for the three
+// ratios as at float, and an output is the sum of the products of the coefficients and the
+// history's raw values in 64 bits, rounded once. The ESP32-C6 that tier is for has 512 KB of SRAM
+// shared with its Wi-Fi and no PSRAM: a table of up to kResamplerCopyLimit bytes is copied, as at
+// float (25/24's is 4,888 bytes and 15/16's 3,200), and a longer one is read where it is, in
+// flash (1001/960's, 188,376 bytes).
 
 namespace iclforge::ac4::detail::dsp {
+
+// What a filter's table holds a coefficient as: the scalar, but Q1.30 in an int32 at Fixed32.
+template <typename Coefficient>
+struct ResamplerStoreOf {
+    using type = Coefficient;
+};
+template <>
+struct ResamplerStoreOf<iclforge::internal::Fixed32> {
+    using type = std::int32_t;
+};
+template <typename Coefficient>
+using ResamplerStore = typename ResamplerStoreOf<Coefficient>::type;
+
+// The longest table a fixed-point filter copies, in bytes.
+inline constexpr std::size_t kResamplerCopyLimit = 16384;
 
 // How far down the stopband is, in dB.
 inline constexpr double kResamplerAttenuationDb = 100.0;
@@ -95,7 +118,7 @@ class BasicResamplerFilter {
     // its first: coefficient k is coefficients[taps() - 1 - k] if `reversed`.
     // Null for a p out of range.
     struct PhaseRef {
-        const Coefficient* coefficients = nullptr;
+        const ResamplerStore<Coefficient>* coefficients = nullptr;
         bool reversed = false;
     };
     [[nodiscard]] PhaseRef phase(int p) const noexcept;
@@ -113,9 +136,11 @@ class BasicResamplerFilter {
     int taps_ = 1;
     double passband_ = 0.5;
     double stopband_ = 0.5;
-    // Every phase of the table, up_ of taps_ coefficients; at float, phases 0
-    // to up_ / 2 only (halved_).
-    std::vector<Coefficient> table_;
+    // Every phase of the table, up_ of taps_ coefficients; at float and
+    // Fixed32, phases 0 to up_ / 2 only (halved_). At Fixed32 a table longer
+    // than kResamplerCopyLimit stays in the program's constants, at in_place_.
+    std::vector<ResamplerStore<Coefficient>> table_;
+    const ResamplerStore<Coefficient>* in_place_ = nullptr;
     bool halved_ = false;
 };
 

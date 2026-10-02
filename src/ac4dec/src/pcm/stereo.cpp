@@ -10,8 +10,8 @@
 namespace iclforge::ac4::detail {
 namespace {
 
-constexpr std::array<Real, 4> kIdentity = {1, 0, 0, 1};
-constexpr std::array<Real, 4> kMidSide = {1, 1, 1, -1};
+constexpr std::array<Real, 4> kIdentity = {Real{1}, Real{0}, Real{0}, Real{1}};
+constexpr std::array<Real, 4> kMidSide = {Real{1}, Real{1}, Real{1}, Real{-1}};
 
 // Pseudocode 59's inverse quantisation of alpha_q, with the float the text's
 // 0.1f makes of it. This one conversion stays double-then-float-then-double

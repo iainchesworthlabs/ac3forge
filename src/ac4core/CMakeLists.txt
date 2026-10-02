@@ -61,17 +61,15 @@ target_compile_features(iclforge_ac4core PUBLIC cxx_std_23)
 # one that actually sets it) so that src/ac4core configures correctly even in
 # a tree that builds AC-4 without iclforge::ac3.
 #
-# "fixed" maps to the double directory rather than its own for now: AC-4's
-# fixed-point tier (planning/ac4.md, D14d) has not instantiated these kernels
-# at iclforge::internal::Fixed32 yet, so there is nothing for a fixed32/ directory
-# here to hold; a build configured ICLFORGE_DECODE_SCALAR=fixed still needs
-# iclforge_ac4core to produce something, and double is the correct fallback (it is
-# what every non-float build already used before this option existed).
+# "fixed" is iclforge::internal::Fixed32, the ESP32-C6's and -C3's (planning/ac4.md,
+# D14d).
 set(ICLFORGE_DECODE_SCALAR "double" CACHE STRING
     "Scalar the decoder carries coefficients in: double (default), float, or fixed (Q7.24 in an int32, for parts with no FPU)")
 set_property(CACHE ICLFORGE_DECODE_SCALAR PROPERTY STRINGS double float fixed)
 if(ICLFORGE_DECODE_SCALAR STREQUAL "float")
     set(_ac4core_scalar_dir "float")
+elseif(ICLFORGE_DECODE_SCALAR STREQUAL "fixed")
+    set(_ac4core_scalar_dir "fixed")
 else()
     set(_ac4core_scalar_dir "double")
 endif()
@@ -141,16 +139,16 @@ endif()
 
 # $<BUILD_INTERFACE:...> for the reason src/ac4/CMakeLists.txt gives.
 #
-# iclforge::arithmetic (src/arithmetic): Fixed32 and the project's own float
-# transcendentals, decision 31's "no copies" - not yet called from here (no
-# kernel in this tree names Fixed32 or a scalar_log2/scalar_exp today), wired
-# in ahead of the fixed-point tier (D14d) and of hf_generator's dB gains
-# eventually needing a cross-platform-identical log10/pow (this PR's report
-# names that second one as a known gap, not yet closed).
+# iclforge::arithmetic (src/arithmetic): Fixed32, MantExp and the project's own
+# float transcendentals, decision 31's "no copies". PUBLIC: the core's public
+# headers include them (dsp/scalar_traits.hpp, dsp/resampler.hpp, and the
+# fixed variant's detail/real.hpp), so the decoder and the encoder, which
+# compile against those headers, need the include path too.
 target_link_libraries(iclforge_ac4core
     PRIVATE
         "$<BUILD_INTERFACE:iclforge::warnings>"
         "$<BUILD_INTERFACE:iclforge::coverage>"
+    PUBLIC
         "$<BUILD_INTERFACE:iclforge::arithmetic>")
 
 # The kernels of a frame's transform and filter work at -O2 under the profile's
@@ -175,7 +173,8 @@ endif()
 
 # The float tables of the sample rate converter are built by the compiler, in
 # src/dsp/resampler.cpp and in no other translation unit and only in a build whose
-# scalar is float (dsp/resampler_design.hpp: the three ratios the decoder uses, 1001/960
+# scalar is float, and the Q1.30 tables alike only in one whose scalar is fixed
+# (planning/ac4.md, D14d) (dsp/resampler_design.hpp: the three ratios the decoder uses, 1001/960
 # the long one, 47,094 coefficients each designed with a Kaiser window and a sinc,
 # planning/ac4.md, D14a5). A compiler's limit on what its constant evaluator may do
 # in one constant expression is set for small computations and this is not one: the
@@ -190,7 +189,7 @@ endif()
 # ESP-IDF component reaches this file through the root CMakeLists.txt, so the same
 # limits apply there. APPEND, since the block above sets this file's compile options
 # as well when it applies.
-if(_ac4core_scalar_dir STREQUAL "float")
+if(_ac4core_scalar_dir STREQUAL "float" OR _ac4core_scalar_dir STREQUAL "fixed")
     if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
         set(_ac4core_constexpr_limit "/constexpr:steps67108864")
     elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND

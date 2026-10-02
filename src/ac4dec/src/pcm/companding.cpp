@@ -4,14 +4,21 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
+#include <cstdlib>
 #include <vector>
 
 #include "iclforge/ac4core/dsp/real_functions.hpp"
+#include "iclforge/ac4core/dsp/scalar_traits.hpp"
 
 namespace iclforge::ac4::detail {
 namespace {
 
-constexpr Real kAlpha = Real(0.65);
+// A level, a gain: Real at double and float, a mantissa and a power of two at
+// Fixed32 (dsp/scalar_traits.hpp).
+using Energy = dsp::Energy<Real>;
+
+constexpr Energy kAlpha = Energy(0.65);
 constexpr std::size_t kSubbands = 64;
 // Q_low's slots: num_qmf_timeslots + ts_offset_hfgen, at most 32 + 6.
 constexpr int kMaxSlots = 64;
@@ -24,19 +31,36 @@ constexpr int kMaxSlots = 64;
     return channel.ext.subspan(at(ts + aspx::kTsOffsetHfadj) * kSubbands, kSubbands);
 }
 
-// L(ts): 0.9105 times the mean over [sb0, sb1) of max(|Re|, |Im|) + min(|Re|,
-// |Im|) / 2.
-[[nodiscard]] Real slot_level(std::span<const QmfValue> slot, int sb0, int sb1) noexcept {
-    if (sb1 <= sb0) {
-        return Real{};
+// L(ts) against `full_scale`: 0.9105 times the mean over [sb0, sb1) of
+// max(|Re|, |Im|) + min(|Re|, |Im|) / 2. At Fixed32 the sum is of the raw
+// values, exactly, in 64 bits.
+template <typename R>
+[[nodiscard]] dsp::Energy<R> slot_level(std::span<const dsp::Complex<R>> slot, int sb0, int sb1,
+                                        R full_scale) noexcept {
+    if constexpr (dsp::kFixed<R>) {
+        if (sb1 <= sb0) {
+            return dsp::MantExp{};
+        }
+        std::int64_t twice = 0;
+        for (int sb = sb0; sb < sb1; ++sb) {
+            const std::int64_t re = std::abs(static_cast<std::int64_t>(slot[at(sb)].re.raw));
+            const std::int64_t im = std::abs(static_cast<std::int64_t>(slot[at(sb)].im.raw));
+            twice += 2 * std::max(re, im) + std::min(re, im);
+        }
+        const dsp::MantExp sum = dsp::MantExp::make(twice, -1 - R::kFractionBits);
+        return dsp::MantExp(0.9105) * sum / dsp::MantExp{sb1 - sb0} / dsp::MantExp{full_scale};
+    } else {
+        if (sb1 <= sb0) {
+            return R{} / full_scale;
+        }
+        R sum{};
+        for (int sb = sb0; sb < sb1; ++sb) {
+            const R re = std::abs(slot[at(sb)].real());
+            const R im = std::abs(slot[at(sb)].imag());
+            sum += std::max(re, im) + R(0.5) * std::min(re, im);
+        }
+        return R(0.9105) * sum / static_cast<R>(sb1 - sb0) / full_scale;
     }
-    Real sum{};
-    for (int sb = sb0; sb < sb1; ++sb) {
-        const Real re = std::abs(slot[at(sb)].real());
-        const Real im = std::abs(slot[at(sb)].imag());
-        sum += std::max(re, im) + Real(0.5) * std::min(re, im);
-    }
-    return Real(0.9105) * sum / static_cast<Real>(sb1 - sb0);
 }
 
 // L^((1 - alpha) / alpha). The text prints the average gain's exponent as
@@ -51,14 +75,19 @@ constexpr int kMaxSlots = 64;
 // difference over the frame, so that the host, the Cortex-M3 leg and the
 // ESP32s each gave a PCM of their own for a companded stream (planning/ac4.md,
 // D14a4). A slot with no level gets no gain, as pow gives it.
-[[nodiscard]] Real gain_of(Real level) noexcept {
-    return dsp::pow_of(level, (Real{1} - kAlpha) / kAlpha);
+[[nodiscard]] Energy gain_of(Energy level) noexcept {
+    return dsp::pow_of(level, (Energy{1} - kAlpha) / kAlpha);
 }
 
-void scale(const CompandingChannel& channel, int sb0, int ts, Real factor) noexcept {
+template <typename R>
+void scale(const CompandingChannel& channel, int sb0, int ts, dsp::Energy<R> factor) noexcept {
     const std::span<QmfValue> slot = q_low_slot(channel, ts);
     for (int sb = sb0; sb < channel.sb1; ++sb) {
-        slot[at(sb)] *= factor;
+        if constexpr (dsp::kFixed<R>) {
+            slot[at(sb)] = dsp::apply_gain<R>(factor, slot[at(sb)]);
+        } else {
+            slot[at(sb)] *= factor;
+        }
     }
 }
 
@@ -71,16 +100,16 @@ void scale(const CompandingChannel& channel, int sb0, int ts, Real factor) noexc
 
 void apply_companding(const CompandingControl& control, int sb0, Real full_scale,
                       std::span<const CompandingChannel> channels) {
-    const Real big_g = dsp::exp2_of(Real{1} / kAlpha);
-    std::vector<std::array<Real, kMaxSlots>> level(channels.size());
-    std::vector<std::array<Real, kMaxSlots>> gain(channels.size());
+    const Energy big_g = dsp::exp2_of(Energy{1} / kAlpha);
+    std::vector<std::array<Energy, kMaxSlots>> level(channels.size());
+    std::vector<std::array<Energy, kMaxSlots>> gain(channels.size());
     for (std::size_t c = 0; c < channels.size(); ++c) {
         const CompandingChannel& channel = channels[c];
         if (!fits(channel)) {
             continue;
         }
         for (int ts = channel.interval.first; ts < channel.interval.last; ++ts) {
-            level[c][at(ts)] = slot_level(q_low_slot(channel, ts), sb0, channel.sb1) / full_scale;
+            level[c][at(ts)] = slot_level<Real>(q_low_slot(channel, ts), sb0, channel.sb1, full_scale);
             gain[c][at(ts)] = gain_of(level[c][at(ts)]);
         }
     }
@@ -95,18 +124,18 @@ void apply_companding(const CompandingControl& control, int sb0, Real full_scale
             const int last = channel.interval.last;
             if (control.b_compand_on[c]) {
                 for (int ts = first; ts < last; ++ts) {
-                    scale(channel, sb0, ts, gain[c][at(ts)] * big_g);
+                    scale<Real>(channel, sb0, ts, gain[c][at(ts)] * big_g);
                 }
             } else if (control.b_compand_avg) {
                 // L_avg over the interval's slots [ts0, ts1), the range 5.7.5.2
                 // defines, where the sum prints ts1 as its upper bound.
-                Real sum{};
+                Energy sum{};
                 for (int ts = first; ts < last; ++ts) {
                     sum += level[c][at(ts)];
                 }
-                const Real average = gain_of(sum / static_cast<Real>(last - first));
+                const Energy average = gain_of(sum / static_cast<Energy>(last - first));
                 for (int ts = first; ts < last; ++ts) {
-                    scale(channel, sb0, ts, average * big_g);
+                    scale<Real>(channel, sb0, ts, average * big_g);
                 }
             }
         }
@@ -116,7 +145,7 @@ void apply_companding(const CompandingControl& control, int sb0, Real full_scale
     // sync_flag: g_sync(ts) is the channels' mean gain. Where the channels'
     // intervals differ, each slot averages the channels whose interval holds
     // it (src/ac4dec/ERRATA.md, "The companding average").
-    std::array<Real, kMaxSlots> sync{};
+    std::array<Energy, kMaxSlots> sync{};
     std::array<int, kMaxSlots> count{};
     int first = kMaxSlots;
     int last = 0;
@@ -134,11 +163,11 @@ void apply_companding(const CompandingControl& control, int sb0, Real full_scale
     if (first >= last) {
         return;
     }
-    Real sum{};
+    Energy sum{};
     int held = 0;
     for (int ts = first; ts < last; ++ts) {
         if (count[at(ts)] > 0) {
-            sync[at(ts)] /= static_cast<Real>(count[at(ts)]);
+            sync[at(ts)] /= static_cast<Energy>(count[at(ts)]);
             sum += sync[at(ts)];
             ++held;
         }
@@ -147,13 +176,13 @@ void apply_companding(const CompandingControl& control, int sb0, Real full_scale
     if (!on && !control.b_compand_avg) {
         return;
     }
-    const Real average = held > 0 ? sum / static_cast<Real>(held) : Real{};
+    const Energy average = held > 0 ? sum / static_cast<Energy>(held) : Energy{};
     for (const CompandingChannel& channel : channels) {
         if (!fits(channel)) {
             continue;
         }
         for (int ts = channel.interval.first; ts < channel.interval.last; ++ts) {
-            scale(channel, sb0, ts, (on ? sync[at(ts)] : average) * big_g);
+            scale<Real>(channel, sb0, ts, (on ? sync[at(ts)] : average) * big_g);
         }
     }
 }

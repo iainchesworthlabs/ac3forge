@@ -90,6 +90,11 @@ class ChannelSynthesis {
     // for or a `transforms` of another full length.
     bool block(TransformSet<Real>& transforms, std::span<const Real> spectrum, std::span<Real> pcm);
 
+    // The same for lines held at the double decoder's times 2^-exponent, as the fixed tier
+    // holds them (Imdct::inverse); at double and float the exponent is 0.
+    bool block(TransformSet<Real>& transforms, std::span<const Real> spectrum, int exponent,
+               std::span<Real> pcm);
+
     // Silence in the overlap buffer, and a previous block of full length.
     void reset();
 

@@ -3,10 +3,12 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <type_traits>
 #include <vector>
 
 #include "iclforge/arithmetic/scalar_math.hpp"
+#include "iclforge/ac4core/dsp/scalar_traits.hpp"
 
 namespace iclforge::ac4::detail::aspx {
 namespace {
@@ -28,21 +30,24 @@ namespace {
 constexpr double kTenOverLog2Of10 = 3.010299956639812;   // 10 / log2(10), for 10*log10(x)
 constexpr double kLog2Of10Over20 = 0.16609640474436812;  // log2(10) / 20, for 10^(y/20)
 
-template <typename Real>
-[[nodiscard]] Real power_db(Real x) noexcept {
-    if constexpr (std::is_same_v<Real, double>) {
-        return Real{10} * std::log10(x);
+//
+// At Real = Fixed32 the values are energies and gains (dsp::Energy, a mantissa and a power of
+// two) and the two forms are the float ones on that type's own integer log2 and exp2.
+template <typename Value>
+[[nodiscard]] Value power_db(Value x) noexcept {
+    if constexpr (std::is_same_v<Value, double>) {
+        return Value{10} * std::log10(x);
     } else {
-        return static_cast<Real>(kTenOverLog2Of10) * iclforge::internal::scalar_log2(x);
+        return static_cast<Value>(kTenOverLog2Of10) * iclforge::internal::scalar_log2(x);
     }
 }
 
-template <typename Real>
-[[nodiscard]] Real from_power_db(Real db) noexcept {
-    if constexpr (std::is_same_v<Real, double>) {
-        return std::pow(Real{10}, db / Real{20});
+template <typename Value>
+[[nodiscard]] Value from_power_db(Value db) noexcept {
+    if constexpr (std::is_same_v<Value, double>) {
+        return std::pow(Value{10}, db / Value{20});
     } else {
-        return iclforge::internal::scalar_exp2(static_cast<Real>(kLog2Of10Over20) * db);
+        return iclforge::internal::scalar_exp2(static_cast<Value>(kLog2Of10Over20) * db);
     }
 }
 
@@ -52,12 +57,14 @@ template <typename Real>
 // multiplies and an add: hypotf differs in the last bit between C libraries, and
 // a coefficient that one platform finds just under the limit and another at it
 // zeroes a subband's prediction on the second only (planning/ac4.md, D14a4).
-template <typename Real>
-[[nodiscard]] bool reaches_limit(dsp::Complex<Real> alpha) noexcept {
-    if constexpr (std::is_same_v<Real, double>) {
-        return abs(alpha) >= Real{4};
+//
+// At Real = Fixed32 the coefficient is solved as a dsp::Energy (MantExp) and compared as at float.
+template <typename Value>
+[[nodiscard]] bool reaches_limit(dsp::Complex<Value> alpha) noexcept {
+    if constexpr (std::is_same_v<Value, double>) {
+        return abs(alpha) >= Value{4};
     } else {
-        return norm(alpha) >= Real{16};
+        return norm(alpha) >= Value{16};
     }
 }
 
@@ -81,8 +88,12 @@ constexpr std::array<std::array<double, 4>, 4> kNewChirp = {{
 // [-1, 1], orthonormalised by modified Gram-Schmidt: the same cubics as
 // powers of i, without their conditioning. The values are what
 // polynomial_fit()'s coefficients give back (Pseudocode 85).
-template <typename Real>
-void fit_cubic(std::span<const Real> y, std::span<Real> fitted) {
+//
+// Value is Real at double and float and dsp::Energy (MantExp) at Fixed32, whose t^k is t times
+// itself, not std::pow: the fixed tier's output is the same on every machine, and a C library's
+// pow need not be.
+template <typename Value>
+void fit_cubic(std::span<const Value> y, std::span<Value> fitted) {
     const std::size_t n = y.size();
     std::array<std::vector<double>, 4> basis;
     for (std::size_t k = 0; k < basis.size(); ++k) {
@@ -91,10 +102,18 @@ void fit_cubic(std::span<const Real> y, std::span<Real> fitted) {
             const double t = n > 1 ? (2.0 * static_cast<double>(i) - static_cast<double>(n - 1)) /
                                          static_cast<double>(n - 1)
                                    : 0.0;
-            basis[k][i] = std::pow(t, static_cast<double>(k));
+            if constexpr (std::is_floating_point_v<Value>) {
+                basis[k][i] = std::pow(t, static_cast<double>(k));
+            } else {
+                double power = 1.0;
+                for (std::size_t j = 0; j < k; ++j) {
+                    power *= t;
+                }
+                basis[k][i] = power;
+            }
         }
     }
-    std::ranges::fill(fitted, Real{});
+    std::ranges::fill(fitted, Value{});
     for (std::size_t k = 0; k < basis.size(); ++k) {
         for (std::size_t m = 0; m < k; ++m) {
             double dot = 0.0;
@@ -121,61 +140,101 @@ void fit_cubic(std::span<const Real> y, std::span<Real> fitted) {
             projection += basis[k][i] * static_cast<double>(y[i]);
         }
         for (std::size_t i = 0; i < n; ++i) {
-            fitted[i] += static_cast<Real>(projection * basis[k][i]);
+            fitted[i] += static_cast<Value>(projection * basis[k][i]);
         }
     }
 }
 
 }  // namespace
 
+// At Fixed32 the energies are the fixed tier's QMF domain's (dsp/scalar_traits.hpp), whose
+// decibels are the double decoder's less a constant; the mean and the cubic, which has a
+// constant term, move by it alike, and the gains do not.
 template <typename Real>
 void preflattening_gains(std::span<const dsp::Complex<Real>> q_low, int sbx, int ts_begin,
-                         int ts_end, std::span<Real> gain_vec) {
+                         int ts_end, std::span<dsp::Energy<Real>> gain_vec) {
+    using Energy = dsp::Energy<Real>;
     const auto n = at(sbx);
     if (ts_end <= ts_begin || n == 0) {
-        std::ranges::fill(gain_vec.first(n), Real{1});
+        std::ranges::fill(gain_vec.first(n), Energy{1});
         return;
     }
     // Pseudocode 85: each subband's mean energy over the interval in dB, and
     // their mean.
-    std::vector<Real> pow_env(n);
-    Real mean_energy{};
+    std::vector<Energy> pow_env(n);
+    Energy mean_energy{};
     for (std::size_t sb = 0; sb < n; ++sb) {
-        Real energy{};
+        Energy energy{};
         for (int ts = ts_begin; ts < ts_end; ++ts) {
-            energy += norm(q_low[at(ts) * kSubbands + sb]);
+            energy += dsp::energy_of(q_low[at(ts) * kSubbands + sb]);
         }
-        energy /= static_cast<Real>(ts_end - ts_begin);
-        pow_env[sb] = power_db(energy + Real{1});
+        energy /= static_cast<Energy>(ts_end - ts_begin);
+        pow_env[sb] = power_db(energy + dsp::qmf_energy<Real>(Energy{1}));
         mean_energy += pow_env[sb];
     }
-    mean_energy /= static_cast<Real>(n);
-    std::vector<Real> slope(n);
-    fit_cubic<Real>(pow_env, slope);
+    mean_energy /= static_cast<Energy>(n);
+    std::vector<Energy> slope(n);
+    fit_cubic<Energy>(pow_env, slope);
     for (std::size_t sb = 0; sb < n; ++sb) {
         gain_vec[sb] = from_power_db(mean_energy - slope[sb]);
     }
 }
 
+// Pseudocode 86's sum at Fixed32: the products of the values' raw parts, each below 2^62,
+// summed exactly in 64 bits (unsigned, so that a stream that is not audio wraps rather than
+// overflowing), then as a dsp::Energy. Audio's values are below 2^26, and forty of their
+// products below 2^58.
+[[nodiscard]] dsp::Complex<dsp::MantExp> covariance(std::span<const dsp::Complex<dsp::Fixed32>> q, int sb,
+                                                    int i, int j, int num_ts_ext) noexcept {
+    std::uint64_t re = 0;
+    std::uint64_t im = 0;
+    for (int ts = kTsOffsetHfadj; ts < num_ts_ext; ts += 2) {
+        const dsp::Complex<dsp::Fixed32> a = q[at(ts - 2 * i) * kSubbands + at(sb)];
+        const dsp::Complex<dsp::Fixed32> b = q[at(ts - 2 * j) * kSubbands + at(sb)];
+        // a conj(b)
+        re += static_cast<std::uint64_t>(static_cast<std::int64_t>(a.re.raw) * b.re.raw) +
+              static_cast<std::uint64_t>(static_cast<std::int64_t>(a.im.raw) * b.im.raw);
+        im += static_cast<std::uint64_t>(static_cast<std::int64_t>(a.im.raw) * b.re.raw) -
+              static_cast<std::uint64_t>(static_cast<std::int64_t>(a.re.raw) * b.im.raw);
+    }
+    constexpr int kProductPower = -2 * dsp::Fixed32::kFractionBits;
+    return {dsp::MantExp::make(static_cast<std::int64_t>(re), kProductPower),
+            dsp::MantExp::make(static_cast<std::int64_t>(im), kProductPower)};
+}
+
+// At Fixed32 the covariances and the coefficients are solved as dsp::Energy, a mantissa and a
+// power of two, and a coefficient that passes the limit is brought to Fixed32 for the
+// generator, where |alpha| < 4.
 template <typename Real>
 void prediction_coefficients(std::span<const dsp::Complex<Real>> q_low_ext, int num_ts_ext, int sba,
                              std::span<dsp::Complex<Real>> alpha0,
                              std::span<dsp::Complex<Real>> alpha1) {
-    using Complex = dsp::Complex<Real>;
+    using Value = dsp::Energy<Real>;
+    using Complex = dsp::Complex<Value>;
     // EPSILON_INV of Pseudocode 87.
-    const Real regularise = Real{1} / (Real{1} + std::ldexp(Real{1}, -20));
+    const Value regularise = [] {
+        if constexpr (std::is_floating_point_v<Value>) {
+            return Value{1} / (Value{1} + std::ldexp(Value{1}, -20));
+        } else {
+            return Value{1} / (Value{1} + Value{1}.scaled_by_pow2(-20));
+        }
+    }();
     for (int sb = 0; sb < sba; ++sb) {
         // Pseudocode 86: cov[i][j] for i < 3 and 0 < j < 3, over every second
         // slot, at lags of two slots.
         std::array<std::array<Complex, 3>, 3> cov{};
         for (int i = 0; i < 3; ++i) {
             for (int j = 1; j < 3; ++j) {
-                Complex sum{};
-                for (int ts = kTsOffsetHfadj; ts < num_ts_ext; ts += 2) {
-                    sum += q_low_ext[at(ts - 2 * i) * kSubbands + at(sb)] *
-                           conj(q_low_ext[at(ts - 2 * j) * kSubbands + at(sb)]);
+                if constexpr (dsp::kFixed<Real>) {
+                    cov[at(i)][at(j)] = covariance(q_low_ext, sb, i, j, num_ts_ext);
+                } else {
+                    Complex sum{};
+                    for (int ts = kTsOffsetHfadj; ts < num_ts_ext; ts += 2) {
+                        sum += q_low_ext[at(ts - 2 * i) * kSubbands + at(sb)] *
+                               conj(q_low_ext[at(ts - 2 * j) * kSubbands + at(sb)]);
+                    }
+                    cov[at(i)][at(j)] = sum;
                 }
-                cov[at(i)][at(j)] = sum;
             }
         }
         // Pseudocode 87. alpha0 is -(cov01 + alpha1 conj(cov12)) / cov11, the
@@ -194,8 +253,13 @@ void prediction_coefficients(std::span<const dsp::Complex<Real>> q_low_ext, int 
             a0 = Complex{};
             a1 = Complex{};
         }
-        alpha0[at(sb)] = a0;
-        alpha1[at(sb)] = a1;
+        if constexpr (dsp::kFixed<Real>) {
+            alpha0[at(sb)] = {a0.re.to_fixed(), a0.im.to_fixed()};
+            alpha1[at(sb)] = {a1.re.to_fixed(), a1.im.to_fixed()};
+        } else {
+            alpha0[at(sb)] = a0;
+            alpha1[at(sb)] = a1;
+        }
     }
 }
 
@@ -209,7 +273,7 @@ void generate_high_band(const SubbandGroups& groups, const PatchTables& patches,
     const int num_ts_ext = in.num_qmf_timeslots + in.ts_offset_hfgen + kTsOffsetHfadj;
     const std::span<const Complex> q_low = in.q_low_ext.subspan(at(kTsOffsetHfadj) * kSubbands);
 
-    std::array<Real, kSubbands> gain_vec{};
+    std::array<dsp::Energy<Real>, kSubbands> gain_vec{};
     if (in.preflat) {
         preflattening_gains<Real>(q_low, sbx, in.ts_begin, in.ts_end, gain_vec);
     }
@@ -264,7 +328,7 @@ void generate_high_band(const SubbandGroups& groups, const PatchTables& patches,
                 // fitted slope, where the text prints its inverse
                 // (src/ac4dec/ERRATA.md, "Pre-flattening's direction").
                 if (in.preflat) {
-                    value *= gain_vec[at(p)];
+                    value = dsp::apply_gain<Real>(gain_vec[at(p)], value);
                 }
                 slot[at(sb_high)] = value;
             }
@@ -277,7 +341,7 @@ template void generate_high_band<Real>(const SubbandGroups&, const PatchTables&,
                                        const HfGeneratorInput<Real>&, HfGeneratorState<Real>&,
                                        std::span<dsp::Complex<Real>>);
 template void preflattening_gains<Real>(std::span<const dsp::Complex<Real>>, int, int, int,
-                                        std::span<Real>);
+                                        std::span<dsp::Energy<Real>>);
 template void prediction_coefficients<Real>(std::span<const dsp::Complex<Real>>, int, int,
                                             std::span<dsp::Complex<Real>>,
                                             std::span<dsp::Complex<Real>>);

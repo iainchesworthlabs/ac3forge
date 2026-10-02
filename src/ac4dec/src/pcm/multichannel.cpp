@@ -80,29 +80,29 @@ std::optional<Matrix<3>> three_channel_matrix(int chel_matsel, const Abcd& p0, c
     const auto [a1, b1, c1, d1] = p1;
     switch (chel_matsel) {
         case 0:
-            return Matrix<3>{{{a0 * a1, b0 * a1, b1}, {c0, d0, 0.0}, {a0 * c1, b0 * c1, d1}}};
+            return Matrix<3>{{{a0 * a1, b0 * a1, b1}, {c0, d0, Real{}}, {a0 * c1, b0 * c1, d1}}};
         case 1:
-            return Matrix<3>{{{d0, c0, 0.0}, {b0 * a1, a0 * a1, b1}, {b0 * c1, a0 * c1, d1}}};
+            return Matrix<3>{{{d0, c0, Real{}}, {b0 * a1, a0 * a1, b1}, {b0 * c1, a0 * c1, d1}}};
         case 2:
-            return Matrix<3>{{{a0 * a1, b1, b0 * a1}, {a0 * c1, d1, b0 * c1}, {c0, 0.0, d0}}};
+            return Matrix<3>{{{a0 * a1, b1, b0 * a1}, {a0 * c1, d1, b0 * c1}, {c0, Real{}, d0}}};
         case 3:
-            return Matrix<3>{{{a1, c0 * b1, d0 * b1}, {0.0, a0, b0}, {c1, c0 * d1, d0 * d1}}};
+            return Matrix<3>{{{a1, c0 * b1, d0 * b1}, {Real{}, a0, b0}, {c1, c0 * d1, d0 * d1}}};
         case 4:
-            return Matrix<3>{{{a0, 0.0, b0}, {c0 * b1, a1, d0 * b1}, {c0 * d1, c1, d0 * d1}}};
+            return Matrix<3>{{{a0, Real{}, b0}, {c0 * b1, a1, d0 * b1}, {c0 * d1, c1, d0 * d1}}};
         case 5:
-            return Matrix<3>{{{a1, d0 * b1, c0 * b1}, {c1, d0 * d1, c0 * d1}, {0.0, b0, a0}}};
+            return Matrix<3>{{{a1, d0 * b1, c0 * b1}, {c1, d0 * d1, c0 * d1}, {Real{}, b0, a0}}};
         case 6:
-            return Matrix<3>{{{d0 * d1, c0 * d1, c1}, {b0, a0, 0.0}, {d0 * b1, c0 * b1, a1}}};
+            return Matrix<3>{{{d0 * d1, c0 * d1, c1}, {b0, a0, Real{}}, {d0 * b1, c0 * b1, a1}}};
         case 7:
-            return Matrix<3>{{{a0, b0, 0.0}, {c0 * d1, d0 * d1, c1}, {c0 * b1, d0 * b1, a1}}};
+            return Matrix<3>{{{a0, b0, Real{}}, {c0 * d1, d0 * d1, c1}, {c0 * b1, d0 * b1, a1}}};
         case 8:
-            return Matrix<3>{{{d0 * d1, c1, c0 * d1}, {d0 * b1, a1, c0 * b1}, {b0, 0.0, a0}}};
+            return Matrix<3>{{{d0 * d1, c1, c0 * d1}, {d0 * b1, a1, c0 * b1}, {b0, Real{}, a0}}};
         case 9:
-            return Matrix<3>{{{d1, b0 * c1, a0 * c1}, {0.0, d0, c0}, {b1, b0 * a1, a0 * a1}}};
+            return Matrix<3>{{{d1, b0 * c1, a0 * c1}, {Real{}, d0, c0}, {b1, b0 * a1, a0 * a1}}};
         case 10:
-            return Matrix<3>{{{d0, 0.0, c0}, {b0 * c1, d1, a0 * c1}, {b0 * a1, b1, a0 * a1}}};
+            return Matrix<3>{{{d0, Real{}, c0}, {b0 * c1, d1, a0 * c1}, {b0 * a1, b1, a0 * a1}}};
         case 11:
-            return Matrix<3>{{{d1, a0 * c1, b0 * c1}, {b1, a0 * a1, b0 * a1}, {0.0, c0, d0}}};
+            return Matrix<3>{{{d1, a0 * c1, b0 * c1}, {b1, a0 * a1, b0 * a1}, {Real{}, c0, d0}}};
         default:
             return std::nullopt;
     }
@@ -130,7 +130,7 @@ std::optional<Matrix<5>> five_channel_matrix(int chel_matsel, std::span<const Ab
     const auto& [t0, t1, t2] = *t;
     return Matrix<5>{{{a3 * t0[0], a3 * t0[1], a3 * t0[2], b3 * a2, b3 * b2},
                       {a4 * t1[0], a4 * t1[1], a4 * t1[2], b4 * c2, b4 * d2},
-                      {t2[0], t2[1], t2[2], 0.0, 0.0},
+                      {t2[0], t2[1], t2[2], Real{}, Real{}},
                       {c3 * t0[0], c3 * t0[1], c3 * t0[2], d3 * a2, d3 * b2},
                       {c4 * t1[0], c4 * t1[1], c4 * t1[2], d4 * c2, d4 * d2}}};
 }

@@ -1,6 +1,7 @@
 #include "iclforge/ac4core/dsp/resampler.hpp"
 
 #include <algorithm>
+#include <cstdint>
 #include <cmath>
 #include <numeric>
 #include <type_traits>
@@ -35,10 +36,42 @@ BasicResamplerFilter<Coefficient>::BasicResamplerFilter(int up, int down) {
     up_ = up / common;
     down_ = down / common;
     if (up_ == down_) {
-        table_.assign(1, Coefficient{1});
+        if constexpr (std::is_same_v<Coefficient, iclforge::internal::Fixed32>) {
+            table_.assign(1, std::int32_t{1} << 30U);
+        } else {
+            table_.assign(1, Coefficient{1});
+        }
         return;
     }
-    if constexpr (std::is_same_v<Coefficient, float>) {
+    if constexpr (std::is_same_v<Coefficient, iclforge::internal::Fixed32>) {
+        halved_ = true;
+        const auto adopt = [this]<int Up, int Down>() {
+            if (up_ != Up || down_ != Down) {
+                return false;
+            }
+            const HalfTableQ30<Up, Down>& compiled = kHalfTableQ30<Up, Down>;
+            taps_ = compiled.kDesign.taps;
+            passband_ = compiled.kDesign.passband;
+            stopband_ = compiled.kDesign.stopband;
+            if (sizeof(compiled.coefficients) <= kResamplerCopyLimit) {
+                table_.assign(compiled.coefficients.begin(), compiled.coefficients.end());
+            } else {
+                in_place_ = compiled.coefficients.data();
+            }
+            return true;
+        };
+        if (adopt.template operator()<25, 24>() || adopt.template operator()<15, 16>() ||
+            adopt.template operator()<1001, 960>()) {
+            return;
+        }
+        const ResamplerDesign design = design_resampler<PortableMath>(up_, down_);
+        taps_ = design.taps;
+        passband_ = design.passband;
+        stopband_ = design.stopband;
+        table_.resize(static_cast<std::size_t>(up_ / 2 + 1) * static_cast<std::size_t>(taps_));
+        std::vector<double> row(static_cast<std::size_t>(taps_));
+        design_half_phases_q30<PortableMath>(design, table_.data(), row.data());
+    } else if constexpr (std::is_same_v<Coefficient, float>) {
         // At float: the compiler's table for one of the decoder's ratios, and for any other the
         // same design made now, with the same functions. Either way phases 0 to up / 2, the rest
         // being those read backwards.
@@ -102,10 +135,11 @@ typename BasicResamplerFilter<Coefficient>::PhaseRef BasicResamplerFilter<Coeffi
         return {};
     }
     const auto taps = static_cast<std::size_t>(taps_);
+    const ResamplerStore<Coefficient>* table = in_place_ != nullptr ? in_place_ : table_.data();
     if (!halved_ || p <= up_ / 2) {
-        return {table_.data() + static_cast<std::size_t>(p) * taps, false};
+        return {table + static_cast<std::size_t>(p) * taps, false};
     }
-    return {table_.data() + static_cast<std::size_t>(up_ - p) * taps, true};
+    return {table + static_cast<std::size_t>(up_ - p) * taps, true};
 }
 
 template <typename Coefficient>
@@ -114,7 +148,12 @@ Coefficient BasicResamplerFilter<Coefficient>::coefficient(int p, int k) const n
     if (ref.coefficients == nullptr || k < 0 || k >= taps_) {
         return Coefficient{};
     }
-    return ref.coefficients[ref.reversed ? taps_ - 1 - k : k];
+    const auto stored = ref.coefficients[ref.reversed ? taps_ - 1 - k : k];
+    if constexpr (std::is_same_v<Coefficient, iclforge::internal::Fixed32>) {
+        return Coefficient::from_raw(static_cast<std::int32_t>((static_cast<std::int64_t>(stored) + 32) >> 6U));
+    } else {
+        return stored;
+    }
 }
 
 template <typename Coefficient>
@@ -188,7 +227,23 @@ void Resampler<Real>::process(std::span<const Real> in, std::vector<Real>& out) 
         const Real* samples = history_.data() + (whole - taps - first_);
         const auto count = static_cast<std::size_t>(taps);
         Real sum{};
-        if constexpr (std::is_same_v<Real, float>) {
+        if constexpr (std::is_same_v<Real, iclforge::internal::Fixed32>) {
+            // Each product below 2^61, the history's values being audio, below 2^25; unsigned,
+            // so that a stream that is not audio wraps rather than overflowing.
+            std::uint64_t acc = 0;
+            const std::int32_t* c = phase.coefficients;
+            if (phase.reversed) {
+                for (std::size_t k = 0; k < count; ++k) {
+                    acc += static_cast<std::uint64_t>(static_cast<std::int64_t>(c[count - 1 - k]) * samples[k].raw);
+                }
+            } else {
+                for (std::size_t k = 0; k < count; ++k) {
+                    acc += static_cast<std::uint64_t>(static_cast<std::int64_t>(c[k]) * samples[k].raw);
+                }
+            }
+            sum = Real::from_raw(static_cast<std::int32_t>(
+                (static_cast<std::int64_t>(acc) + (std::int64_t{1} << 29U)) >> 30U));
+        } else if constexpr (std::is_same_v<Real, float>) {
             sum = phase.reversed ? dot_four_lanes_reversed(phase.coefficients, samples, count)
                                  : dot_four_lanes(phase.coefficients, samples, count);
         } else {

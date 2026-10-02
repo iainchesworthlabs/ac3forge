@@ -7,6 +7,8 @@
 
 #include "iclforge/ac4core/detail/profiling.hpp"
 #include "iclforge/ac4core/dsp/real_functions.hpp"
+#include "iclforge/ac4core/dsp/scalar_traits.hpp"
+#include "iclforge/ac4core/tables/qmf_tables_fixed.hpp"
 #include "iclforge/ac4core/tables/qmf_tables.hpp"
 
 namespace iclforge::ac4::detail {
@@ -16,24 +18,31 @@ constexpr std::size_t kSubbands = 64;
 constexpr int kMaxEnv = kAspxMaxSignalEnvelopes;
 constexpr int kMaxNoiseEnv = kAspxMaxNoiseEnvelopes;
 
+// The envelopes' scale factors, the estimates, gains and levels: Real at double
+// and float, and a mantissa and a power of two at Fixed32, whose QMF domain is
+// below the double decoder's by dsp::kQmfShift (dsp/scalar_traits.hpp): a
+// scale factor or an estimate is an energy, a level an amplitude, and a gain
+// neither.
+using Energy = dsp::Energy<Real>;
+
 // Pseudocodes 83, 84 and 96 to 100.
-constexpr Real kNoiseFloorOffset = 6;
-constexpr Real kPanOffset = 12;
-constexpr Real kLimGain = Real(1.41254);
-constexpr Real kEpsilon0 = Real(1e-12);
-constexpr Real kMaxSigGain = Real(1e5);
-constexpr Real kMaxBoostFact = Real(1.584893192);
+constexpr Energy kNoiseFloorOffset{6};
+constexpr Energy kPanOffset{12};
+constexpr Energy kLimGain = Energy(1.41254);
+constexpr Energy kEpsilon0 = dsp::qmf_energy<Real>(Energy(1e-12));
+constexpr Energy kMaxSigGain = Energy(1e5);
+constexpr Energy kMaxBoostFact = Energy(1.584893192);
 
 // Table 196.
-constexpr std::array<Real, 4> kSineRe = {1, 0, -1, 0};
-constexpr std::array<Real, 4> kSineIm = {0, 1, 0, -1};
+constexpr std::array<Real, 4> kSineRe = {Real{1}, Real{0}, Real{-1}, Real{0}};
+constexpr std::array<Real, 4> kSineIm = {Real{0}, Real{1}, Real{0}, Real{-1}};
 
 // Exponents of 2 outside this range come only from streams that are not
 // audio: real envelopes span a few hundred dB at most. Clamping keeps every
 // value the adjuster computes finite (src/ac4dec/ERRATA.md, "Scale factors
 // far out of range").
-constexpr Real kMinExponent = -96;
-constexpr Real kMaxExponent = 96;
+constexpr Energy kMinExponent{-96};
+constexpr Energy kMaxExponent{96};
 
 [[nodiscard]] std::size_t at(int index) noexcept {
     return static_cast<std::size_t>(index);
@@ -43,8 +52,33 @@ constexpr Real kMaxExponent = 96;
 // was, and at float the project's own function, which gives the same float on
 // every platform where the C libraries' exp2f differ in the last bit
 // (planning/ac4.md, D14a4).
-[[nodiscard]] Real exp2_clamped(Real exponent) noexcept {
+[[nodiscard]] Energy exp2_clamped(Energy exponent) noexcept {
     return dsp::exp2_of(std::clamp(exponent, kMinExponent, kMaxExponent));
+}
+
+// One assembled value of Pseudocode 107: the gain on the high band, the noise at
+// its level and the tone at its. At Fixed32 each level is applied to the value
+// by the 64-bit product of dsp::apply_gain, and the noise is ASPX_NOISE in Q7.24
+// (tables/qmf_tables_fixed.hpp).
+template <typename R>
+[[nodiscard]] dsp::Complex<R> assembled(const dsp::Energy<R>& sig_gain, dsp::Complex<R> high,
+                                        const dsp::Energy<R>& noise_level, int noise_index,
+                                        const dsp::Energy<R>& sine_level, R sign,
+                                        int sine_index) noexcept {
+    const auto i = static_cast<std::size_t>(noise_index);
+    const auto t = static_cast<std::size_t>(sine_index);
+    if constexpr (dsp::kFixed<R>) {
+        const auto& noise = tables::kAspxNoiseQ24[i];
+        const dsp::Complex<R> noise_value(R::from_raw(noise[0]), R::from_raw(noise[1]));
+        const R tone = dsp::from_energy<R>(sine_level);
+        return dsp::apply_gain<R>(sig_gain, high) + dsp::apply_gain<R>(noise_level, noise_value) +
+               dsp::Complex<R>(tone * kSineRe[t], tone * sign * kSineIm[t]);
+    } else {
+        const auto& noise = tables::kAspxNoise[i];
+        const dsp::Complex<R> noise_value(static_cast<R>(noise[0]), static_cast<R>(noise[1]));
+        return sig_gain * high + noise_level * noise_value +
+               dsp::Complex<R>(sine_level * kSineRe[t], sine_level * sign * kSineIm[t]);
+    }
 }
 
 using SigQscf = std::array<std::array<int, aspx::kMaxSbgMaster>, kMaxEnv>;
@@ -53,8 +87,8 @@ using NoiseQscf = std::array<std::array<int, aspx::kMaxSbgNoise>, kMaxNoiseEnv>;
 struct Envelopes {
     SigQscf qscf_sig{};
     NoiseQscf qscf_noise{};
-    std::array<std::array<Real, aspx::kMaxSbgMaster>, kMaxEnv> scf_sig{};
-    std::array<std::array<Real, aspx::kMaxSbgNoise>, kMaxNoiseEnv> scf_noise{};
+    std::array<std::array<Energy, aspx::kMaxSbgMaster>, kMaxEnv> scf_sig{};
+    std::array<std::array<Energy, aspx::kMaxSbgNoise>, kMaxNoiseEnv> scf_noise{};
 };
 
 // A value of aspx_data_sig or aspx_data_noise: huff_decode() for the first
@@ -151,14 +185,14 @@ void noise_qscf(const AspxChannel& c, const aspx::SubbandGroups& g, int delta,
 // no dequantised value is; the quantised qscf_sig_sbg is read
 // (src/ac4dec/ERRATA.md, "The first signal scale factor below zero").
 void dequantise(const AspxChannel& c, const aspx::SubbandGroups& g, Envelopes& e) {
-    const Real a = c.qmode_env == 0 ? Real{2} : Real{1};
+    const Energy a = c.qmode_env == 0 ? Energy{2} : Energy{1};
     const AspxFraming& f = c.framing;
     for (int atsg = 0; atsg < f.num_env; ++atsg) {
         const int num = signal_groups(g, f.atsg_freqres[at(atsg)]);
         const auto& q = e.qscf_sig[at(atsg)];
         auto& scf = e.scf_sig[at(atsg)];
         for (int sbg = 0; sbg < num; ++sbg) {
-            scf[at(sbg)] = Real(64) * exp2_clamped(static_cast<Real>(q[at(sbg)]) / a);
+            scf[at(sbg)] = dsp::qmf_energy<Real>(Energy(64) * exp2_clamped(static_cast<Energy>(q[at(sbg)]) / a));
         }
         if (c.sig[at(atsg)].delta_dir == 0 && num > 1 && q[0] == 0 && q[1] < 0) {
             scf[0] = scf[1];
@@ -167,7 +201,7 @@ void dequantise(const AspxChannel& c, const aspx::SubbandGroups& g, Envelopes& e
     for (int atsg = 0; atsg < f.num_noise; ++atsg) {
         for (int sbg = 0; sbg < g.num_sbg_noise; ++sbg) {
             e.scf_noise[at(atsg)][at(sbg)] =
-                exp2_clamped(kNoiseFloorOffset - static_cast<Real>(e.qscf_noise[at(atsg)][at(sbg)]));
+                exp2_clamped(kNoiseFloorOffset - static_cast<Energy>(e.qscf_noise[at(atsg)][at(sbg)]));
         }
     }
 }
@@ -176,24 +210,24 @@ void dequantise(const AspxChannel& c, const aspx::SubbandGroups& g, Envelopes& e
 // channel 0's framing and aspx_qmode_env.
 void dequantise_balance(const AspxChannel& c, const aspx::SubbandGroups& g, Envelopes& sum,
                         Envelopes& balance) {
-    const Real a = c.qmode_env == 0 ? Real{2} : Real{1};
+    const Energy a = c.qmode_env == 0 ? Energy{2} : Energy{1};
     const AspxFraming& f = c.framing;
     for (int atsg = 0; atsg < f.num_env; ++atsg) {
         for (int sbg = 0; sbg < signal_groups(g, f.atsg_freqres[at(atsg)]); ++sbg) {
-            const Real qa = static_cast<Real>(sum.qscf_sig[at(atsg)][at(sbg)]) / a;
-            const Real qb = static_cast<Real>(balance.qscf_sig[at(atsg)][at(sbg)]) / a;
-            const Real nom = exp2_clamped(qa + Real{1}) * Real(64);
-            sum.scf_sig[at(atsg)][at(sbg)] = nom / (Real{1} + exp2_clamped(kPanOffset - qb));
-            balance.scf_sig[at(atsg)][at(sbg)] = nom / (Real{1} + exp2_clamped(qb - kPanOffset));
+            const Energy qa = static_cast<Energy>(sum.qscf_sig[at(atsg)][at(sbg)]) / a;
+            const Energy qb = static_cast<Energy>(balance.qscf_sig[at(atsg)][at(sbg)]) / a;
+            const Energy nom = dsp::qmf_energy<Real>(exp2_clamped(qa + Energy{1}) * Energy(64));
+            sum.scf_sig[at(atsg)][at(sbg)] = nom / (Energy{1} + exp2_clamped(kPanOffset - qb));
+            balance.scf_sig[at(atsg)][at(sbg)] = nom / (Energy{1} + exp2_clamped(qb - kPanOffset));
         }
     }
     for (int atsg = 0; atsg < f.num_noise; ++atsg) {
         for (int sbg = 0; sbg < g.num_sbg_noise; ++sbg) {
-            const Real qa = static_cast<Real>(sum.qscf_noise[at(atsg)][at(sbg)]);
-            const Real qb = static_cast<Real>(balance.qscf_noise[at(atsg)][at(sbg)]);
-            const Real nom = exp2_clamped(kNoiseFloorOffset - qa + Real{1});
-            sum.scf_noise[at(atsg)][at(sbg)] = nom / (Real{1} + exp2_clamped(kPanOffset - qb));
-            balance.scf_noise[at(atsg)][at(sbg)] = nom / (Real{1} + exp2_clamped(qb - kPanOffset));
+            const Energy qa = static_cast<Energy>(sum.qscf_noise[at(atsg)][at(sbg)]);
+            const Energy qb = static_cast<Energy>(balance.qscf_noise[at(atsg)][at(sbg)]);
+            const Energy nom = exp2_clamped(kNoiseFloorOffset - qa + Energy{1});
+            sum.scf_noise[at(atsg)][at(sbg)] = nom / (Energy{1} + exp2_clamped(kPanOffset - qb));
+            balance.scf_noise[at(atsg)][at(sbg)] = nom / (Energy{1} + exp2_clamped(qb - kPanOffset));
         }
     }
 }
@@ -334,26 +368,26 @@ void ChannelAssembly::estimate(std::span<const QmfValue> q_high) {
         const std::span<const std::uint8_t> table = signal_table(g_, f_.atsg_freqres[at(atsg)]);
         const int tsa = f_.atsg_sig[at(atsg)] * frame_.num_ts_in_ats;
         const int tsz = f_.atsg_sig[at(atsg + 1)] * frame_.num_ts_in_ats;
-        const Real length = static_cast<Real>(
+        const Energy length = static_cast<Energy>(
             (f_.atsg_sig[at(atsg + 1)] - f_.atsg_sig[at(atsg)]) * frame_.num_ts_in_ats);
         int sbg = 0;
         for (int sb = 0; sb < g_.num_sb_aspx; ++sb) {
             if (sb + sbx == table[at(sbg + 1)]) {
                 ++sbg;
             }
-            Real est{};
+            Energy est{};
             if (!frame_.config->interpolation) {
                 const int lo = table[at(sbg)];
                 const int hi = table[at(sbg + 1)];
                 for (int ts = tsa; ts < tsz; ++ts) {
                     for (int j = lo; j < hi; ++j) {
-                        est += norm(q_high[at(ts) * kSubbands + at(j)]);
+                        est += dsp::energy_of(q_high[at(ts) * kSubbands + at(j)]);
                     }
                 }
-                est /= static_cast<Real>(hi - lo);
+                est /= static_cast<Energy>(hi - lo);
             } else {
                 for (int ts = tsa; ts < tsz; ++ts) {
-                    est += norm(q_high[at(ts) * kSubbands + at(sb + sbx)]);
+                    est += dsp::energy_of(q_high[at(ts) * kSubbands + at(sb + sbx)]);
                 }
             }
             est_sig_[at(atsg)][at(sb)] = est / length;
@@ -421,24 +455,24 @@ void ChannelAssembly::place_sinusoids() {
 // p_sine_at_end, Pseudocode 92's; that is the one used (src/ac4dec/ERRATA.md,
 // "b_sine_at_end").
 void ChannelAssembly::compute_gains() {
-    constexpr Real kEpsilon = 1;
+    constexpr Energy kEpsilon = dsp::qmf_energy<Real>(Energy{1});
     for (int atsg = 0; atsg < f_.num_env; ++atsg) {
         for (int sb = 0; sb < g_.num_sb_aspx; ++sb) {
-            const Real scf_sig = scf_sig_[at(atsg)][at(sb)];
-            const Real scf_noise = scf_noise_[at(atsg)][at(sb)];
-            const Real sig_noise_fact = scf_sig / (Real{1} + scf_noise);
-            const Real sine = sine_idx_[at(atsg)][at(sb)] ? Real{1} : Real{};
-            sine_lev_[at(atsg)][at(sb)] = std::sqrt(sig_noise_fact * sine);
-            noise_lev_[at(atsg)][at(sb)] = std::sqrt(sig_noise_fact * scf_noise);
-            Real denom = kEpsilon + est_sig_[at(atsg)][at(sb)];
+            const Energy scf_sig = scf_sig_[at(atsg)][at(sb)];
+            const Energy scf_noise = scf_noise_[at(atsg)][at(sb)];
+            const Energy sig_noise_fact = scf_sig / (Energy{1} + scf_noise);
+            const Energy sine = sine_idx_[at(atsg)][at(sb)] ? Energy{1} : Energy{};
+            sine_lev_[at(atsg)][at(sb)] = dsp::sqrt_of(sig_noise_fact * sine);
+            noise_lev_[at(atsg)][at(sb)] = dsp::sqrt_of(sig_noise_fact * scf_noise);
+            Energy denom = kEpsilon + est_sig_[at(atsg)][at(sb)];
             if (!sine_area_[at(atsg)][at(sb)]) {
                 if (!transient_envelope(atsg)) {
-                    denom *= Real{1} + scf_noise;
+                    denom *= Energy{1} + scf_noise;
                 }
-                sig_gain_[at(atsg)][at(sb)] = std::sqrt(scf_sig / denom);
+                sig_gain_[at(atsg)][at(sb)] = dsp::sqrt_of(scf_sig / denom);
             } else {
-                denom *= Real{1} + scf_noise;
-                sig_gain_[at(atsg)][at(sb)] = std::sqrt(scf_sig * scf_noise / denom);
+                denom *= Energy{1} + scf_noise;
+                sig_gain_[at(atsg)][at(sb)] = dsp::sqrt_of(scf_sig * scf_noise / denom);
             }
         }
     }
@@ -469,29 +503,29 @@ void ChannelAssembly::limit() {
         const auto& scf = scf_sig_[at(atsg)];
         const auto& est = est_sig_[at(atsg)];
         // Pseudocode 96.
-        std::array<Real, aspx::kMaxSbgLim> nom{};
-        std::array<Real, aspx::kMaxSbgLim> denom{};
+        std::array<Energy, aspx::kMaxSbgLim> nom{};
+        std::array<Energy, aspx::kMaxSbgLim> denom{};
         denom.fill(kEpsilon0);
         for (int sb = 0; sb < g_.num_sb_aspx; ++sb) {
             nom[at(group[at(sb)])] += scf[at(sb)];
             denom[at(group[at(sb)])] += est[at(sb)];
         }
-        std::array<Real, kSubbands> max_gain{};
+        std::array<Energy, kSubbands> max_gain{};
         for (int sb = 0; sb < g_.num_sb_aspx; ++sb) {
             const auto k = at(group[at(sb)]);
-            max_gain[at(sb)] = std::min(std::sqrt(nom[k] / denom[k]) * kLimGain, kMaxSigGain);
+            max_gain[at(sb)] = std::min(dsp::sqrt_of(nom[k] / denom[k]) * kLimGain, kMaxSigGain);
         }
         // Pseudocodes 97 and 98.
         for (int sb = 0; sb < g_.num_sb_aspx; ++sb) {
-            if (gain[at(sb)] > Real{}) {
+            if (gain[at(sb)] > Energy{}) {
                 noise[at(sb)] =
                     std::min(noise[at(sb)], noise[at(sb)] * max_gain[at(sb)] / gain[at(sb)]);
             }
             gain[at(sb)] = std::min(gain[at(sb)], max_gain[at(sb)]);
         }
         // Pseudocode 99.
-        std::array<Real, aspx::kMaxSbgLim> boost_nom{};
-        std::array<Real, aspx::kMaxSbgLim> boost_denom{};
+        std::array<Energy, aspx::kMaxSbgLim> boost_nom{};
+        std::array<Energy, aspx::kMaxSbgLim> boost_denom{};
         boost_nom.fill(kEpsilon0);
         boost_denom.fill(kEpsilon0);
         for (int sb = 0; sb < g_.num_sb_aspx; ++sb) {
@@ -499,14 +533,14 @@ void ChannelAssembly::limit() {
             boost_nom[k] += scf[at(sb)];
             boost_denom[k] +=
                 est[at(sb)] * gain[at(sb)] * gain[at(sb)] + sine[at(sb)] * sine[at(sb)];
-            if (!(sine[at(sb)] != Real{} || transient_envelope(atsg))) {
+            if (!(sine[at(sb)] != Energy{} || transient_envelope(atsg))) {
                 boost_denom[k] += noise[at(sb)] * noise[at(sb)];
             }
         }
         // Pseudocodes 100 and 101.
         for (int sb = 0; sb < g_.num_sb_aspx; ++sb) {
             const auto k = at(group[at(sb)]);
-            const Real boost = std::min(std::sqrt(boost_nom[k] / boost_denom[k]), kMaxBoostFact);
+            const Energy boost = std::min(dsp::sqrt_of(boost_nom[k] / boost_denom[k]), kMaxBoostFact);
             gain[at(sb)] *= boost;
             noise[at(sb)] *= boost;
             sine[at(sb)] *= boost;
@@ -532,7 +566,6 @@ void ChannelAssembly::assemble(std::span<const QmfValue> q_high, std::span<QmfVa
     }
     const int noise_base = frame_.master_reset ? 0 : st_.noise_index;
     const int sine_base = st_.first_frame ? 1 : (st_.sine_index + 1) % 4;
-    const auto& noise_table = tables::kAspxNoise;
     int atsg = 0;
     int noise_index = st_.noise_index;
     int sine_index = st_.sine_index;
@@ -545,15 +578,10 @@ void ChannelAssembly::assemble(std::span<const QmfValue> q_high, std::span<QmfVa
         const std::span<QmfValue> out = y.subspan(at(ts) * kSubbands, kSubbands);
         for (int sb = 0; sb < nsb; ++sb) {
             noise_index = (noise_base + nsb * (ts - first) + sb + 1) % 512;
-            const auto& noise = noise_table[at(noise_index)];
-            const Real noise_level = noise_lev_[at(atsg)][at(sb)];
-            const Real sine_level = sine_lev_[at(atsg)][at(sb)];
             const Real sign = (sb + sbx) % 2 == 0 ? Real{1} : Real{-1};
-            const QmfValue noise_value(static_cast<Real>(noise[0]), static_cast<Real>(noise[1]));
-            out[at(sb + sbx)] = sig_gain_[at(atsg)][at(sb)] * high[at(sb + sbx)] +
-                                noise_level * noise_value +
-                                QmfValue(sine_level * kSineRe[at(sine_index)],
-                                         sine_level * sign * kSineIm[at(sine_index)]);
+            out[at(sb + sbx)] = assembled<Real>(sig_gain_[at(atsg)][at(sb)], high[at(sb + sbx)],
+                                                noise_lev_[at(atsg)][at(sb)], noise_index,
+                                                sine_lev_[at(atsg)][at(sb)], sign, sine_index);
         }
     }
     if (last > first) {

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 
 namespace iclforge::ac4::detail::acpl {
 namespace {
@@ -92,6 +93,26 @@ constexpr std::array<std::array<double, 3>, 3> kK2 = {{
     {{1.0000, 0.2327, -0.3901}},
     {{1.0000, -0.6057, 0.3804}},
 }};
+
+template <std::size_t N>
+[[nodiscard]] constexpr std::array<std::int32_t, N> to_q30(const std::array<double, N>& values) {
+    std::array<std::int32_t, N> out{};
+    for (std::size_t i = 0; i < N; ++i) {
+        const double scaled = values[i] * 1073741824.0;
+        out[i] = static_cast<std::int32_t>(scaled < 0 ? scaled - 0.5 : scaled + 0.5);
+    }
+    return out;
+}
+
+template <std::size_t N>
+[[nodiscard]] constexpr std::array<std::array<std::int32_t, N>, 3> to_q30(
+    const std::array<std::array<double, N>, 3>& values) {
+    return {to_q30(values[0]), to_q30(values[1]), to_q30(values[2])};
+}
+
+constexpr auto kK0Q30 = to_q30(kK0);
+constexpr auto kK1Q30 = to_q30(kK1);
+constexpr auto kK2Q30 = to_q30(kK2);
 
 // Pseudocode 112's constants.
 constexpr double kAlpha = 0.76592833836465;
@@ -274,6 +295,18 @@ std::span<const double> coefficients(int decorrelator, int region) noexcept {
     }
 }
 
+std::span<const std::int32_t> coefficients_q30(int decorrelator, int region) noexcept {
+    const std::size_t d = at(std::clamp(decorrelator, 0, kDecorrelators - 1));
+    switch (region) {
+        case 0:
+            return kK0Q30[d];
+        case 1:
+            return kK1Q30[d];
+        default:
+            return kK2Q30[d];
+    }
+}
+
 template <typename Real>
 Decorrelator<Real>::Decorrelator(int index) noexcept : index_(std::clamp(index, 0, kDecorrelators - 1)) {}
 
@@ -311,15 +344,39 @@ void Decorrelator<Real>::process(std::span<const Complex> in, std::span<Complex>
         for (std::size_t ts = 0; ts < n; ++ts) {
             x[kIn + ts] = in[ts * kSubbands + s];
         }
-        for (std::size_t ts = 0; ts < n; ++ts) {
-            // b[i] = a[length - i]; a[0] is 1 in every table, kept as printed.
-            Complex acc = static_cast<Real>(a[length]) * x[kIn + ts - delay];
-            for (std::size_t i = 1; i <= length; ++i) {
-                acc += static_cast<Real>(a[length - i]) * x[kIn + ts - i - delay] -
-                       static_cast<Real>(a[i]) * y[kOut + ts - i];
+        if constexpr (dsp::kFixed<Real>) {
+            // a[0] is 1 in every table, so there is nothing to divide by.
+            const std::span<const std::int32_t> aq = coefficients_q30(index_, region);
+            for (std::size_t ts = 0; ts < n; ++ts) {
+                const auto tap = [&](std::int32_t coefficient, Complex v, std::uint64_t& re, std::uint64_t& im) {
+                    re += static_cast<std::uint64_t>(static_cast<std::int64_t>(v.re.raw) * coefficient);
+                    im += static_cast<std::uint64_t>(static_cast<std::int64_t>(v.im.raw) * coefficient);
+                };
+                std::uint64_t re = 0;
+                std::uint64_t im = 0;
+                tap(aq[length], x[kIn + ts - delay], re, im);
+                for (std::size_t i = 1; i <= length; ++i) {
+                    tap(aq[length - i], x[kIn + ts - i - delay], re, im);
+                    tap(-aq[i], y[kOut + ts - i], re, im);
+                }
+                const auto round = [](std::uint64_t sum) {
+                    return Real::from_raw(static_cast<std::int32_t>(
+                        (static_cast<std::int64_t>(sum) + (std::int64_t{1} << 29U)) >> 30U));
+                };
+                y[kOut + ts] = Complex{round(re), round(im)};
+                out[ts * kSubbands + s] = y[kOut + ts];
             }
-            y[kOut + ts] = acc / static_cast<Real>(a[0]);
-            out[ts * kSubbands + s] = y[kOut + ts];
+        } else {
+            for (std::size_t ts = 0; ts < n; ++ts) {
+                // b[i] = a[length - i]; a[0] is 1 in every table, kept as printed.
+                Complex acc = static_cast<Real>(a[length]) * x[kIn + ts - delay];
+                for (std::size_t i = 1; i <= length; ++i) {
+                    acc += static_cast<Real>(a[length - i]) * x[kIn + ts - i - delay] -
+                           static_cast<Real>(a[i]) * y[kOut + ts - i];
+                }
+                y[kOut + ts] = acc / static_cast<Real>(a[0]);
+                out[ts * kSubbands + s] = y[kOut + ts];
+            }
         }
         for (std::size_t k = 0; k < kIn; ++k) {
             x_history_[k * kSubbands + s] = x[n + k];
@@ -332,9 +389,9 @@ void Decorrelator<Real>::process(std::span<const Complex> in, std::span<Complex>
 
 template <typename Real>
 void TransientDucker<Real>::reset() noexcept {
-    peak_decay_.fill(Real{});
-    smooth_.fill(Real{});
-    smooth_peak_diff_.fill(Real{});
+    peak_decay_.fill(Energy{});
+    smooth_.fill(Energy{});
+    smooth_peak_diff_.fill(Energy{});
 }
 
 template <typename Real>
@@ -344,28 +401,29 @@ void TransientDucker<Real>::process(std::span<Complex> inout, int num_ts) noexce
         return;
     }
     const std::array<int, kSubbands>& kBand = kDuckerBand;
-    const auto alpha = static_cast<Real>(kAlpha);
-    const auto smoothing = static_cast<Real>(kAlphaSmooth);
-    const auto gamma = static_cast<Real>(kGamma);
-    const auto epsilon = static_cast<Real>(kEpsilon);
+    const auto alpha = static_cast<Energy>(kAlpha);
+    const auto smoothing = static_cast<Energy>(kAlphaSmooth);
+    const auto gamma = static_cast<Energy>(kGamma);
+    // An energy of the double decoder's QMF domain, in the scalar's (dsp/scalar_traits.hpp).
+    const auto epsilon = dsp::qmf_energy<Real>(static_cast<Energy>(kEpsilon));
     for (std::size_t ts = 0; ts < n; ++ts) {
         // Pseudocode 113, then 112, then 114, for this slot.
-        std::array<Real, kMaxParamBands> energy{};
+        std::array<Energy, kMaxParamBands> energy{};
         for (std::size_t sb = 0; sb < kSubbands; ++sb) {
-            energy[at(kBand[sb])] += norm(inout[ts * kSubbands + sb]);
+            energy[at(kBand[sb])] += dsp::energy_of(inout[ts * kSubbands + sb]);
         }
-        std::array<Real, kMaxParamBands> gain{};
+        std::array<Energy, kMaxParamBands> gain{};
         for (std::size_t pb = 0; pb < at(kMaxParamBands); ++pb) {
             peak_decay_[pb] = alpha * peak_decay_[pb] < energy[pb] ? energy[pb] : alpha * peak_decay_[pb];
-            smooth_[pb] = (Real{1} - smoothing) * smooth_[pb] + smoothing * energy[pb];
+            smooth_[pb] = (Energy{1} - smoothing) * smooth_[pb] + smoothing * energy[pb];
             smooth_peak_diff_[pb] =
-                (Real{1} - smoothing) * smooth_peak_diff_[pb] + smoothing * (peak_decay_[pb] - energy[pb]);
+                (Energy{1} - smoothing) * smooth_peak_diff_[pb] + smoothing * (peak_decay_[pb] - energy[pb]);
             gain[pb] = gamma * smooth_peak_diff_[pb] > smooth_[pb]
                            ? smooth_[pb] / (gamma * (smooth_peak_diff_[pb] + epsilon))
-                           : Real{1};
+                           : Energy{1};
         }
         for (std::size_t sb = 0; sb < kSubbands; ++sb) {
-            inout[ts * kSubbands + sb] *= gain[at(kBand[sb])];
+            inout[ts * kSubbands + sb] = dsp::apply_gain<Real>(gain[at(kBand[sb])], inout[ts * kSubbands + sb]);
         }
     }
 }

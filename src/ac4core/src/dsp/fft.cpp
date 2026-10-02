@@ -2,7 +2,10 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
+#include <cstdint>
+#include <type_traits>
 #include <complex>
 #include <numbers>
 #include <utility>
@@ -141,6 +144,63 @@ void Fft<Real>::run(std::span<Complex> data, std::span<Complex> work, bool inver
     }
     if (x != data.data()) {
         std::copy(x, x + static_cast<std::ptrdiff_t>(length_), data.data());
+    }
+}
+
+template <typename Real>
+int Fft<Real>::inverse_scaled(std::span<Complex> data, std::span<Complex> scratch) {
+    if constexpr (std::is_floating_point_v<Real>) {
+        run(data, scratch, true);
+        return 0;
+    } else {
+        if (!valid_ || data.size() != length_ || scratch.size() < length_ || stages_.empty()) {
+            return 0;
+        }
+        // 16 in Q7.24: a radix-5 pass takes 16 sqrt(2) to under 114.
+        constexpr int kLimitBits = 28;
+        int shed = 0;
+        Complex* x = data.data();
+        Complex* y = scratch.data();
+        for (const Stage& stage : stages_) {
+            std::uint32_t largest = 0;
+            for (std::size_t i = 0; i < length_; ++i) {
+                for (const std::int32_t part : {x[i].re.raw, x[i].im.raw}) {
+                    const std::uint32_t magnitude =
+                        part < 0 ? 0U - static_cast<std::uint32_t>(part) : static_cast<std::uint32_t>(part);
+                    largest = magnitude > largest ? magnitude : largest;
+                }
+            }
+            const int bits = 32 - std::countl_zero(largest);
+            if (bits > kLimitBits) {
+                const int down = bits - kLimitBits;
+                for (std::size_t i = 0; i < length_; ++i) {
+                    x[i] = Complex{x[i].re.scaled_by_pow2(-down), x[i].im.scaled_by_pow2(-down)};
+                }
+                shed += down;
+            }
+            const auto r = static_cast<std::size_t>(stage.radix);
+            const std::size_t m = stage.n / r;
+            const std::size_t s = stage.stride;
+            const Complex* tw = twiddles_.data() + stage.twiddle;
+            std::array<Complex, 5> a{};
+            std::array<Complex, 5> b{};
+            for (std::size_t p = 0; p < m; ++p) {
+                for (std::size_t q = 0; q < s; ++q) {
+                    for (std::size_t i = 0; i < r; ++i) {
+                        a[i] = x[q + s * (p + i * m)];
+                    }
+                    butterfly(stage.radix, a, b, true, roots3_, roots5_);
+                    for (std::size_t k = 0; k < r; ++k) {
+                        y[q + s * (r * p + k)] = b[k] * conj(tw[p * r + k]);
+                    }
+                }
+            }
+            std::swap(x, y);
+        }
+        if (x != data.data()) {
+            std::copy(x, x + static_cast<std::ptrdiff_t>(length_), data.data());
+        }
+        return shed;
     }
 }
 

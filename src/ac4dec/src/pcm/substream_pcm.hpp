@@ -347,6 +347,7 @@ class SubstreamPcm {
     // The last good frame, which concealment repeats, and the frames lost
     // since it.
     std::vector<std::vector<Real>> last_spectra_;
+    std::vector<int> last_exponents_;
     std::vector<std::vector<int>> last_lengths_;
     ElementKind last_kind_ = ElementKind::kPair;
     DrcFrameValues last_drc_;
@@ -371,6 +372,12 @@ class SubstreamPcm {
     ElementRoute route_;
     std::vector<StereoParameters> parameters_;  // one channel data element's, 16 or 32 KiB each
     std::vector<std::vector<Real>> scaled_;     // per track, in bitstream order
+    // Each track's lines are its values times 2^-exponent, and each channel's
+    // spectrum alike: 0 at double and float, the track's own at Fixed32
+    // (pcm/asf_reconstruct.hpp), and one exponent for tracks or channels that
+    // a matrix mixes.
+    std::vector<int> scaled_exponents_;
+    std::vector<int> spectra_exponents_;
     // The layouts align_tracks() gives a pair with b_dual_maxsfb, and per
     // track the one it takes, or -1 for its own.
     std::vector<SfData> dual_layouts_;

@@ -47,6 +47,12 @@ class Fft {
     void forward(std::span<Complex> data, std::span<Complex> scratch) { run(data, scratch, false); }
     void inverse(std::span<Complex> data, std::span<Complex> scratch) { run(data, scratch, true); }
 
+    // The inverse transform at a scalar that is not floating (Fixed32): before each pass, if
+    // the largest real or imaginary part is 16 or more, every value is shifted down together
+    // until it is not, so that no pass, which grows a value at most by its radix, reaches the
+    // format's 128. Returns the bits shed: the result is the transform times 2^-shift.
+    [[nodiscard]] int inverse_scaled(std::span<Complex> data, std::span<Complex> scratch);
+
    private:
     struct Stage {
         int radix = 0;

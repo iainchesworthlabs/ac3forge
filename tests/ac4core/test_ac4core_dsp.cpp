@@ -30,6 +30,7 @@
 #include "iclforge/ac4core/dsp/kbd.hpp"
 #include "iclforge/ac4core/dsp/mdct.hpp"
 #include "iclforge/ac4core/dsp/qmf.hpp"
+#include "iclforge/ac4core/dsp/scalar_traits.hpp"
 #include "iclforge/ac4core/dsp/qmf_constants.hpp"
 #include "iclforge/ac4core/dsp/qmf_kernels.hpp"
 #include "iclforge/ac4core/dsp/qmf_vector.hpp"
@@ -786,8 +787,13 @@ TEST_CASE("the QMF banks at the decoder's scalar agree with the banks at double"
     using ScalarComplex = dsp::Complex<Scalar>;
     // Where the decoder's scalar is double these are one type and the difference
     // is exactly 0; at float it is float's rounding through the window and the
-    // three passes of the transform.
-    constexpr double kBound = 64.0 * static_cast<double>(std::numeric_limits<Scalar>::epsilon());
+    // three passes of the transform. At Fixed32 it is the fixed banks' rounding,
+    // a raw unit of 2^-24 against a slot normalised to at least 1/4, and their
+    // QMF domain is kTimeShift - kQmfShift bits below the time domain the input
+    // is in (dsp/scalar_traits.hpp), which `qmf_scale` takes out.
+    const double epsilon = dsp::kFixed<Scalar> ? 0x1p-22 : static_cast<double>(std::numeric_limits<Scalar>::epsilon());
+    const double kBound = 64.0 * epsilon;
+    const double qmf_scale = std::ldexp(1.0, dsp::kQmfShift<Scalar> - dsp::kTimeShift<Scalar>);
     const std::vector<double> x = random_values(64 * 40, 811);
     std::vector<Scalar> xs(x.size());
     for (std::size_t i = 0; i < x.size(); ++i) {
@@ -802,7 +808,8 @@ TEST_CASE("the QMF banks at the decoder's scalar agree with the banks at double"
     const double q_peak = max_abs(q);
     double q_error = 0.0;
     for (std::size_t i = 0; i < q.size(); ++i) {
-        const Complex widened(static_cast<double>(qs[i].re), static_cast<double>(qs[i].im));
+        const Complex widened(static_cast<double>(qs[i].re) / qmf_scale,
+                              static_cast<double>(qs[i].im) / qmf_scale);
         q_error = std::max(q_error, abs(widened - q[i]));
     }
     CHECK(q_error <= kBound * q_peak);
@@ -810,7 +817,8 @@ TEST_CASE("the QMF banks at the decoder's scalar agree with the banks at double"
     // The synthesis takes the double analysis's subbands, narrowed to the scalar.
     std::vector<ScalarComplex> q_narrow(q.size());
     for (std::size_t i = 0; i < q.size(); ++i) {
-        q_narrow[i] = ScalarComplex(static_cast<Scalar>(q[i].re), static_cast<Scalar>(q[i].im));
+        q_narrow[i] = ScalarComplex(static_cast<Scalar>(q[i].re * qmf_scale),
+                                    static_cast<Scalar>(q[i].im * qmf_scale));
     }
     dsp::QmfSynthesis<double> synthesis_double;
     dsp::QmfSynthesis<Scalar> synthesis_scalar;
@@ -1074,9 +1082,13 @@ TEST_CASE("the QMF banks give the bits of the scalar kernels run one after anoth
         CHECK(std::memcmp(got_pcm.data(), expected_pcm.data(), got_pcm.size() * sizeof(R)) == 0);
     };
     // The banks are instantiated at the decoder's scalar and at double, whichever
-    // that is (AC4CORE_ALSO_AT_DOUBLE), and at nothing else.
+    // that is (AC4CORE_ALSO_AT_DOUBLE), and at nothing else. At Fixed32 the banks
+    // have kernels of their own, with a block exponent per slot (dsp/qmf_fixed.hpp),
+    // which the test above holds to the banks at double.
     run(double{}, 8100);
-    run(iclforge::ac4::detail::Real{}, 8200);
+    if (!dsp::kFixed<iclforge::ac4::detail::Real>) {
+        run(iclforge::ac4::detail::Real{}, 8200);
+    }
 }
 
 TEST_CASE("the transforms take a scratch of the caller's and give the same values",

@@ -7,6 +7,7 @@
 #include "iclforge/ac4core/detail/real.hpp"
 #include "iclforge/ac4core/aspx/frequency_tables.hpp"
 #include "iclforge/ac4core/dsp/complex.hpp"
+#include "iclforge/ac4core/dsp/scalar_traits.hpp"
 
 // A-SPX's high frequency generator: ETSI TS 103 190-1 V1.4.1 clause
 // 5.7.6.4.1, Pseudocodes 85 to 89. It patches subbands of the low band Q_low
@@ -71,11 +72,12 @@ void generate_high_band(const SubbandGroups& groups, const PatchTables& patches,
                         std::span<dsp::Complex<Real>> q_high);
 
 // Pseudocode 85's gain vector, gain_vec[sb] for sb < sbx: 10^((mean - fit[sb]) / 20),
-// with fit the least squares cubic through the low band's energies in dB.
+// with fit the least squares cubic through the low band's energies in dB. The gains are
+// dsp::Energy values: Real at double and float, a mantissa and a power of two at Fixed32.
 // Exposed for its test.
 template <typename Real>
 void preflattening_gains(std::span<const dsp::Complex<Real>> q_low, int sbx, int ts_begin,
-                         int ts_end, std::span<Real> gain_vec);
+                         int ts_end, std::span<dsp::Energy<Real>> gain_vec);
 
 // Pseudocodes 86 and 87: alpha0[sb] and alpha1[sb] for sb < sba. Exposed for
 // its test.
@@ -89,7 +91,7 @@ extern template void generate_high_band<Real>(const SubbandGroups&, const PatchT
                                               HfGeneratorState<Real>&,
                                               std::span<dsp::Complex<Real>>);
 extern template void preflattening_gains<Real>(std::span<const dsp::Complex<Real>>, int, int,
-                                               int, std::span<Real>);
+                                               int, std::span<dsp::Energy<Real>>);
 extern template void prediction_coefficients<Real>(std::span<const dsp::Complex<Real>>, int,
                                                    int, std::span<dsp::Complex<Real>>,
                                                    std::span<dsp::Complex<Real>>);
