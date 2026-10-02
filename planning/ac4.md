@@ -83,6 +83,7 @@ checked. The table is of `main` at `5ef9eeafc`.
 | D14b | AC-4 on the ESP32-P4 | #1118, 2026-09-29 | merged; the P4 decodes 2.0 in real time and nothing wider; decision 26's identical output does not hold on the five plays with companding |
 | D14a4 | libm parity and the frame-rate converter at `float` | open, 2026-09-30 | exit met: the `float` PCM equal on the host, the Cortex-M3 leg and the P4 for D14b's twenty plays; the converter takes 7.3 ms a frame at 24 and 25 fps, and 1001/960 still has a 5.9 s first frame |
 | D14a5 | the converter's `float` tables at compile time | open, 2026-10-01 | exit met: the P4's first frame at 1001/960 takes 0.31 s from 5.9 s and the converter 16.5 ms a frame at 23.976 fps from 22.4; no `float` pin moved and the `double` output is byte-identical |
+| D14a6 | the P4's low-power SRAM out of the heap | open, 2026-10-02 | exit met: the 29.97 fps play's converter takes 12.0 ms a frame under ESP-IDF's default allocation policy from 93.8, the play 1.00 of real time from 3.51, and every other play 3 to 24% less time a frame; no `float` pin moved |
 | D14c | the S3 | | not built |
 | D14d | the C6, fixed point | | not built |
 | E1 | the encoder library, the frame writer, SIMPLE mono and stereo | #1011, 2026-09-25 | merged; exit met |
@@ -116,8 +117,9 @@ twice as long as at the commit it is queued on, or doubles its heap churn.
 
 Left to the user, each with its options in the pull request or section named: N1's steps outside
 the repository and what to do with the open vcpkg pull request ([N1](#n1-the-names)); D14b's four, of which the libm change and the frame-rate converter were taken on
-2026-09-30 and are D14a4, and the allocation policy and what comes next on the P4 are still open (#1118);
-D14a4's, of which the 1001/960 table was taken on 2026-09-30 and is D14a5, and the allocation policy is still open;
+2026-09-30 and are D14a4, the allocation policy was taken on 2026-10-01 and is D14a6, and what comes next on the P4 is
+still open (#1118);
+D14a4's, of which the 1001/960 table was taken on 2026-09-30 and is D14a5;
 I5's two, whether to spend a check on the `zone_mask` reading and a native
 check of the Arabic, Hebrew and Yiddish strings (#1100); I5b's four, which are an ADM or IAB master
 as a source on the encoder page, static beds for channels assigned to speakers, a Preview from a
@@ -2266,7 +2268,7 @@ D14a4's, so no pin moved; the `double` output is byte-identical (360 decodes and
 bytes, 196,464 of them the tables, the Cortex-M3 probe's by 198,416 bytes, and `dsp/resampler.cpp` takes 5 to 14 s
 longer to compile at `float`, by compiler (MSVC 14.7 s from 0.7, GCC 16 6.0 s from 0.8, ESP-IDF's RISC-V GCC 8.4 s from 1.5). The 29.97 fps play's
 converter still takes 77 ms more than the 23.976 fps play's with the same table and code, and the allocation policy's
-open question stands.
+open question stood until D14a6.
 
 **Exit:** the P4's first frame at 1001/960 from 5.9 s to the 0.31 s of the first frame at 24 and 25 fps, no run-time
 design on any target, no change to the `double` output, and the `float` PCM equal across the host, the Cortex-M3 leg
@@ -2276,6 +2278,63 @@ and the board. Met.
 Hearth test, `stream decoder: fast inverse transform reaches the decoder, closely matching the reference transform`,
 fails on all four, and on main's tree with GCC 16); the `double` comparison with main's build; the probe on the Cortex-M3
 and the host; the board; the full-matrix `ci.yml` and `pr-gate.yml` dispatches on the branch.
+
+#### D14a6: the P4's low-power SRAM out of the heap
+
+After D14a5. D14b and D14a5 left one thing open on the P4: under ESP-IDF's default allocation policy the 29.97 fps play's
+frame-rate converter took 93.8 ms a frame and under the 512-byte policy 12.2, from the same code and the same table, and a
+few stages of other plays (QMF synthesis, the inverse transform) were slow in the same way. The user took the allocation
+policy on 2026-10-01, to run once N1 and D14a5 had merged: find the cause, and give the default policy the fast time
+through the allocator's placement and not by moving the image to the 512-byte policy. One pull request, one line of
+configuration.
+
+- **The cause.** ESP-IDF puts the ESP32-P4's 32 KB of low-power SRAM (0x50108000) in the heap as internal memory of the
+  lowest priority (`CONFIG_ESP_SYSTEM_ALLOW_RTC_FAST_MEM_AS_HEAP`, on by default, whose help says the memory "does not have
+  much performance impact"). The HP cores reach it over the LP bus with no cache: a loop in a scratch image took 174 cycles
+  for a load the next depends on, 195 for a load in sequence and 173 for a store, against 6 to 7 from main RAM and 18 a word
+  for a cold sequential read of PSRAM. The decoder takes nearly all of main RAM (343 to 350 KB free when a play starts, 1 to
+  11 KB at its least), so what it allocates late is served from the SRAM before PSRAM is tried, and whether a hot buffer is
+  among it depends on how full main RAM is at that moment, which is why a play was slow after some plays and not after
+  others and why two images of the same code differed. In the 29.97 fps play of a scratch image that prints the converter's
+  addresses, one channel's history was at 0x50108364 and the output vector the channels share at 0x5010ad6c, and the
+  converter took 93.6 ms a frame; the same image built without the region had both in PSRAM and the converter took 11.9.
+  At the most 25.3 to 31.5 KB of the SRAM was in use in each of the four converter plays.
+- **The fix.** `CONFIG_ESP_SYSTEM_ALLOW_RTC_FAST_MEM_AS_HEAP=n` in `esp-idf/iclforge/examples/hearth_sink/sdkconfig.p4`, with
+  the reasons in a comment beside it. The heap is 32,640 bytes smaller, what spilled into the SRAM goes to PSRAM behind the
+  cache, and the allocation policy stays ESP-IDF's default. Nothing in the component asks for `MALLOC_CAP_RTCRAM`, so the
+  option is the only way a buffer reached that memory.
+- **Ruled out on the way.** The image's layout (the code's addresses were the same in a slow image and a fast one); the
+  heap's free and largest block at the start of the play; the order of the plays alone (a fresh boot played the slow play
+  slow in the image that printed the addresses); and the L1 data cache's two ways, to which a model of the converter's two
+  streams gave no sensitivity to placement.
+
+**Built in D14a6.** The line above, the ESP32-P4 page's tables, stage table and a new section,
+[The low-power SRAM](../docs/platforms/bare-metal/esp32-p4.md#the-low-power-sram), and this plan's lines. No source file changed,
+so no `float` PCM hash moved: the board's hash of 56 plays and cuts on the default image equals D14a5's, so do the 26 plays
+of the 512-byte image, and the probe's six fixtures equal their pins.
+
+**Exit, as measured.** On the P4 with the network up and the default allocation policy, the converter's microseconds a frame,
+D14a5's then D14a6's: 7,389 and 7,397 at 24 fps (25/24), 7,285 and 7,280 at 25 fps (15/16), 16,520 and 15,150 at 23.976 fps
+(1001/960) and 93,761 and 11,978 at 29.97 fps (1001/960; under the 512-byte policy 17,454 on D14a4's tree, 12,180 on
+D14a5's and 12,240 on D14a6's). The frames are 0.79, 0.80, 0.98 and 1.00 of their duration, from 0.91, 0.82, 1.11 and 3.51. The other
+plays of the twenty take 3 to 24% less time a frame and the six core-decoding plays 11 to 19% less; synthesis in
+`51-music-96` at 2.0 takes 1.3 ms a channel from 13.6, `514-music-768`'s inverse transform 1.0 ms a call from 2.3, and the
+inverse transform at 5.1 takes 7.1 to 7.3 ms a frame, from 13.1 to 13.4. The default policy is now the faster of the two on all
+twenty-six plays (the 512-byte policy takes 1.04 to 1.16 times as long on the twenty and 1.05 to 1.08 on the six), and the
+AC-3 and E-AC-3 decoders take 0.19 (5.1), 0.19 (5.1) and 0.38 (7.1.4) of real time under it from 0.20, 0.20 and 0.38, and
+0.21, 0.31 and 0.65 under the 512-byte policy. The peak heap is as before (0.60 to 2.2 MB), PSRAM's peak 0.02 to 0.04 MB
+higher and internal RAM's least free 1 to 11 KB (2 to 14 before). Not measured: the 8 KB of tightly coupled memory at 0x30100000, which is
+in the heap at the same low priority; the same option on the S3 and the C6; and the tree before D14a's third part.
+
+**Exit:** the 29.97 fps converter at the speed the 512-byte policy gave it (17 ms on D14a4's tree, 12 with D14a5's tables) under
+the default policy, the slow QMF stage gone, and the `float` PCM unchanged. Met: 12.0 ms, and the stages are at 1.1 to 1.4 ms a
+channel-frame in every play.
+
+**Verified by:** the board (the twenty plays, the six core plays, their cuts, D14b's four cuts and the probe's six fixtures
+on the default image, the twenty and the six on the 512-byte image, and the AC-3 and E-AC-3 plays on both); both images built
+from the branch tree with the committed configuration; `tools/ci/precheck.py`; `mkdocs build --strict`; the packer's
+`--with-ac4 --verify --verify-targets esp32p4`; and, since no source file changed, the host builds and tests (MSVC, GCC 16,
+Clang 22) of the base commit, whose code this branch does not touch.
 
 ### Encoder phases
 
@@ -3870,7 +3929,8 @@ words, asked for 25 in their own words, and took the recommendations for the res
     from PSRAM (22 to 98 ms a frame), and a shorter filter is one of the options D14a4's pull
     request puts. D14a5 builds the table at compile time and the converter copies the 188 KB of it
     that it keeps into PSRAM: no first-frame stall, 16.5 ms a frame at 23.976 fps, so the shorter
-    filter is not needed for either.
+    filter is not needed for either. The 29.97 fps play's 93 to 98 ms a frame was not the table: it was the heap's low-power
+    SRAM, which D14a6 took out, and the converter takes 12.0 ms there.
 
 34. **The encoder on an ESP32.**
     - (a) **Never**, as decision 15 has it.

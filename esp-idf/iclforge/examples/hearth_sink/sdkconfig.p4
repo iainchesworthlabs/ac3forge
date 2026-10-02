@@ -96,6 +96,27 @@ CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
 CONFIG_SPIRAM=y
 CONFIG_SPIRAM_USE_MALLOC=y
 
+# Keep the low-power SRAM out of the heap. ESP-IDF adds the P4's 32 KB of RTC fast memory
+# (the LP system's SRAM, 0x50108000 to 0x50110000) to the heap by default,
+# CONFIG_ESP_SYSTEM_ALLOW_RTC_FAST_MEM_AS_HEAP, whose help says it "does not have much
+# performance impact". It is the allocator's last internal region: an allocation of up to
+# 16 KB that main RAM cannot satisfy comes from it before PSRAM is tried. The HP cores reach it
+# over the LP bus with no cache between, and slowly. Measured on this board with a loop
+# that touches nothing else (docs/platforms/bare-metal/esp32-p4.md, "The low-power SRAM"):
+# a load takes 174 cycles when the next depends on it and 195 in sequence, a store 173,
+# against 6 to 7 from main RAM and 18 a word for a cold sequential read of PSRAM. The
+# AC-4 decoder takes nearly all of main RAM (343 to 350 KB free when a play starts, 1 to
+# 11 KB left at its lowest), so what it allocates after that spills, and the four
+# frame-rate plays that were measured used 25 to 31 KB of the LP SRAM at the most.
+# Whether a hot buffer was among that depended on how full main RAM was at the moment it
+# was allocated: the 29.97 fps frame-rate converter's history and output vectors were,
+# after one sequence of plays and not after another, and the converter took 94 ms a frame
+# where it takes 12 with them in PSRAM (planning/ac4.md, D14a6). Without the region the
+# same allocations go to PSRAM, behind the cache, and the heap is 32 KB smaller. Nothing
+# here asks for MALLOC_CAP_RTCRAM, so this option is the only way a buffer gets into that
+# memory.
+CONFIG_ESP_SYSTEM_ALLOW_RTC_FAST_MEM_AS_HEAP=n
+
 # esp_hosted's own SDIO transport buffers (main/idf_component.yml) still
 # reach for internal DMA-capable RAM by default even with PSRAM on -
 # managed_components/espressif__esp_hosted/host/port/esp/freertos/src/
