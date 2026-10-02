@@ -473,7 +473,7 @@ with its first frame, so a column's stages differ from [Where a frame goes](#whe
 generic butterfly with a runtime radix and a branch on the direction at every element. `Imdct::inverse_overlap()` takes a
 full-length block that follows a full-length block from the spectrum to the PCM in one pass: the pre-twiddle is the first
 pass's read, and the post-twiddle, the unfolding, the window and the overlap-add are one loop, with no 2N-sample block
-between them. With these and the changes below the inverse transform takes 5.4 ms a 5.1 SIMPLE frame from 8.0, and 4.3 once
+between them. With these the inverse transform takes 5.4 ms a 5.1 SIMPLE frame from 8.0, and 4.3 once
 the compiler's settings and the flash are in; the QMF banks are the compiler's and the flash's (8.6 and 8.0 ms to 5.9 and 6.0),
 and A-SPX's cubic fit, which made four orthonormal polynomials in `double` at every frame (4n calls of `std::pow` and a hundred
 multiplies and adds of the compiler's software routines for each channel), keeps them for the number of points a channel
@@ -506,8 +506,8 @@ stereo and downmix passes) are built at `-O2` where they stayed at `-Os`: 1.6 to
 **A-CPL mode 3 does not keep up.** It takes 1.14 times a frame's duration, 6.0 ms over, and its stage takes 19.9 ms of the 48.7. Some
 7 to 11 ms of that is the compiler's soft-float `double` routines at 60 to 100 cycles a call, which the interpolation needs for its bits
 (a profile by caller of the stage's image counted 8,000 evaluations of three operations and 11,500 narrowings to `float` a frame,
-48,000 calls of those routines in all, 43,000 of them in the stage); the decorrelators, the ducker and the loops over the subbands are `float`, and the rest
-is passes over 16 KB buffers in PSRAM. A ramp scaled by the reciprocal of the slot count (the multiplication by a power of two is
+48,000 calls of those routines in all, 43,000 of them in the stage); the decorrelators, the ducker and the loops over the subbands are `float`, and the
+rest, which was not read separately, is the stage's passes over 16 KB buffers in PSRAM. A ramp scaled by the reciprocal of the slot count (the multiplication by a power of two is
 exact and commutes with the rounding) would save one multiplication in three of the evaluations, about 2 ms, which is not
 enough, and the narrowings and the sums would need `double` hardware or the stage's arithmetic changed, which changes the PCM.
 
@@ -699,7 +699,7 @@ banks took 7.4 to 17.4 ms in some plays and may have had the same cause.
 
 ### Flash mode
 
-sdkconfig.p4 reads the flash in QIO mode since D14e (`CONFIG_ESPTOOLPY_FLASHMODE_QIO`; ESP-IDF's default is DIO): four data lines to the
+`sdkconfig.p4` reads the flash in QIO mode since D14e (`CONFIG_ESPTOOLPY_FLASHMODE_QIO`; ESP-IDF's default is DIO): four data lines to the
 flash where DIO has two, at the same 80 MHz. The board's flash is a Winbond part, and the second stage bootloader says so as it sets the
 part's quad-enable bit (`qio_mode: Enabling QIO for flash chip WinBond` and `SPI Mode: QIO` in its log). The decoder's code (1.4 MB of
 `.flash.text`) and the constants it reads (0.8 MB of `.flash.rodata`, among them the Huffman and QMF tables) are larger than the 16 KB
@@ -734,7 +734,8 @@ clock of 120 MHz, which ESP-IDF offers this part only under `IDF_EXPERIMENTAL_FE
 ### Paced output
 
 The tables above use a null sink, which takes a block and returns at once. The example's I2S sink paces: its write returns when
-the frame is in the DMA queue, and the queue holds 21 ms of audio by default (4 descriptors of 240 frames). The decode and the
+the frame is in the DMA queue, and the queue holds about 21 ms of audio by default (4 descriptors of 240 frames; the sink's own line reads
+`dma=30x32 frames (20 ms)`). The decode and the
 write are in one task, so a frame whose decode takes more than the queue holds leaves it dry for the difference, whatever the
 average does against the frame's duration. A 5.1 A-SPX stream folded to 2.0, which decodes in 0.76 of a frame, took 13.5 s for
 10.1 s of audio through the default queue, and the sink counted 236 underruns and 3.5 s of silence. With 12 descriptors of 256
@@ -745,8 +746,8 @@ dry time are the sink's own count (`sink.underruns` and `sink.dry_ms` in a play'
 
 | Stream | To | Decoder x real time | Queue | Seconds for 10.1 s of audio | Underruns | Dry ms |
 |---|---|---:|---|---:|---:|---:|
-| `20-music-192` | 2.0 | 0.28 | 21 ms | 10.0 | 0 | 0 |
-| `51-music-192` | 2.0 | 0.76 | 21 ms | 13.5 | 236 | 3,474 |
+| `20-music-192` | 2.0 | 0.28 | default, 20 ms | 10.0 | 0 | 0 |
+| `51-music-192` | 2.0 | 0.76 | default, 20 ms | 13.5 | 236 | 3,474 |
 | `20-music-192` | 2.0 | 0.28 | 64 ms | 10.0 | 0 | 0 |
 | `51-music-384` | 2.0 | 0.60 | 64 ms | 10.0 | 0 | 0 |
 | `51-music-192` | 2.0 | 0.76 | 64 ms | 10.0 | 1 | 11 |

@@ -2398,7 +2398,7 @@ the same tree with the parts added, one image each, flashed with its own bootloa
   cycles a call, which Pseudocode 109's interpolation needs for its bits (8,000 evaluations of three operations and 11,500 narrowings a frame, in a profile of
   the rework's image); the decorrelators, the ducker and the loops over the subbands are `float`, and the rest is passes over 16 KB buffers in PSRAM. A ramp
   scaled by the reciprocal of the slot count would save one multiplication in three of the evaluations, about 2 ms of the 6.0 the mode is over by.
-- **The output side.** The measurements use a null sink. Through the example's real I2S sink at 2.0, with its default queue of 4 descriptors of 240 frames (21 ms), a
+- **The output side.** The measurements use a null sink. Through the example's I2S sink at 2.0, with its default queue of 4 descriptors of 240 frames (21 ms), a
   stream whose frame takes more than the queue holds to decode plays slowly: 5.1 A-SPX folded to 2.0, 35 ms a frame, took 13.5 s for 10.1 s of audio, where a 2.0
   SIMPLE stream (13 ms a frame) took 10.0 s. With 12 descriptors of 256 frames (64 ms, 24 KB of internal RAM at 2.0), which `sdkconfig.p4` now sets, the same stream took 10.0 s with one underrun of 11 ms,
   and 5.1 SIMPLE and A-SPX with A-CPL mode 2 folded to 2.0 played in 10.0 s with at most three underruns and 11 ms of silence in all; A-CPL mode 3 ran dry in every frame (11.4 s).
