@@ -141,26 +141,30 @@ declare -A ICOUNT_CEILING_ENCODE=(
 # change, and a change past one stops here to be explained in that table.
 #
 # Thumb-2 instructions per frame (--ac4 --icount), the generic seam's portable vector types
-# and all.
+# and all. Measured again 2026-10-03 with the decoder's memory work in (planning/ac4.md): 25.2 M,
+# 35.1 M, 87.2 M, 100.7 M, 161.8 M and 29.3 M, from 54.8 M, 57.3 M, 116.7 M, 122.9 M, 206.3 M and
+# 58.8 M. A figure is the average over a fixture's three or four frames, the first included, and
+# the first no longer builds the inverse transform's tables in software floating point: they
+# are in flash (dsp/transform_tables.hpp).
 declare -A ICOUNT_CEILING_AC4=(
-    [ac4_20_music]=60000000
-    [ac4_20_acpl]=64000000
-    [ac4_51_music]=130000000
-    [ac4_51_acpl]=137000000
-    [ac4_514_tones]=227000000
-    [ac4_20_companding]=64500000
+    [ac4_20_music]=28000000
+    [ac4_20_acpl]=39000000
+    [ac4_51_music]=96000000
+    [ac4_51_acpl]=111000000
+    [ac4_514_tones]=178000000
+    [ac4_20_companding]=32500000
 )
-# The fixed-point tier's (--ac4 --scalar=fixed --icount), measured 2026-10-02 (D14d) on the same
-# leg with the same rule: 38,233,000, 34,202,000, 55,629,000, 52,493,000, 90,383,000 and
-# 39,856,000 in the order below. Integer arithmetic where the float tier's is software floating
-# point, so the 5.1 and 5.1.4 rows are well under half the float table's.
+# The fixed-point tier's (--ac4 --scalar=fixed --icount), on the same leg with the same rule:
+# 6,700,000, 10,529,000, 24,041,000, 28,787,000, 42,962,000 and 8,308,000 in the order below
+# (2026-10-03; 38.2 M, 34.2 M, 55.6 M, 52.5 M, 90.4 M and 39.9 M at D14d, before the tables
+# went to flash). Integer arithmetic where the float tier's is software floating point.
 declare -A ICOUNT_CEILING_AC4_FIXED=(
-    [ac4_20_music]=42000000
-    [ac4_20_acpl]=37500000
-    [ac4_51_music]=61000000
-    [ac4_51_acpl]=58000000
-    [ac4_514_tones]=99500000
-    [ac4_20_companding]=44000000
+    [ac4_20_music]=7500000
+    [ac4_20_acpl]=11600000
+    [ac4_51_music]=26500000
+    [ac4_51_acpl]=31700000
+    [ac4_514_tones]=47500000
+    [ac4_20_companding]=9200000
 )
 # Steady-state allocations per frame. The decoder's syntax layer still builds its element
 # vectors afresh each frame (planning/ac4.md, D14a's memory audit); these hold the distance
@@ -173,15 +177,18 @@ declare -A CHURN_CEILING_AC4=(
     [ac4_514_tones]=210
     [ac4_20_companding]=82
 )
-# Each fixture's peak heap in bytes, on either leg: the host's 64-bit pointers put it a few
-# per cent above the Cortex-M3's, and one figure covers both.
+# Each fixture's peak heap in bytes, on either leg and at either tier: the host's 64-bit
+# pointers put it a few per cent above the Cortex-M3's, and one figure covers both. Measured
+# 2026-10-03 at the fixed tier (the larger) on the host: 295,225, 435,486, 722,007, 886,336,
+# 1,526,819 and 337,507; on the Cortex-M3 286,365, 426,918, 704,311, 868,424, 1,502,903 and
+# 329,147 (429,667, 626,368, 970,430, 1,172,502, 1,825,056 and 486,331 at D14d).
 declare -A PEAK_CEILING_AC4=(
-    [ac4_20_music]=485000
-    [ac4_20_acpl]=690000
-    [ac4_51_music]=1100000
-    [ac4_51_acpl]=1330000
-    [ac4_514_tones]=2130000
-    [ac4_20_companding]=522000
+    [ac4_20_music]=325000
+    [ac4_20_acpl]=480000
+    [ac4_51_music]=795000
+    [ac4_51_acpl]=975000
+    [ac4_514_tones]=1680000
+    [ac4_20_companding]=372000
 )
 
 # --- ceilings --------------------------------------------------------------
@@ -302,18 +309,24 @@ if [[ "$DIRECTION" == "ac4" ]]; then
     # retained; the stack a decode used, read by painting, 19,480 bytes on the Cortex-M3 and
     # 23,920 on the x86-64 host, whose frames are larger. Every ceiling a tenth or so over its
     # figure.
-    ICLFORGE_MAX_IMAGE_BYTES=${ICLFORGE_MAX_IMAGE_BYTES_AC4:-750000}
-    # The fixed-point tier's image, measured 2026-10-02 (D14d): 727,656 bytes (725,004 .text).
-    # Its converter tables are Q1.30 integers built by the compiler, the 1001/960 one 188,376
-    # bytes and read in place, and the float tables are not linked. Peaks, churn, stack and
-    # retained bytes all sit inside the float tier's ceilings and share them.
+    #
+    # Measured again 2026-10-03 with the decoder's memory work in: 750,276 bytes, 58,380 more,
+    # the inverse transform's float tables for the five block lengths of a 2048-sample frame in
+    # flash where they were built on the heap (dsp/transform_tables.hpp), and 2,400 bytes of
+    # .bss the probe's own stage-timer tables hold now that it names the stage at a peak.
+    ICLFORGE_MAX_IMAGE_BYTES=${ICLFORGE_MAX_IMAGE_BYTES_AC4:-825000}
+    # The fixed-point tier's image: 727,656 bytes at D14d (725,004 .text), 801,812 on
+    # 2026-10-03 with the transform tables (Q7.24, and the post-twiddles the tier has besides)
+    # in flash. Its converter tables are Q1.30 integers built by the compiler, the 1001/960 one
+    # 188,376 bytes and read in place, and the float tables are not linked. Peaks, churn, stack
+    # and retained bytes share the float tier's ceilings.
     if [[ "${SCALAR:-}" == "fixed" ]]; then
-        ICLFORGE_MAX_IMAGE_BYTES=${ICLFORGE_MAX_IMAGE_BYTES_AC4:-800000}
+        ICLFORGE_MAX_IMAGE_BYTES=${ICLFORGE_MAX_IMAGE_BYTES_AC4:-880000}
         for key in "${!ICOUNT_CEILING_AC4_FIXED[@]}"; do
             ICOUNT_CEILING_AC4[$key]=${ICOUNT_CEILING_AC4_FIXED[$key]}
         done
     fi
-    ICLFORGE_MAX_HEAP_BYTES=${ICLFORGE_MAX_HEAP_BYTES_AC4:-2130000}
+    ICLFORGE_MAX_HEAP_BYTES=${ICLFORGE_MAX_HEAP_BYTES_AC4:-1680000}
     ICLFORGE_MAX_STEADY_ALLOCS_PER_FRAME=${ICLFORGE_MAX_STEADY_ALLOCS_PER_FRAME_AC4:-210}
     ICLFORGE_MAX_RETAINED_BYTES=${ICLFORGE_MAX_RETAINED_BYTES_AC4:-1024}
     if [[ "$HOST" == "1" ]]; then
