@@ -34,7 +34,8 @@
 # A local source (partition, fatfs, sd) needs none of this: its decoder, a
 # 7.1.4 render included, runs out of internal SRAM.
 #
-# QEMU cannot emulate S3 PSRAM (espressif/qemu#129), so CI never uses this file.
+# CI never uses this file. QEMU emulates the S3's octal PSRAM (ESP-IDF v6.1 starts it with
+# 32 MB; the AC-4 probe runs on it), but this shape is a Wi-Fi one, which QEMU does not emulate.
 CONFIG_SPIRAM=y
 CONFIG_SPIRAM_MODE_OCT=y
 CONFIG_SPIRAM_SPEED_80M=y
@@ -48,6 +49,11 @@ CONFIG_ICLFORGE_EXAMPLE_I2S_DMA_DESCRIPTORS=12
 CONFIG_ICLFORGE_EXAMPLE_I2S_DMA_FRAMES=256
 CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB=y
 CONFIG_ICLFORGE_EXAMPLE_HOLD_FIRST_UNIT=1
+#
+# With sdkconfig.ac4 as well, an AC-4 play keeps only allocations under 512 bytes in
+# internal RAM and its decoder's state goes to PSRAM: the component's
+# CONFIG_ICLFORGE_AC4_INTERNAL_BELOW, 512 on this part (planning/ac4.md, D14c). The AC-3
+# and E-AC-3 plays keep the 16 KB above, the policy their board figures were measured under.
 #
 # No core dump on this board (planning/esp32-ota.md, O4). With task stacks
 # allowed in PSRAM, ESP-IDF gives the dump a stack of its own in internal SRAM

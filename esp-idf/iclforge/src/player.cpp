@@ -770,6 +770,19 @@ struct Player::Impl {
     // of the stream and goes to the splitter first.
     void decode_loop_ac4(std::span<const std::byte> lead) {
         using Status = iclforge::ac4::SyncFrameSplitter::Status;
+#if CONFIG_SPIRAM_USE_MALLOC
+        // CONFIG_ICLFORGE_AC4_INTERNAL_BELOW for as long as this play's decoder
+        // allocates, and ESP-IDF's own limit back after it (the component's
+        // Kconfig has why). The heap keeps no other value to restore: the limit
+        // is set only from configuration.
+        struct InternalBelow {
+            InternalBelow() { heap_caps_malloc_extmem_enable(CONFIG_ICLFORGE_AC4_INTERNAL_BELOW); }
+            ~InternalBelow() { heap_caps_malloc_extmem_enable(CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL); }
+            InternalBelow(const InternalBelow&) = delete;
+            InternalBelow& operator=(const InternalBelow&) = delete;
+        };
+        const InternalBelow placement;
+#endif
         iclforge::ac4::DecoderConfig decoder_config;
         decoder_config.output.downmix = ac4bridge::target(fold);
         decoder_config.decoding = config.ac4.core ? iclforge::ac4::DecodingMode::kCore : iclforge::ac4::DecodingMode::kFull;

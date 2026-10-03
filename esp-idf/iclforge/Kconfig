@@ -50,8 +50,34 @@ config ICLFORGE_AC4
         uses 20 to 24 KB of stack, and examples/hearth_sink/sdkconfig.ac4
         gives it 40 KB. docs/platforms/bare-metal/esp32-p4.md has what a
         stream of each kind held on an ESP32-P4, and how fast it decoded.
-        Only the ESP32-P4 has run it; the ESP32-S3, which also offers it,
-        has not (planning/ac4.md, D14c).
+        docs/platforms/bare-metal/esp32-s3.md has what it holds on an
+        ESP32-S3, where its state goes to PSRAM
+        (ICLFORGE_AC4_INTERNAL_BELOW).
+
+# Where an AC-4 play's allocations go (planning/ac4.md, D14c). An int rather
+# than a choice, so it reaches C++ as a plain constant.
+config ICLFORGE_AC4_INTERNAL_BELOW
+    int "AC-4 play: allocations below this many bytes try internal RAM first"
+    depends on ICLFORGE_AC4 && SPIRAM_USE_MALLOC
+    default 512 if IDF_TARGET_ESP32S3
+    default SPIRAM_MALLOC_ALWAYSINTERNAL
+    range 0 131072
+    help
+        ESP-IDF's SPIRAM_MALLOC_ALWAYSINTERNAL for the length of an AC-4
+        play: the player sets it as the play starts and puts ESP-IDF's
+        value back when the play ends, so AC-3 and E-AC-3 plays keep
+        their own.
+
+        On an ESP32-S3 it is 512, which puts the decoder's state in PSRAM.
+        Under ESP-IDF's default of 16384 the decoder's many blocks of 8
+        to 16 KB fill internal RAM: a 5.1 decode left 2 KB of it free,
+        which Wi-Fi and lwIP need. At 512 it keeps 3 to 14 KB there at
+        every layout. On any other part it is ESP-IDF's value, which
+        changes nothing: the ESP32-P4's figures were measured that way.
+
+        The setting holds for every task's malloc during the play, and
+        allocations that ask for internal or DMA-capable memory by their
+        caps are not moved.
 
 # An int rather than a choice, so it reaches C++ as a plain constant: the
 # component reads no configuration through the preprocessor.
