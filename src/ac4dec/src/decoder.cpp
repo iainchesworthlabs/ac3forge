@@ -898,6 +898,15 @@ struct Capture {
     }
 };
 
+// A capture whose substream was refused back to the empty one it starts the frame with, made
+// in place: a parsed substream is about 6 kB, too much for a temporary on the stack.
+void forget_content(CapturedAudio* captured) {
+    if (captured != nullptr) {
+        std::destroy_at(&captured->content);
+        std::construct_at(&captured->content);
+    }
+}
+
 // Mixing values a stream need not send in every frame, which a decoder keeps
 // until new ones come or the stream is spliced (Part 1 clause 6.2.16.0),
 // field by field: the associated audio's gains on the main audio and its pan,
@@ -2357,8 +2366,12 @@ std::expected<FrameReport, DecodeError> Decoder::Impl::read(
         }
         // A parsed audio substream is about 6 kB; read() keeps it on the heap, as it does
         // for the one below, so that the frame stays under the 16 kB of stack PREfast allows.
-        const auto parsed_storage = std::make_unique<AudioSubstream>();
-        AudioSubstream& parsed = *parsed_storage;
+        // A substream decode() takes is read straight into its capture, whose content nothing
+        // reads until `read` says it was read whole, so that only one is held.
+        CapturedAudio* const wanted = capture->wants(index);
+        const std::unique_ptr<AudioSubstream> parsed_storage =
+            wanted == nullptr ? std::make_unique<AudioSubstream>() : nullptr;
+        AudioSubstream& parsed = wanted != nullptr ? wanted->content : *parsed_storage;
         const ParseResult owner_result =
             detail::parse_audio_substream(owner_reader, assignment.audio, state, parsed, &ext_reader);
         owner_report.bits_read = owner_reader.position();
@@ -2368,6 +2381,7 @@ std::expected<FrameReport, DecodeError> Decoder::Impl::read(
             ext_report.refused = DecodeError::kUnsupported;
             ext_report.refused_reason = "its owning channel substream could not be read";
             ext_report.bits_read = ext_reader.position();
+            forget_content(wanted);
         } else {
             ParseResult ext_result;
             for (detail::Track& track : parsed.element.tracks) {
@@ -2386,11 +2400,11 @@ std::expected<FrameReport, DecodeError> Decoder::Impl::read(
             if (!ext_result) {
                 ext_report.refused = ext_result.error().error;
                 ext_report.refused_reason = ext_result.error().reason;
-            } else if (CapturedAudio* const captured = capture->wants(index)) {
-                captured->state_key = assignment.state_key;
-                captured->context = assignment.audio;
-                captured->content = std::move(parsed);
-                captured->read = true;
+                forget_content(wanted);
+            } else if (wanted != nullptr) {
+                wanted->state_key = assignment.state_key;
+                wanted->context = assignment.audio;
+                wanted->read = true;
             }
         }
         report.substreams.push_back(owner_report);
@@ -2456,14 +2470,19 @@ std::expected<FrameReport, DecodeError> Decoder::Impl::read(
                             objects->group_blocks = group->second.timing->num_obj_info_blocks;
                         }
                     }
-                    const auto parsed_storage = std::make_unique<AudioSubstream>();
-                    AudioSubstream& parsed = *parsed_storage;
+                    // Into the capture where decode() takes the substream, as above.
+                    CapturedAudio* const wanted = capture->wants(index);
+                    const std::unique_ptr<AudioSubstream> parsed_storage =
+                        wanted == nullptr ? std::make_unique<AudioSubstream>() : nullptr;
+                    AudioSubstream& parsed = wanted != nullptr ? wanted->content : *parsed_storage;
                     result = detail::parse_audio_substream(reader, assignment.audio, state, parsed,
                                                            nullptr, objects ? &*objects : nullptr);
-                    if (CapturedAudio* const captured = result ? capture->wants(index) : nullptr) {
+                    if (!result) {
+                        forget_content(wanted);
+                    }
+                    if (CapturedAudio* const captured = result ? wanted : nullptr) {
                         captured->state_key = assignment.state_key;
                         captured->context = assignment.audio;
-                        captured->content = std::move(parsed);
                         captured->read = true;
                         captured->essences_full = assignment.essences_full;
                         captured->essences_core = assignment.essences_core;
