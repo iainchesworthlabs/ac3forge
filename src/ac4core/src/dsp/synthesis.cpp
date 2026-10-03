@@ -6,6 +6,7 @@
 
 #include "iclforge/ac4core/detail/profiling.hpp"
 #include "iclforge/ac4core/dsp/kbd.hpp"
+#include "iclforge/ac4core/dsp/transform_tables.hpp"
 
 namespace iclforge::ac4::detail::dsp {
 namespace {
@@ -34,22 +35,36 @@ TransformSet<Real>::TransformSet(int full_length, int rate_multiplier) : full_le
             break;
         }
         imdct_.push_back(std::move(imdct));
-        // kbd_left() computes the window in double (the Kaiser-Bessel Bessel
-        // function series wants the precision); narrowed to Real explicitly,
-        // once, here - the vector<double>-to-vector<Real> range constructor
-        // narrows implicitly per element, which -Wdouble-promotion's sibling
-        // warning (MSVC's C4244) rightly flags as an error on the float build.
-        const std::vector<double> window = dsp::kbd_left(length, alpha);
-        std::vector<Real> narrowed(window.size());
-        std::ranges::transform(window, narrowed.begin(),
-                               [](double w) { return static_cast<Real>(w); });
-        windows_.push_back(std::move(narrowed));
+        // In flash at the float and fixed tiers for the lengths dsp/transform_tables.hpp
+        // builds in, at 44.1 and 48 kHz, where Table 186's alpha is the one it was built with.
+        const TransformTable<Real>* const table =
+            rate_multiplier == 1 ? transform_table<Real>(static_cast<std::size_t>(length)) : nullptr;
+        if (table != nullptr) {
+            window_tables_.push_back(table->kbd_left);
+            windows_.emplace_back();
+        } else {
+            window_tables_.emplace_back();
+            windows_.push_back(computed_kbd_left(length, rate_multiplier));
+        }
     }
     valid_ = !imdct_.empty();
     if (valid_) {
         block_.assign(2 * static_cast<std::size_t>(full_length), Real{});
         transform_.assign(static_cast<std::size_t>(full_length), Complex{});
     }
+}
+
+template <typename Real>
+std::vector<Real> TransformSet<Real>::computed_kbd_left(int length, int rate_multiplier) {
+    // kbd_left() computes the window in double (the Kaiser-Bessel Bessel
+    // function series wants the precision); narrowed to Real explicitly,
+    // once, here - the vector<double>-to-vector<Real> range constructor
+    // narrows implicitly per element, which -Wdouble-promotion's sibling
+    // warning (MSVC's C4244) rightly flags as an error on the float build.
+    const std::vector<double> window = dsp::kbd_left(length, kbd_alpha(length, rate_multiplier));
+    std::vector<Real> narrowed(window.size());
+    std::ranges::transform(window, narrowed.begin(), [](double w) { return static_cast<Real>(w); });
+    return narrowed;
 }
 
 template <typename Real>
@@ -71,7 +86,11 @@ Imdct<Real>* TransformSet<Real>::imdct(int length) noexcept {
 template <typename Real>
 std::span<const Real> TransformSet<Real>::kbd_left(int length) const noexcept {
     const int k = slot(length);
-    return k < 0 ? std::span<const Real>{} : std::span<const Real>(windows_[static_cast<std::size_t>(k)]);
+    if (k < 0) {
+        return {};
+    }
+    const auto index = static_cast<std::size_t>(k);
+    return window_tables_[index].empty() ? std::span<const Real>(windows_[index]) : window_tables_[index];
 }
 
 template <typename Real>

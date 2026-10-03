@@ -57,6 +57,7 @@ add_executable(iclforge-tests
     ac4core/test_ac4core_dsp.cpp
     ac4core/test_ac4core_dsp_exact.cpp
     ac4core/test_ac4core_mant_exp.cpp
+    ac4core/test_ac4core_transform_tables.cpp
     ac4core/test_ac4core_portable_math.cpp
     ac4core/test_ac4core_resampler.cpp
     ac4dec/test_ac4dec_api.cpp

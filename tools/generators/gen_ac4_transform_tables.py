@@ -1,0 +1,192 @@
+"""The inverse transform's tables in double, for the float and fixed-point tiers to keep in flash.
+
+Writes src/ac4core/include/iclforge/ac4core/tables/transform_tables.hpp: for each block length
+of a 2048-sample frame at 44.1 or 48 kHz (2048, 1024, 512, 256 and 128), the values the decoder
+otherwise computes when it builds its transforms (src/ac4core/src/dsp/fft.cpp, mdct.cpp,
+kbd.cpp and synthesis.cpp), in the order it stores them:
+
+  kFftRootsN    e^(-2 pi i (p k mod n) / n) for each pass of the N/2-point FFT, {re, im};
+  kPreTwiddleN  -cos(2 pi (8k + 1) / 16N) and -sin(...) for k < N/2, Pseudocode 60;
+  kKbdLeftN     KBD_LEFT(N) with Table 186's alpha.
+
+Each is computed here with the same double operations in the same order as the C++, and the
+same C library's cos, sin and sqrt, and written as an exact hexadecimal literal.
+src/ac4core/src/dsp/transform_tables.cpp narrows them to the tier's scalar at compile time, as
+the runtime code narrows its own, and tests/ac4core/test_ac4core_transform_tables.cpp holds
+every narrowed value equal to what the runtime code computes on the compiler that runs it.
+
+Usage:
+    gen_ac4_transform_tables.py [--check]
+
+--check fails, writing nothing, when the header is not what this would write.
+"""
+
+from __future__ import annotations
+
+import argparse
+import math
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+HEADER = (
+    REPO_ROOT
+    / "src"
+    / "ac4core"
+    / "include"
+    / "iclforge"
+    / "ac4core"
+    / "tables"
+    / "transform_tables.hpp"
+)
+
+LENGTHS = (2048, 1024, 512, 256, 128)
+# Table 186's alpha for each of LENGTHS (src/ac4core/src/dsp/kbd.cpp, kAlphas).
+ALPHA = {2048: 3.0, 1024: 4.0, 512: 4.5, 256: 5.0, 128: 6.0}
+
+
+def radices(length: int) -> list[int]:
+    """fft.cpp's factor(): radix 4 first, then 2, 3 and 5."""
+    result: list[int] = []
+    for radix in (4, 2, 3, 5):
+        while length % radix == 0:
+            result.append(radix)
+            length //= radix
+    if length != 1:
+        sys.exit(f"{length} has a prime factor above 5")
+    return result
+
+
+def root(num: int, den: int) -> tuple[float, float]:
+    """fft.cpp's root(): -2.0 * pi * (num % den) / den, then cos and sin."""
+    angle = -2.0 * math.pi * float(num % den) / float(den)
+    return math.cos(angle), math.sin(angle)
+
+
+def fft_roots(length: int) -> list[float]:
+    """The twiddles of Fft(length), pass after pass, as Fft's constructor appends them."""
+    values: list[float] = []
+    n = length
+    for radix in radices(length):
+        m = n // radix
+        for p in range(m):
+            for k in range(radix):
+                re, im = root(p * k, n)
+                values += (re, im)
+        n = m
+    return values
+
+
+def pre_twiddles(length: int) -> list[float]:
+    """mdct.cpp's pre_twiddles(), before its cast."""
+    values: list[float] = []
+    n16 = 16.0 * float(length)
+    for k in range(length // 2):
+        angle = 2.0 * math.pi * float(8 * k + 1) / n16
+        values += (-math.cos(angle), -math.sin(angle))
+    return values
+
+
+def bessel_i0(x: float) -> float:
+    """kbd.hpp's bessel_i0()."""
+    half = x / 2.0
+    term = 1.0
+    total = 1.0
+    for k in range(1, 500):
+        term *= half / float(k)
+        add = term * term
+        nxt = total + add
+        if nxt == total:
+            break
+        total = nxt
+    return total
+
+
+def kbd_left(length: int, alpha: float) -> list[float]:
+    """kbd.cpp's kbd_left()."""
+    pi_alpha = math.pi * alpha
+    norm = bessel_i0(pi_alpha)
+    cumulative: list[float] = []
+    running = 0.0
+    for p in range(length + 1):
+        t = 2.0 * float(p) / float(length) - 1.0
+        radicand = max(0.0, 1.0 - t * t)
+        running += bessel_i0(pi_alpha * math.sqrt(radicand)) / norm
+        cumulative.append(running)
+    total = cumulative[length]
+    return [math.sqrt(cumulative[n] / total) for n in range(length)]
+
+
+def wrap(items: list[str], indent: str = "    ", width: int = 100) -> list[str]:
+    lines: list[str] = []
+    line = indent
+    for item in items:
+        piece = item + ","
+        if len(line) + len(piece) + 1 > width and line.strip():
+            lines.append(line.rstrip())
+            line = indent
+        line += piece + " "
+    if line.strip():
+        lines.append(line.rstrip())
+    return lines
+
+
+def literal(value: float) -> str:
+    return "0.0" if value == 0.0 and math.copysign(1.0, value) > 0 else float.hex(value)
+
+
+def table(name: str, values: list[float]) -> list[str]:
+    return [
+        f"inline constexpr std::array<double, {len(values)}> {name} = {{",
+        *wrap([literal(v) for v in values]),
+        "};",
+        "",
+    ]
+
+
+def render() -> str:
+    lines = [
+        "#pragma once",
+        "",
+        "#include <array>",
+        "",
+        "// The inverse transform's tables in double (planning/ac4.md, the decoder's memory).",
+        "// GENERATED by tools/generators/gen_ac4_transform_tables.py; do not edit by hand. Read",
+        "// only by src/ac4core/src/dsp/transform_tables.cpp, which narrows them to the tier's",
+        "// scalar while it compiles.",
+        "",
+        "namespace iclforge::ac4::detail::tables {",
+        "",
+    ]
+    for length in LENGTHS:
+        lines += table(f"kFftRoots{length}", fft_roots(length // 2))
+        lines += table(f"kPreTwiddle{length}", pre_twiddles(length))
+        lines += table(f"kKbdLeft{length}", kbd_left(length, ALPHA[length]))
+    lines += ["}  // namespace iclforge::ac4::detail::tables", ""]
+    return "\n".join(lines)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument(
+        "--check", action="store_true", help="fail when the header is not what this would write"
+    )
+    args = parser.parse_args()
+    text = render()
+    if args.check:
+        current = HEADER.read_text(encoding="utf-8") if HEADER.exists() else ""
+        if current != text:
+            print(
+                f"{HEADER.relative_to(REPO_ROOT)} is out of date; run "
+                "tools/generators/gen_ac4_transform_tables.py",
+                file=sys.stderr,
+            )
+            return 1
+        return 0
+    HEADER.write_text(text, encoding="utf-8", newline="\n")
+    print(f"wrote {HEADER.relative_to(REPO_ROOT)}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

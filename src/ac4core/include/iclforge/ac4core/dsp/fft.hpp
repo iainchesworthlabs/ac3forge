@@ -59,9 +59,13 @@ class Fft {
         const Complex* roots5 = nullptr;
     };
     [[nodiscard]] View view() const noexcept {
-        return View{stages_.data(), stages_.size(), twiddles_.data(), roots3_.data(),
-                    roots5_.data()};
+        return View{stages_.data(), stages_.size(), twiddles(), roots3_.data(), roots5_.data()};
     }
+
+    // Every pass's roots, in the plan's order, as the constructor computes them where no table
+    // is built in (dsp/transform_tables.hpp), which tests/ac4core/test_ac4core_transform_tables.cpp
+    // holds the built-in ones to.
+    [[nodiscard]] static std::vector<Complex> computed_roots(std::size_t length);
 
     // The inverse transform at a scalar that is not floating (Fixed32): before each pass, if
     // the largest real or imaginary part is 16 or more, every value is shifted down together
@@ -79,11 +83,16 @@ class Fft {
         return work_;
     }
     void run(std::span<Complex> data, std::span<Complex> work, bool inverse);
+    [[nodiscard]] const Complex* twiddles() const noexcept {
+        return built_in_ != nullptr ? built_in_ : twiddles_.data();
+    }
 
     std::size_t length_ = 0;
     bool valid_ = false;
     std::vector<Stage> stages_;
-    // For each pass, w^(p*k) for p < n/radix and k < radix, with w = e^(-2 pi i/n).
+    // For each pass, w^(p*k) for p < n/radix and k < radix, with w = e^(-2 pi i/n): the
+    // built-in table's where there is one, else computed into twiddles_.
+    const Complex* built_in_ = nullptr;
     std::vector<Complex> twiddles_;
     // e^(-2 pi i j/3) and e^(-2 pi i j/5), the radix-3 and radix-5 butterflies' roots.
     std::array<Complex, 5> roots3_{};

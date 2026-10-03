@@ -1,5 +1,7 @@
 #include "iclforge/ac4core/dsp/fft.hpp"
 
+#include "iclforge/ac4core/dsp/transform_tables.hpp"
+
 #include <algorithm>
 #include <type_traits>
 #include <cstdint>
@@ -43,6 +45,26 @@ std::complex<double> root(std::size_t num, std::size_t den) {
 }  // namespace
 
 template <typename Real>
+std::vector<typename Fft<Real>::Complex> Fft<Real>::computed_roots(std::size_t length) {
+    std::vector<Complex> roots;
+    bool ok = false;
+    const std::vector<int> radices = factor(length, ok);
+    std::size_t n = length;
+    for (const int radix : radices) {
+        const auto r = static_cast<std::size_t>(radix);
+        const std::size_t m = n / r;
+        for (std::size_t p = 0; p < m; ++p) {
+            for (std::size_t k = 0; k < r; ++k) {
+                const std::complex<double> w = root(p * k, n);
+                roots.emplace_back(static_cast<Real>(w.real()), static_cast<Real>(w.imag()));
+            }
+        }
+        n = m;
+    }
+    return roots;
+}
+
+template <typename Real>
 Fft<Real>::Fft(std::size_t length) : length_(length) {
     const std::vector<int> radices = factor(length, valid_);
     if (!valid_) {
@@ -50,18 +72,22 @@ Fft<Real>::Fft(std::size_t length) : length_(length) {
     }
     std::size_t n = length;
     std::size_t stride = 1;
+    std::size_t count = 0;
     for (const int radix : radices) {
         const auto r = static_cast<std::size_t>(radix);
         const std::size_t m = n / r;
-        stages_.push_back(Stage{radix, n, stride, twiddles_.size()});
-        for (std::size_t p = 0; p < m; ++p) {
-            for (std::size_t k = 0; k < r; ++k) {
-                const std::complex<double> w = root(p * k, n);
-                twiddles_.emplace_back(static_cast<Real>(w.real()), static_cast<Real>(w.imag()));
-            }
-        }
+        stages_.push_back(Stage{radix, n, stride, count});
+        count += m * r;
         n = m;
         stride *= r;
+    }
+    // An inverse transform of 2 * length lines has its roots in flash at the float and fixed
+    // tiers (dsp/transform_tables.hpp), the same values computed_roots() gives.
+    const TransformTable<Real>* const table = transform_table<Real>(2 * length);
+    if (table != nullptr && table->fft_roots.size() == count) {
+        built_in_ = table->fft_roots.data();
+    } else {
+        twiddles_ = computed_roots(length);
     }
     for (std::size_t j = 0; j < 5; ++j) {
         const std::complex<double> w3 = root(j, 3);
@@ -82,10 +108,10 @@ void Fft<Real>::run(std::span<Complex> data, std::span<Complex> work, bool inver
     // so on.
     Complex* const result =
         inverse
-            ? fft_kernels::run_stages<Real, true>(stages_.data(), stages_.size(), twiddles_.data(),
+            ? fft_kernels::run_stages<Real, true>(stages_.data(), stages_.size(), twiddles(),
                                                   roots3_.data(), roots5_.data(), first,
                                                   data.data(), work.data())
-            : fft_kernels::run_stages<Real, false>(stages_.data(), stages_.size(), twiddles_.data(),
+            : fft_kernels::run_stages<Real, false>(stages_.data(), stages_.size(), twiddles(),
                                                    roots3_.data(), roots5_.data(), first,
                                                    data.data(), work.data());
     if (result != data.data()) {
@@ -124,7 +150,7 @@ int Fft<Real>::inverse_scaled(std::span<Complex> data, std::span<Complex> scratc
                 }
                 shed += down;
             }
-            fft_kernels::pass_from_array<Real, true>(stage, x, y, twiddles_.data(), roots3_.data(),
+            fft_kernels::pass_from_array<Real, true>(stage, x, y, twiddles(), roots3_.data(),
                                                      roots5_.data());
             std::swap(x, y);
         }

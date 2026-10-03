@@ -67,12 +67,18 @@ class TransformSet {
     [[nodiscard]] std::span<Real> block_scratch() noexcept { return block_; }
     [[nodiscard]] std::span<Complex> transform_scratch() noexcept { return transform_; }
 
+    // KBD_LEFT(length) with Table 186's alpha, narrowed, as the set computes it where no table
+    // is built in (dsp/transform_tables.hpp).
+    [[nodiscard]] static std::vector<Real> computed_kbd_left(int length, int rate_multiplier);
+
    private:
     [[nodiscard]] int slot(int length) const noexcept;
 
     int full_length_ = 0;
     bool valid_ = false;
     std::vector<Imdct<Real>> imdct_;
+    // Each length's window: the built-in table where there is one, else computed into windows_.
+    std::vector<std::span<const Real>> window_tables_;
     std::vector<std::vector<Real>> windows_;
     std::vector<Real> block_;
     std::vector<Complex> transform_;

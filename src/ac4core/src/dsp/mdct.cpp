@@ -8,6 +8,7 @@
 #include <type_traits>
 
 #include "iclforge/ac4core/dsp/scalar_traits.hpp"
+#include "iclforge/ac4core/dsp/transform_tables.hpp"
 
 namespace iclforge::ac4::detail::dsp {
 namespace {
@@ -35,23 +36,52 @@ std::vector<Complex> pre_twiddles(std::size_t length) {
 }  // namespace
 
 template <typename Real>
-Imdct<Real>::Imdct(std::size_t length)
-    : length_(length), fft_(length / 2), twiddle_(pre_twiddles<Complex>(length)) {
+std::vector<typename Imdct<Real>::Complex> Imdct<Real>::computed_pre_twiddles(std::size_t length) {
+    return pre_twiddles<Complex>(length);
+}
+
+template <typename Real>
+std::vector<typename Imdct<Real>::Complex> Imdct<Real>::computed_post_twiddles(std::size_t length) {
+    std::vector<Complex> post;
     if constexpr (!std::is_floating_point_v<Real>) {
-        // 1/N = 2^-post_shift_ (2^post_shift_ / N), the factor in [1/2, 1).
-        int shift = 0;
-        while ((std::size_t{1} << static_cast<unsigned>(shift)) < length) {
-            ++shift;
-        }
-        post_shift_ = shift - 1;
-        const double factor = std::ldexp(1.0, post_shift_) / static_cast<double>(length);
-        post_twiddle_.resize(length / 2);
+        const double factor = std::ldexp(1.0, post_shift_of(length)) / static_cast<double>(length);
+        post.resize(length / 2);
         const double n16 = 16.0 * static_cast<double>(length);
-        for (std::size_t k = 0; k < post_twiddle_.size(); ++k) {
+        for (std::size_t k = 0; k < post.size(); ++k) {
             const double angle = 2.0 * std::numbers::pi * static_cast<double>(8 * k + 1) / n16;
-            post_twiddle_[k] = Complex(Real(-std::cos(angle) * factor), Real(-std::sin(angle) * factor));
+            post[k] = Complex(Real(-std::cos(angle) * factor), Real(-std::sin(angle) * factor));
         }
     }
+    return post;
+}
+
+template <typename Real>
+int Imdct<Real>::post_shift_of(std::size_t length) noexcept {
+    // 1/N = 2^-post_shift (2^post_shift / N), the factor in [1/2, 1).
+    int shift = 0;
+    while ((std::size_t{1} << static_cast<unsigned>(shift)) < length) {
+        ++shift;
+    }
+    return shift - 1;
+}
+
+template <typename Real>
+Imdct<Real>::Imdct(std::size_t length) : length_(length), fft_(length / 2) {
+    if constexpr (!std::is_floating_point_v<Real>) {
+        post_shift_ = post_shift_of(length);
+    }
+    // The tables are in flash at the float and fixed tiers for the lengths
+    // dsp/transform_tables.hpp builds in, the same values the two functions above give.
+    const TransformTable<Real>* const table = transform_table<Real>(length);
+    if (table != nullptr && table->pre_twiddle.size() == length / 2) {
+        pre_table_ = table->pre_twiddle.data();
+        if constexpr (!std::is_floating_point_v<Real>) {
+            post_table_ = table->post_twiddle.data();
+        }
+        return;
+    }
+    twiddle_ = computed_pre_twiddles(length);
+    post_twiddle_ = computed_post_twiddles(length);
 }
 
 template <typename Real>
@@ -83,11 +113,11 @@ void Imdct<Real>::inverse(std::span<const Real> spectrum, int exponent, std::spa
         const int up = 27 - (32 - std::countl_zero(largest));
         const auto line = [&](std::size_t k) { return spectrum[k].scaled_by_pow2(up); };
         for (std::size_t k = 0; k < half; ++k) {
-            z[k] = Complex(line(n - 2 * k - 1), line(2 * k)) * twiddle_[k];
+            z[k] = Complex(line(n - 2 * k - 1), line(2 * k)) * pre()[k];
         }
         const int shed = fft_.inverse_scaled(z, work);
         for (std::size_t k = 0; k < half; ++k) {
-            z[k] = z[k] * post_twiddle_[k];
+            z[k] = z[k] * post()[k];
         }
         // The values are the double decoder's times 2^(-exponent + up - shed + post_shift_), and
         // the time domain is kTimeShift below it.
@@ -127,7 +157,7 @@ typename Imdct<Real>::Complex* Imdct<Real>::transform(std::span<const Real> spec
     // Pseudocode 60: Z[k] = (X[N-2k-1] + j X[2k]) (xcos1[k] + j xsin1[k]), the first pass's
     // input at index k.
     const Real* const x = spectrum.data();
-    const Complex* const tw = twiddle_.data();
+    const Complex* const tw = pre();
     const auto pretwiddled = [x, tw, n](std::size_t k) noexcept {
         return Complex(x[n - 2 * k - 1], x[2 * k]) * tw[k];
     };
@@ -151,7 +181,7 @@ void Imdct<Real>::inverse(std::span<const Real> spectrum, std::span<Real> out,
     if (z == nullptr) {
         return;
     }
-    const Complex* const tw = twiddle_.data();
+    const Complex* const tw = pre();
     // Pseudocode 62: y[n] = z[n] (xcos1[n] + j xsin1[n]) / N.
     const Real scale = Real(1) / static_cast<Real>(n);
     const auto post = [z, tw, scale](std::size_t k) noexcept { return z[k] * tw[k] * scale; };
@@ -187,7 +217,7 @@ void Imdct<Real>::inverse_overlap(std::span<const Real> spectrum, std::span<cons
     if (z == nullptr) {
         return;
     }
-    const Complex* const tw = twiddle_.data();
+    const Complex* const tw = pre();
     const Real scale = Real(1) / static_cast<Real>(n);
     const auto post = [z, tw, scale](std::size_t k) noexcept { return z[k] * tw[k] * scale; };
     const Real* const window = kbd.data();

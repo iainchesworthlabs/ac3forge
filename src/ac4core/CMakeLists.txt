@@ -39,6 +39,7 @@ target_sources(iclforge_ac4core
         src/dsp/qmf.cpp
         src/dsp/resampler.cpp
         src/dsp/synthesis.cpp
+        src/dsp/transform_tables.cpp
         src/tables/huffman_codes.cpp
         src/tables/huffman_tables.cpp
         src/tables/isf_tables.cpp
@@ -206,8 +207,10 @@ if(_ac4core_scalar_dir STREQUAL "float" OR _ac4core_scalar_dir STREQUAL "fixed")
     elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
         set(_ac4core_constexpr_limit "-fconstexpr-ops-limit=268435456")
     endif()
+    # src/dsp/transform_tables.cpp narrows the inverse transform's tables (dsp/transform_tables.hpp)
+    # to the tier's scalar the same way: about 13,000 doubles, well inside the same limits.
     if(_ac4core_constexpr_limit)
-        set_property(SOURCE src/dsp/resampler.cpp APPEND PROPERTY
+        set_property(SOURCE src/dsp/resampler.cpp src/dsp/transform_tables.cpp APPEND PROPERTY
             COMPILE_OPTIONS "${_ac4core_constexpr_limit}")
     endif()
 endif()
