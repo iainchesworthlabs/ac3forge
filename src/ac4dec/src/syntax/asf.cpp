@@ -587,7 +587,7 @@ ParseResult parse_sf_data(BitReader& r, const SubstreamContext& ctx, const SfInf
         for (int sfb = 0; sfb < out.max_sfb[at(g)]; ++sfb) {
             std::int32_t peak = 0;
             for (int k = out.sect_sfb_offset[at(g)][at(sfb)]; k < out.sect_sfb_offset[at(g)][at(sfb + 1)]; ++k) {
-                peak = std::max(peak, std::abs(out.quant_spec[at(k)]));
+                peak = std::max<std::int32_t>(peak, std::abs(out.quant_spec[at(k)]));
             }
             out.max_quant_idx[at(g)][at(sfb)] =
                 static_cast<std::uint16_t>(std::min<std::int32_t>(peak, 65535));
@@ -721,7 +721,7 @@ ParseResult parse_sf_hsf_data(BitReader& r, int num_window_groups, const SfData&
             std::int32_t peak = 0;
             for (int k = static_cast<int>(hsf_out.sect_sfb_offset[at(g)][at(i)]);
                  k < static_cast<int>(hsf_out.sect_sfb_offset[at(g)][at(i + 1)]); ++k) {
-                peak = std::max(peak, std::abs(hsf_out.quant_spec[at(k)]));
+                peak = std::max<std::int32_t>(peak, std::abs(hsf_out.quant_spec[at(k)]));
             }
             hsf_out.max_quant_idx[at(g)][at(i)] =
                 static_cast<std::uint16_t>(std::min<std::int32_t>(peak, 65535));
