@@ -215,6 +215,14 @@ void report_stages(const char* codec, int frames) {
 
 bool stages_active() { return g_ever_active; }
 
+const char* current_stage() {
+    if (g_depth == 0 || g_depth > kMaxDepth) {
+        return nullptr;
+    }
+    const std::size_t zone = g_stack[g_depth - 1].zone;
+    return zone < kMaxZones ? g_zones[zone].name : nullptr;
+}
+
 std::uint64_t stage_pair_cost_ns() {
     // Measured, not assumed: a thousand empty enter/leave pairs on a
     // throwaway zone, against the same clock the zones use. Both the lookup

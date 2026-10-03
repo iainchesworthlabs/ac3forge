@@ -42,6 +42,7 @@
 
 #include "ac4_fixture.hpp"
 #include "probe.hpp"
+#include "stage_timers.hpp"
 
 namespace {
 
@@ -68,6 +69,15 @@ std::array<std::size_t, kBuckets> g_live_by_bucket{};
 std::array<std::size_t, kBuckets> g_peak_by_bucket{};
 std::array<std::size_t, kBuckets> g_live_count_by_bucket{};
 std::array<std::size_t, kBuckets> g_peak_count_by_bucket{};
+
+// The same snapshot at each fixture's own peak, with the frame being decoded and the innermost
+// stage open then (only a build with ICLFORGE_STAGE_TIMERS has stages): what the run's single
+// snapshot cannot say for the fixtures that are not the largest.
+std::array<std::size_t, kBuckets> g_fixture_peak_by_bucket{};
+std::array<std::size_t, kBuckets> g_fixture_peak_count_by_bucket{};
+int g_frame_index = -1;
+int g_fixture_peak_frame = -1;
+const char* g_fixture_peak_stage = nullptr;
 
 std::size_t size_bucket(std::size_t size) {
     std::size_t bucket = 0;
@@ -107,7 +117,13 @@ void* operator new(std::size_t size) {
         g_peak_by_bucket = g_live_by_bucket;
         g_peak_count_by_bucket = g_live_count_by_bucket;
     }
-    g_fixture_peak_bytes = std::max(g_fixture_peak_bytes, g_live_bytes);
+    if (g_live_bytes > g_fixture_peak_bytes) {
+        g_fixture_peak_bytes = g_live_bytes;
+        g_fixture_peak_by_bucket = g_live_by_bucket;
+        g_fixture_peak_count_by_bucket = g_live_count_by_bucket;
+        g_fixture_peak_frame = g_frame_index;
+        g_fixture_peak_stage = iclforge_probe::current_stage();
+    }
     return static_cast<std::byte*>(raw) + kHeaderBytes;
 }
 
@@ -312,6 +328,11 @@ int decode_fixture(const Fixture& fixture) {
     std::size_t sink_channels = 0;
     bool frames_ok = true;
     g_fixture_peak_bytes = g_live_bytes;
+    g_fixture_peak_by_bucket = g_live_by_bucket;
+    g_fixture_peak_count_by_bucket = g_live_count_by_bucket;
+    g_frame_index = -1;
+    g_fixture_peak_frame = -1;
+    g_fixture_peak_stage = nullptr;
 
     {
         iclforge::ac4::Decoder decoder;
@@ -335,6 +356,7 @@ int decode_fixture(const Fixture& fixture) {
             const std::size_t bytes_before = g_alloc_bytes_total;
             const std::uint64_t sink_before = measured.sink_us;
             const std::uint64_t t0 = iclforge_probe::now_us();
+            g_frame_index = index;
             const auto decoded = decoder.decode_by_block(frame.raw_ac4_frame, sink);
             const std::uint64_t t1 = iclforge_probe::now_us();
             measured.decode_us += (t1 - t0) - (measured.sink_us - sink_before);
@@ -358,6 +380,7 @@ int decode_fixture(const Fixture& fixture) {
         }
         const std::uint64_t t0 = iclforge_probe::now_us();
         const std::uint64_t sink_before = measured.sink_us;
+        g_frame_index = index;
         (void)decoder.flush(sink);
         measured.decode_us += (iclforge_probe::now_us() - t0) - (measured.sink_us - sink_before);
         measured.stack = read_stack();
@@ -401,6 +424,19 @@ int decode_fixture(const Fixture& fixture) {
     std::printf("%s.peak_bytes=%lu %s.stack_bytes=%lu\n", fixture.name,
                 static_cast<unsigned long>(g_fixture_peak_bytes), fixture.name,
                 static_cast<unsigned long>(measured.stack.bytes));
+    // The frame is the index of the decode_by_block call the peak fell in, the fixture's
+    // frame count for the flush; the stage is "-" outside every marker or without them.
+    std::printf("%s.peak_frame=%d %s.peak_stage=%s\n", fixture.name, g_fixture_peak_frame,
+                fixture.name, g_fixture_peak_stage != nullptr ? g_fixture_peak_stage : "-");
+    for (std::size_t bucket = 0; bucket < kBuckets; ++bucket) {
+        if (g_fixture_peak_by_bucket[bucket] == 0) {
+            continue;
+        }
+        std::printf("%s.peak_live[%lu]=%lu count=%lu\n", fixture.name,
+                    static_cast<unsigned long>(std::size_t{1} << bucket),
+                    static_cast<unsigned long>(g_fixture_peak_by_bucket[bucket]),
+                    static_cast<unsigned long>(g_fixture_peak_count_by_bucket[bucket]));
+    }
     const std::uint64_t per_frame_us =
         measured.decode_us / static_cast<std::uint64_t>(fixture.frames);
     const std::uint64_t permille = (measured.decode_us * 1000ULL) /

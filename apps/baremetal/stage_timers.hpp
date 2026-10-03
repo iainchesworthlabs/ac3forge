@@ -29,6 +29,10 @@ void reset_stages();
 // Prints nothing at all when no zone ever ran.
 void report_stages(const char* codec, int frames);
 
+// The innermost zone open now, or nullptr outside every zone and in a build whose library
+// calls no marker. Allocates nothing, so operator new can ask it.
+[[nodiscard]] const char* current_stage();
+
 // Whether any zone has run since the program started: the probe prints this
 // once so a reader of the log knows which kind of build produced it.
 [[nodiscard]] bool stages_active();

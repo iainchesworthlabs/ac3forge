@@ -42,7 +42,9 @@ DIRECTION=decoder
 # that is shape only - QEMU's clock describes the host, and the host shape's
 # describes a desktop - but it is the same build a board run uses, and this
 # is where it is proven to build and run. Passed to CMake in both states, so
-# a cached ON from an earlier run cannot leak into a plain one.
+# a cached ON from an earlier run cannot leak into a plain one. With --ac4 the
+# probe also names the stage open at each fixture's peak heap
+# (<fixture>.peak_stage), which a build without the timers prints as "-".
 STAGE_TIMERS=OFF
 # --icount: the one timing figure on this leg that means anything. The probe
 # is built with its clock on the mps2-an385's 25 MHz CMSDK timer
@@ -71,11 +73,6 @@ if [[ "$ICOUNT" == "1" && "$HOST" == "1" ]]; then
     echo "error: --icount is a QEMU mode; it cannot be combined with --host" >&2
     exit 2
 fi
-if [[ "$DIRECTION" == "ac4" && "$STAGE_TIMERS" == "ON" ]]; then
-    echo "error: the AC-4 probe has no stage timers; --stage-timers does not apply" >&2
-    exit 2
-fi
-
 # --- instruction ceilings (--icount) ---------------------------------------
 # Thumb-2 instructions per frame on the soft-float Cortex-M3 leg, measured
 # 2026-09-10 at the values docs/performance-trend.md's "Instructions per
