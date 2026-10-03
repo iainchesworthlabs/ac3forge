@@ -38,6 +38,7 @@ namespace {
 
 using iclforge::test::kSanitized;
 namespace detail = iclforge::ac4::detail;
+using QmfMatrix = iclforge::ac4::detail::QmfMatrix;
 using QmfValue = iclforge::ac4::detail::QmfValue;
 
 constexpr int kSlots = 32;  // num_qmf_timeslots at frame_rate_index 13
@@ -79,7 +80,7 @@ double amplitude_for(double relative, double dialnorm) {
 void run_frame(detail::DrcStage& stage, const iclforge::ac4::OutputConfig& output,
                const detail::DrcFrameValues& values, std::vector<QmfValue> left) {
     std::vector<QmfValue> right(left.size());
-    std::array<std::vector<QmfValue>*, 2> matrices = {&left, &right};
+    std::array<QmfMatrix, 2> matrices = {left, right};
     stage.process(output, values, matrices, matrices);
 }
 
@@ -372,9 +373,9 @@ TEST_CASE("transmitted DRC gains apply by channel group, band and subframe", "[a
         .output_level_dbfs = -24.0, .drc = iclforge::ac4::DrcMode::kDefault, .headphones = false};
     std::vector<std::vector<QmfValue>> channels(
         speakers.size(), std::vector<QmfValue>(kSlots * 64, ac4dec_units::qmf(1.0)));
-    std::vector<std::vector<QmfValue>*> matrices;
+    std::vector<QmfMatrix> matrices;
     for (auto& channel : channels) {
-        matrices.push_back(&channel);
+        matrices.push_back(channel);
     }
     stage.process(output, {.dialnorm = -30.0, .curve = std::nullopt, .gains = set, .reset = false},
                   matrices, matrices);
@@ -434,9 +435,9 @@ TEST_CASE("transmitted DRC gains apply by Part 2 Table 69's groups to the immers
                                                  .headphones = false};
         std::vector<std::vector<QmfValue>> channels(
             speakers.size(), std::vector<QmfValue>(kSlots * 64, ac4dec_units::qmf(1.0)));
-        std::vector<std::vector<QmfValue>*> matrices;
+        std::vector<QmfMatrix> matrices;
         for (auto& channel : channels) {
-            matrices.push_back(&channel);
+            matrices.push_back(channel);
         }
         stage.process(output,
                       {.dialnorm = -30.0, .curve = std::nullopt, .gains = set, .reset = false},

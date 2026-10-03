@@ -594,10 +594,10 @@ std::vector<double> apply_rows(const std::vector<std::vector<double>>& rows,
 std::vector<double> through(detail::DownmixStage& stage, const detail::DownmixValues& values,
                             const std::vector<double>& in) {
     std::vector<std::vector<detail::QmfValue>> matrices(in.size());
-    std::vector<std::vector<detail::QmfValue>*> pointers;
+    std::vector<detail::QmfMatrix> pointers;
     for (std::size_t c = 0; c < in.size(); ++c) {
         matrices[c] = {detail::QmfValue(static_cast<detail::Real>(in[c]), detail::Real{})};
-        pointers.push_back(&matrices[c]);
+        pointers.push_back(matrices[c]);
     }
     std::vector<std::vector<detail::QmfValue>> out;
     if (stage.passes_through()) {

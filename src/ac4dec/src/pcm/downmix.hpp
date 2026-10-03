@@ -91,7 +91,7 @@ class DownmixStage {
 
     // Takes this frame's values and writes out[o] = sum_c M[o][c] in[c] for
     // every QMF value, out resized to speakers().
-    void process(const DownmixValues& values, std::span<std::vector<QmfValue>* const> in,
+    void process(const DownmixValues& values, std::span<const QmfMatrix> in,
                  std::vector<std::vector<QmfValue>>& out);
 
     // The matrix in force, one row per channel out, one column per channel in.

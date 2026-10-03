@@ -223,7 +223,7 @@ typename Reconstruction<Real>::Schedule Reconstruction<Real>::schedule(const Fra
 
 template <typename Real>
 void Reconstruction<Real>::reconstruct(const FrameParameters& p, int num_ts,
-                                       std::span<const std::vector<Complex>* const> x,
+                                       std::span<const std::span<Complex>> x,
                                        std::span<std::vector<Complex>* const> z, double de_gain,
                                        std::span<const std::uint8_t> dialogue) {
     configure(p);
@@ -316,7 +316,7 @@ void Reconstruction<Real>::reconstruct(const FrameParameters& p, int num_ts,
                                          at(ch)]
                             : 0.0;
                     const Real d = step(pre_.prev[i], pre_.delta[i], moves, start, target);
-                    u += d * (*x[at(ch)])[k];
+                    u += d * x[at(ch)][k];
                 }
                 u_[at(de)][k] = u;
             }
@@ -354,7 +354,7 @@ void Reconstruction<Real>::reconstruct(const FrameParameters& p, int num_ts,
                     const std::size_t i = (at(sb) * at(n) + at(o)) * at(m) + at(ch);
                     const double target = start >= 0 ? params->dry_at(o, start, ch, pb) : 0.0;
                     const Real c = step(dry_.prev[i], dry_.delta[i], moves, start, target);
-                    acc += c * (*x[at(ch)])[k];
+                    acc += c * x[at(ch)][k];
                 }
                 for (int de = 0; de < decorr; ++de) {
                     const std::size_t i = (at(sb) * at(n) + at(o)) * kMaxDecorrelators + at(de);
@@ -370,7 +370,7 @@ void Reconstruction<Real>::reconstruct(const FrameParameters& p, int num_ts,
 
 template <typename Real>
 void Reconstruction<Real>::enhance_core(const FrameParameters& p, int num_ts,
-                                        std::span<std::vector<Complex>* const> x, double de_gain,
+                                        std::span<const std::span<Complex>> x, double de_gain,
                                         std::span<const std::uint8_t> dialogue,
                                         std::span<const double> coeff) {
     configure(p);
@@ -419,7 +419,7 @@ void Reconstruction<Real>::enhance_core(const FrameParameters& p, int num_ts,
                         delta = (static_cast<Real>(target) - v) /
                                 static_cast<Real>(p.ramp_len[at(start)]);
                     }
-                    acc += v * (*x[at(ch)])[k];
+                    acc += v * x[at(ch)][k];
                 }
                 if (at(o) < a.size()) {
                     a[at(o)] = is_dialogue ? acc : Complex{};
@@ -432,7 +432,7 @@ void Reconstruction<Real>::enhance_core(const FrameParameters& p, int num_ts,
                     const Real h = (Real{1} - alpha) * h_m_prev_[i] + alpha * h_m_[i];
                     add += h * a[at(o)];
                 }
-                (*x[at(ch)])[k] += add;
+                x[at(ch)][k] += add;
             }
         }
     }

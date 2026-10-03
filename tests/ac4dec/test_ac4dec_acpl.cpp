@@ -33,6 +33,7 @@ using iclforge::ac4::detail::AcplParams;
 using iclforge::ac4::detail::AcplQuantHistory;
 using iclforge::ac4::detail::ChannelElement;
 using iclforge::ac4::detail::ElementKind;
+using iclforge::ac4::detail::QmfMatrix;
 using iclforge::ac4::detail::QmfValue;
 using iclforge::ac4::detail::Real;
 using Catch::Approx;
@@ -186,7 +187,7 @@ TEST_CASE("steep interpolation switches a pair between its outputs at each set's
     const std::vector<QmfValue> x0 = left;
     std::vector<QmfValue> right(kValues);
     const std::array<Speaker, 2> speakers = {Speaker::kLeft, Speaker::kRight};
-    const std::array<std::vector<QmfValue>*, 2> matrices = {&left, &right};
+    const std::array<QmfMatrix, 2> matrices = {left, right};
     iclforge::ac4::detail::AcplStage stage;
     stage.apply(iclforge::ac4::detail::ch_mode::kStereo, false, ElementKind::kPair, codec_mode::kAspxAcpl2, values, kSlots,
                 {.speakers = speakers, .matrices = matrices});
@@ -234,7 +235,7 @@ TEST_CASE("ASPX_ACPL_3 makes the centre of gamma5 and gamma6", "[ac4dec][acpl]")
         std::vector<QmfValue> c(kValues);
         std::vector<QmfValue> ls(kValues);
         std::vector<QmfValue> rs(kValues);
-        const std::array<std::vector<QmfValue>*, 5> matrices = {&l, &r, &c, &ls, &rs};
+        const std::array<QmfMatrix, 5> matrices = {l, r, c, ls, rs};
         stage.apply(iclforge::ac4::detail::ch_mode::k5_0, false, ElementKind::k5X, codec_mode::kAspxAcpl3, values, kSlots,
                     {.speakers = speakers, .matrices = matrices});
         if (frame == 0) {

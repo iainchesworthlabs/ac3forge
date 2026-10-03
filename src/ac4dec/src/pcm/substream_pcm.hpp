@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <deque>
 #include <memory>
@@ -175,7 +176,13 @@ class SubstreamPcm {
             : synthesis(full_length),
               delay(delay_samples, Real{}),
               ext(ext_values),
-              out(out_values) {}
+              out_count(std::min(out_values, ext_values)) {}
+
+        // The QMF domain's matrix, which the output stages take: ext's first num_qmf_timeslots
+        // slots. A-SPX writes each of them from a slot of ext at or after it, and the next
+        // frame's history is ext's last slots, which it does not reach; the history moves to
+        // the front when the next frame's render() begins, after every stage has read it.
+        [[nodiscard]] QmfMatrix out() noexcept { return QmfMatrix(ext).first(out_count); }
 
         dsp::ChannelSynthesis<Real> synthesis;
         std::vector<Real> delay;  // the last d_pcm samples of the previous frame
@@ -183,7 +190,7 @@ class SubstreamPcm {
         // Q_low_ext (pcm/aspx.hpp): kTsOffsetHfadj + ts_offset_hfgen slots of
         // the previous frames' processed QMF matrix, then this frame's.
         std::vector<QmfValue> ext;
-        std::vector<QmfValue> out;  // the QMF domain's matrix, which the output stages take
+        std::size_t out_count = 0;  // out()'s values
         AspxChannelState aspx;
     };
 
@@ -334,11 +341,11 @@ class SubstreamPcm {
     // Every channel's matrix of this frame is the window of its `ext` (pass_through()), `out`
     // stale.
     bool out_in_ext_ = false;
-    std::vector<const std::vector<QmfValue>*> ajoc_inputs_;
-    std::vector<std::vector<QmfValue>*> ajoc_inputs_in_place_;
+    std::vector<QmfMatrix> ajoc_inputs_;
+    std::vector<QmfMatrix> ajoc_inputs_in_place_;
     // The objects' matrices in object order, and each object's synthesis bank
     // and converter.
-    std::vector<std::vector<QmfValue>*> object_matrices_;
+    std::vector<QmfMatrix> object_matrices_;
     std::vector<Output> object_outputs_;
     std::optional<int> decoded_mode_;
     std::optional<int> applied_mode_;
@@ -371,10 +378,10 @@ class SubstreamPcm {
     MixValues last_mix_;
     int losses_ = 0;
     std::vector<std::vector<QmfValue>> mixed_;  // the downmix's matrices
-    std::vector<std::vector<QmfValue>*> mixed_matrices_;
+    std::vector<QmfMatrix> mixed_matrices_;
     // The matrices before dialogue enhancement, DRC's side chain, where both act.
     std::vector<std::vector<QmfValue>> side_;
-    std::vector<std::vector<QmfValue>*> side_matrices_;
+    std::vector<QmfMatrix> side_matrices_;
     bool side_kept_ = false;  // whether the last frame's side chain is side_ rather than the matrices
 
     // Scratch, kept to save an allocation per frame.
@@ -408,7 +415,7 @@ class SubstreamPcm {
     std::vector<Real> converted_;
     std::vector<Real> aligned_;
     std::vector<std::vector<int>> lengths_;  // per channel, its blocks' lengths
-    std::vector<std::vector<QmfValue>*> matrices_;  // per channel, its `out`, for A-CPL
+    std::vector<QmfMatrix> matrices_;  // per channel, its `out`, for A-CPL
 };
 
 }  // namespace iclforge::ac4::detail

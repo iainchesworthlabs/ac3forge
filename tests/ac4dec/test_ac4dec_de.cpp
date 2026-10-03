@@ -30,6 +30,7 @@
 namespace {
 
 namespace detail = iclforge::ac4::detail;
+using QmfMatrix = detail::QmfMatrix;
 using QmfValue = detail::QmfValue;
 using Real = detail::Real;
 
@@ -88,14 +89,17 @@ detail::DeFrameValues channel_independent(std::array<bool, 3> processed, double 
 
 struct Channels {
     std::vector<std::vector<QmfValue>> data;
-    std::vector<std::vector<QmfValue>*> pointers;
+    std::vector<QmfMatrix> pointers;
 
     explicit Channels(std::size_t count, unsigned seed) : data(count) {
         for (std::size_t c = 0; c < count; ++c) {
             data[c] = random_matrix(seed + static_cast<unsigned>(c));
-            pointers.push_back(&data[c]);
+            pointers.push_back(data[c]);
         }
     }
+    // `pointers` views `data`: a copy would view this one's.
+    Channels(const Channels&) = delete;
+    Channels& operator=(const Channels&) = delete;
 };
 
 std::vector<std::byte> read_stream(const std::string& leg) {
@@ -225,7 +229,7 @@ TEST_CASE("with de_ms_proc_flag, dialogue enhancement raises the Mid and leaves 
             left[i] = {Real{1}, Real{0.5}};
             right[i] = mid ? left[i] : -left[i];
         }
-        std::array<std::vector<QmfValue>*, 2> matrices = {&left, &right};
+        std::array<QmfMatrix, 2> matrices = {left, right};
         stage.process(6.0, values, matrices);
         if (pass == 0) {
             continue;  // the fade in
@@ -294,7 +298,7 @@ TEST_CASE("dialogue enhancement moves from one frame's matrix to the next slot b
     const detail::DeFrameValues values = channel_independent({false, false, true}, 12.0);
     const double g = std::pow(10.0, 12.0 / 20.0) - 1.0;
     std::vector<QmfValue> centre(kValues, QmfValue{Real{1}, Real{0}});
-    std::array<std::vector<QmfValue>*, 1> matrices = {&centre};
+    std::array<QmfMatrix, 1> matrices = {centre};
     // From the identity: slot n takes (n + 1/2) / 32 of this frame's matrix.
     stage.process(12.0, values, matrices);
     for (int slot = 0; slot < kSlots; ++slot) {

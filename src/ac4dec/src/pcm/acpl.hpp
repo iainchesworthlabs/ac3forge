@@ -91,7 +91,7 @@ struct AcplQuantHistory {
 // subbands each, by the decoder's channels (speakers_of()).
 struct AcplChannels {
     std::span<const Speaker> speakers;
-    std::span<std::vector<QmfValue>* const> matrices;
+    std::span<const QmfMatrix> matrices;
 };
 
 // What A-CPL carries from frame to frame: the decorrelators with their

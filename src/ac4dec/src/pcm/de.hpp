@@ -78,8 +78,8 @@ class DeStage {
     // dialogue enhancement substream's matrices, in its channels' order, for
     // the hybrid methods; empty where there is none.
     void process(double gain_db, const DeFrameValues& values,
-                 std::span<std::vector<QmfValue>* const> matrices,
-                 std::span<std::vector<QmfValue>* const> waveform = {});
+                 std::span<const QmfMatrix> matrices,
+                 std::span<const QmfMatrix> waveform = {});
 
    private:
     using Matrix = std::array<std::array<double, kDeFront>, kDeFront>;

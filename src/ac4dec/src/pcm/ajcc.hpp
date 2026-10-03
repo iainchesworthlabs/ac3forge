@@ -81,7 +81,7 @@ class AjccStage {
     void module(DecodingMode decoding, std::size_t side, const AjccFrameValues& values, int num_ts,
                 std::array<const std::vector<QmfValue>*, 2> x,
                 std::array<const std::vector<QmfValue>*, 3> y,
-                std::array<std::vector<QmfValue>*, ajcc::kModule2Outputs> z);
+                std::array<QmfMatrix, ajcc::kModule2Outputs> z);
     void decorrelate(std::size_t slot, const std::vector<QmfValue>& in, std::vector<QmfValue>& out,
                      int num_ts);
 

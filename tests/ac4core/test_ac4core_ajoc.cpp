@@ -76,13 +76,13 @@ ajoc::FrameParameters parameters(const std::vector<std::vector<double>>& dry, in
 struct Run {
     std::vector<std::vector<Complex>> x;
     std::vector<std::vector<Complex>> z;
-    std::vector<const std::vector<Complex>*> in;
+    std::vector<std::span<Complex>> in;
     std::vector<std::vector<Complex>*> out;
 
     Run(std::vector<std::vector<Complex>> inputs, std::size_t outputs)
         : x(std::move(inputs)), z(outputs) {
-        for (const auto& m : x) {
-            in.push_back(&m);
+        for (auto& m : x) {
+            in.push_back(m);
         }
         for (auto& m : z) {
             out.push_back(&m);
@@ -372,7 +372,7 @@ TEST_CASE("A-JOC core decoding's dialogue enhancement adds H_M H_A x", "[ac4core
     const Complex x0{1.0, 0.0};
     const Complex x1{0.0, 1.0};
     std::vector<std::vector<Complex>> x = {constant(x0), constant(x1)};
-    std::vector<std::vector<Complex>*> ptrs = {&x[0], &x[1]};
+    std::vector<std::span<Complex>> ptrs = {x[0], x[1]};
     const std::array<std::uint8_t, 2> dialogue = {1, 0};
     const std::array<double, 2> coeff = {1.0, 0.5};
     r->enhance_core(p, kSlots, ptrs, 1.0, dialogue, coeff);
@@ -386,6 +386,7 @@ TEST_CASE("A-JOC core decoding's dialogue enhancement adds H_M H_A x", "[ac4core
     }
     // The next frame's H_M is the coefficients throughout.
     x = {constant(x0), constant(x1)};
+    ptrs = {x[0], x[1]};
     r->enhance_core(p, kSlots, ptrs, 1.0, dialogue, coeff);
     const Complex dlg = 0.5 * x0 + 0.25 * x1;
     CHECK(abs(x[0][9] - (x0 + dlg)) < 1e-12);

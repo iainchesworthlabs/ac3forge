@@ -543,31 +543,31 @@ void AcplStage::apply(int ch_mode, bool add_ch_base, ElementKind kind, int codec
                       int num_ts, const AcplChannels& channels) {
     AC4_ZONE_SCOPED_N("ac4_acpl");
     const std::size_t n = at(num_ts) * kSubbands;
-    const auto matrix_of = [&](Speaker speaker) -> std::vector<QmfValue>* {
+    const auto matrix_of = [&](Speaker speaker) -> QmfMatrix {
         for (std::size_t c = 0; c < channels.speakers.size(); ++c) {
             if (channels.speakers[c] == speaker && c < channels.matrices.size()) {
                 return channels.matrices[c];
             }
         }
-        return nullptr;
+        return {};
     };
     // The inputs are copied first: every output overwrites a channel an
     // input came from.
     const auto input = [&](std::size_t slot, Speaker speaker) -> std::span<const QmfValue> {
-        const std::vector<QmfValue>* matrix = matrix_of(speaker);
+        const QmfMatrix matrix = matrix_of(speaker);
         std::vector<QmfValue>& copy = in_[slot];
         copy.assign(n, QmfValue{});
-        if (matrix != nullptr && matrix->size() >= n) {
-            std::copy_n(matrix->begin(), n, copy.begin());
+        if (matrix.size() >= n) {
+            std::copy_n(matrix.begin(), n, copy.begin());
         }
         return copy;
     };
     const auto output = [&](Speaker speaker) -> std::span<QmfValue> {
-        std::vector<QmfValue>* matrix = matrix_of(speaker);
-        if (matrix == nullptr || matrix->size() < n) {
+        const QmfMatrix matrix = matrix_of(speaker);
+        if (matrix.size() < n) {
             return {};
         }
-        return std::span<QmfValue>(*matrix).first(n);
+        return matrix.first(n);
     };
     const auto writable = [&](std::initializer_list<Speaker> speakers) {
         return std::ranges::all_of(speakers, [&](Speaker s) { return !output(s).empty(); });

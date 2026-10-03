@@ -72,8 +72,8 @@ struct MixValues {
 struct MixSource {
     int key = 0;
     std::span<const Speaker> speakers;
-    std::span<std::vector<QmfValue>* const> matrices;
-    std::span<std::vector<QmfValue>* const> side;
+    std::span<const QmfMatrix> matrices;
+    std::span<const QmfMatrix> side;
 };
 
 // The gain of each channel of `into` for a mono signal panned to `degrees`,
@@ -97,7 +97,7 @@ class MixStage {
     // source is left out) into them; the same into `side` where
     // `side_separate` says it is not `matrices` itself.
     void mix(const MixValues& values, std::span<const Speaker> speakers,
-             std::span<std::vector<QmfValue>* const> matrices, std::span<std::vector<QmfValue>* const> side,
+             std::span<const QmfMatrix> matrices, std::span<const QmfMatrix> side,
              bool side_separate, std::span<const MixSource> sources);
 
    private:

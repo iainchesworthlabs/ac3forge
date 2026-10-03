@@ -365,9 +365,9 @@ void AjocEncoder::gather(long long first) {
 double AjocEncoder::run(const Values& values, Reconstruction& state,
                         std::vector<std::vector<Complex>>& out) {
     const ajoc::FrameParameters p = parameters_of(values);
-    std::vector<const std::vector<Complex>*> x;
-    for (const std::vector<Complex>& signal : x_) {
-        x.push_back(&signal);
+    std::vector<std::span<Complex>> x;
+    for (std::vector<Complex>& signal : x_) {
+        x.push_back(signal);
     }
     out.resize(z_.size());
     std::vector<std::vector<Complex>*> z;

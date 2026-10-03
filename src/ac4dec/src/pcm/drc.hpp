@@ -106,8 +106,8 @@ class DrcStage {
     // before dialogue enhancement, the side chain the level is measured on
     // (Part 1 clause 6.2.13); they may be `matrices` themselves.
     void process(const OutputConfig& output, const DrcFrameValues& values,
-                 std::span<std::vector<QmfValue>* const> matrices,
-                 std::span<std::vector<QmfValue>* const> side);
+                 std::span<const QmfMatrix> matrices,
+                 std::span<const QmfMatrix> side);
 
     // The linear gain the last slot of the last frame had, output level gain
     // included, for tests.
@@ -116,7 +116,7 @@ class DrcStage {
    private:
     // The K-weighted mean square per sample of `side` in one slot, at full
     // scale 1.0; read only.
-    [[nodiscard]] double slot_level(std::span<std::vector<QmfValue>* const> side, int slot) const;
+    [[nodiscard]] double slot_level(std::span<const QmfMatrix> side, int slot) const;
 
     double rate_hz_ = 48000.0;
     int slots_ = 32;

@@ -105,7 +105,7 @@ class Reconstruction {
     // (Pseudocode 22, clause 5.8.2.3), after the decorrelation input matrix
     // is taken from them.
     void reconstruct(const FrameParameters& p, int num_ts,
-                     std::span<const std::vector<Complex>* const> x,
+                     std::span<const std::span<Complex>> x,
                      std::span<std::vector<Complex>* const> z, double de_gain,
                      std::span<const std::uint8_t> dialogue);
 
@@ -117,7 +117,7 @@ class Reconstruction {
     // over the frame. The interpolation runs for every object, so its state
     // is ready whichever objects later carry dialogue.
     void enhance_core(const FrameParameters& p, int num_ts,
-                      std::span<std::vector<Complex>* const> x, double de_gain,
+                      std::span<const std::span<Complex>> x, double de_gain,
                       std::span<const std::uint8_t> dialogue, std::span<const double> coeff);
 
    private:

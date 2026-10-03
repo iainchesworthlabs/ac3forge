@@ -162,7 +162,7 @@ void AjccStage::decorrelate(std::size_t slot, const std::vector<QmfValue>& in,
 void AjccStage::module(DecodingMode decoding, std::size_t side, const AjccFrameValues& values,
                        int num_ts, std::array<const std::vector<QmfValue>*, 2> x,
                        std::array<const std::vector<QmfValue>*, 3> y,
-                       std::array<std::vector<QmfValue>*, ajcc::kModule2Outputs> z) {
+                       std::array<QmfMatrix, ajcc::kModule2Outputs> z) {
     const bool full = decoding == DecodingMode::kFull;
     const std::size_t outputs = full ? ajcc::kModule2Outputs : ajcc::kModule4Outputs;
     const std::size_t count = full ? ajcc::kModule2Coefficients : ajcc::kModule4Coefficients;
@@ -191,7 +191,7 @@ void AjccStage::module(DecodingMode decoding, std::size_t side, const AjccFrameV
     }
     const std::size_t n = at(num_ts) * at(ajcc::kSubbands);
     for (std::size_t o = 0; o < outputs; ++o) {
-        z[o]->assign(n, QmfValue{});
+        std::fill_n(z[o].begin(), n, QmfValue{});
     }
     interp_.resize(n);
     for (std::size_t k = 0; k < count; ++k) {
@@ -210,7 +210,7 @@ void AjccStage::module(DecodingMode decoding, std::size_t side, const AjccFrameV
             interp_real_.resize(interp_.size());
             std::ranges::transform(interp_, interp_real_.begin(),
                                    [](double v) { return static_cast<Real>(v); });
-            ajcc::accumulate<Real>(interp_real_, in, *z[term.output], num_ts);
+            ajcc::accumulate<Real>(interp_real_, in, z[term.output], num_ts);
         }
         acpl::end_frame(framing, values.num_bands, coefficients[k], prev[k]);
     }
@@ -219,13 +219,14 @@ void AjccStage::module(DecodingMode decoding, std::size_t side, const AjccFrameV
 void AjccStage::apply(DecodingMode decoding, const AjccFrameValues& values, int num_ts,
                       const AcplChannels& channels) {
     const std::size_t n = at(num_ts) * at(ajcc::kSubbands);
-    const auto matrix_of = [&](Speaker speaker) -> std::vector<QmfValue>* {
+    // A channel's first n values, or nothing where the layout has no such channel.
+    const auto matrix_of = [&](Speaker speaker) -> QmfMatrix {
         for (std::size_t c = 0; c < channels.speakers.size() && c < channels.matrices.size(); ++c) {
-            if (channels.speakers[c] == speaker && channels.matrices[c]->size() >= n) {
-                return channels.matrices[c];
+            if (channels.speakers[c] == speaker && channels.matrices[c].size() >= n) {
+                return channels.matrices[c].first(n);
             }
         }
-        return nullptr;
+        return {};
     };
     const bool full = decoding == DecodingMode::kFull;
     const std::array<std::array<S, ajcc::kModule2Outputs>, 2> kFullOutputs = {
@@ -234,25 +235,25 @@ void AjccStage::apply(DecodingMode decoding, const AjccFrameValues& values, int 
     const std::array<std::array<S, ajcc::kModule4Outputs>, 2> kCoreOutputs = {
         {{S::kLeft, S::kLeftSurround, S::kTopSideLeft},
          {S::kRight, S::kRightSurround, S::kTopSideRight}}};
-    std::array<std::array<std::vector<QmfValue>*, ajcc::kModule2Outputs>, 2> z{};
+    std::array<std::array<QmfMatrix, ajcc::kModule2Outputs>, 2> z{};
     for (std::size_t side = 0; side < 2; ++side) {
         const std::size_t outputs = full ? ajcc::kModule2Outputs : ajcc::kModule4Outputs;
         for (std::size_t o = 0; o < outputs; ++o) {
             z[side][o] = matrix_of(full ? kFullOutputs[side][o] : kCoreOutputs[side][o]);
-            if (z[side][o] == nullptr) {
+            if (z[side][o].empty()) {
                 return;
             }
         }
     }
-    std::vector<QmfValue>* centre = matrix_of(S::kCentre);
-    if (centre == nullptr) {
+    const QmfMatrix centre = matrix_of(S::kCentre);
+    if (centre.empty()) {
         return;
     }
     // x0, x1, x3 and x4 (L, R, Ls and Rs holding A'', B'', D'' and E''), times
     // the input gain, before any output overwrites them.
     const std::array<S, 4> kInputs = {S::kLeft, S::kRight, S::kLeftSurround, S::kRightSurround};
     for (std::size_t i = 0; i < kInputs.size(); ++i) {
-        const std::vector<QmfValue>& source = *matrix_of(kInputs[i]);
+        const QmfMatrix source = matrix_of(kInputs[i]);
         x_in_[i].resize(n);
         for (std::size_t k = 0; k < n; ++k) {
             x_in_[i][k] = kInputGainReal * source[k];
@@ -281,7 +282,7 @@ void AjccStage::apply(DecodingMode decoding, const AjccFrameValues& values, int 
         // z5 to z12, every output but L, R and C, times the square root of 2.
         for (std::size_t side = 0; side < 2; ++side) {
             for (std::size_t o = 1; o < ajcc::kModule2Outputs; ++o) {
-                for (QmfValue& v : *z[side][o]) {
+                for (QmfValue& v : z[side][o]) {
                     v *= kSqrt2Real;
                 }
             }
@@ -298,7 +299,7 @@ void AjccStage::apply(DecodingMode decoding, const AjccFrameValues& values, int 
     }
     // z2 = x2in.
     for (std::size_t k = 0; k < n; ++k) {
-        (*centre)[k] *= kInputGainReal;
+        centre[k] *= kInputGainReal;
     }
 }
 

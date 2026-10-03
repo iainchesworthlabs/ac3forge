@@ -164,11 +164,11 @@ int SubstreamPcm::output_delay_samples() const noexcept {
 }
 
 MixSource SubstreamPcm::qmf_output(int key) const noexcept {
-    const std::span<std::vector<QmfValue>* const> matrices = matrices_;
+    const std::span<const QmfMatrix> matrices = matrices_;
     return MixSource{.key = key,
                      .speakers = speakers_,
                      .matrices = matrices,
-                     .side = side_kept_ ? std::span<std::vector<QmfValue>* const>(side_matrices_) : matrices};
+                     .side = side_kept_ ? std::span<const QmfMatrix>(side_matrices_) : matrices};
 }
 
 void SubstreamPcm::reset() {
@@ -399,8 +399,9 @@ ParseResult SubstreamPcm::check_control(const SubstreamContext& ctx, const Chann
 // Below the crossover and everywhere in SIMPLE mode: the analysis delayed by
 // ts_offset_hfgen slots, the history the synthesis works behind (5.7.1).
 void SubstreamPcm::pass_through(Channel& channel) const {
-    std::copy_n(channel.ext.begin() + static_cast<std::ptrdiff_t>(at(aspx::kTsOffsetHfadj) * kSubbands),
-                at(slots_) * kSubbands, channel.out.begin());
+    // Towards the front of the same buffer, which std::copy allows.
+    const auto first = channel.ext.begin() + static_cast<std::ptrdiff_t>(at(aspx::kTsOffsetHfadj) * kSubbands);
+    std::copy(first, first + static_cast<std::ptrdiff_t>(at(slots_) * kSubbands), channel.out().begin());
     channel.aspx.y_prev_slots = 0;
 }
 
@@ -416,9 +417,9 @@ void SubstreamPcm::materialize_out() {
         return;
     }
     for (Channel& channel : channels_) {
-        std::copy_n(
-            channel.ext.begin() + static_cast<std::ptrdiff_t>(at(aspx::kTsOffsetHfadj) * kSubbands),
-            at(slots_) * kSubbands, channel.out.begin());
+        const auto first =
+            channel.ext.begin() + static_cast<std::ptrdiff_t>(at(aspx::kTsOffsetHfadj) * kSubbands);
+        std::copy(first, first + static_cast<std::ptrdiff_t>(at(slots_) * kSubbands), channel.out().begin());
     }
     out_in_ext_ = false;
 }
@@ -464,7 +465,7 @@ SubstreamPcm::UnitIo SubstreamPcm::unit_io(const AspxUnit& unit, const Control& 
         const int index = channel_of(unit.speakers[c]);
         Channel& channel = channels_[at(index)];
         out.channels[c] = index;
-        out.io[c] = AspxChannelIo{.data = data[c], .state = &channel.aspx, .ext = channel.ext, .out = channel.out};
+        out.io[c] = AspxChannelIo{.data = data[c], .state = &channel.aspx, .ext = channel.ext, .out = channel.out()};
     }
     return out;
 }
@@ -587,7 +588,7 @@ void SubstreamPcm::apply(const Control& control) {
         }
         matrices_.clear();
         for (Channel& channel : channels_) {
-            matrices_.push_back(&channel.out);
+            matrices_.push_back(channel.out());
         }
         acpl_->apply(ch_mode_, control.add_ch_base, control.kind, control.codec_mode, *control.acpl,
                      slots_, AcplChannels{.speakers = speakers_, .matrices = matrices_});
@@ -606,7 +607,7 @@ void SubstreamPcm::apply(const Control& control) {
         }
         matrices_.clear();
         for (Channel& channel : channels_) {
-            matrices_.push_back(&channel.out);
+            matrices_.push_back(channel.out());
         }
         ajcc_->apply(decoding_, *control.ajcc, slots_,
                      AcplChannels{.speakers = speakers_, .matrices = matrices_});
@@ -629,8 +630,8 @@ void SubstreamPcm::apply_ajoc(const AjocFrameValues& values, double dialogue_db)
         if (channel < 0 || at(channel) >= channels_.size()) {
             return;
         }
-        ajoc_inputs_.push_back(&channels_[at(channel)].out);
-        ajoc_inputs_in_place_.push_back(&channels_[at(channel)].out);
+        ajoc_inputs_.push_back(channels_[at(channel)].out());
+        ajoc_inputs_in_place_.push_back(channels_[at(channel)].out());
     }
     if (decoding_ == DecodingMode::kFull) {
         ajoc_.reconstruct(values, dialogue_db, slots_, ajoc_inputs_, objects_);
@@ -644,18 +645,18 @@ void SubstreamPcm::collect_objects() {
     object_matrices_.clear();
     const int lfe = channel_of(Speaker::kLfe);
     if (lfe >= 0) {
-        object_matrices_.push_back(&channels_[at(lfe)].out);
+        object_matrices_.push_back(channels_[at(lfe)].out());
     }
     if (coding_ == AudioCoding::kAjoc && decoding_ == DecodingMode::kFull) {
         for (std::vector<QmfValue>& object : objects_) {
-            object_matrices_.push_back(&object);
+            object_matrices_.push_back(object);
         }
         return;
     }
     if (coding_ == AudioCoding::kAjoc && !static_dmx_) {
         for (int i = 0; i < dmx_signals_; ++i) {
             object_matrices_.push_back(
-                &channels_[at(ajoc_input_channel(i, dmx_signals_, object_lfe_))].out);
+                channels_[at(ajoc_input_channel(i, dmx_signals_, object_lfe_))].out());
         }
         return;
     }
@@ -664,7 +665,7 @@ void SubstreamPcm::collect_objects() {
     for (const Speaker speaker : {Speaker::kLeft, Speaker::kRight, Speaker::kCentre,
                                   Speaker::kLeftSurround, Speaker::kRightSurround}) {
         if (const int channel = channel_of(speaker); channel >= 0) {
-            object_matrices_.push_back(&channels_[at(channel)].out);
+            object_matrices_.push_back(channels_[at(channel)].out());
         }
     }
 }
@@ -697,7 +698,7 @@ void SubstreamPcm::synthesise_objects(const FrameInputs& frame_inputs, const Drc
     pcm_.resize(at(full_length_));
     for (std::size_t o = 0; o < count; ++o) {
         Output& output = object_outputs_[o];
-        output.synthesis.process(*object_matrices_[o], pcm_, qmf_scratch_);
+        output.synthesis.process(object_matrices_[o], pcm_, qmf_scratch_);
         std::span<const Real> produced = pcm_;
         if (output.converter) {
             if (!converter_phase_) {
@@ -731,7 +732,7 @@ void SubstreamPcm::apply_immersive_gains(const Control& control, std::span<const
             const BandGains gains =
                 immersive_gains(control.codec_mode, decoding_, speakers_[at(index)]);
             if (gains.low != 1.0 || gains.high != 1.0) {
-                apply_band_gains(channels_[at(index)].out, slots_, groups[u].sbx, gains);
+                apply_band_gains(channels_[at(index)].out(), slots_, groups[u].sbx, gains);
             }
         }
     }
@@ -1065,6 +1066,10 @@ ParseResult SubstreamPcm::render(const FrameInputs& frame_inputs,
     const std::size_t channel_count = channels_.size();
     const auto frame = static_cast<std::size_t>(full_length_);
     const std::size_t history = at(aspx::kTsOffsetHfadj + hfgen_) * kSubbands;
+    // The last frame's last slots become this frame's history. Here and not at the last frame's
+    // end: each channel's matrix is the front of its ext (Channel::out()), which the last frame's
+    // stages, and the decode of a substream that mixed it in, read to the end of that frame.
+    shift_history();
     pcm_.resize(frame);
     aligned_.resize(frame);
     // Part 2 clause 5.3's S-CPL works across the channels' inverse transforms, so a frame with
@@ -1152,7 +1157,7 @@ ParseResult SubstreamPcm::render(const FrameInputs& frame_inputs,
     // (6.2.13).
     matrices_.clear();
     for (Channel& channel : channels_) {
-        matrices_.push_back(&channel.out);
+        matrices_.push_back(channel.out());
     }
     const double de_gain = frame_inputs.output.dialogue_enhancement_db;
     const bool enhance = de_.active(de_gain, de);
@@ -1174,22 +1179,22 @@ ParseResult SubstreamPcm::render(const FrameInputs& frame_inputs,
                                downmix_.passes_through() && outputs_.size() == channels_.size();
     if (!read_in_place) {
         materialize_out();
-        shift_history();  // The last slots become the next frame's history.
     }
-    std::span<std::vector<QmfValue>* const> side = matrices_;
+    std::span<const QmfMatrix> side = matrices_;
     if (side_kept_) {
         side_.resize(channels_.size());
         side_matrices_.clear();
         for (std::size_t c = 0; c < channels_.size(); ++c) {
-            side_[c] = channels_[c].out;
-            side_matrices_.push_back(&side_[c]);
+            const QmfMatrix out = channels_[c].out();
+            side_[c].assign(out.begin(), out.end());
+            side_matrices_.push_back(side_[c]);
         }
         side = side_matrices_;
     }
     if (enhance) {
         de_.process(de_gain, de, matrices_,
                     frame_inputs.dialogue ? frame_inputs.dialogue->matrices
-                                          : std::span<std::vector<QmfValue>* const>{});
+                                          : std::span<const QmfMatrix>{});
     }
     if (frame_inputs.objects) {
         // Until A-JOC's first control data arrive, its objects are silent.
@@ -1214,12 +1219,12 @@ ParseResult SubstreamPcm::render(const FrameInputs& frame_inputs,
     drc_.process(frame_inputs.output, drc, matrices_, side);
 
     // Clause 6.2.17: the downmix, and the channels that come out of it.
-    std::span<std::vector<QmfValue>* const> rendered = matrices_;
+    std::span<const QmfMatrix> rendered = matrices_;
     if (!downmix_.passes_through()) {
         downmix_.process(downmix, matrices_, mixed_);
         mixed_matrices_.clear();
         for (std::vector<QmfValue>& mixed : mixed_) {
-            mixed_matrices_.push_back(&mixed);
+            mixed_matrices_.push_back(mixed);
         }
         rendered = mixed_matrices_;
     }
@@ -1235,7 +1240,7 @@ ParseResult SubstreamPcm::render(const FrameInputs& frame_inputs,
         Output& output = outputs_[o];
         output.synthesis.process(read_in_place ? std::span<const QmfValue>(channels_[o].ext)
                                                      .subspan(window, at(slots_) * kSubbands)
-                                               : std::span<const QmfValue>(*rendered[o]),
+                                               : std::span<const QmfValue>(rendered[o]),
                                  pcm_, qmf_scratch_);
         std::span<const Real> produced = pcm_;
         if (output.converter) {
@@ -1257,9 +1262,6 @@ ParseResult SubstreamPcm::render(const FrameInputs& frame_inputs,
     converter_phase_ = converter_phase;
     const std::span<const Speaker> out_speakers = downmix_.speakers();
     speakers.assign(out_speakers.begin(), out_speakers.end());
-    if (read_in_place) {
-        shift_history();
-    }
     return {};
 }
 

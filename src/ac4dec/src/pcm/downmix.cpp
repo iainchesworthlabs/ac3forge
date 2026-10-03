@@ -395,7 +395,7 @@ void DownmixStage::push_two(const Mix& lo, const Mix& ro) {
     matrix_.push_back(ro);
 }
 
-void DownmixStage::process(const DownmixValues& values, std::span<std::vector<QmfValue>* const> in,
+void DownmixStage::process(const DownmixValues& values, std::span<const QmfMatrix> in,
                            std::vector<std::vector<QmfValue>>& out) {
     bool changed = false;
     if (values.coeff) {
@@ -426,7 +426,7 @@ void DownmixStage::process(const DownmixValues& values, std::span<std::vector<Qm
     if (changed) {
         rebuild();
     }
-    const std::size_t length = in.empty() ? 0 : in.front()->size();
+    const std::size_t length = in.empty() ? 0 : in.front().size();
     out.resize(matrix_.size());
     for (std::size_t o = 0; o < matrix_.size(); ++o) {
         out[o].assign(length, QmfValue{});
@@ -440,7 +440,7 @@ void DownmixStage::process(const DownmixValues& values, std::span<std::vector<Qm
             // narrowed once here rather than held at Real precision - the
             // same shape a DRC gain matrix keeps.
             const auto weight = static_cast<Real>(w);
-            const std::vector<QmfValue>& source = *in[c];
+            const QmfMatrix source = in[c];
             for (std::size_t i = 0; i < length; ++i) {
                 out[o][i] += weight * source[i];
             }

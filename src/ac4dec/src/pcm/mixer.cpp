@@ -138,7 +138,7 @@ void member_matrix(const MixMember& member, std::span<const Speaker> from, std::
 }
 
 void MixStage::mix(const MixValues& values, std::span<const Speaker> speakers,
-                   std::span<std::vector<QmfValue>* const> matrices, std::span<std::vector<QmfValue>* const> side,
+                   std::span<const QmfMatrix> matrices, std::span<const QmfMatrix> side,
                    bool side_separate, std::span<const MixSource> sources) {
     const std::size_t channels = std::min(speakers.size(), matrices.size());
     for (std::size_t c = 0; c < channels; ++c) {
@@ -152,18 +152,18 @@ void MixStage::mix(const MixValues& values, std::span<const Speaker> speakers,
             continue;
         }
         const auto g = static_cast<Real>(gain);
-        for (QmfValue& v : *matrices[c]) {
+        for (QmfValue& v : matrices[c]) {
             v *= g;
         }
         if (side_separate && c < side.size()) {
-            for (QmfValue& v : *side[c]) {
+            for (QmfValue& v : side[c]) {
                 v *= g;
             }
         }
     }
     // weight stays double (one member's gain per frame, not per QMF value):
     // narrowed once per multiply, as a downmix or DRC gain is.
-    const auto add = [](std::vector<QmfValue>& into, const std::vector<QmfValue>& from, double weight) {
+    const auto add = [](QmfMatrix into, std::span<const QmfValue> from, double weight) {
         const std::size_t n = std::min(into.size(), from.size());
         const auto w = static_cast<Real>(weight);
         for (std::size_t i = 0; i < n; ++i) {
@@ -186,9 +186,9 @@ void MixStage::mix(const MixValues& values, std::span<const Speaker> speakers,
                 if (weight == 0.0) {
                     continue;
                 }
-                add(*matrices[c], *source->matrices[j], weight);
+                add(matrices[c], source->matrices[j], weight);
                 if (side_separate && c < side.size() && j < source->side.size()) {
-                    add(*side[c], *source->side[j], weight);
+                    add(side[c], source->side[j], weight);
                 }
             }
         }

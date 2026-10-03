@@ -40,6 +40,7 @@ namespace {
 
 using iclforge::ac4::DecodingMode;
 using iclforge::ac4::Speaker;
+using iclforge::ac4::detail::QmfMatrix;
 using iclforge::ac4::detail::QmfValue;
 using iclforge::ac4::detail::Real;
 namespace immersive = iclforge::ac4::detail::immersive_mode;
@@ -242,9 +243,9 @@ TEST_CASE("A-CPL's four immersive modules take Table 25's channels and Pseudocod
     const auto run = [&](int mode, const iclforge::ac4::detail::AcplFrameValues& values,
                          iclforge::ac4::detail::AcplStage& stage,
                          std::vector<std::vector<QmfValue>>& channels) {
-        std::vector<std::vector<QmfValue>*> matrices;
+        std::vector<QmfMatrix> matrices;
         for (auto& m : channels) {
-            matrices.push_back(&m);
+            matrices.push_back(m);
         }
         stage.apply(iclforge::ac4::detail::ch_mode::k7_0_4, false,
                     iclforge::ac4::detail::ElementKind::kImmersive, mode, values, kSlots,
@@ -483,9 +484,9 @@ void check_ajcc(DecodingMode decoding, int core_mode, std::array<Decorrelated, 6
                        0.13 + 0.07 * static_cast<double>(k) + 0.05 * frame);
         }
         const Channels in = channels;
-        std::vector<std::vector<QmfValue>*> matrices;
+        std::vector<QmfMatrix> matrices;
         for (auto& m : channels) {
-            matrices.push_back(&m);
+            matrices.push_back(m);
         }
         stage.apply(decoding, values, kSlots, {.speakers = speakers, .matrices = matrices});
 

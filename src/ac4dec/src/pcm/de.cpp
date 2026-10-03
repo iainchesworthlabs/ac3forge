@@ -175,8 +175,8 @@ bool DeStage::active(double gain_db, const DeFrameValues& values) const noexcept
 }
 
 void DeStage::process(double gain_db, const DeFrameValues& values,
-                      std::span<std::vector<QmfValue>* const> matrices,
-                      std::span<std::vector<QmfValue>* const> waveform) {
+                      std::span<const QmfMatrix> matrices,
+                      std::span<const QmfMatrix> waveform) {
     const Frame current = frame_matrices(gain_db, values, waveform.size());
     const Matrix unit = identity();
     const Matrix zero{};
@@ -190,7 +190,7 @@ void DeStage::process(double gain_db, const DeFrameValues& values,
         if (channel < 0 || static_cast<std::size_t>(channel) >= matrices.size()) {
             return nullptr;
         }
-        return matrices[static_cast<std::size_t>(channel)]->data() +
+        return matrices[static_cast<std::size_t>(channel)].data() +
                static_cast<std::size_t>(slot * kSubbands + k);
     };
     const std::size_t waves = std::min<std::size_t>(waveform.size(), kDeFront);
@@ -216,7 +216,7 @@ void DeStage::process(double gain_db, const DeFrameValues& values,
                 }
                 const auto index = static_cast<std::size_t>(n * kSubbands + k);
                 for (std::size_t j = 0; j < waves; ++j) {
-                    d[j] = index < waveform[j]->size() ? (*waveform[j])[index] : QmfValue{};
+                    d[j] = index < waveform[j].size() ? waveform[j][index] : QmfValue{};
                 }
                 for (std::size_t i = 0; i < kDeFront; ++i) {
                     if (where[i] == nullptr) {

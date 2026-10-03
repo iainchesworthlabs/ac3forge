@@ -34,6 +34,7 @@ namespace {
 namespace detail = iclforge::ac4::detail;
 using S = iclforge::ac4::Speaker;
 using Row = std::vector<double>;
+using QmfMatrix = detail::QmfMatrix;
 using QmfValue = detail::QmfValue;
 using Real = detail::Real;
 
@@ -70,9 +71,9 @@ std::vector<Row> matrix_for(std::span<const S> speakers, bool add_ch_base,
     detail::DownmixStage stage;
     stage.configure(speakers, add_ch_base, target, mix_lfe);
     std::vector<std::vector<QmfValue>> channels(speakers.size(), std::vector<QmfValue>(64));
-    std::vector<std::vector<QmfValue>*> in;
+    std::vector<QmfMatrix> in;
     for (auto& channel : channels) {
-        in.push_back(&channel);
+        in.push_back(channel);
     }
     std::vector<std::vector<QmfValue>> out;
     stage.process(values, in, out);
@@ -285,9 +286,9 @@ TEST_CASE("the downmix's gains hold from the frame that sends them until another
     detail::DownmixStage stage;
     stage.configure(kFiveOne, false, iclforge::ac4::DownmixTarget::kLoRo, true);
     std::vector<std::vector<QmfValue>> channels(6, std::vector<QmfValue>(64, QmfValue{Real{1}, Real{0}}));
-    std::vector<std::vector<QmfValue>*> in;
+    std::vector<QmfMatrix> in;
     for (auto& channel : channels) {
-        in.push_back(&channel);
+        in.push_back(channel);
     }
     std::vector<std::vector<QmfValue>> out;
     detail::DownmixValues sent;

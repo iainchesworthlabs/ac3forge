@@ -175,7 +175,7 @@ void AjocStage::reset() {
 }
 
 void AjocStage::reconstruct(const AjocFrameValues& values, double dialogue_db, int num_ts,
-                            std::span<const std::vector<QmfValue>* const> inputs,
+                            std::span<const QmfMatrix> inputs,
                             std::vector<std::vector<QmfValue>>& objects) {
     objects.resize(at(values.params.num_umx));
     outputs_.clear();
@@ -192,7 +192,7 @@ void AjocStage::reconstruct(const AjocFrameValues& values, double dialogue_db, i
 }
 
 void AjocStage::enhance_core(const AjocFrameValues& values, double dialogue_db, int num_ts,
-                             std::span<std::vector<QmfValue>* const> inputs) {
+                             std::span<const QmfMatrix> inputs) {
     if (dialogue_db <= 0.0) {
         return;
     }

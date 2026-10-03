@@ -75,14 +75,14 @@ class AjocStage {
     // `objects`, sized here, with dialogue enhancement at G_DE `dialogue_db`
     // (clause 5.8.2.3).
     void reconstruct(const AjocFrameValues& values, double dialogue_db, int num_ts,
-                     std::span<const std::vector<QmfValue>* const> inputs,
+                     std::span<const QmfMatrix> inputs,
                      std::vector<std::vector<QmfValue>>& objects);
 
     // Core decoding: dialogue enhancement on `inputs` in place (clause
     // 5.8.2.4), where G_DE is above 0 dB and the stream names dialogue
     // objects; otherwise nothing.
     void enhance_core(const AjocFrameValues& values, double dialogue_db, int num_ts,
-                      std::span<std::vector<QmfValue>* const> inputs);
+                      std::span<const QmfMatrix> inputs);
 
    private:
     // ajoc::Reconstruction<Real>: its QMF-domain state and computation take

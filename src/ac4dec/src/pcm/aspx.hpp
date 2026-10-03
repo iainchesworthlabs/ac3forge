@@ -49,6 +49,11 @@ namespace iclforge::ac4::detail {
 // signature.
 using QmfValue = dsp::Complex<Real>;
 
+// One channel's QMF-domain matrix as the stages after A-SPX take it, slot after slot of 64
+// subbands: a view, since a decoded channel's lives in the first slots of its Q_low_ext
+// (SubstreamPcm) and the others (objects, a downmix's outputs, copies) in vectors of their own.
+using QmfMatrix = std::span<QmfValue>;
+
 // What one channel's A-SPX keeps from one interval to the next.
 struct AspxChannelState {
     // Pseudocodes 80 and 81: the last envelopes' quantised scale factors and

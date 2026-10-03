@@ -366,14 +366,14 @@ void DrcStage::reset() noexcept {
     last_gain_ = 1.0;
 }
 
-double DrcStage::slot_level(std::span<std::vector<QmfValue>* const> side, int slot) const {
+double DrcStage::slot_level(std::span<const QmfMatrix> side, int slot) const {
     double power = 0.0;
     for (std::size_t c = 0; c < side.size() && c < loudness_weight_.size(); ++c) {
         const double weight = loudness_weight_[c];
         if (weight == 0.0) {
             continue;
         }
-        const QmfValue* row = side[c]->data() + static_cast<std::size_t>(slot) * kSubbands;
+        const QmfValue* row = side[c].data() + static_cast<std::size_t>(slot) * kSubbands;
         double channel = 0.0;
         for (std::size_t k = 0; k < kSubbands; ++k) {
             // The level detector's accumulation stays double regardless of
@@ -391,8 +391,8 @@ double DrcStage::slot_level(std::span<std::vector<QmfValue>* const> side, int sl
 }
 
 void DrcStage::process(const OutputConfig& output, const DrcFrameValues& values,
-                       std::span<std::vector<QmfValue>* const> matrices,
-                       std::span<std::vector<QmfValue>* const> side) {
+                       std::span<const QmfMatrix> matrices,
+                       std::span<const QmfMatrix> side) {
     if (values.dialnorm) {
         dialnorm_ = values.dialnorm;
     }
@@ -441,7 +441,7 @@ void DrcStage::process(const OutputConfig& output, const DrcFrameValues& values,
             gain = gain_smoothed_;
         }
         for (std::size_t c = 0; c < matrices.size(); ++c) {
-            QmfValue* row = matrices[c]->data() + static_cast<std::size_t>(n) * kSubbands;
+            QmfValue* row = matrices[c].data() + static_cast<std::size_t>(n) * kSubbands;
             if (values.gains) {
                 // Clause 5.7.9.3.2: the gain of the channel's group, its band
                 // and the slot's subframe, constant across each.

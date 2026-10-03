@@ -40,6 +40,7 @@ using iclforge::ac4::detail::AcplFrameValues;
 using iclforge::ac4::detail::AcplModuleValues;
 using iclforge::ac4::detail::AcplStage;
 using iclforge::ac4::detail::ElementKind;
+using iclforge::ac4::detail::QmfMatrix;
 using iclforge::ac4::detail::QmfValue;
 using iclforge::ac4::detail::Real;
 
@@ -78,29 +79,29 @@ class Stage {
     void apply(ElementKind kind, int codec, const AcplFrameValues& values, int num_ts,
                const AcplChannels& channels) {
         const std::size_t n = at(num_ts) * kSubbands;
-        const auto matrix_of = [&](Speaker speaker) -> std::vector<QmfValue>* {
+        const auto matrix_of = [&](Speaker speaker) -> QmfMatrix {
             for (std::size_t c = 0; c < channels.speakers.size(); ++c) {
                 if (channels.speakers[c] == speaker && c < channels.matrices.size()) {
                     return channels.matrices[c];
                 }
             }
-            return nullptr;
+            return {};
         };
         const auto input = [&](std::size_t slot, Speaker speaker) -> std::span<const QmfValue> {
-            const std::vector<QmfValue>* matrix = matrix_of(speaker);
+            const QmfMatrix matrix = matrix_of(speaker);
             std::vector<QmfValue>& copy = in_[slot];
             copy.assign(n, QmfValue{});
-            if (matrix != nullptr && matrix->size() >= n) {
-                std::copy_n(matrix->begin(), n, copy.begin());
+            if (matrix.size() >= n) {
+                std::copy_n(matrix.begin(), n, copy.begin());
             }
             return copy;
         };
         const auto output = [&](Speaker speaker) -> std::span<QmfValue> {
-            std::vector<QmfValue>* matrix = matrix_of(speaker);
-            if (matrix == nullptr || matrix->size() < n) {
+            const QmfMatrix matrix = matrix_of(speaker);
+            if (matrix.size() < n) {
                 return {};
             }
-            return std::span<QmfValue>(*matrix).first(n);
+            return matrix.first(n);
         };
         using S = Speaker;
         if (codec == codec_mode::kAspxAcpl3) {
@@ -456,10 +457,10 @@ void check(ElementKind kind, int codec, unsigned seed) {
             m = source.matrix(kValues, frame == 3 ? 0.4 : 0.03);
         }
         std::array<std::vector<QmfValue>, 5> expected = actual;
-        const std::array<std::vector<QmfValue>*, 5> actual_matrices = {
-            &actual[0], &actual[1], &actual[2], &actual[3], &actual[4]};
-        const std::array<std::vector<QmfValue>*, 5> expected_matrices = {
-            &expected[0], &expected[1], &expected[2], &expected[3], &expected[4]};
+        const std::array<QmfMatrix, 5> actual_matrices = {
+            actual[0], actual[1], actual[2], actual[3], actual[4]};
+        const std::array<QmfMatrix, 5> expected_matrices = {
+            expected[0], expected[1], expected[2], expected[3], expected[4]};
         const std::size_t channels = kind == ElementKind::kPair ? 2 : 5;
         const int channel_mode = kind == ElementKind::kPair
                                      ? iclforge::ac4::detail::ch_mode::kStereo
@@ -467,12 +468,12 @@ void check(ElementKind kind, int codec, unsigned seed) {
         stage.apply(
             channel_mode, false, kind, codec, values, num_ts,
             {.speakers = std::span<const Speaker>(speakers).first(channels),
-             .matrices = std::span<std::vector<QmfValue>* const>(actual_matrices).first(channels)});
+             .matrices = std::span<const QmfMatrix>(actual_matrices).first(channels)});
         original.apply(
             kind, codec, values, num_ts,
             {.speakers = std::span<const Speaker>(speakers).first(channels),
              .matrices =
-                 std::span<std::vector<QmfValue>* const>(expected_matrices).first(channels)});
+                 std::span<const QmfMatrix>(expected_matrices).first(channels)});
         for (std::size_t c = 0; c < channels; ++c) {
             CAPTURE(frame, c);
             REQUIRE(same_bits(actual[c], expected[c]));
