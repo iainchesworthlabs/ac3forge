@@ -112,7 +112,7 @@ struct HsfSfData {
 
     // 4.2.8.7 asf_hsf_spectral_data(): this track's own HSF lines, the same
     // shape as SfData::quant_spec but concatenated across groups separately.
-    std::vector<std::int32_t> quant_spec;
+    std::vector<std::int16_t> quant_spec;
     std::array<std::vector<std::uint16_t>, kMaxWindows> max_quant_idx{};
 
     // 4.2.8.8 asf_hsf_scalefac_data().
@@ -137,8 +137,9 @@ struct SfData {
     std::array<int, kMaxWindows> max_sfb{};
 
     // 4.2.8.4: every quantised spectral line of the frame, in the order the
-    // syntax reads them, signed, escapes resolved.
-    std::vector<std::int32_t> quant_spec;
+    // syntax reads them, signed, escapes resolved. Sixteen bits: an escape's magnitude is at
+    // most 8 191 (Table 40; read_ext_code() refuses a longer ext_code).
+    std::vector<std::int16_t> quant_spec;
     std::array<std::array<std::uint16_t, kMaxSfb>, kMaxWindows> max_quant_idx{};
 
     // 4.2.8.5. dpcm_sf holds the codebook index (Table A.1) of each delta read;
