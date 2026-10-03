@@ -313,7 +313,7 @@ ParseResult SubstreamPcm::configure(const SubstreamContext& ctx, DecodingMode de
         channels_.emplace_back(full_length_, static_cast<std::size_t>(delay_),
                                at(ext_slots) * kSubbands, at(slots_) * kSubbands);
     }
-    time_.assign(speakers_.size(), std::vector<Real>(at(full_length_), Real{}));
+    time_.clear();
     // Core decoding's ASPX_SCPL takes the first channel of four of its six
     // aspx_data elements; the second's state and matrices are kept here.
     ghosts_.clear();
@@ -1058,8 +1058,16 @@ ParseResult SubstreamPcm::render(const FrameInputs& frame_inputs,
     const std::size_t history = at(aspx::kTsOffsetHfadj + hfgen_) * kSubbands;
     pcm_.resize(frame);
     aligned_.resize(frame);
-    for (std::size_t c = 0; c < channel_count; ++c) {
-        std::vector<Real>& samples = time_[c];
+    // Part 2 clause 5.3's S-CPL works across the channels' inverse transforms, so a frame with
+    // it holds every channel's; any other frame takes each channel through its transform, its
+    // alignment and its analysis before the next, in one buffer. Every channel's blocks cover
+    // the frame (window_lengths()), so the buffer holds none of another channel's samples.
+    const bool across_channels = scpl_mode_.has_value();
+    time_.resize(across_channels ? channel_count : std::min<std::size_t>(channel_count, 1));
+    for (std::vector<Real>& samples : time_) {
+        samples.resize(frame);
+    }
+    const auto transform = [&](std::size_t c, std::vector<Real>& samples) {
         std::size_t offset = 0;
         for (const int length : lengths_[c]) {
             const auto n = static_cast<std::size_t>(length);
@@ -1069,14 +1077,20 @@ ParseResult SubstreamPcm::render(const FrameInputs& frame_inputs,
                 spectra_exponents_[c], std::span<Real>(samples).subspan(offset, n));
             offset += n;
         }
-    }
-    // Part 2 clause 5.3: S-CPL on the inverse transform's output, the frame's
-    // own, before the frame alignment and the analysis.
-    if (scpl_mode_) {
+    };
+    if (across_channels) {
+        for (std::size_t c = 0; c < channel_count; ++c) {
+            transform(c, time_[c]);
+        }
+        // S-CPL on the inverse transform's output, the frame's own, before the frame alignment
+        // and the analysis.
         apply_scpl(*scpl_mode_, decoding_, speakers_, time_);
     }
     for (std::size_t c = 0; c < channel_count; ++c) {
-        const std::vector<Real>& samples = time_[c];
+        if (!across_channels) {
+            transform(c, time_[0]);
+        }
+        const std::vector<Real>& samples = time_[across_channels ? c : 0];
         // Clause 5.6.2: out[n] = in[n - d_pcm]. d_pcm exceeds the frame at
         // some rates (1 312 at 100 fps, whose frame is 512), so the held
         // samples and the new ones are one queue.

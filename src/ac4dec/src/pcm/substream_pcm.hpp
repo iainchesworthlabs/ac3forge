@@ -398,7 +398,9 @@ class SubstreamPcm {
     std::vector<std::vector<Real>> spectra_;  // per channel, in window order
     std::vector<int> track_of_;               // per channel, the track its lines are in
     std::vector<Real> pcm_;
-    std::vector<std::vector<Real>> time_;  // per channel, the inverse transform's frame
+    // The inverse transform's frame: every channel's in a frame with S-CPL, else one channel's
+    // at a time (render()).
+    std::vector<std::vector<Real>> time_;
     std::vector<Real> converted_;
     std::vector<Real> aligned_;
     std::vector<std::vector<int>> lengths_;  // per channel, its blocks' lengths
