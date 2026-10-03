@@ -42,13 +42,15 @@ config ICLFORGE_AC4
         precision on a part with a floating-point unit, the fixed-point
         tier on one without (ESP32-C3, ESP32-C6; planning/ac4.md, D14d).
 
-        The decoder holds about half a megabyte at 2.0 and two at 5.1.4
-        in either tier (430 KB and 1.8 MB at fixed point on a 32-bit
-        core), which is more than the ESP32-S3's internal RAM at any
-        layout and more than the ESP32-P4's from 5.1 up: a build that
-        turns it on hands its heap to PSRAM (CONFIG_SPIRAM_USE_MALLOC). On
-        a part with no PSRAM nothing fits beside WiFi: an ESP32-C6 has
-        about 236 KB free with WiFi up. Its decode task uses 20 to 24 KB of
+        The decoder holds 286 KB at 2.0, 0.7 MB at 5.1 and 1.5 MB at 5.1.4
+        on a 32-bit core in either tier (planning/ac4.md, D14f): more than
+        the ESP32-S3 has free in internal RAM, about 277 KB, and more than
+        the ESP32-P4's internal RAM from 5.1 up, so a build that turns it
+        on hands its heap to PSRAM (CONFIG_SPIRAM_USE_MALLOC). On an
+        ESP32-C6, which has no PSRAM, 2.0 is level with the 285 KB free
+        beside WiFi with WiFi's code in flash, above the 236 KB of
+        ESP-IDF's default configuration, and below the 383 KB free with
+        no network. Its decode task uses 20 to 24 KB of
         stack, and examples/hearth_sink/sdkconfig.ac4 gives it 40 KB.
         docs/platforms/bare-metal/esp32-p4.md has what a stream of each
         kind held on an ESP32-P4, and how fast it decoded, and

@@ -1705,7 +1705,7 @@
           [
             "unavailable",
             "not-applicable",
-            "builds in fixed point; does not fit beside Wi-Fi"
+            "builds in fixed point; 2.0 level with the heap free beside Wi-Fi; not run on a board"
           ],
           [
             "unavailable",

@@ -26,7 +26,7 @@ again, so the memory and fit figures below are those of 2026-09-15.
 | Memory, no network | Every fixture fits: 383,416 bytes free before the decode, largest block 352,256, against a largest peak of 234,070 (7.1.4 folded to stereo) |
 | Memory, with WiFi and a stream | About 236,000 bytes free before the decode, largest block 217,088 to 221,184. Everything up to the Atmos objects rows (212,253 bytes of peak) fits, and leaves 18,152 bytes free at the lowest; 7.1.4 (227,662) does not. With ESP-IDF's WiFi IRAM options off every fixture fits, 7.1.4 included, and the decode is slower |
 | Encode | Not measured. Both encoders are floating-point, which on this part is software floating point |
-| AC-4 | Builds, in the fixed-point tier (`CONFIG_ICLFORGE_AC4`), and does not fit beside WiFi: the decoder peaks at 429,667 bytes at 2.0, where the part has about 236,000 free with WiFi up. Not run on the board. See [AC-4](#ac-4). No ESP32 sink takes AC-4 in a Sendspin group |
+| AC-4 | Builds, in the fixed-point tier (`CONFIG_ICLFORGE_AC4`). The decoder peaks at 286,365 bytes at 2.0, against about 236,000 free with WiFi up in ESP-IDF's default configuration and 285,408 with WiFi's code kept in flash, and 383,416 with no network. Not run on the board. See [AC-4](#ac-4). No ESP32 sink takes AC-4 in a Sendspin group |
 | QEMU | Not emulated, see [QEMU](#qemu) |
 | CI | The component pack builds for `esp32c6` from its archive, and the `build-esp32c3` job builds this probe with both network loads and `hearth_sink` for the part with 4 MB and with 16 MB of flash. Nothing runs. Both are in the `esp` lane of `ci.yml`, which runs after a merge to main that changes the ESP32 trees or a tree its component ships (the [lane table](../../ci-lanes.md#lane-table) lists them), and nightly ([CI for many agents](../../ci-agentic.md#the-tiers)) |
 
@@ -315,36 +315,42 @@ network.
 ## AC-4
 
 The AC-4 decoder's fixed-point tier ([`planning/ac4.md`, D14d](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/ac4.md#d14d-the-c6-fixed-point))
-builds for this part from the same component, with `CONFIG_ICLFORGE_AC4`. Measured on 2026-10-02
-on the host and under QEMU; the board has not run it.
+builds for this part from the same component, with `CONFIG_ICLFORGE_AC4`. Measured on 2026-10-03
+on the host and under QEMU, with the decoder's memory work of
+[D14f](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/ac4.md#d14f-the-decoders-memory)
+in; the board has not run it.
 
 | | Fixed | Float |
 |---|---:|---:|
-| An image of the AC-4 decoder alone (`idf.py size`, `-Os`) | 1,096,256 bytes | 942,464 bytes |
+| An image of the AC-4 decoder alone (`idf.py size`, `-Os`) | 1,164,592 bytes | 942,464 bytes (before D14f) |
 | Its static RAM | 48,560 bytes | - |
 | The frame-rate converter's tables, in flash | 196,464 bytes, Q1.30 | 196,464 bytes, `float` |
+| The inverse transform's tables for a 2048-sample frame, in flash | about 69 KB, Q7.24 | about 53 KB, `float` |
 
 The fixed image links the Q1.30 tables and no `float` one. The 1001/960 table, 188,376 bytes, is
 read in place from flash; the two smaller ones are copied into the filter.
 
-What a decode holds, from the AC-4 probe on 32-bit cores. The peaks are the same on the
-Cortex-M3 leg and on RV32IMC; the stack is the Cortex-M3's, and RV32IMC used 92 to 240 bytes more:
+What a decode holds, from the AC-4 probe on the Cortex-M3 leg, whose peaks RV32IMC gives too
+(its stack is a few hundred bytes larger); D14d's figures beside them:
 
-| Fixture | Peak heap | Stack |
-|---|---:|---:|
-| `ac4_20_music` 2.0, A-SPX | 429,667 | 18,380 |
-| `ac4_20_companding` 2.0, A-SPX with companding | 486,331 | 21,080 |
-| `ac4_20_acpl` 2.0, A-CPL | 626,368 | 21,080 |
-| `ac4_51_music` 5.1 | 970,430 | 21,080 |
-| `ac4_51_acpl` 5.1, A-CPL | 1,172,502 | 21,080 |
-| `ac4_514_tones` 5.1.4 | 1,825,056 | 21,080 |
+| Fixture | Peak heap | At D14d | Stack |
+|---|---:|---:|---:|
+| `ac4_20_music` 2.0, A-SPX | 286,365 | 429,667 | 18,380 |
+| `ac4_20_companding` 2.0, A-SPX with companding | 329,147 | 486,331 | 21,064 |
+| `ac4_20_acpl` 2.0, A-CPL | 426,918 | 626,368 | 21,064 |
+| `ac4_51_music` 5.1 | 704,311 | 970,430 | 21,064 |
+| `ac4_51_acpl` 5.1, A-CPL | 868,424 | 1,172,502 | 21,064 |
+| `ac4_514_tones` 5.1.4 | 1,502,903 | 1,825,056 | 21,064 |
 
-With WiFi up the part had about 236,000 bytes free and a largest block of 217,088 to 221,184
-([Memory](#memory)), and 285,408 free with WiFi's code kept in flash: less than the smallest
-peak, so no AC-4 stream fits beside the network, in full or in core decoding. With no network
-383,416 bytes were free, also less. A C6 sink takes AC-4 programmes from Hearth as PCM
-(`planning/ac4.md`, decision 32). The fixed tier's PCM hashes are those of the x86-64 host and
-the Cortex-M3 leg (`tests/golden/ac4-fixed-probe-pcm-hashes.json`).
+With WiFi up in ESP-IDF's default configuration the part had about 236,000 bytes free and a
+largest block of 217,088 to 221,184 ([Memory](#memory)): less than the smallest peak. With WiFi's
+code kept in flash it had 285,408, level with 2.0's 286,365, and with no network 383,416, which
+holds 2.0 with about 97,000 bytes to spare. The largest single allocation at 2.0 is a frame's two
+parsed tracks, 31,168 bytes, so the largest free block is not what limits it. The Sendspin player's ring,
+WebSocket server and WiFi buffers leave less than the probe's network image does, so a C6 sink
+takes AC-4 programmes from Hearth as PCM (`planning/ac4.md`, decision 32) until a board run says
+otherwise. The fixed tier's PCM hashes are those of the x86-64 host and the Cortex-M3 leg
+(`tests/golden/ac4-fixed-probe-pcm-hashes.json`).
 
 ## QEMU
 

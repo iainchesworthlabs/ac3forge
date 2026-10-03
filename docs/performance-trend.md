@@ -1236,11 +1236,29 @@ That is 0.43 to 0.70 of the `float` tier's instructions, the widest streams the 
 `float`, the same 196,464 bytes. On the x86-64 host (GCC 14) the peaks are 438,527 to 1,848,776
 bytes and the stack 24,908.
 
-The first frame allocates 510 KB, 490 KB, 987 KB, 998 KB, 1.86 MB and 498 KB (D14e; 550 KB, 531 KB, 1.21 MB, 1.22 MB, 2.06 MB
-and 541 KB at D14a), the decoder's state built as the stream's layout is first seen; the steady state allocates 72 to 153 KB a
-frame at 2.0, 311 to 317 KB at 5.1 and 761 KB at 5.1.4 (69 to 157 KB, 387 to 408 KB and 673 KB at D14a), the syntax layer's element vectors built afresh each
-frame (`vector<Track>` the largest). That is the gap to zero here, as it is for the AC-3 and E-AC-3
-decoders above, and the peak is what D14c has to bring under the S3's 245,000 bytes for 2.0.
+With the decoder's memory work in (planning/ac4.md, D14f; 2026-10-03, the same leg) the PCM hashes of
+both tiers are the same, and:
+
+| Fixture | `float` instructions per frame | Fixed instructions per frame | `float` peak heap | Fixed peak heap | Allocations per frame |
+|---|---:|---:|---:|---:|---:|
+| `ac4_20_music` | 25,226,000 | 6,700,000 | 286,365 | 286,365 | 55 |
+| `ac4_20_acpl` | 35,114,000 | 10,529,000 | 418,110 | 426,918 | 48 |
+| `ac4_51_music` | 87,174,000 | 24,041,000 | 696,375 | 704,311 | 143 |
+| `ac4_51_acpl` | 100,699,000 | 28,787,000 | 859,616 | 868,424 | 82 |
+| `ac4_514_tones` | 161,804,000 | 42,962,000 | 1,494,319 | 1,502,903 | 202 |
+| `ac4_20_companding` | 29,271,000 | 8,308,000 | 321,307 | 329,147 | 71 |
+
+The peaks are 2.0's by a third and 5.1's by 27% below the tables above. The instruction counts are an
+average over a fixture's three or four frames, the first included, and the first no longer builds the
+inverse transform's tables in software floating point: they are built by the compiler into flash, which
+makes the images 750,276 bytes (`float`) and 801,812 (fixed). The stack is 19,472 and 21,064 bytes. On
+the x86-64 host the fixed tier's peaks are 295,225 to 1,526,819 bytes.
+
+The first frame allocates 279 KB, 261 KB, 661 KB, 639 KB, 1.47 MB and 270 KB (D14f; 510 KB, 490 KB, 987 KB, 998 KB, 1.86 MB
+and 498 KB at D14e, 550 KB, 531 KB, 1.21 MB, 1.22 MB, 2.06 MB and 541 KB at D14a), the decoder's state built as the stream's
+layout is first seen; the steady state allocates 48 to 143 allocations a frame at 2.0 and 5.1 and 202 at 5.1.4, the syntax
+layer's element vectors built afresh each frame (`vector<Track>` the largest). That is the gap to zero here, as it is for the
+AC-3 and E-AC-3 decoders above, and the peak is what D14c has to bring under the S3's 245,000 bytes for 2.0.
 
 <style>
 #memory-trend-app { margin: 1.5em 0; }

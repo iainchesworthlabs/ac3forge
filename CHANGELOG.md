@@ -1720,6 +1720,17 @@ The sections below contain the complete change list and fixes.
   ESP32-C3 and ESP32-C6 as well, in this tier. Nothing fits a C6 beside WiFi: 2.0 peaks at 429,667 bytes, where the board had about 236,000 free, so a
   C6 sink takes AC-4 programmes from Hearth as PCM. The `double` and `float` output is byte-identical to before (252 decodes and 12 encodes).
   [ESP32-C6](docs/platforms/bare-metal/esp32-c6.md#ac-4) has the figures.
+- **The AC-4 decoder holds a third less at 2.0 (phase D14f).** On a 32-bit core 2.0 peaks at 286,365 bytes at either tier, from 429,667 at fixed
+  and 413,611 at `float`, 5.1 at 704,311 from 970,430 and 5.1.4 at 1,502,903 from 1,825,056, and no PCM bit of any tier moves (the probe's pins
+  at `float` and fixed on the host, the Cortex-M3 and RV32IMC, and `double` and `float` byte-identical on 252 decodes and 12 encodes). The inverse
+  transform's tables for a 2048-sample frame are built by the compiler into flash at the `float` and fixed tiers (a generator computes their doubles
+  as the decoder does, and a test holds every value to the runtime computation's bits); A-SPX assembles its high band in place; the stereo
+  parameters and the A-CPL decorrelators are sized to what a frame uses; a frame without S-CPL inverse transforms one channel at a time; quantised
+  lines are sixteen bits, a substream is parsed straight into its capture and its tracks are freed once read; and a channel's QMF matrix lives in
+  the first slots of its A-SPX input, whose history moves at the next frame's start. The first frame no longer computes the tables in software
+  floating point, so the Cortex-M3 probe's instructions a frame fall to 6.7 M to 43.0 M at fixed and 25.2 M to 161.8 M at `float`; the images grow
+  by the tables, to 801,812 and 750,276 bytes. The AC-4 probe names the frame, the stage and the live size classes at each fixture's peak.
+  [`planning/ac4.md`, D14f](planning/ac4.md#d14f-the-decoders-memory) has each step's figures.
 
 **Browser (WASM)**
 
