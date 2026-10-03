@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstddef>
+#include <memory>
 #include <optional>
 #include <span>
 #include <vector>
@@ -137,7 +138,9 @@ class AcplStage {
     // D0, D1 and D2, then the second instances of D0 and D1 the immersive
     // element's four modules take (Pseudocode 2): kDecorrelatorSlots.
     static constexpr std::size_t kDecorrelatorSlots = acpl::kDecorrelators + 2;
-    std::array<acpl::Decorrelator<Real>, kDecorrelatorSlots> decorrelators_;
+    // Each made when a module first takes it, 11 KB at the float and fixed tiers: a channel
+    // pair takes one of the five. A new one is in reset()'s state.
+    std::array<std::unique_ptr<acpl::Decorrelator<Real>>, kDecorrelatorSlots> decorrelators_;
     std::array<acpl::TransientDucker<Real>, kDecorrelatorSlots> duckers_{};
     // acpl_param_prev: alpha and beta of each module, and acpl_data_2ch()'s
     // eleven parameters in AcplQuantHistory's order.

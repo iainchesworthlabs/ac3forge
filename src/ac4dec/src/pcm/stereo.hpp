@@ -27,7 +27,9 @@ namespace iclforge::ac4::detail {
 struct StereoParameters {
     // a, b, c, d per group and band, as Pseudocode 59 sets them; 1, 0, 0, 1
     // in a band the chparam_info() does not cover, which it leaves as it is.
-    std::array<std::array<std::array<Real, 4>, kMaxSfb>, kMaxWindows> abcd{};
+    // One entry for each window group of the frame they were set for, 1 KB at the float
+    // and fixed tiers, where the most a frame can have is 16.
+    std::vector<std::array<std::array<Real, 4>, kMaxSfb>> abcd;
 };
 
 // What a chparam_info() parameterises: a 2 x 2 step (Pseudocode 59), or one of
@@ -40,10 +42,8 @@ enum class StereoUse : std::uint8_t { kPair, kPrediction };
 
 // Pseudocode 59 for one chparam_info() under the sf_info() it was read with,
 // as `use` takes it. Writes into `out` rather than returning a
-// StereoParameters by value: the struct is 32 KiB (kMaxWindows * kMaxSfb * 4
-// doubles), which a return value or a temporary at the call site would put on
-// the stack (planning/ac4.md, D14a's memory rules - no stack object over 4
-// KiB); every caller already owns the storage this writes into.
+// StereoParameters by value, so that the storage of a caller that keeps one is
+// reused frame after frame: `out` takes as many groups as the frame has.
 void stereo_parameters(const SubstreamContext& ctx, const SfInfo& info, const ChparamInfo& chparam,
                        StereoParameters& out, StereoUse use = StereoUse::kPair);
 

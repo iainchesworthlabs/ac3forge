@@ -253,6 +253,7 @@ TEST_CASE("a pair with b_dual_maxsfb is laid out alike before its stereo process
     iclforge::ac4::detail::SfInfo info;
     info.psy = psy;
     iclforge::ac4::detail::StereoParameters parameters;
+    parameters.abcd.resize(static_cast<std::size_t>(psy.num_window_groups));
     for (auto& group : parameters.abcd) {
         group.fill({iclforge::ac4::detail::Real{1}, iclforge::ac4::detail::Real{1},
                     iclforge::ac4::detail::Real{1}, iclforge::ac4::detail::Real{-1}});

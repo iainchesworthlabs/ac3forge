@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <functional>
 #include <initializer_list>
+#include <memory>
 #include <numbers>
 
 #include "iclforge/ac4core/detail/profiling.hpp"
@@ -264,14 +265,13 @@ ParseResult acpl_values(const ChannelElement& element, AcplQuantHistory& history
     return {};
 }
 
-AcplStage::AcplStage()
-    : decorrelators_{acpl::Decorrelator<Real>(0), acpl::Decorrelator<Real>(1),
-                     acpl::Decorrelator<Real>(2), acpl::Decorrelator<Real>(0),
-                     acpl::Decorrelator<Real>(1)} {}
+AcplStage::AcplStage() = default;
 
 void AcplStage::reset() {
     for (auto& decorrelator : decorrelators_) {
-        decorrelator.reset();
+        if (decorrelator != nullptr) {
+            decorrelator->reset();
+        }
     }
     for (auto& ducker : duckers_) {
         ducker.reset();
@@ -283,7 +283,13 @@ void AcplStage::reset() {
 // Pseudocode 111, then Pseudocode 114 with the gains of Pseudocodes 112 and
 // 113 (src/ac4dec/ERRATA.md, "The transient ducker's energy").
 void AcplStage::decorrelate(int decorrelator, std::span<const QmfValue> in, std::span<QmfValue> out, int num_ts) {
-    decorrelators_[at(decorrelator)].process(in, out, num_ts);
+    // D0, D1 and D2, then the immersive element's second D0 and D1.
+    static constexpr std::array<int, kDecorrelatorSlots> kIndex = {0, 1, 2, 0, 1};
+    std::unique_ptr<acpl::Decorrelator<Real>>& slot = decorrelators_[at(decorrelator)];
+    if (slot == nullptr) {
+        slot = std::make_unique<acpl::Decorrelator<Real>>(kIndex[at(decorrelator)]);
+    }
+    slot->process(in, out, num_ts);
     duckers_[at(decorrelator)].process(out, num_ts);
 }
 

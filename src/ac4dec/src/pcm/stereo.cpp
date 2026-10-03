@@ -37,6 +37,7 @@ void stereo_parameters(const SubstreamContext& ctx, const SfInfo& info, const Ch
     // alpha_q of a band sap_data() sent no coefficient for is never read by a
     // well-formed stream; it is 0 here rather than whatever it last held.
     std::array<std::array<int, kMaxSfb>, kMaxWindows> alpha_q{};
+    out.abcd.resize(static_cast<std::size_t>(std::clamp(psy.num_window_groups, 0, kMaxWindows)));
     int max_sfb_prev = std::min(get_max_sfb(ctx, psy, 0, false), kMaxSfb);
     for (int g = 0; g < psy.num_window_groups; ++g) {
         const auto gi = static_cast<std::size_t>(g);

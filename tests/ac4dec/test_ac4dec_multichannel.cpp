@@ -190,6 +190,7 @@ TEST_CASE("three_channel_data() takes its two parameter sets and reads no third"
     layout.sect_sfb_offset[0][2] = 8;
     std::vector<iclforge::ac4::detail::StereoParameters> sets(2);
     for (iclforge::ac4::detail::StereoParameters& set : sets) {
+        set.abcd.resize(1);
         set.abcd[0][0] = {Real{1}, Real{1}, Real{1}, Real{-1}};
         set.abcd[0][1] = {Real{1}, Real{1}, Real{1}, Real{-1}};
     }
