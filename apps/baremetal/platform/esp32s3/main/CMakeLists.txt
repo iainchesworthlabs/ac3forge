@@ -14,8 +14,15 @@
 # Both define iclforge_probe::run() rather than main(), so main.cpp calls whichever
 # was built without knowing which it is - the same seam apps/baremetal's own
 # CMakeLists.txt uses for the two hosted shapes.
+#
+# The AC-4 decoder's probe (ac4_probe.cpp) where the configuration turns the component's
+# AC-4 decoder on (sdkconfig.ac4; planning/ac4.md, D14c). CONFIG_ICLFORGE_AC4 is unset in
+# IDF's requirements pass, where the source list does not matter, and set when the
+# sources are compiled, as the component's own Sendspin sources are chosen.
 if(ICLFORGE_ESP_PROFILE STREQUAL "encoder")
     set(ICLFORGE_ESP_PROBE_SRC "../../../encode_probe.cpp")
+elseif(CONFIG_ICLFORGE_AC4)
+    set(ICLFORGE_ESP_PROBE_SRC "../../../ac4_probe.cpp")
 else()
     set(ICLFORGE_ESP_PROBE_SRC "../../../probe.cpp")
 endif()
@@ -71,3 +78,10 @@ target_compile_definitions(${COMPONENT_LIB} PRIVATE
 # selected here, not by a conditional in the translation unit.
 target_compile_definitions(${COMPONENT_LIB} PRIVATE
     ICLFORGE_PROBE_HEAP_BUDGET_BYTES=0)
+
+# The stack the AC-4 probe paints below its frame and reads back after a decode
+# (apps/baremetal/CMakeLists.txt has why). It has to fit the main task's stack with the
+# probe's own frames above it: sdkconfig.ac4 gives the task 49,152 bytes, and a decode used
+# 18 to 20 KB on the Cortex-M3 leg. Unused by the other two probes.
+target_compile_definitions(${COMPONENT_LIB} PRIVATE
+    ICLFORGE_PROBE_STACK_WINDOW_BYTES=36864)

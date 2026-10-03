@@ -63,6 +63,46 @@ void report_internal_sram(const char* when) {
                 when, static_cast<unsigned long>(any - byte_addressable));
 }
 
+namespace {
+
+// What a fixture's decode found free in each region when it began. PSRAM's caps match
+// nothing in a build without it, and its figures are then zero.
+constexpr std::uint32_t kInternal8BitCaps = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
+constexpr std::uint32_t kPsramCaps = MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT;
+std::size_t g_internal_free_before = 0;
+std::size_t g_psram_free_before = 0;
+
+}  // namespace
+
+// The AC-4 probe's split of a fixture's peak between internal RAM and PSRAM. ESP-IDF's
+// allocation policy (CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL) places each request by its size,
+// so the probe's one counter cannot tell how much of a peak each region carried. The heap's
+// own low point over the decode can: the local minimum, which the monitor restarts here and
+// reads back in end(). It covers every task's allocations, not the decode's alone, and on
+// this probe nothing else runs. Internal RAM is several heap regions and the figure is the sum
+// of each one's own low point, so the peak printed is at most what was ever in use at once.
+void heap_regions_begin() {
+    g_internal_free_before = heap_caps_get_free_size(kInternal8BitCaps);
+    g_psram_free_before = heap_caps_get_free_size(kPsramCaps);
+    (void)heap_caps_monitor_local_minimum_free_size_start();
+}
+
+void heap_regions_end(const char* fixture) {
+    const std::size_t internal_least = heap_caps_get_minimum_free_size(kInternal8BitCaps);
+    const std::size_t psram_least = heap_caps_get_minimum_free_size(kPsramCaps);
+    (void)heap_caps_monitor_local_minimum_free_size_stop();
+    std::printf("%s.esp32s3.internal_free_before=%lu %s.esp32s3.internal_least_free=%lu "
+                "%s.esp32s3.internal_peak_bytes=%lu\n",
+                fixture, static_cast<unsigned long>(g_internal_free_before), fixture,
+                static_cast<unsigned long>(internal_least), fixture,
+                static_cast<unsigned long>(g_internal_free_before - internal_least));
+    std::printf("%s.esp32s3.psram_free_before=%lu %s.esp32s3.psram_least_free=%lu "
+                "%s.esp32s3.psram_peak_bytes=%lu\n",
+                fixture, static_cast<unsigned long>(g_psram_free_before), fixture,
+                static_cast<unsigned long>(psram_least), fixture,
+                static_cast<unsigned long>(g_psram_free_before - psram_least));
+}
+
 }  // namespace iclforge_probe
 
 namespace {

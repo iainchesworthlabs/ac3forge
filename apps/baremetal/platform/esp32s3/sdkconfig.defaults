@@ -37,10 +37,9 @@ CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
 #
 # Two reasons, and the second is the load-bearing one:
 #
-#   1. QEMU cannot emulate S3 PSRAM (espressif/qemu#129 - every size fails to
-#      be recognised at runtime), so a build that needs PSRAM cannot be run
-#      without hardware, and a leg that only runs on hardware is a leg CI
-#      cannot have.
+#   1. When this was written QEMU could not emulate S3 PSRAM (espressif/qemu#129).
+#      The QEMU that ESP-IDF v6.1 installs does, quad or octal with 32 MB, and the
+#      AC-4 probe uses it (sdkconfig.ac4); the AC-3 and E-AC-3 probes stay without.
 #   2. The profile's peak heap is 243,470 bytes and its .bss around 77 KB
 #      against roughly 400 KB of usable internal SRAM. That is tight, and the profile
 #      records "no heap traffic in the decode loop" as an OPEN gap (45

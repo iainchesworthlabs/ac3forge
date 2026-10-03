@@ -8,6 +8,16 @@
 #   tools/checks/run_esp32s3_probe.sh                  # decode (the default)
 #   tools/checks/run_esp32s3_probe.sh --encoder        # encode
 #   tools/checks/run_esp32s3_probe.sh --stage-timers   # plus a per-stage breakdown
+#   tools/checks/run_esp32s3_probe.sh --ac4            # the AC-4 decoder, its state in PSRAM
+#
+# --ac4 builds the decode profile with the component's AC-4 decoder and the AC-4 probe
+# (apps/baremetal/ac4_probe.cpp) over sdkconfig.ac4, which turns on the board's octal PSRAM
+# and sends the decoder's allocations of 512 bytes and more there (planning/ac4.md, D14c).
+# QEMU emulates that PSRAM. It gates what the other two directions gate, with the AC-4
+# probe's own ceilings, and two things more: every fixture's PCM hash against the pins the
+# Cortex-M3 leg and the host are held to (tests/golden/ac4-probe-pcm-hashes.json, decision
+# 26), and the internal RAM each fixture took at its worst moment, which is what Wi-Fi and
+# lwIP share with the decoder on a board.
 #
 # WHAT THIS GATES, and what it deliberately does not:
 #
@@ -49,10 +59,15 @@ for arg in "$@"; do
     case "$arg" in
         --encoder) DIRECTION=encoder ;;
         --decoder) DIRECTION=decoder ;;
+        --ac4) DIRECTION=ac4 ;;
         --stage-timers) STAGE_TIMERS=ON ;;
-        *) echo "usage: run_esp32s3_probe.sh [--encoder|--decoder] [--stage-timers]" >&2; exit 2 ;;
+        *) echo "usage: run_esp32s3_probe.sh [--encoder|--decoder|--ac4] [--stage-timers]" >&2; exit 2 ;;
     esac
 done
+if [[ "$DIRECTION" == "ac4" && "$STAGE_TIMERS" == "ON" ]]; then
+    echo "error: the AC-4 probe has no stage timers; --stage-timers does not apply" >&2
+    exit 2
+fi
 
 cd "$PROJECT"
 
@@ -178,6 +193,41 @@ if [[ "$DIRECTION" == "encoder" ]]; then
     ICLFORGE_ESP32S3_MAX_STEADY_ALLOCS_PER_FRAME=${ICLFORGE_ESP32S3_MAX_STEADY_ALLOCS_PER_FRAME_ENCODE:-260}
 fi
 
+# --- and the AC-4 direction's --------------------------------------------------
+# Plain assignments, for the reason the encode block gives. Measured 2026-10-03 under QEMU
+# (planning/ac4.md, D14c), sdkconfig.ac4 with allocations of 512 bytes and more in PSRAM:
+#
+#   - the image: 51,469 bytes of DIRAM, half the AC-3 and E-AC-3 decode image's, since
+#     iclforge::ac3's decoders are not linked;
+#   - heap.peak_bytes counts both regions and is the Cortex-M3 leg's to the byte (1,800,312,
+#     the 5.1.4 fixture), so it takes that leg's ceiling, and the churn and retained bytes too;
+#   - the internal RAM each fixture took at its worst (<fixture>.esp32s3.internal_peak_bytes):
+#     3,188 to 5,032 bytes at 2.0, 8,612 and 12,012 at 5.1, 14,140 at 5.1.4. Under ESP-IDF's
+#     default limit of 16 KB the same fixtures took 247,608 to 263,756 at 2.0 and left 1.3 to
+#     2.6 KB of 347,051 free at 5.1 and 5.1.4, which is why the limit is 512 here;
+#   - the stack a decode used, read by painting: 21,440 to 21,600 bytes (19,480 on the
+#     Cortex-M3, whose frames are smaller); the main task, at 49,152, kept 10,736 free with
+#     the probe's 36,864-byte painted window under its frame.
+#
+# The internal figure is the sum of each internal heap region's own low point over the
+# decode, so it is at most what was in use at once. 2.0's ceiling is the tightest (decision 29
+# planned 2.0 in internal RAM; the owner put the state in PSRAM on 2026-10-03): a decode that
+# starts keeping its state in internal RAM shows here before a board's Wi-Fi does.
+if [[ "$DIRECTION" == "ac4" ]]; then
+    ICLFORGE_ESP32S3_MAX_DIRAM_BYTES=${ICLFORGE_ESP32S3_MAX_DIRAM_BYTES_AC4:-57000}
+    ICLFORGE_ESP32S3_MAX_HEAP_BYTES=${ICLFORGE_ESP32S3_MAX_HEAP_BYTES_AC4:-2130000}
+    ICLFORGE_ESP32S3_MAX_STEADY_ALLOCS_PER_FRAME=${ICLFORGE_ESP32S3_MAX_STEADY_ALLOCS_PER_FRAME_AC4:-210}
+    ICLFORGE_ESP32S3_MAX_AC4_STACK_BYTES=${ICLFORGE_ESP32S3_MAX_AC4_STACK_BYTES:-24000}
+    declare -A INTERNAL_CEILING_AC4=(
+        [ac4_20_music]=6000
+        [ac4_20_acpl]=6000
+        [ac4_20_companding]=6000
+        [ac4_51_music]=14000
+        [ac4_51_acpl]=14000
+        [ac4_514_tones]=16000
+    )
+fi
+
 OUTPUT="$(mktemp)"
 trap 'rm -f "$OUTPUT"' EXIT
 
@@ -191,19 +241,34 @@ trap 'rm -f "$OUTPUT"' EXIT
 # Only when the direction has actually changed: a rebuild of the same direction
 # is the common case in CI and on a laptop, and a fullclean every time would
 # cost several minutes to prove nothing.
-STAMP="build/.iclforge-direction"
-if [[ -d build && "$(cat "$STAMP" 2>/dev/null || echo)" != "$DIRECTION" ]]; then
-    echo "note: build directory holds a different profile - cleaning" >&2
-    idf.py fullclean
+#
+# The AC-4 direction is the decode profile with a configuration of its own, so it has a
+# build directory and an sdkconfig of its own (build-ac4/), and set-target regenerates that
+# sdkconfig from sdkconfig.defaults and sdkconfig.ac4 on every run: ESP-IDF otherwise keeps
+# an existing sdkconfig, and a warm one from a decode build has no AC-4 in it.
+PROFILE="$DIRECTION"
+IDF_ARGS=()
+if [[ "$DIRECTION" == "ac4" ]]; then
+    PROFILE=decoder
+    IDF_ARGS=(-B build-ac4 -DSDKCONFIG="$PROJECT/build-ac4/sdkconfig"
+              "-DSDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.ac4")
+else
+    STAMP="build/.iclforge-direction"
+    if [[ -d build && "$(cat "$STAMP" 2>/dev/null || echo)" != "$DIRECTION" ]]; then
+        echo "note: build directory holds a different profile - cleaning" >&2
+        idf.py fullclean
+    fi
 fi
 
-idf.py set-target esp32s3
-idf.py -DICLFORGE_ESP_PROFILE="$DIRECTION" -DICLFORGE_STAGE_TIMERS="$STAGE_TIMERS" build
-mkdir -p build && printf '%s' "$DIRECTION" > "$STAMP"
+idf.py "${IDF_ARGS[@]}" set-target esp32s3
+idf.py "${IDF_ARGS[@]}" -DICLFORGE_ESP_PROFILE="$PROFILE" -DICLFORGE_STAGE_TIMERS="$STAGE_TIMERS" build
+if [[ "$DIRECTION" != "ac4" ]]; then
+    mkdir -p build && printf '%s' "$DIRECTION" > "$STAMP"
+fi
 
 echo
 echo "== internal SRAM =="
-idf.py size
+idf.py "${IDF_ARGS[@]}" size
 
 # Parsed out of the table above rather than from a JSON mode: `idf.py size
 # --format json` is not available on every IDF that can build this (it is not on
@@ -212,7 +277,7 @@ idf.py size
 # tr strips the box-drawing characters and the percentage's decimal point,
 # leaving fields awk can take. If that row ever moves or vanishes this yields
 # empty, and the note below fires instead of a bogus pass.
-DIRAM=$(idf.py size 2>/dev/null | grep -m1 'DIRAM' | tr -cd '0-9 \n' | awk '{print $1}' || true)
+DIRAM=$(idf.py "${IDF_ARGS[@]}" size 2>/dev/null | grep -m1 'DIRAM' | tr -cd '0-9 \n' | awk '{print $1}' || true)
 DIRAM="${DIRAM:-0}"
 if [[ "$DIRAM" == "0" ]]; then
     echo "note: could not find a DIRAM row in idf.py size's output;" \
@@ -270,7 +335,7 @@ SETTLE_SECS=20
 ) &
 watcher=$!
 
-timeout "$TIMEOUT_SECS" idf.py qemu 2>&1 | tee -a "$OUTPUT" || true
+timeout "$TIMEOUT_SECS" idf.py "${IDF_ARGS[@]}" qemu 2>&1 | tee -a "$OUTPUT" || true
 
 kill "$watcher" 2>/dev/null || true
 wait "$watcher" 2>/dev/null || true
@@ -352,6 +417,44 @@ while read -r codec per_frame; do
         exit 1
     fi
 done <<< "$CHURN"
+
+# --- the AC-4 probe's own rows ---------------------------------------------
+if [[ "$DIRECTION" == "ac4" ]]; then
+    # The float PCM, the same bits as the Cortex-M3 leg's and the host's (decision 26).
+    python3 "$REPO/tools/checks/check_probe_hashes.py" \
+        --expected "$REPO/tests/golden/ac4-probe-pcm-hashes.json" "$OUTPUT"
+
+    stack=$(sed -n 's/^stack\.peak_bytes=\([0-9]*\).*/\1/p' "$OUTPUT" | head -1)
+    if [[ -z "$stack" ]]; then
+        echo "error: the probe reported no stack.peak_bytes line" >&2
+        exit 1
+    fi
+    echo "stack a decode used: $stack bytes (ceiling $ICLFORGE_ESP32S3_MAX_AC4_STACK_BYTES)"
+    if (( stack > ICLFORGE_ESP32S3_MAX_AC4_STACK_BYTES )); then
+        echo "::error title=ESP32-S3 AC-4 stack::a decode used $stack bytes of stack, ceiling is $ICLFORGE_ESP32S3_MAX_AC4_STACK_BYTES" >&2
+        exit 1
+    fi
+
+    INTERNAL=$(grep -o 'ac4_[a-z0-9_]*\.esp32s3\.internal_peak_bytes=[0-9]*' "$OUTPUT" |
+               sed 's/\.esp32s3\.internal_peak_bytes=/ /')
+    if [[ -z "$INTERNAL" ]]; then
+        echo "error: the probe reported no <fixture>.esp32s3.internal_peak_bytes line" >&2
+        exit 1
+    fi
+    while read -r codec internal; do
+        ceiling=${INTERNAL_CEILING_AC4[$codec]:-}
+        if [[ -z "$ceiling" ]]; then
+            echo "::error title=No internal RAM ceiling::${codec} has no entry in run_esp32s3_probe.sh's INTERNAL_CEILING_AC4 table - add one from a measured run" >&2
+            exit 1
+        fi
+        psram=$(sed -n "s/.*${codec}\.esp32s3\.psram_peak_bytes=\([0-9]*\).*/\1/p" "$OUTPUT" | head -1)
+        echo "internal RAM: ${codec} = ${internal} bytes (ceiling ${ceiling}), PSRAM ${psram:-?} bytes"
+        if (( internal > ceiling )); then
+            echo "::error title=ESP32-S3 AC-4 internal RAM::${codec} took $internal bytes of internal RAM at its worst, ceiling is $ceiling - the decoder's state belongs in PSRAM (sdkconfig.ac4)" >&2
+            exit 1
+        fi
+    done <<< "$INTERNAL"
+fi
 
 # --- what the ALLOCATOR has, as opposed to what the linker estimated -------
 # `idf.py size` prints a DIRAM "remain" figure and it is a static estimate: it

@@ -41,4 +41,13 @@ int run();
 // truth. The number this profile actually cares about comes from real silicon.
 std::uint64_t now_us();
 
+// What a fixture took from each region of a heap that has more than one. An ESP32-S3 with
+// PSRAM serves an allocation from internal RAM or from PSRAM by its size, and the probe's
+// own counters see only the sum. begin() runs before a fixture's decode and end() after it,
+// printing the platform's <fixture>.<target>.* lines. Supplied per platform, as now_us() is:
+// a flat heap (the host's, newlib's on the mps2-an385) has nothing to add, and its pair is
+// empty (platform/flat_heap/heap_regions.cpp). Only the AC-4 probe calls them.
+void heap_regions_begin();
+void heap_regions_end(const char* fixture);
+
 } // namespace iclforge_probe

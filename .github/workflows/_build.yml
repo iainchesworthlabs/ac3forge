@@ -2065,6 +2065,22 @@ jobs:
           . "$IDF_PATH/export.sh"
           ./tools/checks/run_esp32s3_probe.sh --encoder
 
+      # The AC-4 decoder on this part (planning/ac4.md, D14c): the component's
+      # CONFIG_ICLFORGE_AC4 with the AC-4 probe, the decoder's state in the
+      # board's octal PSRAM, which QEMU emulates. Its own build directory
+      # (build-ac4/), so the two steps above keep theirs. It holds the six
+      # fixtures' PCM to the hashes the Cortex-M3 leg and the host are pinned to
+      # (decision 26), and the internal RAM each took at its worst to a ceiling,
+      # 2.0's the tightest (decision 29); the runner's AC-4 block has the
+      # figures. The run itself takes under a minute of QEMU.
+      - name: Build and run the AC-4 probe under QEMU
+        env:
+          ICLFORGE_ESP32S3_SUMMARY: apps/baremetal/platform/esp32s3/build/esp32s3-ac4-probe.txt
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          ./tools/checks/run_esp32s3_probe.sh --ac4
+
       # BUILD ONLY, and the reason is the peripheral rather than the code:
       # qemu-system-xtensa has no I2S, so there is nothing for the DMA to drain
       # into and the first i2s_channel_write would block until the job timed
@@ -3036,6 +3052,7 @@ jobs:
             apps/baremetal/platform/esp32s3/build/iclforge_probe_esp32s3.map
             apps/baremetal/platform/esp32s3/build/esp32s3-probe.txt
             apps/baremetal/platform/esp32s3/build/esp32s3-encode-probe.txt
+            apps/baremetal/platform/esp32s3/build/esp32s3-ac4-probe.txt
             esp-idf/iclforge/examples/hearth_sink/qemu-stream.txt
             esp-idf/iclforge/examples/hearth_sink/qemu-capture.txt
             esp-idf/iclforge/examples/hearth_sink/qemu-capture16.txt
