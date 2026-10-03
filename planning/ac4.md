@@ -1,11 +1,12 @@
 # AC-4: a decoder, an encoder and the applications
 
-!!! note "Status as of 2026-09-30: built except I6, D14c and D14d; N1 has been built since, on 2026-10-01"
+!!! note "Status as of 2026-09-30: built except I6, D14c and D14d; N1 has been built since, on 2026-10-01, and D14c on 2026-10-03 but for its board phase"
     The decoder (D1 to D11), the encoder (E1 to E10), the application phases (I1 to I5b), the golden
     masters (G0, G1) and the first two parts of D14, the ESP32 work (D14a on the host, D14b on the
     ESP32-P4), are merged; [State on 2026-09-30](#state-on-2026-09-30) lists each phase with its pull
-    request. Not built: the ESP32 sinks taking AC-4 in a Sendspin group (I6) and the S3 and C6 parts
-    of D14 (D14c, D14d). N1, the program names and the layout of `src/`, was built after that date:
+    request. Not built: the ESP32 sinks taking AC-4 in a Sendspin group (I6) and the C6 part of D14
+    (D14d). The S3 part (D14c) was built on 2026-10-03 with its QEMU rows in CI and its board phase
+    not run. N1, the program names and the layout of `src/`, was built after that date:
     [N1](#n1-the-names) says what ran, in which pull requests, and what is left. The design
     sections below say what was proposed and why, and where the built code differs from a sketch
     they say so, and they keep the names of the time they were written (`ac3cli`, `ac3::forge`,
@@ -84,7 +85,7 @@ checked. The table is of `main` at `5ef9eeafc`.
 | D14a4 | libm parity and the frame-rate converter at `float` | open, 2026-09-30 | exit met: the `float` PCM equal on the host, the Cortex-M3 leg and the P4 for D14b's twenty plays; the converter takes 7.3 ms a frame at 24 and 25 fps, and 1001/960 still has a 5.9 s first frame |
 | D14a5 | the converter's `float` tables at compile time | open, 2026-10-01 | exit met: the P4's first frame at 1001/960 takes 0.31 s from 5.9 s and the converter 16.5 ms a frame at 23.976 fps from 22.4; no `float` pin moved and the `double` output is byte-identical |
 | D14a6 | the P4's low-power SRAM out of the heap | open, 2026-10-02 | exit met: the 29.97 fps play's converter takes 12.0 ms a frame under ESP-IDF's default allocation policy from 93.8, the play 1.00 of real time from 3.51, and every other play 3 to 24% less time a frame; no `float` pin moved |
-| D14c | the S3 | | not built |
+| D14c | AC-4 on the ESP32-S3, its state in PSRAM | open, 2026-10-03 | built but its board phase: the six fixtures' PCM equal to the pins under QEMU in CI, the decoder's internal RAM 3 to 14 KB with its state in PSRAM; the boards were not attached, so no time or Wi-Fi figure |
 | D14d | the C6, fixed point | | not built |
 | E1 | the encoder library, the frame writer, SIMPLE mono and stereo | #1011, 2026-09-25 | merged; exit met |
 | E2 | A-SPX and companding | #1013, 2026-09-25 | merged; exit met |
@@ -1079,7 +1080,8 @@ parts; then the S3 in `float` and the C6 in fixed point, as the decoder's optimi
 ([decision 24](#decisions-of-2026-09-25)). The ESP-IDF component builds AC-4 only with
 `CONFIG_AC3FORGE_AC4` (D14b); the minimal profile carries the decoder for the Cortex-M3 probe
 (D14a). The parts decode only; the encoder is built for none of them
-([decision 34](#decisions-of-2026-09-25)). D14a and D14b are built and D14c and D14d are not.
+([decision 34](#decisions-of-2026-09-25)). D14a and D14b are built, D14c is built but for its
+board phase, and D14d is not.
 
 - **What they face.** Every AC-4 codec mode, SIMPLE included, runs QMF analysis and synthesis on
   each channel (D3), and the A-CPL modes add three decorrelators per band. Read from the code as
@@ -1096,7 +1098,7 @@ parts; then the S3 in `float` and the C6 in fixed point, as the decoder's optimi
 | Part | Arithmetic | AC-3 and E-AC-3 on the board, per 32 ms frame | AC-4's aim | Measured |
 |---|---|---|---|---|
 | **P4**: 2 × RV32 at 360 MHz on this board's v1.3 silicon, single-precision FPU, 768 KB SRAM, 32 MB PSRAM | `float` | every fixture in real time: E-AC-3 5.1 at 0.18 of real time, 7.1.4 at 0.43 | 2.0, 5.1 and 5.1.4 in full decoding in real time, first | D14b: 2.0 in real time (SIMPLE at 0.53 of a frame, A-SPX at 0.74); 5.1 at 1.4 to 4.1 and 5.1.4 in full decoding at 2.8 to 3.7 |
-| **S3**: 2 × LX7 at 240 MHz, single-precision FPU, 512 KB SRAM, 8 MB PSRAM | `float` | every fixture in real time: E-AC-3 5.1 at 0.34, 7.1.4 at 0.90 | 2.0 and 5.1; 5.1.4 measured, heard through core decoding or folded to 2.0 | not built (D14c) |
+| **S3**: 2 × LX7 at 240 MHz, single-precision FPU, 512 KB SRAM, 8 MB PSRAM | `float` | every fixture in real time: E-AC-3 5.1 at 0.34, 7.1.4 at 0.90 | 2.0 and 5.1; 5.1.4 measured, heard through core decoding or folded to 2.0 | D14c, under QEMU only: the six probe fixtures' PCM equal to the pins, the decoder's state in PSRAM and 3 to 14 KB of internal RAM; no board figure yet |
 | **C6**: 1 × RV32 at 160 MHz, no FPU, 512 KB SRAM shared with WiFi, no PSRAM | fixed point | 5.1 with WiFi at 0.82 (AC-3) and 0.96 (E-AC-3); 7.1.4 misses, at 1.88 | 2.0 in core decoding if it keeps up with WiFi; otherwise Hearth sends it PCM | not built (D14d) |
 
 - **The P4 here** is pre-production silicon: 400 MHz takes its CPLL down, and its I2S has no PLL
@@ -1316,7 +1318,7 @@ and, in the last column, where it stands; [State on 2026-09-30](#state-on-2026-0
 | 21 | [I5](#i5-immersive-and-object-content-in-the-applications) | immersive and object content in the applications | D10, E9 | merged, #1100 |
 | | [I4b](#i4b-the-object-encoder-in-the-c-api-python-rust-and-webassembly) | the object encoder in the bindings, and I4's leftovers | I4, E9 | merged, #1119 |
 | 21b | [I5b](#i5b-the-encoder-pages-ac-4-objects) | the encoder page's AC-4 objects | I3, I5 | merged, #1117 |
-| 22 | [D14](#d14-ac-4-on-the-esp32s) | AC-4 on the ESP32s: the P4 first, then the S3 and the C6 | D10 | D14a and D14b merged (#1096, #1102, #1123, #1118); D14c and D14d not built |
+| 22 | [D14](#d14-ac-4-on-the-esp32s) | AC-4 on the ESP32s: the P4 first, then the S3 and the C6 | D10 | D14a and D14b merged (#1096, #1102, #1123, #1118); D14c built but for its board phase (2026-10-03); D14d not built |
 | | [D14a4](#d14a4-libm-parity-and-the-converter-at-float) | libm parity and the frame-rate converter at `float`: what D14b's board work left in D14a's build | D14a, D14b | open |
 | 23 | [I6](#i6-the-esp32-sinks) | the ESP32 sinks | each part's D14 figures | not built |
 | 24 | [N1](#n1-the-names) | the names | I5 | built in the repository, 2026-09-30 and 2026-10-01 (#1160 to #1164, S5 and S6); the owner's renames are left |
@@ -1920,7 +1922,7 @@ optimised ([decision 24](#decisions-of-2026-09-25)). D14 carries both phases' wo
 #### D14: AC-4 on the ESP32s
 
 **Status on 2026-09-30:** D14a merged as #1096, #1102 and #1123 and D14b as #1118, all on
-2026-09-29; D14c and D14d are not built.
+2026-09-29; D14c and D14d are not built. On 2026-10-03 D14c was built but for its board phase.
 
 After D10. One implementation with three scalars, as `ac3::forge`'s decoder has
 (`planning/arithmetic-tiers.md`, [decision 25](#decisions-of-2026-09-25)): `double` on computers,
@@ -2132,14 +2134,46 @@ first; the S3 and the C6 follow in the phase's later parts. What AC-3 and E-AC-3
   AC-3 and E-AC-3 do there.
 
   **Verified by:** the gates in CI; the board (no QEMU runs the P4).
-- **D14c, the S3.** Not built. The same build under the S3's limits: 2.0 in internal RAM, checked
-  under QEMU in CI within the probe's limits; 5.1 and wider with PSRAM, on the board
-  ([decision 29](#decisions-of-2026-09-25)). 5.1.4 in full decoding is measured, not aimed at
-  ([decision 28](#decisions-of-2026-09-25)). A PIE kernel, integer and so fixed point inside the
-  `float` decode, only where the board's timers show one kernel holding back a stream
-  ([decision 30](#decisions-of-2026-09-25)).
+- **D14c, the S3.** Built except its board phase, which has not run. The same build under the S3's
+  limits: 2.0 in internal RAM, checked under QEMU in CI within the probe's limits; 5.1 and wider
+  with PSRAM, on the board ([decision 29](#decisions-of-2026-09-25)). 5.1.4 in full decoding is
+  measured, not aimed at ([decision 28](#decisions-of-2026-09-25)). A PIE kernel, integer and so
+  fixed point inside the `float` decode, only where the board's timers show one kernel holding
+  back a stream ([decision 30](#decisions-of-2026-09-25)). On 2026-10-03 the owner decided that the
+  S3 decoder's state goes in PSRAM, which replaces decision 29's 2.0 in internal RAM: a 2.0 decode
+  peaks at 413,611 to 601,504 bytes, where the S3 has 347,051 free and a largest block of 249,856.
 
-  **Exit and verified by:** as D14b for the S3, with the QEMU rows in CI.
+  **Built in D14c.** The S3 probe's AC-4 shape (`apps/baremetal/platform/esp32s3/sdkconfig.ac4`):
+  the component's AC-4 decoder, `ac4_probe.cpp` in place of the AC-3 and E-AC-3 probe, octal PSRAM,
+  and `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL` at 512 bytes. ESP-IDF v6.1's QEMU emulates the S3's
+  PSRAM (the S3 page and the probe's configuration said it could not, after espressif/qemu#129), so
+  the CI row runs the board's shape: `run_esp32s3_probe.sh --ac4`, a step of `build-esp32s3`. The
+  probe prints what each fixture took from each region of a heap that has two
+  (`heap_regions_begin()` and `heap_regions_end()` in `probe.hpp`, ESP-IDF's local-minimum monitor
+  on the S3 and an empty pair on a flat heap) and the first frame's time. In the component,
+  `CONFIG_ICLFORGE_AC4_INTERNAL_BELOW` is ESP-IDF's limit for the length of an AC-4 play, set by the
+  player as the play starts and put back as it ends: 512 on the S3, ESP-IDF's own value elsewhere,
+  so the P4's images and every AC-3 and E-AC-3 play are as they were.
+
+  **Exit, as measured.** Under QEMU, the internal RAM each fixture took at its worst moment, under
+  ESP-IDF's default limit of 16 KB and at 512 bytes: 2.0 247,608 to 263,756 and 3,188 to 5,032
+  bytes; 5.1 339,532 and 340,188 (1,903 and 2,559 left of 347,051) and 8,612 and 12,012; 5.1.4
+  340,840 (1,291 left) and 14,140; at 4 KB 29,588 to 108,452. PSRAM carries 0.42 to 1.83 MB at 512
+  bytes. The PCM hash of each of the six fixtures equals its pin at every limit tried (16 KB, 4 KB,
+  512 and 0), so decision 26 holds on the S3's Xtensa build as on the Cortex-M3, the host and the
+  P4; the peak heap (413,611 to 1,800,312), the allocations a frame (50 to 203) and the retained
+  bytes (none) are the Cortex-M3 leg's to the byte; a decode used 18,448 to 21,568 bytes of stack;
+  the image takes 51,469 bytes of DIRAM. What stays in internal RAM and why (the stack, the
+  allocations under 512 bytes, ESP-IDF's IRAM, the sink's DMA, nothing of the decoder in an
+  interrupt or with the cache off, and the hot kernels' buffers left in PSRAM for the board to
+  judge) is on [the S3 page](../docs/platforms/bare-metal/esp32-s3.md#ac-4), with the P4 beside it.
+  **The board phase was not run**: neither S3 board was attached, so there is no time against real
+  time at 2.0, 5.1 or 5.1.4, no internal-RAM headroom beside Wi-Fi, no first-frame latency, no
+  PSRAM figure from a play and no PIE kernel. Whether 512 bytes is the right limit on the board,
+  against 4 KB, is the first thing its timers decide.
+
+  **Exit and verified by:** as D14b for the S3, with the QEMU rows in CI. The QEMU rows are met;
+  the board's half is not run.
 - **D14d, the C6.** Not built. `Fixed32` with a block exponent per QMF slot and per transform
   block; A-SPX's energies, gains and limiter and the decorrelators' energies as a mantissa and a
   power of two; the decorrelators and the converter's taps on 64-bit accumulators; AC-4 rows in the
@@ -3641,7 +3675,8 @@ recommendation, what each costs, and what was taken; the table at the end sums t
 
    On 2026-09-25 the user confirmed the ESP32 work, made the P4 its first target, and D14 took
    D12's and D13's work ([decisions 24 and 25](#decisions-of-2026-09-25)). D12 and D13 were not
-   built under those names: D14a and D14b are built, D14c and D14d are not.
+   built under those names: D14a and D14b are built, D14c is built but for its board phase, and
+   D14d is not.
 
 9. **AC-4 in IEC 61937 and the extension role.**
    - (a) **The extension role carries AC-4 as `Pc` data type 24 bursts of one sync frame each**,

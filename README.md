@@ -150,8 +150,8 @@ Beyond that:
     [ESP32-P4](docs/platforms/bare-metal/esp32-p4.md).
 11. Correct under QEMU's `mps2-an385`; no real silicon.
 
-AC-4 has been run on the ESP32-P4 and on the Cortex-M3 leg. The S3 and the C6 have no AC-4 build
-or measurement.
+AC-4 has been run on the ESP32-P4 and on the Cortex-M3 leg, and on the ESP32-S3 under QEMU, with
+its state in PSRAM; the S3 has no board measurement yet and the C6 no AC-4 build.
 
 The complete codec surface is in
 [docs/library/capabilities.md](docs/library/capabilities.md). Minimum-footprint targets narrow it

@@ -16,8 +16,9 @@ phases are not built.
 - **C61** is not started: there is no C61 board, and the tree has no C61 probe or sink shape. The
   chip appears only in the chip-name tables of `ota.py` and the firmware code.
 - **AC-4** decodes on the P4 behind `CONFIG_AC3FORGE_AC4` (D14b of [`ac4.md`](ac4.md)), in real
-  time for 2.0 in the SIMPLE and A-SPX modes and for nothing wider. The S3 and C6 parts of that
-  phase (D14c, D14d) and AC-4 in a Sendspin group (I6) are not built.
+  time for 2.0 in the SIMPLE and A-SPX modes and for nothing wider. The S3 part (D14c) decodes
+  under QEMU with its state in PSRAM and has not run on a board; the C6 part (D14d) and AC-4 in a
+  Sendspin group (I6) are not built.
 
 The tier is complementary to the shipped S3 and C6 sinks, not a replacement for either. The
 2026-09-08 close of the ESP32-P4 as a decoder target
@@ -288,7 +289,7 @@ needs. The I2C programming is not part of the example.
 | [esp32-714-realtime.md](esp32-714-realtime.md) | Defines the S3 misses the P4 tier must clear. |
 | [esp32-c3.md](../docs/platforms/bare-metal/esp32-c3.md) "Why not P4" | Still true for "replace S3"; superseded as a blanket close by this study. |
 | [esp32-ota.md](esp32-ota.md) | The firmware update path the P4 image, like the S3 and C6 images, takes. Built. |
-| [ac4.md](ac4.md) D14b, D14c, D14d and I6 | AC-4 on each tier: the P4 (D14b) is built; the S3 (D14c), the C6 (D14d) and the ESP32 sinks taking AC-4 in a Sendspin group (I6) are not. |
+| [ac4.md](ac4.md) D14b, D14c, D14d and I6 | AC-4 on each tier: the P4 (D14b) is built; the S3 (D14c) is built and checked under QEMU, not yet on a board; the C6 (D14d) and the ESP32 sinks taking AC-4 in a Sendspin group (I6) are not. |
 
 ## Decisions to take after P1–P2 / C61-P1–P2
 

@@ -8,8 +8,9 @@ floating-point unit, the arithmetic tier the decoder runs in
 
 AC-4 is built from its own libraries (`src/ac4`, `src/ac4core`, `src/ac4dec`), the decoder only:
 no bare-metal build has the AC-4 encoder. The [Cortex-M3](cortex-m3.md#status) leg probes it, and the
-[ESP32-P4](esp32-p4.md#ac-4) decodes it behind `CONFIG_ICLFORGE_AC4`. It is not built for the
-ESP32-S3, the ESP32-C6 or the ESP32-C3 yet: those are phases D14c and D14d of
+[ESP32-P4](esp32-p4.md#ac-4) decodes it behind `CONFIG_ICLFORGE_AC4`. The
+[ESP32-S3](esp32-s3.md#ac-4) decodes it under QEMU in CI with its state in PSRAM and has not run it
+on a board (phase D14c). It is not built for the ESP32-C6 or the ESP32-C3 yet: that is phase D14d of
 [`planning/ac4.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/ac4.md#d14-ac-4-on-the-esp32s).
 No ESP32 sink takes AC-4 in a Sendspin group either.
 

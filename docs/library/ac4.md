@@ -427,4 +427,6 @@ API](c-api.md#ac-4), [Python API](python-api.md#ac-4), [Rust API](rust-api.md#ac
 [WebAssembly](../platforms/wasm.md#ac-4-module)). Android's CMake build compiles the libraries and
 links them into nothing in the app. The ESP-IDF component builds the inspector, core and decoder
 behind `CONFIG_ICLFORGE_AC4`, off by default and offered on parts with a floating-point unit, in
-single precision, and never the encoder ([ESP32-P4](../platforms/bare-metal/esp32-p4.md#ac-4)).
+single precision, and never the encoder ([ESP32-P4](../platforms/bare-metal/esp32-p4.md#ac-4),
+[ESP32-S3](../platforms/bare-metal/esp32-s3.md#ac-4)). It needs PSRAM: a decode peaks at 0.41 MB
+at 2.0 and 1.80 MB at 5.1.4 on the footprint probe's streams.

@@ -912,7 +912,8 @@ channel-based, immersive and object AC-4 (phases I2 and I5), the Decoder page's 
 Media page's AC-4 information are live, and the extension role has the `"ac4"` data type, which the
 test sink decodes (D11, [the extension page](hearth-sendspin-extension.md)). No ESP32 sink in a
 Sendspin group takes AC-4: that is phase I6, not built. The ESP32-P4 decodes AC-4 from its HTTP
-source, and the S3 and C6 have not been started (D14b, D14c and D14d).
+source, the S3 decodes it under QEMU and has not played it on a board, and the C6 has not been
+started (D14b, D14c and D14d).
 
 ### D0: the plan
 

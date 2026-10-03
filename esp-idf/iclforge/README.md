@@ -5,8 +5,8 @@ ESP32-C6 and ESP32-P4 (the manifest's targets), and encoding, which only the S3 
 library's minimum-footprint profile: a static archive built without exceptions or RTTI, sized to
 run out of internal SRAM with no PSRAM. The decode arithmetic is `float` on a part with a
 floating-point unit and fixed point on one without. On a part with a floating-point unit and
-PSRAM the component can also decode AC-4, behind `CONFIG_ICLFORGE_AC4` ([AC-4](#ac-4)); only the
-ESP32-P4 has run it.
+PSRAM the component can also decode AC-4, behind `CONFIG_ICLFORGE_AC4` ([AC-4](#ac-4)): the
+ESP32-P4 has run it on a board, and the ESP32-S3 under QEMU.
 
 This directory is the component. For the codec it is a wrapper: `CMakeLists.txt` pre-seeds the
 repository's options, `add_subdirectory()`s the repository root and links `iclforge::ac3_minimal`,
@@ -91,8 +91,13 @@ since the decoder alone peaks at 414 KB of heap at 2.0 and 1.80 MB at 5.1.4 on t
 probe's streams, and a decode task with a stack of 40 KB, which `examples/hearth_sink/sdkconfig.ac4`
 sets: the decoder uses 19 to 30 KB of it. The [ESP32-P4 page](../../docs/platforms/bare-metal/esp32-p4.md#ac-4) has what a stream of
 each kind held and how fast it decoded on a board: 2.0 and 5.1 streams in SIMPLE, A-SPX and A-CPL mode 2
-in real time, A-CPL mode 3 and 5.1.4 slower. It is not built for the ESP32-S3, the ESP32-C6 or the ESP32-C3 yet, and no
-sink built on the component takes AC-4 in a Sendspin group. A component archive carries the AC-4
+in real time, A-CPL mode 3 and 5.1.4 slower. On the ESP32-S3 an AC-4 play puts the decoder's state in
+PSRAM: `CONFIG_ICLFORGE_AC4_INTERNAL_BELOW`, 512 bytes on that part and ESP-IDF's own limit on any
+other, is the size below which its allocations try internal RAM first, and the player sets it for the
+length of the play only. The S3 decodes the footprint probe's streams under QEMU with the PCM equal to
+the pins and 3 to 14 KB of internal RAM in use, and has not been timed on a board
+([ESP32-S3](../../docs/platforms/bare-metal/esp32-s3.md#ac-4)). It is not built for the ESP32-C6 or
+the ESP32-C3 yet, and no sink built on the component takes AC-4 in a Sendspin group. A component archive carries the AC-4
 sources only when it was packed with `pack_esp_component.py --with-ac4`.
 
 ## The examples

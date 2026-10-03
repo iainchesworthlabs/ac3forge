@@ -1501,7 +1501,9 @@ and no fixed-point tier exists for AC-4 yet. What is checked:
   `std::pow` and `std::exp2` at `float` gave a different last bit in each C library, and D14a4 took
   those calls out of libm. [ESP32-P4](platforms/bare-metal/esp32-p4.md#ac-4) has the times: the P4
   decodes 2.0 in SIMPLE and in A-SPX mode, and through the frame-rate converter at 24 and 25 fps, in
-  real time and nothing wider. AC-4 on the S3 and on the C6 is not built.
+  real time and nothing wider. On the S3 the AC-4 probe's six fixtures decode under QEMU in CI to
+  the pinned hashes, with the decoder's state in PSRAM; no board has timed it
+  ([ESP32-S3](platforms/bare-metal/esp32-s3.md#ac-4)). AC-4 on the C6 is not built.
 
 ### The encoder
 

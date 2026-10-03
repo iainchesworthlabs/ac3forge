@@ -1709,6 +1709,16 @@ The sections below contain the complete change list and fixes.
   plays and the probe's six fixtures (also on the Cortex-M3 under QEMU) equals the host's. A-CPL mode 3 (1.14), 5.1.4 in full decoding (1.57 to 1.90) and a
   5.1 layout through a sink (the wide TDM sink does not start on this chip revision) are not in real time. The Cortex-M3 probe's image is 691,896 bytes from
   683,448 (ceiling 750,000). [ESP32-P4](docs/platforms/bare-metal/esp32-p4.md#what-d14e-changed) has the tables.
+- **The ESP32-S3 decodes AC-4 under QEMU, with the decoder's state in PSRAM (phase D14c).** The S3 probe has an AC-4 shape
+  (`sdkconfig.ac4`: the component's AC-4 decoder, the AC-4 probe and the board's octal PSRAM, which the QEMU of ESP-IDF v6.1 emulates), and CI runs it
+  as `run_esp32s3_probe.sh --ac4`: the six fixtures' PCM equals the hashes the Cortex-M3 leg and the host are pinned to, and the internal RAM each takes
+  at its worst is held to a ceiling. A 2.0 decode peaks at 414 to 602 KB, more than the S3's 347 KB of free internal RAM. Under ESP-IDF's default
+  placement the decoder's blocks of 8 to 16 KB filled internal RAM to 1.3 to 2.6 KB of free at 5.1 and 5.1.4; with allocations of 512 bytes and more in
+  PSRAM it keeps 3 to 5 KB there at 2.0 and 9 to 14 KB at 5.1 and 5.1.4, the rest (0.42 to 1.83 MB) in PSRAM, and the PCM is the same at every placement.
+  The component's `CONFIG_ICLFORGE_AC4_INTERNAL_BELOW` gives an AC-4 play that limit, 512 bytes on the S3 and ESP-IDF's own value on every other part,
+  and the player puts ESP-IDF's value back when the play ends, so AC-3 and E-AC-3 plays and the P4's images are as they were. Each AC-4 probe fixture
+  now prints its first frame's time, and on the S3 what it took from internal RAM and from PSRAM. No S3 board has run it, so there is no time figure
+  yet. [ESP32-S3](docs/platforms/bare-metal/esp32-s3.md#ac-4) has the tables.
 
 **Browser (WASM)**
 

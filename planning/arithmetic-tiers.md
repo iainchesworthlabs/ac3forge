@@ -17,7 +17,8 @@
     `src/arithmetic`, and made the AC-4 decoder's kernels take `AC3FORGE_DECODE_SCALAR`: `double`
     (the default) or `float`. D14b built the `float` decoder into the ESP-IDF component behind
     `CONFIG_AC3FORGE_AC4` and measured it on an ESP32-P4. AC-4 has no fixed-point tier (D14d, the
-    C6), no S3 phase (D14c), and its encoder stays in `double` on every platform. See
+    C6), its S3 phase (D14c) runs under QEMU and not yet on a board, and its encoder stays in
+    `double` on every platform. See
     [AC-4 on the same seam](#ac-4-on-the-same-seam).
 
     Design sections say what each tier and each effort level is and what it guarantees; each
@@ -133,7 +134,7 @@ AC-3 and E-AC-3 have. What is built, and what is not:
 | The probe's AC-4 rows (D14a) | `tools/checks/run_baremetal_probe.sh --ac4` decodes five committed streams (2.0 and 5.1 with and without A-CPL, and DEE's 5.1.4 tones) on the Cortex-M3 leg in `float`: 54.5 M to 205.8 M instructions a frame, a peak heap of 0.43 to 1.93 MB, a 486,192-byte image. The PCM equals the x86-64 host's, and the hashes are pinned in `tests/golden/ac4-probe-pcm-hashes.json` |
 | `float` against `double` (D14a's exit) | On the 67 committed streams (`tools/checks/check_ac4_decode_scalar_snr.py`), the worst channel is 109.4 to 136.0 dB from the `double` decode below the lowest A-SPX crossover, and 37.5 to 102.1 dB above the highest where a stream has A-SPX. The floors are pinned 3 dB under those figures in `tests/golden/ac4dec/scalar-agreement.json`. The cause of the high band's gap is open |
 | The ESP32-P4 (D14b) | `CONFIG_AC3FORGE_AC4` builds the `float` decoder into the ESP-IDF component, off by default and offered only on a part with a floating-point unit. On a board at 360 MHz with Wi-Fi up, 2.0 in SIMPLE mode decodes in 0.28 of real time and 2.0 in A-SPX mode in 0.37, and so does the frame-rate converter at 24, 25, 23.976 and 29.97 fps (0.51, 0.53, 0.68 and 0.69; D14a4 runs its dot product in `float`, D14a5's tables are built by the compiler and D14a6 takes the low-power SRAM out of the heap); D14e brings 5.1 in SIMPLE mode (0.64), A-SPX (0.83) and A-SPX with A-CPL mode 2 (0.91) under real time (the transforms, A-CPL and the output in fewer passes, `-O3` for the kernels and the flash read in QIO mode), and A-CPL mode 3 takes 1.14 and 5.1.4 in full decoding 1.57 to 1.90. The output equals the probe's pinned `float` hashes and the host's on all twenty plays: D14a4 took `std::pow`, `std::exp2` and `hypotf` at `float`, whose last bit differs between C libraries, out of libm. [The P4 page](../docs/platforms/bare-metal/esp32-p4.md#ac-4) has the tables |
-| The ESP32-S3 (D14c) | Not built. The Cortex-M3 probe's 2.0 stream peaks at 432 KB of heap, where the S3's probe allows 245,000 bytes, so 2.0 in internal RAM needs the allocations halved again, or PSRAM |
+| The ESP32-S3 (D14c) | The same `float` decoder, with its state in PSRAM: a 2.0 decode peaks at 413,611 to 601,504 bytes, where the S3 has 347,051 free, and the owner put the state in PSRAM on 2026-10-03. Under QEMU, which emulates the S3's octal PSRAM, the six probe fixtures' PCM equals the pins (the same bits as the host, the Cortex-M3 leg and the P4), and with ESP-IDF's limit at 512 bytes the decoder keeps 3 to 14 KB of internal RAM. Not run on a board, so no time is known. [The S3 page](../docs/platforms/bare-metal/esp32-s3.md#ac-4) has the figures |
 | The ESP32-C6 (D14d) | Not built. It needs `Fixed32` kernels with a block exponent per QMF slot and per transform block |
 | The encoder | `double` on every platform. The AC-4 encoder has no `float` or fixed-point tier and never runs on an ESP32 ([decision 34](ac4.md#decisions-of-2026-09-25)); a `float` build of `src/ac4core` instantiates the kernels the encoder calls at `double` as well (`AC4CORE_ALSO_AT_DOUBLE`) |
 
@@ -389,6 +390,6 @@ came of it.
   `std::exp2` at `float` give a different last bit in each C library. Routing them through the
   project's own functions gave one hash on the host, a Cortex-M3 program and the board in a
   scratch copy; that change is not in the tree.
-- **AC-4 on the S3 and the C6.** Nothing is built or measured on either; the P4's figures say
-  what a single-precision FPU manages at 360 MHz, not what the S3's 240 MHz or the C6's
-  fixed-point tier will.
+- **AC-4 on the S3 and the C6.** The S3 decodes correctly under QEMU and has no board figure;
+  nothing is built for the C6. The P4's figures say what a single-precision FPU manages at
+  360 MHz, not what the S3's 240 MHz or the C6's fixed-point tier will.

@@ -19,14 +19,14 @@ the float32 path worth having and real-time decode worth measuring.
 | Atmos bed | Correct, decoded bed-only via `DecoderConfig::skip_object_reconstruction`. 11 allocations per frame |
 | Atmos objects | **Correct, reconstructed on target.** 22 allocations per frame — see [Objects](#objects). **And placed**: the `eac3_atmos_render` row pans a height-object stream onto 7.1.4 through the block form, every level the host's — see [Placed on loudspeakers](#placed-on-loudspeakers) |
 | Encode | AC-3 and E-AC-3, six rows: 5.1 and 2/0 through each encoder, 2/0 with coupling, spectral extension and AHT, and 2/0 §E3.5 enhanced coupling - six frames of synthesised programme each, byte count and FNV-1a hash checked against `apps/baremetal/encode_fixture.hpp`, peak heap per row. One substream at a time; see [Encoding](#encoding) for what does not fit |
-| AC-4 | **Not built for this part yet**: that is phase D14c of [`planning/ac4.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/ac4.md#d14-ac-4-on-the-esp32s). No CI leg builds, runs or measures the AC-4 decoder for an S3, and there is no QEMU row or board figure. `CONFIG_ICLFORGE_AC4` is offered here because the part has an FPU, but the decoder peaks at 432 KB of heap at 2.0 on the Cortex-M3 leg, more than the 304,680 bytes of internal SRAM free here, so a build would need PSRAM. The [ESP32-P4](esp32-p4.md#ac-4) is the part that decodes AC-4. No ESP32 sink takes AC-4 in a Sendspin group |
+| AC-4 decode | **Correct under QEMU, with its state in PSRAM**: the six fixtures of the AC-4 probe (2.0, 5.1 and 5.1.4, with A-CPL and companding), every PCM hash equal to the pins the Cortex-M3 leg and the host are held to, in CI. The decoder's allocations of 512 bytes and more go to the board's octal PSRAM, which QEMU emulates; it keeps 3 to 5 KB of internal RAM at 2.0 and 9 to 14 KB at 5.1 and 5.1.4. **Not run on a board**: no time, Wi-Fi or first-frame figure exists for this part. See [AC-4](#ac-4) (phase D14c of [`planning/ac4.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/ac4.md#d14-ac-4-on-the-esp32s)). No ESP32 sink takes AC-4 in a Sendspin group |
 | Standalone probe fits internal SRAM | Yes, without PSRAM. 195,025-byte peak heap (`eac3_atmos_render`; 194,655 with Atmos objects reconstructed, 173,794 for the 7.1.4 fixture folded to stereo, 167,386 as coded) against 304,680 free under QEMU on 2026-09-29. The board reported 316,196 free on 2026-09-11, when the peak was 237,206 — see [Memory](#memory) |
 | Retained after teardown | 12 bytes, one `__cxa_thread_atexit` record, the spectrum scratch's pointer; 23,552 bytes while §E3.5 is in use |
 | Audio output | Two examples drive real peripherals — see [Examples](#examples) |
 | Sendspin sink | `hearth_sink` requires an ESP32-S3 board with 8 MB of PSRAM and plays as a Sendspin player on Wi-Fi. Two boards played one E-AC-3 JOC programme as a group for ten minutes with no underrun and their play times within 549 µs — see [As a Sendspin sink](#as-a-sendspin-sink) and [the sink guide](../../hearth/sink-esp32-s3.md) |
 | Real time | **Decode, yes, on a board**, at 240 MHz, every one of the fourteen fixtures: from 0.07x for AC-3 mono to 0.92x for E-AC-3 7.1.4 folded to stereo, with objects placed onto 7.1.4 at 0.78x — see [Timing](#timing). The probe's board timings on this page are those of 2026-09-09 to 2026-09-11. **Encode: AC-3 2/0 and E-AC-3 2/0, yes**, 0.35x and 0.73x with the encoders in `float` end to end and the search made cheaper; AC-3 5.1 at 1.01x sits at the line, 2/0 with tools 1.3x to 1.6x and E-AC-3 5.1 1.7x over, what remains being the exponent-run planner and the allocation candidates — see [Encoding](#encoding) |
 | ESPHome | An external component, `esphome/components/iclforge/` — an AC-3 decoder and framer, not a `speaker` source. See [ESPHome](esphome.md) |
-| CI | `build-esp32s3` in `.github/workflows/_build.yml` under QEMU, and `hearth-esp32s3` after it, which plays to the Sendspin sink from the host; `esphome config` and the component pack in `esp-component.yml`. All are in the `esp` lane of `ci.yml`, which runs after a merge to main that changes the ESP32 trees or a tree its component ships (the [lane table](../../ci-lanes.md#lane-table) lists them), and nightly ([CI for many agents](../../ci-agentic.md#the-tiers)); a pull request's gate builds none of them |
+| CI | `build-esp32s3` in `.github/workflows/_build.yml` under QEMU (the decode, encode and AC-4 probes and the example's shapes), and `hearth-esp32s3` after it, which plays to the Sendspin sink from the host; `esphome config` and the component pack in `esp-component.yml`. All are in the `esp` lane of `ci.yml`, which runs after a merge to main that changes the ESP32 trees or a tree its component ships (the [lane table](../../ci-lanes.md#lane-table) lists them), and nightly ([CI for many agents](../../ci-agentic.md#the-tiers)); a pull request's gate builds none of them |
 
 Decode and encode are separate builds. They are mutually exclusive, and configure fails if both
 are asked for, because neither fits beside the other in this memory.
@@ -58,7 +58,8 @@ this part. The x figures are fractions of a 32 ms frame.
 | Any dependent-substream encode (7.1, 5.1.2, 5.1.4, 7.1.4) | No: three encoders resident, 601,954 bytes for 7.1.4, as first measured | Host profile |
 | The Atmos object encoder | No: about 300 KB, `double`, and not in the profile | Bench estimate, see [Encoding](#encoding) |
 | Decode and encode in one image | No: mutually exclusive builds | Measured, above |
-| The second core, PSRAM | Not used by the probe. The Hearth sink uses both: its decode runs on core 1 and its large allocations go to PSRAM | [In the Sendspin sink](#in-the-sendspin-sink); [What is left](#what-is-left-and-what-would-move-it) |
+| The second core, PSRAM | Not used by the AC-3 and E-AC-3 probe. The AC-4 probe puts the decoder's state in PSRAM. The Hearth sink uses both: its decode runs on core 1 and its large allocations go to PSRAM | [In the Sendspin sink](#in-the-sendspin-sink); [AC-4](#ac-4); [What is left](#what-is-left-and-what-would-move-it) |
+| AC-4 decode, 2.0, 5.1 and 5.1.4 | Correct, with the decoder's state in PSRAM; time not measured | QEMU leg; `run_esp32s3_probe.sh --ac4`, [AC-4](#ac-4) |
 
 ## Building
 
@@ -161,7 +162,8 @@ mode from the layout in force (`iclforge/sink_plan.hpp`) and reconfigures betwee
 `PUT /layout` needs no rebuild. One S3 line carries four 32-bit or eight 16-bit slots and a second
 line doubles that, to sixteen 16-bit slots ([Slot widths](../../hearth/sink-esp32-s3.md#slot-widths)).
 The example decodes AC-3 and E-AC-3 here; its AC-4 decoder is a `CONFIG_ICLFORGE_AC4` build that
-only the [ESP32-P4](esp32-p4.md#ac-4) has run.
+builds for this part with an AC-4 play's state in PSRAM ([AC-4](#ac-4)) and that only the
+[ESP32-P4](esp32-p4.md#ac-4) has played on a board.
 
 It exists to exercise the incremental input path. `iclforge::ac3::split_frames` takes a span over a whole
 stream, which nothing streaming can produce; `iclforge::ac3::io::AccessUnitAccumulator` applies the same
@@ -1239,11 +1241,122 @@ are repeated here because neither failure mode points at its cause:
   without yielding, which is what the watchdog exists to catch. A decoder in a product should keep
   the watchdog and give the decode its own task with a bounded per-frame budget.
 
-PSRAM is off in the standalone probe, although the development board has 8 MB. QEMU cannot emulate S3 PSRAM
-([espressif/qemu#129](https://github.com/espressif/qemu/issues/129)), so a build requiring it
-cannot run in CI, and keeping it off means the internal-SRAM budget is enforced rather than
-avoided. The Hearth Sendspin sink is a separate networked shape and requires the board's 8 MB
-of PSRAM.
+PSRAM is off in the AC-3 and E-AC-3 probes, although the development board has 8 MB, so the
+internal-SRAM budget is enforced rather than avoided. QEMU could not emulate S3 PSRAM when they
+were written ([espressif/qemu#129](https://github.com/espressif/qemu/issues/129)); the QEMU that
+ESP-IDF v6.1 installs (`esp_develop_9.2.2_20260417`) does, quad or octal with 32 MB, and the AC-4
+probe runs on it ([AC-4](#ac-4)). The Hearth Sendspin sink is a separate networked shape and
+requires the board's 8 MB of PSRAM.
+
+## AC-4
+
+The component's AC-4 decoder (`CONFIG_ICLFORGE_AC4`, in `float`) builds for this part and decodes
+correctly under QEMU, with its state in PSRAM (phase D14c of
+[`planning/ac4.md`](https://github.com/iainchesworthlabs/iclforge/blob/main/planning/ac4.md#d14-ac-4-on-the-esp32s)).
+It has not run on a board, so this section has no time figure: the boards were not attached when
+it was built.
+
+### Where its memory goes
+
+A decode does not fit internal RAM. The probe's 2.0 fixtures peak at 413,611 to 601,504 bytes of
+heap, where this part has 347,051 free and a largest block of 249,856, and 5.1.4 peaks at
+1,800,312. Decision 29 planned 2.0 in internal RAM; the owner decided on 2026-10-03 that the
+decoder's state goes in PSRAM instead, and the CI row holds what is left in internal RAM.
+
+ESP-IDF's heap places each `malloc` by its size: below `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL` it
+tries internal RAM first, at or above it PSRAM first, and either falls back to the other. The
+decoder makes many blocks of 8 to 16 KB (65 of them, 534 KB, at the 5.1.4 fixture's peak), so the
+limit decides where its state goes. Under QEMU, the internal RAM each fixture took at its worst
+moment, by limit (ESP-IDF's local-minimum monitor, summed over the internal heap's regions, so a
+figure is at most what was in use at once):
+
+| Fixture | Peak heap | 16,384 (ESP-IDF's default) | 4,096 | 512 | 0 |
+|---|---:|---:|---:|---:|---:|
+| `ac4_20_music`, 2.0 | 413,611 | 247,608 | 29,588 | 3,188 | 0 |
+| `ac4_20_acpl`, 2.0 A-CPL | 601,504 | 256,856 | 31,528 | 5,032 | 0 |
+| `ac4_20_companding`, 2.0 | 462,435 | 263,756 | 43,728 | 4,468 | 0 |
+| `ac4_51_music`, 5.1 | 946,390 | 340,188 (1,903 left) | 67,844 | 12,012 | 0 |
+| `ac4_51_acpl`, 5.1 A-CPL | 1,147,590 | 339,532 (2,559 left) | 48,704 | 8,612 | 0 |
+| `ac4_514_tones`, 5.1.4 | 1,800,312 | 340,840 (1,291 left) | 108,452 | 14,140 | 0 |
+
+At ESP-IDF's default the decoder fills internal RAM at 5.1 and wider, as it does on the
+[ESP32-P4](esp32-p4.md#ac-4) (1 to 8 KB left there), and a board running Wi-Fi beside it would have
+nothing for Wi-Fi and lwIP. At 512 bytes the decoder keeps 3 to 14 KB there and the rest, 0.42 to
+1.83 MB, in PSRAM. That is the limit the AC-4 probe runs at
+(`apps/baremetal/platform/esp32s3/sdkconfig.ac4`) and the one `hearth_sink` gives an AC-4 play on
+this part: the component's `CONFIG_ICLFORGE_AC4_INTERNAL_BELOW`, 512 here, which the player sets
+when an AC-4 play starts and puts back to ESP-IDF's value when it ends, so AC-3 and E-AC-3 plays
+keep the 16 KB their board figures were measured under. On the P4 the option defaults to ESP-IDF's
+value and changes nothing.
+
+The placement does not change the PCM: each of the six fixtures has the same hash at every limit,
+equal to its pin. The peak heap, the allocations a frame (50 to 203) and the retained bytes (none)
+are the Cortex-M3 leg's to the byte.
+
+### What stays in internal RAM, and why
+
+- **The decode task's stack.** A decode used 18,448 to 21,568 bytes of it in the probe (19,480 at
+  most on the Cortex-M3, whose frames are smaller); `hearth_sink`'s `sdkconfig.ac4` gives the task
+  40 KB. FreeRTOS keeps task stacks in internal RAM here, and a stack is the working set every call
+  touches.
+- **Allocations under 512 bytes**, 3 to 14 KB at the worst moment: the decoder's small vectors and
+  their bookkeeping, which the heap keeps internal.
+- **The image's own data**: 51,469 bytes of DIRAM for the AC-4 probe (`idf.py size`), 31,727 of it
+  ESP-IDF's code in IRAM (interrupt handlers and what runs with the cache off), 13,454 `.data` and
+  6,288 `.bss`. The decoder's tables are constants and stay in flash, read through the cache
+  (451,856 bytes of `.rodata` in the image); the frame-rate converter copies its table into PSRAM
+  when it is made (D14a5).
+- **DMA.** The decoder does none. The sink's I2S DMA descriptors and buffers are internal
+  (`hearth_sink`'s twelve descriptors of 256 frames, 24 KB at 2.0 in 32-bit slots) and are
+  allocated by their caps, which the limit does not move. The player's ring and its held unit are
+  in PSRAM already.
+- **Interrupts and the cache-off paths.** No decoder code runs in an interrupt or with the cache
+  off. A flash write (an update, NVS) turns the cache off and pauses the other core, so a decode
+  waits for it, as it would with its state in internal RAM, since its code is in flash either way.
+- **The hot kernels' working sets** (the QMF banks' delay lines and planes, the transform scratch)
+  are in PSRAM at 512 bytes, behind the 32 KB data cache. What that costs needs the board's stage
+  timers; on the P4 the 512-byte limit took 1.08 to 1.24 times as long over twenty plays (D14e), and
+  this part's octal PSRAM at 80 MHz is slower than the P4's. Moving a kernel's buffers back is for
+  the board to ask for.
+
+### Against the ESP32-P4
+
+| | ESP32-S3 (QEMU, 512-byte limit for AC-4) | [ESP32-P4](esp32-p4.md#ac-4) (board, ESP-IDF's default) |
+|---|---|---|
+| PCM | the six fixtures' pinned hashes | the six fixtures' pinned hashes, and the host's on 52 plays |
+| Peak heap | 0.41 to 0.60 MB at 2.0, 0.95 to 1.15 MB at 5.1, 1.80 MB at 5.1.4 (the probe) | 0.58 MB at 2.0 to 2.2 MB at 5.1.4 (`hearth_sink`) |
+| Internal RAM at the worst moment | 3 to 14 KB used, 333 to 344 KB of 347 KB left | used up: 1 to 8 KB left of 344 to 350 KB |
+| Decode stack | 18 to 22 KB | 19 to 30 KB |
+| Real time | not measured | 2.0 at 0.28 and 0.37; 5.1 at 0.64, 0.83 and 0.90; 5.1.4 at 1.55 to 1.89 |
+
+QEMU's times describe the emulator, as [Timing](#timing) says, so the S3's column has none. The
+P4 runs at 360 MHz on RISC-V with a 128 KB L2 cache and hex PSRAM at 200 MHz; this part runs at
+240 MHz with a 32 KB data cache and octal PSRAM at 80 MHz, so its figures will be its own.
+
+### Not yet measured
+
+On a board, per fixture and with Wi-Fi playing at the same time: the time against real time at
+2.0 and 5.1 and, measured only (decision 28), 5.1.4; the internal RAM left at the worst moment
+beside Wi-Fi; PSRAM's use; and the first frame's latency. A PIE kernel waits for those timers
+(decision 30): it is integer, so it would be fixed point inside the `float` decode, and only where
+one kernel holds a stream back.
+
+### Running it
+
+```bash
+. $IDF_PATH/export.sh
+tools/checks/run_esp32s3_probe.sh --ac4      # under QEMU, gated
+cd apps/baremetal/platform/esp32s3           # or on a board
+idf.py -B build-ac4 -DSDKCONFIG=build-ac4/sdkconfig \
+  "-DSDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.ac4;sdkconfig.hw" build
+idf.py -B build-ac4 -p <PORT> flash monitor
+```
+
+The runner holds each fixture's hash to its pin, the internal RAM each took to a ceiling (2.0's
+6,000 bytes the tightest), and the peak heap, allocations and stack to the Cortex-M3 leg's
+ceilings. Each fixture prints `<fixture>.esp32s3.internal_peak_bytes`, `psram_peak_bytes` and
+`first_frame_us` beside the probe's other lines. For `hearth_sink`, add `sdkconfig.ac4` to the
+board's overlays ([the sink guide](../../hearth/sink-esp32-s3.md#build-and-flash)).
 
 ## What the port required from the library
 
