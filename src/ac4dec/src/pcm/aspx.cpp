@@ -291,7 +291,7 @@ class ChannelAssembly {
         sig_gain_ = {};
     }
 
-    void run(std::vector<QmfValue>& q_high, std::vector<QmfValue>& y);
+    void run(std::vector<QmfValue>& q_high);
 
    private:
     void estimate(std::span<const QmfValue> q_high);
@@ -299,7 +299,7 @@ class ChannelAssembly {
     void place_sinusoids();
     void compute_gains();
     void limit();
-    void assemble(std::span<const QmfValue> q_high, std::span<QmfValue> y);
+    void assemble(std::span<QmfValue> q_high);
     void interleave(std::span<const QmfValue> y);
     void keep(std::span<const QmfValue> y);
 
@@ -332,11 +332,10 @@ class ChannelAssembly {
     EnvelopeMatrix& sig_gain_;
 };
 
-void ChannelAssembly::run(std::vector<QmfValue>& q_high, std::vector<QmfValue>& y) {
+void ChannelAssembly::run(std::vector<QmfValue>& q_high) {
     AC4_ZONE_SCOPED_N("ac4_aspx");
     const int q_low_slots = frame_.num_qmf_timeslots + frame_.ts_offset_hfgen;
     q_high.assign(at(q_low_slots) * kSubbands, QmfValue{});
-    y.assign(at(q_low_slots) * kSubbands, QmfValue{});
     const aspx::HfGeneratorInput<Real> in{
         .q_low_ext = io_.ext,
         .num_qmf_timeslots = frame_.num_qmf_timeslots,
@@ -353,9 +352,10 @@ void ChannelAssembly::run(std::vector<QmfValue>& q_high, std::vector<QmfValue>& 
     place_sinusoids();
     compute_gains();
     limit();
-    assemble(q_high, y);
-    interleave(y);
-    keep(y);
+    // From here the buffer holds Y, Pseudocode 106's output, in place of the high band.
+    assemble(q_high);
+    interleave(q_high);
+    keep(q_high);
 }
 
 // Pseudocode 90. The envelope's energy, summed over QMF slots, is divided by
@@ -552,17 +552,27 @@ void ChannelAssembly::limit() {
 // ones the previous interval used, whatever its borders, and time counts from
 // the interval's first QMF slot (src/ac4dec/ERRATA.md, "The noise and tone
 // generators' indices").
-void ChannelAssembly::assemble(std::span<const QmfValue> q_high, std::span<QmfValue> y) {
+// In place: `buffer` holds the high band and leaves holding Y, which is zero wherever
+// Pseudocode 106 writes nothing (each assembled value reads the high band only where it is
+// written, and nothing reads the high band after this).
+void ChannelAssembly::assemble(std::span<QmfValue> buffer) {
     const int sbx = g_.sbx;
     const int nsb = g_.num_sb_aspx;
     const int first = ts_begin();
     const int last = ts_end();
+    const auto slot_of = [buffer](int ts) { return buffer.subspan(at(ts) * kSubbands, kSubbands); };
     // Pseudocode 106: the slots before this interval are the last one's.
     for (int ts = 0; ts < first; ++ts) {
+        const std::span<QmfValue> slot = slot_of(ts);
         if (ts < st_.y_prev_slots) {
             std::copy_n(st_.y_prev.begin() + static_cast<std::ptrdiff_t>(at(ts) * kSubbands),
-                        kSubbands, y.begin() + static_cast<std::ptrdiff_t>(at(ts) * kSubbands));
+                        kSubbands, slot.begin());
+        } else {
+            std::ranges::fill(slot, QmfValue{});
         }
+    }
+    for (int ts = std::max(first, last); ts < static_cast<int>(buffer.size() / kSubbands); ++ts) {
+        std::ranges::fill(slot_of(ts), QmfValue{});
     }
     const int noise_base = frame_.master_reset ? 0 : st_.noise_index;
     const int sine_base = st_.first_frame ? 1 : (st_.sine_index + 1) % 4;
@@ -574,15 +584,16 @@ void ChannelAssembly::assemble(std::span<const QmfValue> q_high, std::span<QmfVa
             ++atsg;
         }
         sine_index = (sine_base + ts - first) % 4;
-        const std::span<const QmfValue> high = q_high.subspan(at(ts) * kSubbands, kSubbands);
-        const std::span<QmfValue> out = y.subspan(at(ts) * kSubbands, kSubbands);
+        const std::span<QmfValue> slot = slot_of(ts);
         for (int sb = 0; sb < nsb; ++sb) {
             noise_index = (noise_base + nsb * (ts - first) + sb + 1) % 512;
             const Real sign = (sb + sbx) % 2 == 0 ? Real{1} : Real{-1};
-            out[at(sb + sbx)] = assembled<Real>(sig_gain_[at(atsg)][at(sb)], high[at(sb + sbx)],
-                                                noise_lev_[at(atsg)][at(sb)], noise_index,
-                                                sine_lev_[at(atsg)][at(sb)], sign, sine_index);
+            slot[at(sb + sbx)] = assembled<Real>(sig_gain_[at(atsg)][at(sb)], slot[at(sb + sbx)],
+                                                 noise_lev_[at(atsg)][at(sb)], noise_index,
+                                                 sine_lev_[at(atsg)][at(sb)], sign, sine_index);
         }
+        std::fill_n(slot.begin(), sbx, QmfValue{});
+        std::fill(slot.begin() + sbx + nsb, slot.end(), QmfValue{});
     }
     if (last > first) {
         st_.noise_index = noise_index;
@@ -738,10 +749,12 @@ ParseResult decode_aspx(const AspxFrame& frame, std::span<AspxChannelIo> channel
             dequantise(*channels[c].data, groups, envelopes[c]);
         }
     }
-    std::vector<QmfValue> q_high;
-    std::vector<QmfValue> y;
+    // The high band of Q_low's slots, generated and then assembled in place into Y (Pseudocode
+    // 106 reads each value only where it writes it): 19 KB at a 2048-sample frame at the float
+    // and fixed tiers, one buffer for the element's channels, freed when they are done.
+    std::vector<QmfValue> high;
     for (std::size_t c = 0; c < channels.size(); ++c) {
-        ChannelAssembly(frame, groups, patches, channels[c], envelopes[c], scratch).run(q_high, y);
+        ChannelAssembly(frame, groups, patches, channels[c], envelopes[c], scratch).run(high);
         keep_envelopes(*channels[c].data, groups, envelopes[c], *channels[c].state);
     }
     return {};
