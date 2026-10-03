@@ -956,9 +956,18 @@ ParseResult SubstreamPcm::decode(const SubstreamContext& ctx, const AudioSubstre
         if (auto ok = reconstruct_track(info, track.data, sf_gain_, noise, scaled_[t], scaled_exponents_[t]); !ok) {
             return ok;
         }
+        // The track's lines are scaled_[t] now; what follows reads only its band layout.
+        if (frame_inputs.release_tracks != nullptr) {
+            (*frame_inputs.release_tracks)[t].data.quant_spec = {};
+        }
     }
     if (auto ok = matrix(pcm_ctx, element); !ok) {
         return ok;
+    }
+    // Nothing below reads the tracks: the spectra are spectra_ now, and the control data the
+    // d_ctrl queue keeps is the element's own.
+    if (frame_inputs.release_tracks != nullptr) {
+        *frame_inputs.release_tracks = {};
     }
     acpl_history_ = acpl_history;
     ajcc_history_ = ajcc_history;

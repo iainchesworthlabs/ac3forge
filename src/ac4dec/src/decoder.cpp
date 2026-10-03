@@ -2176,6 +2176,9 @@ std::expected<bool, DecodeError> Decoder::Impl::decode_into(
         member_inputs.de = detail::de_frame_values(member.content.metadata.dialog_enhancement);
         member_inputs.decoding = d.config.decoding;
         member_inputs.qmf_only = true;
+        // The capture is this frame's alone (read() clears it), and nothing after decode()
+        // reads a track of it.
+        member_inputs.release_tracks = &d.frame_capture.audio[m].content.element.tracks;
         detail::SubstreamPcm& member_pcm = d.pcm[member.state_key];
         if (const detail::ParseResult decoded =
                 member_pcm.decode(member.context, member.content, member_inputs, d.scratch_channels,
@@ -2193,6 +2196,7 @@ std::expected<bool, DecodeError> Decoder::Impl::decode_into(
     }
     inputs.sources = d.sources;
     inputs.dialogue = dialogue;
+    inputs.release_tracks = &d.frame_capture.audio[anchor].content.element.tracks;
     const detail::ParseResult decoded =
         d.pcm[main.state_key].decode(main.context, main.content, inputs, frame.channels, frame.speakers);
     if (!decoded) {

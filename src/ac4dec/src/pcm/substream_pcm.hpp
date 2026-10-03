@@ -110,6 +110,10 @@ struct FrameInputs {
     // An object audio substream: decode() puts out its objects' PCM in
     // `channels`, in object order, and no speakers.
     bool objects = false;
+    // The substream's own tracks, where the caller holds them and needs them no more after the
+    // frame: decode() frees them once the reconstruction and the stereo and multichannel steps
+    // have read them, before the QMF stages (about 23 KB a channel pair at 2048 samples).
+    std::vector<Track>* release_tracks = nullptr;
 };
 
 class SubstreamPcm {
